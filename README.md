@@ -26,7 +26,7 @@ Organizational diagnostic platform: employee Pulse flow and admin analytics. Sta
 
    ```bash
    cd backend && npm install && npm run migrate && npm run seed
-   cd ../frontend && npm install && npm run build
+   cd ../frontend && npm install --include=dev && npm run build
    ```
 
 3. **Admin login** (from seed): `hello@lukeford.dev` / `Connor!7`
@@ -46,6 +46,8 @@ Organizational diagnostic platform: employee Pulse flow and admin analytics. Sta
    Vite proxies `/api` to `http://localhost:3001`. Set `FRONTEND_ORIGIN=http://localhost:5173` in `backend/.env`.
 
 ## Render.com
+
+- On Render, `NODE_ENV` is often `production` during build, so a plain `npm install` **omits devDependencies**. This repo’s `build.sh` uses `npm install --include=dev` in `frontend/` so **Vite** is available for `vite build`.
 
 - Create a **PostgreSQL** instance and note `DATABASE_URL`.
 - Attach a **persistent disk** and set `STORAGE_PATH` to the mount path (e.g. `/var/data`).
