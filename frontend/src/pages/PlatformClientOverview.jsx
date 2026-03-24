@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
-import { ClipboardList, LayoutDashboard, CircleUser, Users } from 'lucide-react';
+import { ClipboardList, Users } from 'lucide-react';
 
 function getLocalWeekRange() {
   const now = new Date();
@@ -84,26 +84,6 @@ export default function PlatformClientOverview() {
       <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
       {dashError && <p className="error" style={{ marginBottom: '1rem' }}>{dashError}</p>}
       <div className="platform-client-dashboard-grid">
-        <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">
-          <h2 className="platform-client-dashboard__h2" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <LayoutDashboard size={22} strokeWidth={1.75} aria-hidden />
-            Dashboard
-          </h2>
-          <p className="muted" style={{ marginTop: '0.35rem', maxWidth: '40rem' }}>
-            Overview for <strong>{org.name}</strong>. Company profile lives under Account; tasks on the board.
-          </p>
-          <div style={{ marginTop: '1rem' }}>
-            <Link
-              to={`/platform/clients/${orgId}/account`}
-              className="btn btn-primary platform-inline-primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <CircleUser size={20} strokeWidth={1.75} aria-hidden />
-              Open Account
-            </Link>
-          </div>
-        </div>
-
         <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">
           <h3 className="platform-client-dashboard__h2">Stats</h3>
           {dashLoading && <p className="muted">Loading stats…</p>}
