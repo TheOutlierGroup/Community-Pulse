@@ -35,7 +35,7 @@ export default function Login() {
 
   if (loading) {
     return (
-      <Layout user={null} onLogout={logout}>
+      <Layout user={null} onLogout={logout} hideHeader>
         <p className="muted">Loading…</p>
       </Layout>
     );
@@ -44,7 +44,7 @@ export default function Login() {
   if (user) return null;
 
   return (
-    <Layout user={null} onLogout={logout}>
+    <Layout user={null} onLogout={logout} hideHeader>
       <div className="login-hero">
         <img src={outlierLogo} alt="Outlier" className="login-logo" width={160} height={48} />
       </div>
