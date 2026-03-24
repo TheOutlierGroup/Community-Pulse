@@ -60,6 +60,9 @@ export default function SettingsPage() {
         params: { v: avatarRev },
       })
       .then((res) => {
+        if (res.status !== 200) throw new Error('bad status');
+        const ct = (res.headers['content-type'] || '').toLowerCase();
+        if (!ct.startsWith('image/')) throw new Error('not an image');
         const url = URL.createObjectURL(res.data);
         if (cancelled) {
           URL.revokeObjectURL(url);

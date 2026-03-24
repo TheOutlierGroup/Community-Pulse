@@ -101,16 +101,32 @@ router.post(
   }
 );
 
+function avatarContentType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  const map = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
 router.get('/me/avatar', requireAuth, async (req, res) => {
   const name = await User.getProfileAvatarFilename(req.user.id);
   if (!name) return res.status(404).end();
-  const full = path.resolve(avatarFilePath(name));
+  const safeName = path.basename(name);
+  const full = path.resolve(avatarFilePath(safeName));
   const { avatarsDir } = ensureStorageDirs();
   const root = path.resolve(avatarsDir);
-  if (!full.startsWith(root + path.sep) && full !== root) {
+  const rel = path.relative(root, full);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
     return res.status(403).end();
   }
   if (!fs.existsSync(full)) return res.status(404).end();
+  res.setHeader('Content-Type', avatarContentType(safeName));
+  res.setHeader('Cache-Control', 'private, no-cache');
   res.sendFile(full);
 });
 

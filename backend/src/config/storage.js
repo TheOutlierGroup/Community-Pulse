@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const defaultRoot = path.join(__dirname, '../../storage');
 
+/** Avatars live under `${root}/uploads/avatars`. Set STORAGE_PATH to a persistent disk mount on Render (e.g. /var/pulse-storage). */
 export function getStorageRoot() {
   const root = process.env.STORAGE_PATH || defaultRoot;
   return path.resolve(root);

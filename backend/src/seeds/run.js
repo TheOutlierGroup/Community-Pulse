@@ -11,10 +11,40 @@ const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'hello@lukeford.dev';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'Connor!7';
 const ORG_NAME = process.env.SEED_ORG_NAME || 'Outlier';
 
+async function ensureBootstrapOrgIsPlatform(client) {
+  const { rows } = await client.query(
+    `SELECT u.organization_id, o.kind
+     FROM users u
+     JOIN organizations o ON o.id = u.organization_id
+     WHERE LOWER(u.email) = LOWER($1)`,
+    [ADMIN_EMAIL]
+  );
+  const row = rows[0];
+  if (!row) return;
+  if (row.kind === 'platform') return;
+  await client.query(
+    `UPDATE organizations
+     SET kind = 'platform',
+         name = CASE
+           WHEN LOWER(TRIM(name)) = 'default organization' THEN $2
+           ELSE name
+         END
+     WHERE id = $1`,
+    [row.organization_id, ORG_NAME]
+  );
+  console.log(
+    `Bootstrap admin: organization ${row.organization_id} is now platform (${ADMIN_EMAIL}).`
+  );
+}
+
 async function seed() {
   const client = await pool.connect();
   try {
-    const existing = await client.query('SELECT id FROM users WHERE email = $1', [ADMIN_EMAIL]);
+    await ensureBootstrapOrgIsPlatform(client);
+
+    const existing = await client.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [
+      ADMIN_EMAIL,
+    ]);
     if (existing.rows.length > 0) {
       console.log('Seed skipped: admin user already exists.');
       return;
