@@ -87,6 +87,29 @@ router.get('/organizations', async (_req, res) => {
   res.json({ organizations: rows });
 });
 
+/** Logged-in platform user's tasks across client orgs (assignee = self). */
+router.get('/me/tasks-dashboard', async (req, res) => {
+  const weekStart = req.query.weekStart;
+  const weekEnd = req.query.weekEnd;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(weekStart || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(weekEnd || ''))) {
+    return res.status(400).json({ error: 'Query weekStart and weekEnd are required (YYYY-MM-DD)' });
+  }
+  if (weekStart > weekEnd) {
+    return res.status(400).json({ error: 'weekStart must be on or before weekEnd' });
+  }
+  const userId = req.user.id;
+  const dueRows = await ClientWorkTask.listTasksDueBetweenForAssignee(userId, weekStart, weekEnd);
+  const openCount = await ClientWorkTask.countOpenTasksAssignedToUserAcrossClientOrgs(userId);
+  const myRows = await ClientWorkTask.listTasksAssignedToUserAcrossClientOrgs(userId);
+  res.json({
+    weekRange: { start: weekStart, end: weekEnd },
+    tasksDueThisWeekCount: dueRows.length,
+    openAssignedCount: openCount,
+    tasksDueThisWeek: dueRows.map(publicStaffAssignedTask),
+    myTasks: myRows.map(publicStaffAssignedTask),
+  });
+});
+
 router.post('/organizations', (req, res, next) => {
   orgLogoPlatformUpload(req, res, (err) => {
     if (err) {
@@ -102,7 +125,12 @@ router.post('/organizations', (req, res, next) => {
     return res.status(400).json({ error: 'Name is required' });
   }
   const adminEmail = req.body.adminEmail;
-  let org = await Organization.createOrganization(name.trim(), {}, 'client');
+  const addrRaw = req.body.companyAddress ?? req.body.address;
+  const initialSettings = {};
+  if (addrRaw != null && String(addrRaw).trim()) {
+    initialSettings.companyAddress = String(addrRaw).trim();
+  }
+  let org = await Organization.createOrganization(name.trim(), initialSettings, 'client');
   if (req.file) {
     const ext = extensionForUpload(req.file);
     const base = `org-${org.id}${ext || '.png'}`;
@@ -385,6 +413,18 @@ function publicDashboardDueTask(row) {
             lastName: row.assignee_last_name ?? '',
           }
         : null,
+  };
+}
+
+function publicStaffAssignedTask(row) {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    title: row.title,
+    status: row.status,
+    dueDate: formatIsoDate(row.due_date),
+    startDate: formatIsoDate(row.start_date),
   };
 }
 

@@ -124,6 +124,49 @@ export async function listTasksDueBetween(organizationId, startDate, endDate) {
   return rows;
 }
 
+/** Tasks assigned to user with due date in range, across all client organizations. */
+export async function listTasksDueBetweenForAssignee(userId, startDate, endDate) {
+  const { rows } = await query(
+    `SELECT t.id, t.organization_id, o.name AS organization_name, t.title, t.status, t.due_date
+     FROM client_work_tasks t
+     INNER JOIN organizations o ON o.id = t.organization_id AND o.kind = 'client'
+     WHERE t.assigned_to = $1
+       AND t.due_date IS NOT NULL
+       AND t.due_date >= $2::date
+       AND t.due_date <= $3::date
+     ORDER BY t.due_date ASC, t.title ASC`,
+    [userId, startDate, endDate]
+  );
+  return rows;
+}
+
+/** All tasks assigned to user across client orgs (for platform staff home). */
+export async function listTasksAssignedToUserAcrossClientOrgs(userId) {
+  const { rows } = await query(
+    `SELECT t.id, t.organization_id, o.name AS organization_name, t.title, t.status, t.due_date, t.start_date
+     FROM client_work_tasks t
+     INNER JOIN organizations o ON o.id = t.organization_id AND o.kind = 'client'
+     WHERE t.assigned_to = $1
+     ORDER BY
+       CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END,
+       t.due_date ASC NULLS LAST,
+       t.title ASC`,
+    [userId]
+  );
+  return rows;
+}
+
+export async function countOpenTasksAssignedToUserAcrossClientOrgs(userId) {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS c
+     FROM client_work_tasks t
+     INNER JOIN organizations o ON o.id = t.organization_id AND o.kind = 'client'
+     WHERE t.assigned_to = $1 AND t.status <> 'completed'`,
+    [userId]
+  );
+  return rows[0]?.c ?? 0;
+}
+
 export async function getTaskListRow(taskId, organizationId) {
   const { rows } = await query(`${LIST_SELECT} WHERE t.organization_id = $1 AND t.id = $2`, [
     organizationId,

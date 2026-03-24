@@ -4,8 +4,24 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
+import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { Building2, Plus, X } from 'lucide-react';
+
+function readCompanyAddress(settings) {
+  if (settings == null) return '';
+  let s = settings;
+  if (typeof s === 'string') {
+    try {
+      s = JSON.parse(s);
+    } catch {
+      return '';
+    }
+  }
+  if (typeof s !== 'object') return '';
+  const v = s.companyAddress;
+  return v == null ? '' : String(v).trim();
+}
 
 export default function PlatformClients() {
   const { user, logout, loading } = useAuth();
@@ -18,6 +34,7 @@ export default function PlatformClients() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
+  const [newOrgAddress, setNewOrgAddress] = useState('');
   const [newOrgAdminEmail, setNewOrgAdminEmail] = useState('');
   const [newOrgLogo, setNewOrgLogo] = useState(null);
 
@@ -45,6 +62,7 @@ export default function PlatformClients() {
         setModalOpen(false);
         setError('');
         setNewOrgName('');
+        setNewOrgAddress('');
         setNewOrgAdminEmail('');
         setNewOrgLogo(null);
       }
@@ -57,6 +75,7 @@ export default function PlatformClients() {
     setModalOpen(false);
     setError('');
     setNewOrgName('');
+    setNewOrgAddress('');
     setNewOrgAdminEmail('');
     setNewOrgLogo(null);
   }
@@ -72,6 +91,7 @@ export default function PlatformClients() {
     try {
       const fd = new FormData();
       fd.append('name', newOrgName.trim());
+      if (newOrgAddress.trim()) fd.append('companyAddress', newOrgAddress.trim());
       if (newOrgAdminEmail.trim()) fd.append('adminEmail', newOrgAdminEmail.trim());
       if (newOrgLogo) fd.append('logo', newOrgLogo);
       const { data } = await api.post('/api/platform/organizations', fd);
@@ -126,13 +146,14 @@ export default function PlatformClients() {
             <thead>
               <tr>
                 <th scope="col">Company</th>
+                <th scope="col">Address</th>
                 <th scope="col">Created</th>
               </tr>
             </thead>
             <tbody>
               {orgs.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="muted" style={{ padding: '1.5rem' }}>
+                  <td colSpan={3} className="muted" style={{ padding: '1.5rem' }}>
                     No client companies yet. Create one to get started.
                   </td>
                 </tr>
@@ -153,7 +174,24 @@ export default function PlatformClients() {
                   }}
                 >
                   <td>
-                    <span className="platform-users-table__name">{o.name}</span>
+                    <div className="platform-clients-table__company-cell">
+                      {o.company_logo_filename ? (
+                        <span className="platform-clients-table__logo-slot" aria-hidden>
+                          <AuthenticatedBlobImage
+                            path={`/api/platform/organizations/${o.id}/logo`}
+                            alt=""
+                            className="platform-clients-table__logo"
+                          />
+                        </span>
+                      ) : null}
+                      <span className="platform-users-table__name">{o.name}</span>
+                    </div>
+                  </td>
+                  <td
+                    className="muted platform-clients-table__address"
+                    style={{ fontSize: '0.9rem', maxWidth: '22rem', whiteSpace: 'pre-wrap' }}
+                  >
+                    {readCompanyAddress(o.settings) || '—'}
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
                     {o.created_at
@@ -193,9 +231,6 @@ export default function PlatformClients() {
                 <X size={22} aria-hidden />
               </button>
             </div>
-            <p className="muted" style={{ marginTop: '0.35rem', marginBottom: '1rem' }}>
-              Add a client organization, optional logo, and optionally invite a first admin by email.
-            </p>
             {error && modalOpen && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
             <form onSubmit={createOrg}>
               <div className="field">
@@ -206,6 +241,18 @@ export default function PlatformClients() {
                   onChange={(e) => setNewOrgName(e.target.value)}
                   required
                   autoComplete="off"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="c-address">Address (optional)</label>
+                <textarea
+                  id="c-address"
+                  value={newOrgAddress}
+                  onChange={(e) => setNewOrgAddress(e.target.value)}
+                  rows={3}
+                  className="platform-textarea"
+                  placeholder="Street, city, region, postcode, country"
+                  autoComplete="street-address"
                 />
               </div>
               <div className="field">

@@ -305,9 +305,6 @@ export default function PlatformUsers() {
                 <X size={22} aria-hidden />
               </button>
             </div>
-            <p className="muted" style={{ marginTop: '0.35rem', marginBottom: '1rem' }}>
-              Creates a platform account with an initial password they can change in Settings.
-            </p>
             {error && modalOpen && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
             <form onSubmit={createUser}>
               <fieldset className="modal-dialog__fieldset">
@@ -419,9 +416,6 @@ export default function PlatformUsers() {
                 <X size={22} aria-hidden />
               </button>
             </div>
-            <p className="muted" style={{ marginTop: '0.35rem', marginBottom: '1rem' }}>
-              Update profile and role. Passwords can be changed by each user in Settings.
-            </p>
             {error && editUser && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
             <form onSubmit={saveEditUser}>
               <fieldset className="modal-dialog__fieldset">

@@ -18,18 +18,39 @@ function commentImagePath(orgId, taskId, commentId, imageId) {
   return `/api/platform/organizations/${orgId}/tasks/${taskId}/comments/${commentId}/images/${imageId}/file`;
 }
 
+function formatDisplayDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+const STATUS_LABEL = {
+  todo: 'To do',
+  working: 'Working on',
+  review: 'Review',
+  completed: 'Completed',
+};
+
+function statusBadgeClass(status) {
+  if (status === 'completed') return 'closed';
+  if (status === 'working' || status === 'review') return 'active';
+  return 'draft';
+}
+
 export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, onClose, onTasksChanged }) {
   const { showToast } = useToast();
   const [task, setTask] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-
-  const [title, setTitle] = useState('');
-  const [notes, setNotes] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
 
   const [commentBody, setCommentBody] = useState('');
   const [commentFiles, setCommentFiles] = useState([]);
@@ -40,13 +61,7 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
     setError('');
     try {
       const { data } = await api.get(`/api/platform/organizations/${orgId}/tasks/${taskId}`);
-      const t = data.task;
-      setTask(t);
-      setTitle(t.title || '');
-      setNotes(t.notes ?? t.body ?? '');
-      setStartDate(t.startDate || '');
-      setDueDate(t.dueDate || '');
-      setAssignedTo(t.assignedTo?.id ? String(t.assignedTo.id) : '');
+      setTask(data.task);
     } catch (e) {
       setError(e.response?.data?.error || 'Could not load task.');
       setTask(null);
@@ -66,31 +81,6 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-
-  async function saveTask(e) {
-    e.preventDefault();
-    if (!taskId) return;
-    setSaving(true);
-    setError('');
-    try {
-      const notesTrimmed = notes.trim();
-      const { data } = await api.patch(`/api/platform/organizations/${orgId}/tasks/${taskId}`, {
-        title: title.trim(),
-        notes: notesTrimmed,
-        startDate: startDate || null,
-        dueDate: dueDate || null,
-        assignedTo: assignedTo || null,
-        taggedUserIds: taggedUserIdsFromMentionText(notesTrimmed, assignableUsers),
-      });
-      setTask(data.task);
-      showToast('Task saved.', { variant: 'success' });
-      onTasksChanged?.();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Could not save.');
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function uploadTaskImage(file) {
     if (!file || !taskId) return;
@@ -176,6 +166,8 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
     }
   }
 
+  const notesText = task ? (task.notes ?? task.body ?? '').trim() : '';
+
   return (
     <div
       className="modal-backdrop"
@@ -191,8 +183,8 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-dialog__head">
-          <h2 id="task-detail-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-            Task details
+          <h2 id="task-detail-title" style={{ margin: 0, fontSize: '1.15rem', lineHeight: 1.3 }}>
+            {loading ? 'Task' : task?.title || 'Task'}
           </h2>
           <button type="button" className="btn btn-ghost modal-dialog__close" onClick={onClose} aria-label="Close">
             <X size={22} aria-hidden />
@@ -204,107 +196,38 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
 
         {!loading && task && (
           <div className="task-detail-panel__body">
-            <form onSubmit={saveTask} className="task-detail-panel__form">
-              <div className="field">
-                <label htmlFor="td-title">Title</label>
-                <input id="td-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <div className="task-detail-panel__summary">
+              <div className="task-detail-panel__summary-row">
+                <span className={`badge badge-${statusBadgeClass(task.status)}`}>
+                  {STATUS_LABEL[task.status] || task.status}
+                </span>
+                <span className="muted">
+                  Assigned: {task.assignedTo ? userLabel(task.assignedTo) : '—'}
+                </span>
               </div>
-              <div className="field">
-                <label htmlFor="td-notes">Notes</label>
-                <textarea
-                  id="td-notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={10}
-                  placeholder="Tag people inline with @email@domain.com"
-                  className="platform-textarea platform-textarea--task-detail-notes"
-                />
-                <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.35rem', marginBottom: 0 }}>
-                  Mentions use the full email after @ (must match an assignable user).
-                </p>
+              <div className="task-detail-panel__summary-dates muted">
+                <span>Start: {formatDisplayDate(task.startDate)}</span>
+                <span aria-hidden> · </span>
+                <span>Due: {formatDisplayDate(task.dueDate)}</span>
               </div>
-              <div className="task-detail-panel__dates">
-                <div className="field">
-                  <label htmlFor="td-start">Start date</label>
-                  <input
-                    id="td-start"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
+              {notesText ? (
+                <div className="task-detail-panel__summary-notes">
+                  <div className="task-detail-panel__summary-label muted">Notes</div>
+                  <div className="task-detail-panel__summary-notes-body">{notesText}</div>
                 </div>
-                <div className="field">
-                  <label htmlFor="td-due">Due date</label>
-                  <input id="td-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-                </div>
-              </div>
-              <div className="field">
-                <label htmlFor="td-assign">Assigned to</label>
-                <select
-                  id="td-assign"
-                  value={assignedTo}
-                  onChange={(e) => setAssignedTo(e.target.value)}
-                >
-                  <option value="">— None —</option>
-                  {assignableUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {userLabel(u)}
-                      {u.organizationKind === 'platform' ? ' (Outlier)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="modal-dialog__actions">
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : 'Save changes'}
-                </button>
-              </div>
-            </form>
+              ) : null}
+            </div>
 
-            <section className="task-detail-panel__section">
-              <h3 className="task-detail-panel__h3">Images</h3>
-              <div className="task-detail-panel__image-grid">
-                {(task.images || []).map((im) => (
-                  <div key={im.id} className="task-detail-panel__image-tile">
-                    <AuthenticatedBlobImage
-                      path={taskImagePath(orgId, taskId, im.id)}
-                      alt=""
-                      className="task-detail-panel__image-img"
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-ghost task-detail-panel__image-remove"
-                      onClick={() => removeTaskImage(im.id)}
-                      aria-label="Remove image"
-                    >
-                      <Trash2 size={16} aria-hidden />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <label className="btn btn-ghost task-detail-panel__upload-label">
-                <ImagePlus size={18} aria-hidden />
-                Add image
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  className="task-detail-panel__file-input"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    e.target.value = '';
-                    if (f) uploadTaskImage(f);
-                  }}
-                />
-              </label>
-            </section>
-
-            <section className="task-detail-panel__section">
-              <h3 className="task-detail-panel__h3" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <MessageSquare size={20} strokeWidth={1.75} aria-hidden />
+            <section className="task-detail-panel__section task-detail-panel__section--main">
+              <h3 className="task-detail-panel__h3 task-detail-panel__h3--main">
+                <MessageSquare size={22} strokeWidth={1.75} aria-hidden />
                 Comments
               </h3>
-              <ul className="task-detail-panel__comments">
-                {(task.comments || []).map((c) => (
+              {(task.comments || []).length === 0 ? (
+                <p className="muted task-detail-panel__comments-empty">No comments yet.</p>
+              ) : (
+                <ul className="task-detail-panel__comments">
+                  {(task.comments || []).map((c) => (
                   <li key={c.id} className="task-detail-panel__comment">
                     <div className="task-detail-panel__comment-head">
                       <strong>{c.author ? userLabel(c.author) : 'Unknown'}</strong>
@@ -346,17 +269,18 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                       </div>
                     )}
                   </li>
-                ))}
-              </ul>
+                  ))}
+                </ul>
+              )}
 
               <form onSubmit={submitComment} className="task-detail-panel__new-comment">
                 <div className="field">
-                  <label htmlFor="td-comment">New comment</label>
+                  <label htmlFor="td-comment">Add a comment</label>
                   <textarea
                     id="td-comment"
                     value={commentBody}
                     onChange={(e) => setCommentBody(e.target.value)}
-                    rows={5}
+                    rows={6}
                     className="platform-textarea platform-textarea--task-comment"
                     placeholder="Write a comment… Use @email@domain.com to mention someone."
                   />
@@ -375,6 +299,43 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                   Post comment
                 </button>
               </form>
+            </section>
+
+            <section className="task-detail-panel__section">
+              <h3 className="task-detail-panel__h3">Task images</h3>
+              <div className="task-detail-panel__image-grid">
+                {(task.images || []).map((im) => (
+                  <div key={im.id} className="task-detail-panel__image-tile">
+                    <AuthenticatedBlobImage
+                      path={taskImagePath(orgId, taskId, im.id)}
+                      alt=""
+                      className="task-detail-panel__image-img"
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost task-detail-panel__image-remove"
+                      onClick={() => removeTaskImage(im.id)}
+                      aria-label="Remove image"
+                    >
+                      <Trash2 size={16} aria-hidden />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <label className="btn btn-ghost task-detail-panel__upload-label">
+                <ImagePlus size={18} aria-hidden />
+                Add image
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="task-detail-panel__file-input"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (f) uploadTaskImage(f);
+                  }}
+                />
+              </label>
             </section>
 
             <div className="task-detail-panel__danger">

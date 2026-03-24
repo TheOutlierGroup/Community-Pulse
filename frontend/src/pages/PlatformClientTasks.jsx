@@ -16,7 +16,7 @@ import { useToast } from '../components/shared/ToastProvider.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import ClientTaskDetailPanel from '../components/platform/ClientTaskDetailPanel.jsx';
 import { taggedUserIdsFromMentionText } from '../utils/taskMentions.js';
-import { ClipboardList, GripVertical, Plus, Trash2, X } from 'lucide-react';
+import { ClipboardList, GripVertical, Plus, X } from 'lucide-react';
 
 function userLabel(u) {
   if (!u) return '';
@@ -97,7 +97,7 @@ function BoardColumn({ id, title, children }) {
   );
 }
 
-function SortableTaskCard({ id, task, onDelete, deleteDisabled, onOpenTask }) {
+function SortableTaskCard({ id, task, onOpenTask }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -154,19 +154,6 @@ function SortableTaskCard({ id, task, onDelete, deleteDisabled, onOpenTask }) {
             : ''}
         </p>
       </div>
-      <button
-        type="button"
-        className="btn btn-ghost task-board__card-delete"
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(task.id);
-        }}
-        disabled={deleteDisabled}
-        aria-label="Delete task"
-      >
-        <Trash2 size={18} aria-hidden />
-      </button>
     </div>
   );
 }
@@ -340,20 +327,6 @@ export default function PlatformClientTasks() {
     }
   }
 
-  async function removeTask(taskId) {
-    setBusy(true);
-    setError('');
-    try {
-      await api.delete(`/api/platform/organizations/${orgId}/tasks/${taskId}`);
-      await loadTasks();
-      showToast('Task removed.', { variant: 'success' });
-    } catch (err) {
-      setError(err.response?.data?.error || 'Could not remove task.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const tasksById = Object.fromEntries(tasks.map((t) => [String(t.id), t]));
 
   function handleDragStart(e) {
@@ -491,8 +464,6 @@ export default function PlatformClientTasks() {
                         <SortableTaskCard
                           id={tid}
                           task={task}
-                          onDelete={removeTask}
-                          deleteDisabled={busy}
                           onOpenTask={openTaskDetail}
                         />
                       </li>
