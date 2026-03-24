@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import api from '../../services/api.js';
 import { UserCircle } from 'lucide-react';
 
-export default function PlatformUserAvatar({ userId, hasProfileAvatar, rev = 0 }) {
+export default function PlatformUserAvatar({ userId, hasProfileAvatar, rev = 0, organizationId }) {
   const [src, setSrc] = useState(null);
   const urlRef = useRef(null);
 
@@ -11,9 +11,12 @@ export default function PlatformUserAvatar({ userId, hasProfileAvatar, rev = 0 }
       setSrc(null);
       return;
     }
+    const avatarPath = organizationId
+      ? `/api/platform/organizations/${organizationId}/users/${userId}/avatar`
+      : `/api/platform/users/${userId}/avatar`;
     let cancelled = false;
     api
-      .get(`/api/platform/users/${userId}/avatar`, {
+      .get(avatarPath, {
         responseType: 'arraybuffer',
         params: { v: rev },
       })
@@ -54,7 +57,7 @@ export default function PlatformUserAvatar({ userId, hasProfileAvatar, rev = 0 }
         urlRef.current = null;
       }
     };
-  }, [userId, hasProfileAvatar, rev]);
+  }, [userId, hasProfileAvatar, rev, organizationId]);
 
   if (!src) {
     return (

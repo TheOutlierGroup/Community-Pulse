@@ -21,10 +21,12 @@ export function ensureStorageDirs() {
   const uploadsDir = path.join(root, 'uploads');
   const avatarsDir = path.join(uploadsDir, 'avatars');
   const orgLogosDir = path.join(uploadsDir, 'org-logos');
+  const taskImagesDir = path.join(uploadsDir, 'task-images');
   fs.mkdirSync(exportsDir, { recursive: true });
   fs.mkdirSync(avatarsDir, { recursive: true });
   fs.mkdirSync(orgLogosDir, { recursive: true });
-  return { root, exportsDir, uploadsDir, avatarsDir, orgLogosDir };
+  fs.mkdirSync(taskImagesDir, { recursive: true });
+  return { root, exportsDir, uploadsDir, avatarsDir, orgLogosDir, taskImagesDir };
 }
 
 export function avatarFilePath(filename) {
@@ -49,4 +51,10 @@ export function uploadFilePath(filename) {
   const { uploadsDir } = ensureStorageDirs();
   const safe = path.basename(filename);
   return path.join(uploadsDir, safe);
+}
+
+export function taskImageFilePath(filename) {
+  const { taskImagesDir } = ensureStorageDirs();
+  const safe = path.basename(filename);
+  return path.join(taskImagesDir, safe);
 }

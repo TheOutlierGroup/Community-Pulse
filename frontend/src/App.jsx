@@ -13,6 +13,7 @@ import PlatformClientOverview from './pages/PlatformClientOverview.jsx';
 import PlatformClientUsers from './pages/PlatformClientUsers.jsx';
 import PlatformClientTasks from './pages/PlatformClientTasks.jsx';
 import PlatformClientPulse from './pages/PlatformClientPulse.jsx';
+import PlatformClientAccount from './pages/PlatformClientAccount.jsx';
 import PlatformUsers from './pages/PlatformUsers.jsx';
 import ClientHome from './pages/ClientHome.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="users" element={<PlatformClientUsers />} />
             <Route path="tasks" element={<PlatformClientTasks />} />
             <Route path="pulse" element={<PlatformClientPulse />} />
+            <Route path="account" element={<PlatformClientAccount />} />
           </Route>
           <Route path="/platform/clients" element={<PlatformClients />} />
           <Route path="/platform/users" element={<PlatformUsers />} />

@@ -8,7 +8,12 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth, requirePlatformAdmin } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
 import { extensionForUpload } from '../middleware/avatarUpload.js';
-import { avatarFilePath, ensureStorageDirs, orgLogoFilePath } from '../config/storage.js';
+import {
+  avatarFilePath,
+  ensureStorageDirs,
+  orgLogoFilePath,
+  taskImageFilePath,
+} from '../config/storage.js';
 import * as Organization from '../models/Organization.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
@@ -67,6 +72,15 @@ const orgLogoPlatformUpload = multer({
     else cb(new Error('Only JPEG, PNG, GIF, or WebP are allowed'));
   },
 }).single('logo');
+
+const taskImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (extensionForUpload(file)) cb(null, true);
+    else cb(new Error('Only JPEG, PNG, GIF, or WebP are allowed'));
+  },
+}).single('image');
 
 router.get('/organizations', async (_req, res) => {
   const rows = await Organization.listOrganizationsByKind('client');
@@ -141,7 +155,129 @@ router.get('/organizations/:id/users', async (req, res) => {
   const users = await User.listUsersForOrg(req.params.id, {
     role: role === 'admin' || role === 'employee' ? role : undefined,
   });
-  res.json({ users });
+  res.json({ users: users.map(publicStaffUser) });
+});
+
+async function assertClientUserInOrg(orgId, userId) {
+  const org = await assertClientOrganizationPlatform(orgId);
+  if (!org) return null;
+  const target = await User.findUserById(userId);
+  if (
+    !target ||
+    target.deactivated_at ||
+    String(target.organization_id) !== String(org.id)
+  ) {
+    return null;
+  }
+  return target;
+}
+
+router.patch('/organizations/:id/users/:userId', async (req, res) => {
+  const orgId = req.params.id;
+  const { userId } = req.params;
+  const target = await assertClientUserInOrg(orgId, userId);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  const body = req.body || {};
+  const patch = {};
+  if ('firstName' in body) patch.firstName = body.firstName;
+  if ('lastName' in body) patch.lastName = body.lastName;
+  if ('email' in body) patch.email = body.email;
+  if ('role' in body) patch.role = body.role;
+  if (!Object.keys(patch).length) {
+    return res.status(400).json({ error: 'Nothing to update' });
+  }
+  if ('email' in patch) {
+    const em = String(patch.email).toLowerCase().trim();
+    if (!em) return res.status(400).json({ error: 'Email is required' });
+    const ex = await User.findUserByEmail(em);
+    if (ex && String(ex.id) !== String(userId)) {
+      return res.status(409).json({ error: 'A user with this email already exists' });
+    }
+    patch.email = em;
+  }
+  const row = await User.updateStaffUserInOrg(userId, orgId, patch);
+  if (!row) return res.status(404).json({ error: 'User not found' });
+  res.json({ user: publicStaffUser(row) });
+});
+
+router.get('/organizations/:id/users/:userId/avatar', async (req, res) => {
+  const orgId = req.params.id;
+  const { userId } = req.params;
+  const target = await assertClientUserInOrg(orgId, userId);
+  if (!target) return res.status(404).end();
+  const name = await User.getProfileAvatarFilename(userId);
+  if (!name) return res.status(404).end();
+  const safeName = path.basename(name);
+  const full = path.resolve(avatarFilePath(safeName));
+  const { avatarsDir } = ensureStorageDirs();
+  const root = path.resolve(avatarsDir);
+  const rel = path.relative(root, full);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return res.status(403).end();
+  }
+  if (!fs.existsSync(full)) return res.status(404).end();
+  res.setHeader('Content-Type', platformAvatarContentType(safeName));
+  res.setHeader('Cache-Control', 'private, no-cache');
+  res.sendFile(full);
+});
+
+router.post(
+  '/organizations/:id/users/:userId/avatar',
+  (req, res, next) => {
+    platformUserCreateUpload(req, res, (err) => {
+      if (err) {
+        const msg =
+          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 2MB or smaller' : err.message;
+        return res.status(400).json({ error: msg || 'Upload failed' });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    const orgId = req.params.id;
+    const { userId } = req.params;
+    const target = await assertClientUserInOrg(orgId, userId);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const prev = await User.getProfileAvatarFilename(userId);
+    const ext = extensionForUpload(req.file);
+    const base = `${userId}${ext || '.png'}`;
+    try {
+      if (prev && prev !== base) {
+        try {
+          fs.unlinkSync(avatarFilePath(prev));
+        } catch {
+          /* ignore */
+        }
+      }
+      fs.writeFileSync(avatarFilePath(base), req.file.buffer);
+      await User.setProfileAvatarFilename(userId, base);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: 'Could not save image' });
+    }
+    const outRow = await User.findUserById(userId);
+    res.json({ user: publicStaffUser(outRow) });
+  }
+);
+
+router.delete('/organizations/:id/users/:userId/avatar', async (req, res) => {
+  const orgId = req.params.id;
+  const { userId } = req.params;
+  const target = await assertClientUserInOrg(orgId, userId);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  const prev = await User.clearProfileAvatarFilename(userId);
+  if (prev) {
+    try {
+      fs.unlinkSync(avatarFilePath(prev));
+    } catch {
+      /* ignore */
+    }
+  }
+  const outRow = await User.findUserById(userId);
+  res.json({ user: publicStaffUser(outRow) });
 });
 
 router.post('/organizations/:id/invites', requireBodyFields(['email']), async (req, res) => {
@@ -181,15 +317,149 @@ async function assertClientOrganizationPlatform(id) {
   return org;
 }
 
+function formatIsoDate(d) {
+  if (d == null) return null;
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  const s = String(d);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function publicAssignee(row) {
+  if (!row.assignee_id) return null;
+  return {
+    id: row.assignee_id,
+    email: row.assignee_email,
+    firstName: row.assignee_first_name ?? '',
+    lastName: row.assignee_last_name ?? '',
+    organizationKind: row.assignee_org_kind,
+  };
+}
+
 function publicClientTask(row) {
+  let tagged = row.tagged_users_json;
+  if (typeof tagged === 'string') {
+    try {
+      tagged = JSON.parse(tagged);
+    } catch {
+      tagged = [];
+    }
+  }
+  if (!Array.isArray(tagged)) tagged = [];
   return {
     id: row.id,
     title: row.title,
     body: row.body ?? '',
+    notes: row.body ?? '',
     status: row.status,
+    position: row.position ?? 0,
+    startDate: formatIsoDate(row.start_date),
+    dueDate: formatIsoDate(row.due_date),
+    assignedTo: publicAssignee(row),
+    taggedUsers: tagged.map((u) => ({
+      id: u.id,
+      email: u.email,
+      firstName: u.firstName ?? '',
+      lastName: u.lastName ?? '',
+      organizationKind: u.organizationKind,
+    })),
+    imageCount: row.image_count ?? 0,
+    commentCount: row.comment_count ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     createdByEmail: row.created_by_email ?? null,
+  };
+}
+
+function publicDashboardDueTask(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    dueDate: formatIsoDate(row.due_date),
+    assignedTo:
+      row.assignee_id != null
+        ? {
+            id: row.assignee_id,
+            email: row.assignee_email,
+            firstName: row.assignee_first_name ?? '',
+            lastName: row.assignee_last_name ?? '',
+          }
+        : null,
+  };
+}
+
+async function assertAssignableUserIds(clientOrgId, userIds) {
+  if (!userIds?.length) return true;
+  const allow = await User.listAssignableUsersForClientTasks(clientOrgId);
+  const set = new Set(allow.map((u) => String(u.id)));
+  return userIds.every((id) => set.has(String(id)));
+}
+
+function publicAssignableUser(row) {
+  return {
+    id: row.id,
+    email: row.email,
+    firstName: row.first_name ?? '',
+    lastName: row.last_name ?? '',
+    role: row.role,
+    organizationKind: row.organization_kind,
+    hasProfileAvatar: Boolean(row.profile_avatar_filename),
+  };
+}
+
+async function buildTaskDetail(orgId, taskId) {
+  const row = await ClientWorkTask.getTaskListRow(taskId, orgId);
+  if (!row) return null;
+  const base = publicClientTask(row);
+  const imgs = await ClientWorkTask.listTaskImages(taskId, orgId);
+  const comments = await ClientWorkTask.listCommentsForTask(taskId, orgId);
+  const cids = comments.map((c) => c.id);
+  const mentions = await ClientWorkTask.listCommentMentions(cids);
+  const cImages = await ClientWorkTask.listCommentImagesForTask(taskId, orgId);
+  const mentionByComment = {};
+  for (const m of mentions) {
+    if (!mentionByComment[m.comment_id]) mentionByComment[m.comment_id] = [];
+    mentionByComment[m.comment_id].push({
+      userId: m.user_id,
+      email: m.email,
+      firstName: m.first_name ?? '',
+      lastName: m.last_name ?? '',
+      organizationKind: m.organization_kind,
+    });
+  }
+  const imagesByComment = {};
+  for (const im of cImages) {
+    if (!imagesByComment[im.comment_id]) imagesByComment[im.comment_id] = [];
+    imagesByComment[im.comment_id].push({
+      id: im.id,
+      createdAt: im.created_at,
+    });
+  }
+  const publicComments = comments.map((c) => ({
+    id: c.id,
+    body: c.body,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+    author: c.author_id
+      ? {
+          id: c.author_id,
+          email: c.author_email,
+          firstName: c.author_first_name ?? '',
+          lastName: c.author_last_name ?? '',
+          organizationKind: c.author_org_kind,
+        }
+      : null,
+    mentions: mentionByComment[c.id] || [],
+    images: imagesByComment[c.id] || [],
+  }));
+  return {
+    ...base,
+    images: imgs.map((i) => ({
+      id: i.id,
+      sortOrder: i.sort_order,
+      createdAt: i.created_at,
+    })),
+    comments: publicComments,
   };
 }
 
@@ -207,6 +477,30 @@ router.get('/organizations/:id', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
   res.json({ organization: org });
+});
+
+router.get('/organizations/:id/dashboard', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const weekStart = req.query.weekStart;
+  const weekEnd = req.query.weekEnd;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(weekStart || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(weekEnd || ''))) {
+    return res.status(400).json({ error: 'Query weekStart and weekEnd are required (YYYY-MM-DD)' });
+  }
+  if (weekStart > weekEnd) {
+    return res.status(400).json({ error: 'weekStart must be on or before weekEnd' });
+  }
+  const userCount = await User.countActiveUsersForClientOrg(req.params.id);
+  const taskCountsByStatus = await ClientWorkTask.countTasksByStatusForOrg(req.params.id);
+  const dueRows = await ClientWorkTask.listTasksDueBetween(req.params.id, weekStart, weekEnd);
+  const totalTasks = Object.values(taskCountsByStatus).reduce((a, b) => a + b, 0);
+  res.json({
+    userCount,
+    totalTasks,
+    taskCountsByStatus,
+    weekRange: { start: weekStart, end: weekEnd },
+    tasksDueThisWeek: dueRows.map(publicDashboardDueTask),
+  });
 });
 
 router.get('/organizations/:id/logo', async (req, res) => {
@@ -293,39 +587,311 @@ router.get('/organizations/:id/tasks', async (req, res) => {
   res.json({ tasks: rows.map(publicClientTask) });
 });
 
+router.get('/organizations/:id/tasks/assignable-users', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const rows = await User.listAssignableUsersForClientTasks(req.params.id);
+  res.json({ users: rows.map(publicAssignableUser) });
+});
+
 router.post('/organizations/:id/tasks', requireBodyFields(['title']), async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const b = req.body || {};
+  const tagged = Array.isArray(b.taggedUserIds) ? b.taggedUserIds : [];
+  if (!(await assertAssignableUserIds(req.params.id, tagged))) {
+    return res.status(400).json({ error: 'Invalid tagged users' });
+  }
+  if (b.assignedTo && !(await assertAssignableUserIds(req.params.id, [b.assignedTo]))) {
+    return res.status(400).json({ error: 'Invalid assignee' });
+  }
   const row = await ClientWorkTask.createTask(
     req.params.id,
-    { title: req.body.title, body: req.body.body },
+    {
+      title: b.title,
+      body: b.body,
+      notes: b.notes,
+      startDate: b.startDate,
+      dueDate: b.dueDate,
+      assignedTo: b.assignedTo || null,
+      taggedUserIds: tagged,
+    },
     req.user.id
   );
   if (!row) return res.status(400).json({ error: 'Invalid task' });
-  res.status(201).json({ task: publicClientTask(row) });
+  const detail = await buildTaskDetail(req.params.id, row.id);
+  res.status(201).json({ task: detail || publicClientTask(row) });
+});
+
+router.patch('/organizations/:id/tasks/reorder', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const body = req.body || {};
+  const tasks = body.tasks;
+  if (!Array.isArray(tasks)) {
+    return res.status(400).json({ error: 'tasks must be an array' });
+  }
+  const ok = await ClientWorkTask.reorderTasksForOrg(req.params.id, tasks);
+  if (!ok) return res.status(400).json({ error: 'Invalid reorder payload' });
+  const rows = await ClientWorkTask.listTasksForClientOrg(req.params.id);
+  res.json({ tasks: rows.map(publicClientTask) });
+});
+
+router.get('/organizations/:id/tasks/:taskId', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+  if (!detail) return res.status(404).json({ error: 'Task not found' });
+  res.json({ task: detail });
 });
 
 router.patch('/organizations/:id/tasks/:taskId', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
   const body = req.body || {};
+  const tagged = body.taggedUserIds;
+  if (Array.isArray(tagged) && !(await assertAssignableUserIds(req.params.id, tagged))) {
+    return res.status(400).json({ error: 'Invalid tagged users' });
+  }
+  if (body.assignedTo && !(await assertAssignableUserIds(req.params.id, [body.assignedTo]))) {
+    return res.status(400).json({ error: 'Invalid assignee' });
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(body, 'assignedTo') &&
+    (body.assignedTo === null || body.assignedTo === '')
+  ) {
+    body.assignedTo = null;
+  }
   const patch = {};
   if ('title' in body) patch.title = body.title;
   if ('body' in body) patch.body = body.body;
+  if ('notes' in body) patch.notes = body.notes;
   if ('status' in body) patch.status = body.status;
+  if ('position' in body) patch.position = body.position;
+  if ('startDate' in body) patch.startDate = body.startDate;
+  if ('dueDate' in body) patch.dueDate = body.dueDate;
+  if ('assignedTo' in body) patch.assignedTo = body.assignedTo;
+  if ('taggedUserIds' in body) patch.taggedUserIds = body.taggedUserIds;
   if (!Object.keys(patch).length) {
     return res.status(400).json({ error: 'Nothing to update' });
   }
   const row = await ClientWorkTask.updateTaskForOrg(req.params.taskId, req.params.id, patch);
   if (!row) return res.status(404).json({ error: 'Task not found' });
-  res.json({ task: publicClientTask(row) });
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+  res.json({ task: detail || publicClientTask(row) });
+});
+
+router.post(
+  '/organizations/:id/tasks/:taskId/images',
+  (req, res, next) => {
+    taskImageUpload(req, res, (err) => {
+      if (err) {
+        const msg =
+          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 5MB or smaller' : err.message;
+        return res.status(400).json({ error: msg || 'Upload failed' });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    const org = await assertClientOrganizationPlatform(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const ext = extensionForUpload(req.file);
+    const base = ClientWorkTask.newTaskImageFilename(req.params.taskId, ext || '.png');
+    try {
+      fs.writeFileSync(taskImageFilePath(base), req.file.buffer);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: 'Could not save image' });
+    }
+    const img = await ClientWorkTask.addTaskImage(
+      req.params.taskId,
+      req.params.id,
+      base,
+      req.user.id
+    );
+    if (!img) {
+      try {
+        fs.unlinkSync(taskImageFilePath(base));
+      } catch {
+        /* ignore */
+      }
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    res.status(201).json({
+      image: {
+        id: img.id,
+        sortOrder: img.sort_order,
+        createdAt: img.created_at,
+      },
+    });
+  }
+);
+
+router.get('/organizations/:id/tasks/:taskId/images/:imageId/file', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).end();
+  const row = await ClientWorkTask.getTaskImageForOrg(
+    req.params.imageId,
+    req.params.taskId,
+    req.params.id
+  );
+  if (!row) return res.status(404).end();
+  const safeName = path.basename(row.stored_filename);
+  const full = path.resolve(taskImageFilePath(safeName));
+  const { taskImagesDir } = ensureStorageDirs();
+  const root = path.resolve(taskImagesDir);
+  const rel = path.relative(root, full);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return res.status(403).end();
+  }
+  if (!fs.existsSync(full)) return res.status(404).end();
+  res.setHeader('Content-Type', platformAvatarContentType(safeName));
+  res.setHeader('Cache-Control', 'private, no-cache');
+  res.sendFile(full);
+});
+
+router.delete('/organizations/:id/tasks/:taskId/images/:imageId', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const prev = await ClientWorkTask.deleteTaskImage(
+    req.params.imageId,
+    req.params.taskId,
+    req.params.id
+  );
+  if (!prev) return res.status(404).json({ error: 'Image not found' });
+  try {
+    fs.unlinkSync(taskImageFilePath(prev));
+  } catch {
+    /* ignore */
+  }
+  res.json({ ok: true });
+});
+
+router.post('/organizations/:id/tasks/:taskId/comments', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const body = req.body || {};
+  const mentionIds = Array.isArray(body.mentionUserIds) ? body.mentionUserIds : [];
+  if (!(await assertAssignableUserIds(req.params.id, mentionIds))) {
+    return res.status(400).json({ error: 'Invalid mentions' });
+  }
+  const commentId = await ClientWorkTask.createComment(
+    req.params.taskId,
+    req.params.id,
+    req.user.id,
+    body.body ?? '',
+    mentionIds
+  );
+  if (!commentId) return res.status(404).json({ error: 'Task not found' });
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+  res.status(201).json({ comment: { id: commentId }, task: detail });
+});
+
+router.post(
+  '/organizations/:id/tasks/:taskId/comments/:commentId/images',
+  (req, res, next) => {
+    taskImageUpload(req, res, (err) => {
+      if (err) {
+        const msg =
+          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 5MB or smaller' : err.message;
+        return res.status(400).json({ error: msg || 'Upload failed' });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    const org = await assertClientOrganizationPlatform(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const ext = extensionForUpload(req.file);
+    const base = ClientWorkTask.newCommentImageFilename(req.params.commentId, ext || '.png');
+    try {
+      fs.writeFileSync(taskImageFilePath(base), req.file.buffer);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: 'Could not save image' });
+    }
+    const img = await ClientWorkTask.addCommentImage(
+      req.params.commentId,
+      req.params.taskId,
+      req.params.id,
+      base
+    );
+    if (!img) {
+      try {
+        fs.unlinkSync(taskImageFilePath(base));
+      } catch {
+        /* ignore */
+      }
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+    res.status(201).json({ task: detail });
+  }
+);
+
+router.get(
+  '/organizations/:id/tasks/:taskId/comments/:commentId/images/:imageId/file',
+  async (req, res) => {
+    const org = await assertClientOrganizationPlatform(req.params.id);
+    if (!org) return res.status(404).end();
+    const row = await ClientWorkTask.getCommentImageForOrg(
+      req.params.imageId,
+      req.params.commentId,
+      req.params.taskId,
+      req.params.id
+    );
+    if (!row) return res.status(404).end();
+    const safeName = path.basename(row.stored_filename);
+    const full = path.resolve(taskImageFilePath(safeName));
+    const { taskImagesDir } = ensureStorageDirs();
+    const root = path.resolve(taskImagesDir);
+    const rel = path.relative(root, full);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      return res.status(403).end();
+    }
+    if (!fs.existsSync(full)) return res.status(404).end();
+    res.setHeader('Content-Type', platformAvatarContentType(safeName));
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.sendFile(full);
+  }
+);
+
+router.delete('/organizations/:id/tasks/:taskId/comments/:commentId/images/:imageId', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const prev = await ClientWorkTask.deleteCommentImage(
+    req.params.imageId,
+    req.params.commentId,
+    req.params.taskId,
+    req.params.id
+  );
+  if (!prev) return res.status(404).json({ error: 'Image not found' });
+  try {
+    fs.unlinkSync(taskImageFilePath(prev));
+  } catch {
+    /* ignore */
+  }
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+  res.json({ task: detail });
 });
 
 router.delete('/organizations/:id/tasks/:taskId', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const images = await ClientWorkTask.listTaskImages(req.params.taskId, req.params.id);
+  const cImages = await ClientWorkTask.listCommentImagesForTask(req.params.taskId, req.params.id);
   const ok = await ClientWorkTask.deleteTaskForOrg(req.params.taskId, req.params.id);
   if (!ok) return res.status(404).json({ error: 'Task not found' });
+  for (const im of [...images, ...cImages]) {
+    try {
+      fs.unlinkSync(taskImageFilePath(im.stored_filename));
+    } catch {
+      /* ignore */
+    }
+  }
   res.json({ ok: true });
 });
 

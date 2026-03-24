@@ -9,6 +9,7 @@ import {
   Settings,
   ArrowLeft,
   ClipboardList,
+  CircleUser,
 } from 'lucide-react';
 
 function sidebarLinkClass({ isActive }) {
@@ -62,6 +63,10 @@ export default function Navigation({ user, onLogout, variant = 'header' }) {
               <NavLink to={`/platform/clients/${platformClientOrgId}/pulse`} className={sidebarLinkClass}>
                 <Activity size={20} strokeWidth={1.75} aria-hidden />
                 Pulse
+              </NavLink>
+              <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
+                <CircleUser size={20} strokeWidth={1.75} aria-hidden />
+                Account
               </NavLink>
             </>
           )}

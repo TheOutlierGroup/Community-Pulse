@@ -5,7 +5,7 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
-import { Building2, ChevronRight, Plus, X } from 'lucide-react';
+import { Building2, Plus, X } from 'lucide-react';
 
 export default function PlatformClients() {
   const { user, logout, loading } = useAuth();
@@ -127,29 +127,33 @@ export default function PlatformClients() {
               <tr>
                 <th scope="col">Company</th>
                 <th scope="col">Created</th>
-                <th className="platform-clients-table__actions" scope="col">
-                  <span className="visually-hidden">Actions</span>
-                </th>
               </tr>
             </thead>
             <tbody>
               {orgs.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="muted" style={{ padding: '1.5rem' }}>
+                  <td colSpan={2} className="muted" style={{ padding: '1.5rem' }}>
                     No client companies yet. Create one to get started.
                   </td>
                 </tr>
               )}
               {orgs.map((o) => (
-                <tr key={o.id} className="platform-clients-table__row">
+                <tr
+                  key={o.id}
+                  className="platform-clients-table__row platform-clients-table__row--clickable"
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Open ${o.name}`}
+                  onClick={() => openClient(o.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openClient(o.id);
+                    }
+                  }}
+                >
                   <td>
-                    <button
-                      type="button"
-                      className="platform-clients-table__name-btn"
-                      onClick={() => openClient(o.id)}
-                    >
-                      <span className="platform-users-table__name">{o.name}</span>
-                    </button>
+                    <span className="platform-users-table__name">{o.name}</span>
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
                     {o.created_at
@@ -159,16 +163,6 @@ export default function PlatformClients() {
                           day: 'numeric',
                         })
                       : '—'}
-                  </td>
-                  <td className="platform-clients-table__actions">
-                    <button
-                      type="button"
-                      className="btn btn-ghost platform-clients-table__manage"
-                      onClick={() => openClient(o.id)}
-                    >
-                      Manage
-                      <ChevronRight size={18} aria-hidden />
-                    </button>
                   </td>
                 </tr>
               ))}

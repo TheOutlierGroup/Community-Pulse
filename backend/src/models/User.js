@@ -89,6 +89,29 @@ export async function createUserWithProfile({
   return rows[0];
 }
 
+/** Client org members + all platform-org users (for task assign / @mentions). */
+export async function listAssignableUsersForClientTasks(clientOrgId) {
+  const { rows } = await query(
+    `SELECT u.id, u.email, u.role, u.organization_id, u.first_name, u.last_name,
+            u.profile_avatar_filename, o.kind AS organization_kind
+     FROM users u
+     JOIN organizations o ON o.id = u.organization_id
+     WHERE u.deactivated_at IS NULL
+       AND (u.organization_id = $1 OR o.kind = 'platform')
+     ORDER BY (CASE WHEN o.kind = 'platform' THEN 0 ELSE 1 END), u.email ASC`,
+    [clientOrgId]
+  );
+  return rows;
+}
+
+export async function countActiveUsersForClientOrg(organizationId) {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS c FROM users WHERE organization_id = $1 AND deactivated_at IS NULL`,
+    [organizationId]
+  );
+  return rows[0]?.c ?? 0;
+}
+
 export async function listUsersForOrg(organizationId, { role } = {}) {
   let sql = `SELECT id, email, role, organization_id, created_at, first_name, last_name, profile_avatar_filename
              FROM users WHERE organization_id = $1 AND deactivated_at IS NULL`;
