@@ -11,7 +11,7 @@ const MIME_TO_EXT = {
   'image/webp': '.webp',
 };
 
-function extensionForUpload(file) {
+export function extensionForUpload(file) {
   const ext = path.extname(file.originalname).toLowerCase();
   if (ALLOWED_EXT.has(ext)) return ext;
   const mime = String(file.mimetype || '').toLowerCase();

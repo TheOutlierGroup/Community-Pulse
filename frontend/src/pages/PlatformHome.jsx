@@ -58,10 +58,10 @@ export default function PlatformHome() {
           <h2 style={{ marginTop: '0.75rem' }}>Users</h2>
           <p className="muted" style={{ marginBottom: 0 }}>
             {staffCount != null
-              ? `${staffCount} platform admin${staffCount === 1 ? '' : 's'}`
+              ? `${staffCount} team member${staffCount === 1 ? '' : 's'}`
               : '…'}
           </p>
-          <span className="platform-dash-card__cta">Manage admins</span>
+          <span className="platform-dash-card__cta">Manage users</span>
         </Link>
       </div>
     </Layout>

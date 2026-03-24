@@ -5,6 +5,41 @@ import Layout from '../components/shared/Layout.jsx';
 import api from '../services/api.js';
 import { Settings, UserCircle } from 'lucide-react';
 
+function sniffImageMime(arrayBuffer) {
+  const buf = new Uint8Array(arrayBuffer);
+  const n = buf.byteLength;
+  if (n < 12) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+  if (
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return null;
+}
+
+function jsonErrorFromBuffer(arrayBuffer) {
+  const head = new TextDecoder()
+    .decode(arrayBuffer.slice(0, Math.min(arrayBuffer.byteLength, 2048)))
+    .trim();
+  if (!head.startsWith('{')) return null;
+  try {
+    const j = JSON.parse(head);
+    return typeof j.error === 'string' ? j.error : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function SettingsPage() {
   const { user, logout, loading, setCurrentUser } = useAuth();
   const navigate = useNavigate();
@@ -24,6 +59,7 @@ export default function SettingsPage() {
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [avatarLoadError, setAvatarLoadError] = useState('');
 
   useEffect(() => {
     if (!loading && !user) navigate('/');
@@ -36,34 +72,35 @@ export default function SettingsPage() {
   }, [user?.id, user?.firstName, user?.lastName]);
 
   useEffect(() => {
-    return () => {
-      if (avatarBlobRef.current) {
-        URL.revokeObjectURL(avatarBlobRef.current);
-        avatarBlobRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (!user?.hasProfileAvatar) {
       if (avatarBlobRef.current) {
         URL.revokeObjectURL(avatarBlobRef.current);
         avatarBlobRef.current = null;
       }
       setAvatarPreview(null);
+      setAvatarLoadError('');
       return;
     }
     let cancelled = false;
+    setAvatarLoadError('');
     api
       .get('/api/auth/me/avatar', {
-        responseType: 'blob',
+        responseType: 'arraybuffer',
         params: { v: avatarRev },
       })
       .then((res) => {
-        if (res.status !== 200) throw new Error('bad status');
+        if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+        const ab = res.data;
+        if (!(ab instanceof ArrayBuffer) || ab.byteLength === 0) throw new Error('empty');
+        const jsonErr = jsonErrorFromBuffer(ab);
+        if (jsonErr) throw new Error(jsonErr);
+        const mime = sniffImageMime(ab);
+        if (!mime) throw new Error('not image data');
         const ct = (res.headers['content-type'] || '').toLowerCase();
-        if (!ct.startsWith('image/')) throw new Error('not an image');
-        const url = URL.createObjectURL(res.data);
+        const blobType =
+          ct.startsWith('image/') && !ct.includes('json') ? ct.split(';')[0].trim() : mime;
+        const blob = new Blob([ab], { type: blobType });
+        const url = URL.createObjectURL(blob);
         if (cancelled) {
           URL.revokeObjectURL(url);
           return;
@@ -71,18 +108,37 @@ export default function SettingsPage() {
         if (avatarBlobRef.current) URL.revokeObjectURL(avatarBlobRef.current);
         avatarBlobRef.current = url;
         setAvatarPreview(url);
+        setAvatarLoadError('');
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
           if (avatarBlobRef.current) {
             URL.revokeObjectURL(avatarBlobRef.current);
             avatarBlobRef.current = null;
           }
           setAvatarPreview(null);
+          const status = err.response?.status;
+          let msg = 'Could not load profile photo. Try removing it and uploading again.';
+          if (status === 404) {
+            msg = 'Profile photo not found on the server. Upload again (check storage on Render).';
+          } else if (status === 401 || status === 403) {
+            msg = 'Not allowed to load profile photo. Sign in again.';
+          } else if (
+            err.message &&
+            !String(err.message).startsWith('Request failed with status code')
+          ) {
+            msg = err.message;
+          }
+          setAvatarLoadError(msg);
         }
       });
     return () => {
       cancelled = true;
+      if (avatarBlobRef.current) {
+        URL.revokeObjectURL(avatarBlobRef.current);
+        avatarBlobRef.current = null;
+      }
+      setAvatarPreview(null);
     };
   }, [user?.hasProfileAvatar, avatarRev]);
 
@@ -124,6 +180,7 @@ export default function SettingsPage() {
       fd.append('avatar', file);
       const { data } = await api.post('/api/auth/me/avatar', fd);
       setCurrentUser(data.user);
+      setAvatarLoadError('');
       setAvatarRev((n) => n + 1);
       setMessage('Photo updated.');
     } catch (err) {
@@ -177,6 +234,7 @@ export default function SettingsPage() {
         avatarBlobRef.current = null;
       }
       setAvatarPreview(null);
+      setAvatarLoadError('');
       setMessage('Photo removed.');
     } catch {
       setError('Could not remove photo.');
@@ -201,6 +259,11 @@ export default function SettingsPage() {
       )}
       <div className="card" style={{ maxWidth: 480, marginBottom: '1.25rem' }}>
         <h2 className="settings-section-title">Your profile</h2>
+        {avatarLoadError && (
+          <p className="error" style={{ marginBottom: '0.75rem' }}>
+            {avatarLoadError}
+          </p>
+        )}
         <div className="settings-avatar-row">
           <div className="settings-avatar-wrap" aria-hidden>
             {avatarPreview ? (

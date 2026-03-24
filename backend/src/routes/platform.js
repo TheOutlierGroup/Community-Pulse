@@ -1,9 +1,14 @@
+import fs from 'fs';
+import path from 'path';
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import { requireAuth, requirePlatformAdmin } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
+import { extensionForUpload } from '../middleware/avatarUpload.js';
+import { avatarFilePath, ensureStorageDirs } from '../config/storage.js';
 import * as Organization from '../models/Organization.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
@@ -18,6 +23,39 @@ const platformLimiter = rateLimit({
 });
 
 router.use(requireAuth, requirePlatformAdmin, platformLimiter);
+
+function publicStaffUser(row) {
+  return {
+    id: row.id,
+    email: row.email,
+    role: row.role,
+    firstName: row.first_name ?? '',
+    lastName: row.last_name ?? '',
+    hasProfileAvatar: Boolean(row.profile_avatar_filename),
+    createdAt: row.created_at,
+  };
+}
+
+function platformAvatarContentType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  const map = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
+const platformUserCreateUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (extensionForUpload(file)) cb(null, true);
+    else cb(new Error('Only JPEG, PNG, GIF, or WebP are allowed'));
+  },
+}).single('avatar');
 
 router.get('/organizations', async (_req, res) => {
   const rows = await Organization.listOrganizationsByKind('client');
@@ -103,9 +141,83 @@ router.post('/organizations/:id/invites', requireBodyFields(['email']), async (r
 });
 
 router.get('/staff', async (req, res) => {
-  const users = await User.listUsersForOrg(req.user.organizationId, { role: 'admin' });
-  res.json({ users });
+  const users = await User.listUsersForOrg(req.user.organizationId, {});
+  res.json({ users: users.map(publicStaffUser) });
 });
+
+router.get('/users/:userId/avatar', async (req, res) => {
+  const target = await User.findUserById(req.params.userId);
+  if (!target || target.organization_id !== req.user.organizationId) {
+    return res.status(404).end();
+  }
+  const name = await User.getProfileAvatarFilename(req.params.userId);
+  if (!name) return res.status(404).end();
+  const safeName = path.basename(name);
+  const full = path.resolve(avatarFilePath(safeName));
+  const { avatarsDir } = ensureStorageDirs();
+  const root = path.resolve(avatarsDir);
+  const rel = path.relative(root, full);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return res.status(403).end();
+  }
+  if (!fs.existsSync(full)) return res.status(404).end();
+  res.setHeader('Content-Type', platformAvatarContentType(safeName));
+  res.setHeader('Cache-Control', 'private, no-cache');
+  res.sendFile(full);
+});
+
+router.post(
+  '/users',
+  (req, res, next) => {
+    platformUserCreateUpload(req, res, (err) => {
+      if (err) {
+        const msg =
+          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 2MB or smaller' : err.message;
+        return res.status(400).json({ error: msg || 'Upload failed' });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    const firstName = req.body.firstName ?? '';
+    const lastName = req.body.lastName ?? '';
+    const email = req.body.email;
+    const password = req.body.password;
+    const role = req.body.role === 'employee' ? 'employee' : 'admin';
+    if (!email || String(email).trim() === '') {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    if (!password || String(password).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const existing = await User.findUserByEmail(String(email));
+    if (existing) {
+      return res.status(409).json({ error: 'A user with this email already exists' });
+    }
+    const hash = await bcrypt.hash(String(password), 12);
+    const row = await User.createUserWithProfile({
+      email: String(email).trim(),
+      passwordHash: hash,
+      role,
+      organizationId: req.user.organizationId,
+      firstName,
+      lastName,
+    });
+    let outRow = await User.findUserById(row.id);
+    if (req.file) {
+      const ext = extensionForUpload(req.file);
+      const base = `${row.id}${ext || '.png'}`;
+      try {
+        fs.writeFileSync(avatarFilePath(base), req.file.buffer);
+        await User.setProfileAvatarFilename(row.id, base);
+        outRow = await User.findUserById(row.id);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    res.status(201).json({ user: publicStaffUser(outRow) });
+  }
+);
 
 router.post('/staff/invites', requireBodyFields(['email']), async (req, res) => {
   const email = req.body.email;

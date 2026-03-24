@@ -62,8 +62,33 @@ export async function createUser({ email, passwordHash, role, organizationId }) 
   return rows[0];
 }
 
+export async function createUserWithProfile({
+  email,
+  passwordHash,
+  role,
+  organizationId,
+  firstName,
+  lastName,
+}) {
+  const { rows } = await query(
+    `INSERT INTO users (email, password_hash, role, organization_id, first_name, last_name)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, email, role, organization_id, first_name, last_name, profile_avatar_filename, created_at`,
+    [
+      email.toLowerCase().trim(),
+      passwordHash,
+      role,
+      organizationId,
+      sanitizeName(firstName),
+      sanitizeName(lastName),
+    ]
+  );
+  return rows[0];
+}
+
 export async function listUsersForOrg(organizationId, { role } = {}) {
-  let sql = `SELECT id, email, role, organization_id, created_at FROM users WHERE organization_id = $1`;
+  let sql = `SELECT id, email, role, organization_id, created_at, first_name, last_name, profile_avatar_filename
+             FROM users WHERE organization_id = $1`;
   const params = [organizationId];
   if (role) {
     sql += ` AND role = $2`;
