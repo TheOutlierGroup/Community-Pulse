@@ -7,9 +7,12 @@ export default function Layout({ children, user, onLogout }) {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <Link to={user ? getPostLoginPath(user) : '/'} className="brand brand-with-logo">
-          <img src={outlierLogo} alt="" className="brand-logo" width={32} height={32} />
-          <span className="brand-text">Outlier</span>
+        <Link
+          to={user ? getPostLoginPath(user) : '/'}
+          className="brand brand-with-logo"
+          aria-label="Outlier home"
+        >
+          <img src={outlierLogo} alt="" className="brand-logo" width={40} height={40} />
         </Link>
         <Navigation user={user} onLogout={onLogout} />
       </header>

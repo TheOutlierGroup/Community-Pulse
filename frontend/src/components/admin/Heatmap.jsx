@@ -2,7 +2,7 @@ function cellColor(val, invert) {
   const v = Math.max(0, Math.min(5, val || 0));
   const t = invert ? (5 - v) / 5 : v / 5;
   const a = 0.15 + t * 0.55;
-  return `rgba(61, 214, 198, ${a})`;
+  return `rgba(254, 202, 118, ${a})`;
 }
 
 export default function Heatmap({ rows }) {

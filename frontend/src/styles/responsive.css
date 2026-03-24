@@ -5,9 +5,10 @@
   --border: #e4e4e7;
   --text: #18181b;
   --muted: #71717a;
-  --accent: #0d9488;
-  --accent-dim: #0f766e;
-  --accent-contrast: #ffffff;
+  --accent: #feca76;
+  --accent-dim: #d4a03a;
+  --accent-contrast: #1c1917;
+  --accent-rgb: 254, 202, 118;
   --warn: #d97706;
   --danger: #dc2626;
   --radius: 12px;
@@ -99,10 +100,6 @@ a:hover {
   border-radius: 8px;
 }
 
-.brand-text {
-  color: var(--text);
-}
-
 .nav-actions {
   display: flex;
   gap: 0.5rem;
@@ -162,7 +159,7 @@ a:hover {
 .btn-primary {
   background: linear-gradient(135deg, var(--accent), var(--accent-dim));
   color: var(--accent-contrast);
-  box-shadow: 0 2px 12px rgba(13, 148, 136, 0.35);
+  box-shadow: 0 2px 12px rgba(var(--accent-rgb), 0.4);
 }
 
 .btn-primary:hover {
@@ -244,18 +241,6 @@ a:hover {
 .login-logo {
   height: auto;
   max-width: 200px;
-  margin-bottom: 0.75rem;
-}
-
-.login-site-link {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.95rem;
-  color: var(--muted);
-}
-
-.login-site-link:hover {
-  color: var(--accent);
 }
 
 .login-card {
@@ -292,7 +277,7 @@ a:hover {
 
 .platform-list-item.active {
   border-color: var(--accent);
-  background: rgba(13, 148, 136, 0.08);
+  background: rgba(var(--accent-rgb), 0.15);
 }
 
 .back-link {
@@ -441,15 +426,15 @@ input[type='range'] {
 
 .step-dot.active {
   background: var(--accent);
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.25);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35);
 }
 
 .reflection-box {
   margin-top: 1.5rem;
   padding: 1.25rem;
   border-radius: var(--radius);
-  background: rgba(13, 148, 136, 0.08);
-  border: 1px solid rgba(13, 148, 136, 0.25);
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
 }
 
 .admin-table {
@@ -476,8 +461,8 @@ input[type='range'] {
 }
 
 .badge-active {
-  background: rgba(13, 148, 136, 0.15);
-  color: var(--accent-dim);
+  background: rgba(var(--accent-rgb), 0.22);
+  color: #8b6914;
 }
 
 .badge-draft {

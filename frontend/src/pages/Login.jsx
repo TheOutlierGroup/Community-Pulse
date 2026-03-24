@@ -4,7 +4,6 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import { getPostLoginPath } from '../utils/postLogin.js';
-import { ExternalLink } from 'lucide-react';
 import outlierLogo from '../images/outlier-logo.png';
 
 export default function Login() {
@@ -48,15 +47,6 @@ export default function Login() {
     <Layout user={null} onLogout={logout}>
       <div className="login-hero">
         <img src={outlierLogo} alt="Outlier" className="login-logo" width={160} height={48} />
-        <a
-          href="https://theoutliergroup.com.au"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="login-site-link"
-        >
-          theoutliergroup.com.au
-          <ExternalLink size={16} strokeWidth={2} aria-hidden style={{ marginLeft: 6 }} />
-        </a>
       </div>
       <div className="card login-card">
         <h1>Sign in</h1>

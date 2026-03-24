@@ -21,14 +21,14 @@ export default function Analytics({ frictionAverages }) {
     <div style={{ width: '100%', height: 280 }}>
       <ResponsiveContainer>
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-          <XAxis dataKey="name" tick={{ fill: '#8fa3b8', fontSize: 11 }} interval={0} angle={-25} textAnchor="end" height={60} />
-          <YAxis domain={[0, 5]} tick={{ fill: '#8fa3b8', fontSize: 11 }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+          <XAxis dataKey="name" tick={{ fill: '#71717a', fontSize: 11 }} interval={0} angle={-25} textAnchor="end" height={60} />
+          <YAxis domain={[0, 5]} tick={{ fill: '#71717a', fontSize: 11 }} />
           <Tooltip
-            contentStyle={{ background: '#1a222c', border: '1px solid rgba(255,255,255,0.1)' }}
+            contentStyle={{ background: '#ffffff', border: '1px solid #e4e4e7', color: '#18181b' }}
             labelFormatter={(_, p) => p?.[0]?.payload?.full}
           />
-          <Bar dataKey="friction" fill="#3dd6c6" radius={[6, 6, 0, 0]} name="Friction (1=hard)" />
+          <Bar dataKey="friction" fill="#feca76" radius={[6, 6, 0, 0]} name="Friction (1=hard)" />
         </BarChart>
       </ResponsiveContainer>
     </div>
