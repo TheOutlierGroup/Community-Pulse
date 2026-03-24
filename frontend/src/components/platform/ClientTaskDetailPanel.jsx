@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../../services/api.js';
 import { useToast } from '../shared/ToastProvider.jsx';
 import AuthenticatedBlobImage from './AuthenticatedBlobImage.jsx';
+import { taggedUserIdsFromMentionText } from '../../utils/taskMentions.js';
 import { ImagePlus, MessageSquare, Trash2, X } from 'lucide-react';
 
 function userLabel(u) {
@@ -29,10 +30,8 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
-  const [taggedIds, setTaggedIds] = useState(new Set());
 
   const [commentBody, setCommentBody] = useState('');
-  const [commentMentions, setCommentMentions] = useState(new Set());
   const [commentFiles, setCommentFiles] = useState([]);
 
   const load = useCallback(async () => {
@@ -48,7 +47,6 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
       setStartDate(t.startDate || '');
       setDueDate(t.dueDate || '');
       setAssignedTo(t.assignedTo?.id ? String(t.assignedTo.id) : '');
-      setTaggedIds(new Set((t.taggedUsers || []).map((u) => String(u.id))));
     } catch (e) {
       setError(e.response?.data?.error || 'Could not load task.');
       setTask(null);
@@ -69,39 +67,20 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  function toggleTag(id) {
-    setTaggedIds((prev) => {
-      const next = new Set(prev);
-      const s = String(id);
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-      return next;
-    });
-  }
-
-  function toggleCommentMention(id) {
-    setCommentMentions((prev) => {
-      const next = new Set(prev);
-      const s = String(id);
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-      return next;
-    });
-  }
-
   async function saveTask(e) {
     e.preventDefault();
     if (!taskId) return;
     setSaving(true);
     setError('');
     try {
+      const notesTrimmed = notes.trim();
       const { data } = await api.patch(`/api/platform/organizations/${orgId}/tasks/${taskId}`, {
         title: title.trim(),
-        notes: notes.trim(),
+        notes: notesTrimmed,
         startDate: startDate || null,
         dueDate: dueDate || null,
         assignedTo: assignedTo || null,
-        taggedUserIds: [...taggedIds],
+        taggedUserIds: taggedUserIdsFromMentionText(notesTrimmed, assignableUsers),
       });
       setTask(data.task);
       showToast('Task saved.', { variant: 'success' });
@@ -143,14 +122,14 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
     setSaving(true);
     setError('');
     try {
+      const bodyTrimmed = commentBody.trim();
       const { data } = await api.post(`/api/platform/organizations/${orgId}/tasks/${taskId}/comments`, {
-        body: commentBody.trim(),
-        mentionUserIds: [...commentMentions],
+        body: bodyTrimmed,
+        mentionUserIds: taggedUserIdsFromMentionText(bodyTrimmed, assignableUsers),
       });
       const newCommentId = data.comment?.id;
       setTask(data.task);
       setCommentBody('');
-      setCommentMentions(new Set());
       const files = [...commentFiles];
       setCommentFiles([]);
       if (newCommentId && files.length) {
@@ -205,7 +184,7 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div
-        className="modal-dialog modal-dialog--wide card task-detail-panel"
+        className="modal-dialog modal-dialog--wide modal-dialog--task-form card task-detail-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-detail-title"
@@ -236,9 +215,13 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                   id="td-notes"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  rows={4}
-                  className="platform-textarea"
+                  rows={10}
+                  placeholder="Tag people inline with @email@domain.com"
+                  className="platform-textarea platform-textarea--task-detail-notes"
                 />
+                <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.35rem', marginBottom: 0 }}>
+                  Mentions use the full email after @ (must match an assignable user).
+                </p>
               </div>
               <div className="task-detail-panel__dates">
                 <div className="field">
@@ -271,24 +254,6 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                   ))}
                 </select>
               </div>
-              <fieldset className="task-detail-panel__tags field">
-                <legend>Tagged people</legend>
-                <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                  Client team and Outlier admins can be tagged.
-                </p>
-                <div className="task-detail-panel__tag-grid">
-                  {assignableUsers.map((u) => (
-                    <label key={u.id} className="task-detail-panel__tag-item">
-                      <input
-                        type="checkbox"
-                        checked={taggedIds.has(String(u.id))}
-                        onChange={() => toggleTag(u.id)}
-                      />
-                      <span>{userLabel(u)}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
               <div className="modal-dialog__actions">
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Saving…' : 'Save changes'}
@@ -391,28 +356,11 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                     id="td-comment"
                     value={commentBody}
                     onChange={(e) => setCommentBody(e.target.value)}
-                    rows={3}
-                    className="platform-textarea"
-                    placeholder="Write a comment…"
+                    rows={5}
+                    className="platform-textarea platform-textarea--task-comment"
+                    placeholder="Write a comment… Use @email@domain.com to mention someone."
                   />
                 </div>
-                <fieldset className="field">
-                  <legend className="muted" style={{ fontSize: '0.85rem' }}>
-                    Tag people in this comment
-                  </legend>
-                  <div className="task-detail-panel__tag-grid task-detail-panel__tag-grid--compact">
-                    {assignableUsers.map((u) => (
-                      <label key={u.id} className="task-detail-panel__tag-item">
-                        <input
-                          type="checkbox"
-                          checked={commentMentions.has(String(u.id))}
-                          onChange={() => toggleCommentMention(u.id)}
-                        />
-                        <span>{userLabel(u)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
                 <div className="field">
                   <label htmlFor="td-comment-files">Attach images (optional)</label>
                   <input

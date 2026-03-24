@@ -15,6 +15,7 @@ import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import ClientTaskDetailPanel from '../components/platform/ClientTaskDetailPanel.jsx';
+import { taggedUserIdsFromMentionText } from '../utils/taskMentions.js';
 import { ClipboardList, GripVertical, Plus, Trash2, X } from 'lucide-react';
 
 function userLabel(u) {
@@ -189,7 +190,6 @@ export default function PlatformClientTasks() {
   const [taskStartDate, setTaskStartDate] = useState('');
   const [taskDueDate, setTaskDueDate] = useState('');
   const [taskAssignedTo, setTaskAssignedTo] = useState('');
-  const [taskTaggedIds, setTaskTaggedIds] = useState(new Set());
   const [pendingTaskImages, setPendingTaskImages] = useState([]);
 
   const tasksRef = useRef(tasks);
@@ -301,29 +301,20 @@ export default function PlatformClientTasks() {
     [orgId, showToast]
   );
 
-  function toggleCreateTag(uid) {
-    setTaskTaggedIds((prev) => {
-      const next = new Set(prev);
-      const s = String(uid);
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-      return next;
-    });
-  }
-
   async function addTask(e) {
     e.preventDefault();
     if (!taskTitle.trim()) return;
     setBusy(true);
     setError('');
     try {
+      const notesTrimmed = taskNotes.trim();
       const { data } = await api.post(`/api/platform/organizations/${orgId}/tasks`, {
         title: taskTitle.trim(),
-        notes: taskNotes.trim(),
+        notes: notesTrimmed,
         startDate: taskStartDate || null,
         dueDate: taskDueDate || null,
         assignedTo: taskAssignedTo || null,
-        taggedUserIds: [...taskTaggedIds],
+        taggedUserIds: taggedUserIdsFromMentionText(notesTrimmed, assignableUsers),
       });
       const newId = data.task?.id;
       if (newId && pendingTaskImages.length) {
@@ -338,7 +329,6 @@ export default function PlatformClientTasks() {
       setTaskStartDate('');
       setTaskDueDate('');
       setTaskAssignedTo('');
-      setTaskTaggedIds(new Set());
       setPendingTaskImages([]);
       setModalOpen(false);
       await loadTasks();
@@ -545,7 +535,7 @@ export default function PlatformClientTasks() {
           onKeyDown={(e) => e.key === 'Escape' && setModalOpen(false)}
         >
           <div
-            className="modal-dialog modal-dialog--wide card"
+            className="modal-dialog modal-dialog--wide modal-dialog--add-task card"
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-task-title"
@@ -583,10 +573,13 @@ export default function PlatformClientTasks() {
                   id="task-notes"
                   value={taskNotes}
                   onChange={(e) => setTaskNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Details, links, or checklist items"
-                  className="platform-textarea"
+                  rows={10}
+                  placeholder="Details, links, or @someone@email.com to tag them"
+                  className="platform-textarea platform-textarea--add-task-notes"
                 />
+                <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.35rem', marginBottom: 0 }}>
+                  Tag people inline with their full email after @, e.g. @alex@company.com
+                </p>
               </div>
               <div className="task-detail-panel__dates">
                 <div className="field">
@@ -624,21 +617,6 @@ export default function PlatformClientTasks() {
                   ))}
                 </select>
               </div>
-              <fieldset className="field">
-                <legend>Tagged people</legend>
-                <div className="task-detail-panel__tag-grid task-detail-panel__tag-grid--compact">
-                  {assignableUsers.map((u) => (
-                    <label key={u.id} className="task-detail-panel__tag-item">
-                      <input
-                        type="checkbox"
-                        checked={taskTaggedIds.has(String(u.id))}
-                        onChange={() => toggleCreateTag(u.id)}
-                      />
-                      <span>{userLabel(u)}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
               <div className="field">
                 <label htmlFor="task-images">Images (optional)</label>
                 <input
