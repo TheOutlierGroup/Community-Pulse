@@ -4,21 +4,50 @@ import { getPostLoginPath } from '../../utils/postLogin.js';
 import outlierLogo from '../../images/outlier-logo.png';
 
 export default function Layout({ children, user, onLogout, hideHeader = false }) {
+  if (hideHeader) {
+    return (
+      <div className="app-shell">
+        <main className="app-main app-main--flush">{children}</main>
+      </div>
+    );
+  }
+
+  if (user) {
+    return (
+      <div className="app-shell app-shell--with-sidebar">
+        <aside className="app-sidebar" aria-label="Main navigation">
+          <div className="app-sidebar__inner">
+            <Link
+              to={getPostLoginPath(user)}
+              className="sidebar-brand"
+              aria-label="Outlier home"
+            >
+              <img
+                src={outlierLogo}
+                alt=""
+                className="sidebar-brand-logo"
+                decoding="async"
+              />
+            </Link>
+            <Navigation user={user} onLogout={onLogout} variant="sidebar" />
+          </div>
+        </aside>
+        <div className="app-content">
+          <main className="app-main">{children}</main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
-      {!hideHeader && (
-        <header className="app-header">
-          <Link
-            to={user ? getPostLoginPath(user) : '/'}
-            className="brand brand-with-logo"
-            aria-label="Outlier home"
-          >
-            <img src={outlierLogo} alt="" className="brand-logo" decoding="async" />
-          </Link>
-          <Navigation user={user} onLogout={onLogout} />
-        </header>
-      )}
-      <main className={`app-main${hideHeader ? ' app-main--flush' : ''}`}>{children}</main>
+      <header className="app-header">
+        <Link to="/" className="brand brand-with-logo" aria-label="Outlier home">
+          <img src={outlierLogo} alt="" className="brand-logo" decoding="async" />
+        </Link>
+        <Navigation user={user} onLogout={onLogout} />
+      </header>
+      <main className="app-main">{children}</main>
     </div>
   );
 }

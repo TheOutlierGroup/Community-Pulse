@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import { getPostLoginPath } from '../utils/postLogin.js';
+import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { Building2, KeyRound, MailPlus, Pencil, Users } from 'lucide-react';
 
-export default function PlatformDashboard() {
+export default function PlatformClients() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
+  const ok = usePlatformAccess(user, loading, navigate);
   const [orgs, setOrgs] = useState([]);
-  const [staff, setStaff] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [orgUsers, setOrgUsers] = useState([]);
   const [error, setError] = useState('');
@@ -21,18 +21,12 @@ export default function PlatformDashboard() {
   const [editName, setEditName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('employee');
-  const [staffInviteEmail, setStaffInviteEmail] = useState('');
   const [inviteLink, setInviteLink] = useState('');
   const [pwByUser, setPwByUser] = useState({});
 
   const loadOrgs = useCallback(async () => {
     const { data } = await api.get('/api/platform/organizations');
     setOrgs(data.organizations || []);
-  }, []);
-
-  const loadStaff = useCallback(async () => {
-    const { data } = await api.get('/api/platform/staff');
-    setStaff(data.users || []);
   }, []);
 
   const loadOrgUsers = useCallback(async (orgId) => {
@@ -45,20 +39,15 @@ export default function PlatformDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!loading && !user) navigate('/');
-    else if (user && user.organizationKind !== 'platform') navigate(getPostLoginPath(user));
-  }, [user, loading, navigate]);
-
-  useEffect(() => {
-    if (user?.organizationKind !== 'platform') return;
+    if (!ok) return;
     (async () => {
       try {
-        await Promise.all([loadOrgs(), loadStaff()]);
+        await loadOrgs();
       } catch (e) {
-        setError(e.response?.data?.error || 'Failed to load platform data.');
+        setError(e.response?.data?.error || 'Failed to load companies.');
       }
     })();
-  }, [user, loadOrgs, loadStaff]);
+  }, [ok, loadOrgs]);
 
   useEffect(() => {
     if (selectedId) loadOrgUsers(selectedId);
@@ -127,25 +116,6 @@ export default function PlatformDashboard() {
     }
   }
 
-  async function sendStaffInvite(e) {
-    e.preventDefault();
-    setBusy(true);
-    setError('');
-    setInviteLink('');
-    try {
-      const { data } = await api.post('/api/platform/staff/invites', {
-        email: staffInviteEmail.trim(),
-      });
-      setStaffInviteEmail('');
-      setInviteLink(`${window.location.origin}${data.inviteUrl}`);
-      await loadStaff();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Invite failed.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function setPassword(userId) {
     const password = pwByUser[userId];
     if (!password || password.length < 8) {
@@ -164,7 +134,7 @@ export default function PlatformDashboard() {
     }
   }
 
-  if (loading || !user || user.organizationKind !== 'platform') return null;
+  if (loading || !ok) return null;
 
   const selected = orgs.find((o) => o.id === selectedId);
 
@@ -172,10 +142,10 @@ export default function PlatformDashboard() {
     <Layout user={user} onLogout={logout}>
       <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <Building2 size={28} strokeWidth={1.75} aria-hidden />
-        Platform
+        Clients
       </h1>
       <p className="muted" style={{ marginBottom: '1.5rem' }}>
-        Manage client companies, users, and Outlier team access.
+        Create and manage client companies, invites, and users per company.
       </p>
       {error && <p className="error">{error}</p>}
       {inviteLink && (
@@ -347,86 +317,6 @@ export default function PlatformDashboard() {
             <p className="muted">Select a company to manage users and invites.</p>
           )}
         </div>
-      </div>
-
-      <div className="card" style={{ marginTop: '1.5rem' }}>
-        <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Users size={22} strokeWidth={1.75} aria-hidden />
-          Outlier team (admins)
-        </h2>
-        <form onSubmit={sendStaffInvite} className="grid-2" style={{ alignItems: 'end', maxWidth: 480 }}>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label htmlFor="semail">Invite admin email</label>
-            <input
-              id="semail"
-              type="email"
-              value={staffInviteEmail}
-              onChange={(e) => setStaffInviteEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <button type="submit" className="btn btn-primary" disabled={busy}>
-              Invite
-            </button>
-          </div>
-        </form>
-        <table className="admin-table" style={{ marginTop: '1rem' }}>
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>New password</th>
-            </tr>
-          </thead>
-          <tbody>
-            {staff.map((u) => (
-              <tr key={u.id}>
-                <td>{u.email}</td>
-                <td>
-                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                    <input
-                      type="password"
-                      autoComplete="new-password"
-                      placeholder="Min 8 chars"
-                      value={pwByUser[`s-${u.id}`] || ''}
-                      onChange={(e) =>
-                        setPwByUser((prev) => ({ ...prev, [`s-${u.id}`]: e.target.value }))
-                      }
-                      style={{ maxWidth: 140, minHeight: 40 }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ fontSize: '0.85rem', padding: '0.35rem 0.65rem' }}
-                      disabled={busy}
-                      onClick={() => {
-                        const p = pwByUser[`s-${u.id}`];
-                        if (!p || p.length < 8) {
-                          setError('Password must be at least 8 characters.');
-                          return;
-                        }
-                        setBusy(true);
-                        setError('');
-                        api
-                          .patch(`/api/platform/users/${u.id}/password`, { password: p })
-                          .then(() => {
-                            setPwByUser((prev) => ({ ...prev, [`s-${u.id}`]: '' }));
-                          })
-                          .catch((err) => {
-                            setError(err.response?.data?.error || 'Password update failed.');
-                          })
-                          .finally(() => setBusy(false));
-                      }}
-                    >
-                      <KeyRound size={16} style={{ marginRight: 4 }} aria-hidden />
-                      Set
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </Layout>
   );

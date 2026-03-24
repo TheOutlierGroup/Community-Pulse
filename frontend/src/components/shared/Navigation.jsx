@@ -1,8 +1,21 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { LogIn, LogOut, LayoutDashboard, Building2, Activity } from 'lucide-react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import {
+  LogIn,
+  LogOut,
+  LayoutDashboard,
+  Building2,
+  Activity,
+  Users,
+  Settings,
+} from 'lucide-react';
 
-export default function Navigation({ user, onLogout }) {
+function sidebarLinkClass({ isActive }) {
+  return `sidebar-nav-link${isActive ? ' sidebar-nav-link--active' : ''}`;
+}
+
+export default function Navigation({ user, onLogout, variant = 'header' }) {
   const navigate = useNavigate();
+
   if (!user) {
     return (
       <div className="nav-actions">
@@ -13,11 +26,72 @@ export default function Navigation({ user, onLogout }) {
       </div>
     );
   }
+
+  if (variant === 'sidebar') {
+    return (
+      <div className="nav-wrap nav-wrap--sidebar">
+        <nav className="sidebar-links" aria-label="Main">
+          {user.organizationKind === 'platform' && (
+            <>
+              <NavLink to="/platform" className={sidebarLinkClass} end>
+                <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
+                Dashboard
+              </NavLink>
+              <NavLink to="/platform/clients" className={sidebarLinkClass}>
+                <Building2 size={20} strokeWidth={1.75} aria-hidden />
+                Clients
+              </NavLink>
+              <NavLink to="/platform/users" className={sidebarLinkClass}>
+                <Users size={20} strokeWidth={1.75} aria-hidden />
+                Users
+              </NavLink>
+            </>
+          )}
+          {user.organizationKind === 'client' && user.role === 'admin' && (
+            <>
+              <NavLink to="/client" className={sidebarLinkClass} end>
+                <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
+                Dashboard
+              </NavLink>
+              <NavLink to="/admin" className={sidebarLinkClass}>
+                <Activity size={20} strokeWidth={1.75} aria-hidden />
+                Pulse
+              </NavLink>
+            </>
+          )}
+          {user.organizationKind === 'client' && user.role === 'employee' && (
+            <NavLink to="/pulse" className={sidebarLinkClass}>
+              <Activity size={20} strokeWidth={1.75} aria-hidden />
+              My Pulse
+            </NavLink>
+          )}
+        </nav>
+        <div className="sidebar-footer">
+          <NavLink to="/settings" className={sidebarLinkClass}>
+            <Settings size={20} strokeWidth={1.75} aria-hidden />
+            Settings
+          </NavLink>
+          <button
+            type="button"
+            className="sidebar-nav-link sidebar-nav-link--button sidebar-nav-link--logout"
+            onClick={() => {
+              onLogout();
+              navigate('/');
+            }}
+          >
+            <LogOut size={20} strokeWidth={1.75} aria-hidden />
+            Log out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="nav-actions">
       {user.organizationKind === 'platform' && (
         <Link to="/platform" className="btn btn-ghost nav-link-btn">
-          <Building2 size={18} strokeWidth={2} aria-hidden />
+          <LayoutDashboard size={18} strokeWidth={2} aria-hidden />
           Platform
         </Link>
       )}
@@ -39,6 +113,10 @@ export default function Navigation({ user, onLogout }) {
           My Pulse
         </Link>
       )}
+      <Link to="/settings" className="btn btn-ghost nav-link-btn">
+        <Settings size={18} strokeWidth={2} aria-hidden />
+        Settings
+      </Link>
       <span className="muted nav-email">{user.email}</span>
       <button
         type="button"

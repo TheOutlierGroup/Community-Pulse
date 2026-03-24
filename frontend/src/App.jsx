@@ -5,8 +5,11 @@ import InviteAccept from './pages/InviteAccept.jsx';
 import EmployeePulse from './pages/EmployeePulse.jsx';
 import AdminHome from './pages/AdminHome.jsx';
 import AdminSession from './pages/AdminSession.jsx';
-import PlatformDashboard from './pages/PlatformDashboard.jsx';
+import PlatformHome from './pages/PlatformHome.jsx';
+import PlatformClients from './pages/PlatformClients.jsx';
+import PlatformUsers from './pages/PlatformUsers.jsx';
 import ClientHome from './pages/ClientHome.jsx';
+import SettingsPage from './pages/SettingsPage.jsx';
 
 export default function App() {
   return (
@@ -17,7 +20,10 @@ export default function App() {
         <Route path="/invite" element={<InviteAccept />} />
         <Route path="/invite/:token" element={<InviteAccept />} />
         <Route path="/pulse" element={<EmployeePulse />} />
-        <Route path="/platform" element={<PlatformDashboard />} />
+        <Route path="/platform" element={<PlatformHome />} />
+        <Route path="/platform/clients" element={<PlatformClients />} />
+        <Route path="/platform/users" element={<PlatformUsers />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/client" element={<ClientHome />} />
         <Route path="/admin" element={<AdminHome />} />
         <Route path="/admin/sessions/:id" element={<AdminSession />} />
