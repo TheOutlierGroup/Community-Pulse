@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireClientOrganization } from '../middleware/auth.js';
 import * as PulseSession from '../models/PulseSession.js';
 import * as EmployeeResponse from '../models/EmployeeResponse.js';
 import * as ActionPlan from '../models/ActionPlan.js';
@@ -9,7 +9,7 @@ import { writeSessionExport } from '../services/exportService.js';
 
 const router = Router();
 
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth, requireAdmin, requireClientOrganization);
 
 router.get('/sessions/:id', async (req, res) => {
   const session = await PulseSession.getSessionById(

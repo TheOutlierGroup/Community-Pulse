@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireClientOrganization } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
 import * as PulseSession from '../models/PulseSession.js';
 import * as EmployeeResponse from '../models/EmployeeResponse.js';
@@ -12,7 +12,7 @@ import { writeSessionExport } from '../services/exportService.js';
 
 const router = Router();
 
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth, requireAdmin, requireClientOrganization);
 
 router.get('/overview', async (req, res) => {
   const sessions = await PulseSession.listSessionsForOrg(req.user.organizationId);
@@ -77,6 +77,7 @@ router.post('/invites', requireBodyFields(['email']), async (req, res) => {
     token,
     organizationId: req.user.organizationId,
     expiresAt,
+    invitedRole: 'employee',
   });
   res.status(201).json({
     invite: {

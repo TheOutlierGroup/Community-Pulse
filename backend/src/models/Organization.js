@@ -1,14 +1,39 @@
 import { query } from '../config/database.js';
 
-export async function createOrganization(name, settings = {}) {
+export async function createOrganization(name, settings = {}, kind = 'client') {
   const { rows } = await query(
-    `INSERT INTO organizations (name, settings) VALUES ($1, $2) RETURNING *`,
-    [name, JSON.stringify(settings)]
+    `INSERT INTO organizations (name, settings, kind) VALUES ($1, $2, $3) RETURNING *`,
+    [name, JSON.stringify(settings), kind]
   );
   return rows[0];
 }
 
 export async function getOrganization(id) {
   const { rows } = await query(`SELECT * FROM organizations WHERE id = $1`, [id]);
+  return rows[0] || null;
+}
+
+export async function listOrganizationsByKind(kind) {
+  const { rows } = await query(
+    `SELECT id, name, kind, settings, created_at FROM organizations WHERE kind = $1 ORDER BY created_at ASC`,
+    [kind]
+  );
+  return rows;
+}
+
+export async function updateOrganizationClient(id, { name, settings } = {}) {
+  const org = await getOrganization(id);
+  if (!org || org.kind !== 'client') return null;
+  const nextName = name !== undefined ? name : org.name;
+  const base =
+    org.settings && typeof org.settings === 'object' ? org.settings : {};
+  let nextSettings = base;
+  if (settings !== undefined && typeof settings === 'object') {
+    nextSettings = { ...base, ...settings };
+  }
+  const { rows } = await query(
+    `UPDATE organizations SET name = $2, settings = $3::jsonb WHERE id = $1 AND kind = 'client' RETURNING *`,
+    [id, nextName, JSON.stringify(nextSettings)]
+  );
   return rows[0] || null;
 }

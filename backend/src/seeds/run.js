@@ -9,14 +9,12 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'hello@lukeford.dev';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'Connor!7';
+const ORG_NAME = process.env.SEED_ORG_NAME || 'Outlier';
 
 async function seed() {
   const client = await pool.connect();
   try {
-    const existing = await client.query(
-      'SELECT id FROM users WHERE email = $1',
-      [ADMIN_EMAIL]
-    );
+    const existing = await client.query('SELECT id FROM users WHERE email = $1', [ADMIN_EMAIL]);
     if (existing.rows.length > 0) {
       console.log('Seed skipped: admin user already exists.');
       return;
@@ -26,8 +24,8 @@ async function seed() {
 
     await client.query('BEGIN');
     const org = await client.query(
-      `INSERT INTO organizations (name, settings) VALUES ($1, $2) RETURNING id`,
-      ['Default Organization', JSON.stringify({})]
+      `INSERT INTO organizations (name, settings, kind) VALUES ($1, $2, 'platform') RETURNING id`,
+      [ORG_NAME, JSON.stringify({})]
     );
     const orgId = org.rows[0].id;
 
@@ -37,7 +35,7 @@ async function seed() {
       [ADMIN_EMAIL, hash, orgId]
     );
     await client.query('COMMIT');
-    console.log(`Seeded admin: ${ADMIN_EMAIL}`);
+    console.log(`Seeded platform admin: ${ADMIN_EMAIL} (org: ${ORG_NAME})`);
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;

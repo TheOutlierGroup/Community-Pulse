@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
+import { getPostLoginPath } from '../utils/postLogin.js';
 
 export default function InviteAccept() {
   const { token: routeToken } = useParams();
@@ -11,6 +12,7 @@ export default function InviteAccept() {
   const [token, setToken] = useState(routeToken || '');
   const [password, setPassword] = useState('');
   const [emailPreview, setEmailPreview] = useState('');
+  const [invitedRolePreview, setInvitedRolePreview] = useState('employee');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -19,9 +21,11 @@ export default function InviteAccept() {
     try {
       const { data } = await api.get(`/api/auth/invite/${t}`);
       setEmailPreview(data.email);
+      setInvitedRolePreview(data.invitedRole || 'employee');
       setError('');
     } catch {
       setEmailPreview('');
+      setInvitedRolePreview('employee');
       setError('Invalid or expired invite.');
     }
   }
@@ -34,7 +38,7 @@ export default function InviteAccept() {
   }, [routeToken]);
 
   useEffect(() => {
-    if (user) navigate('/pulse');
+    if (user) navigate(getPostLoginPath(user), { replace: true });
   }, [user, navigate]);
 
   async function onSubmit(e) {
@@ -47,7 +51,7 @@ export default function InviteAccept() {
         password,
       });
       setUserFromLogin(data);
-      navigate('/pulse');
+      navigate(getPostLoginPath(data.user), { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not accept invite.');
     } finally {
@@ -58,8 +62,11 @@ export default function InviteAccept() {
   return (
     <Layout user={user} onLogout={logout}>
       <div className="card" style={{ maxWidth: 440, margin: '2rem auto' }}>
-        <h1>Join Pulse</h1>
-        <p className="muted">Set a password to activate your employee account.</p>
+        <h1>Accept invite</h1>
+        <p className="muted">
+          Set a password to activate your {invitedRolePreview === 'admin' ? 'admin' : 'employee'}{' '}
+          account.
+        </p>
         <form onSubmit={onSubmit}>
           <div className="field">
             <label htmlFor="token">Invite token</label>
@@ -97,7 +104,7 @@ export default function InviteAccept() {
           </div>
         </form>
         <p className="muted" style={{ marginTop: '1.25rem' }}>
-          <Link to="/login">Back to login</Link>
+          <Link to="/">Back to sign in</Link>
         </p>
       </div>
     </Layout>

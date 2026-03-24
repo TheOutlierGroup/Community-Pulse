@@ -7,11 +7,12 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 
 import { ensureStorageDirs, exportFilePath } from './config/storage.js';
-import { requireAuth, requireAdmin } from './middleware/auth.js';
+import { requireAuth, requireAdmin, requireClientOrganization } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import employeeRoutes from './routes/employees.js';
 import adminRoutes from './routes/admin.js';
 import analyticsRoutes from './routes/analytics.js';
+import platformRoutes from './routes/platform.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -40,11 +41,13 @@ app.use('/api/auth', authRoutes);
 app.use('/api/pulse', employeeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/platform', platformRoutes);
 
 app.get(
   '/api/exports/:filename',
   requireAuth,
   requireAdmin,
+  requireClientOrganization,
   (req, res) => {
     const safe = path.basename(req.params.filename);
     const full = exportFilePath(safe);

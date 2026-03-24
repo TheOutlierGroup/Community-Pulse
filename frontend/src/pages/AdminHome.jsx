@@ -25,8 +25,10 @@ export default function AdminHome() {
   };
 
   useEffect(() => {
-    if (!loading && !user) navigate('/login');
+    if (!loading && !user) navigate('/');
+    else if (user?.organizationKind === 'platform') navigate('/platform');
     else if (user && user.role !== 'admin') navigate('/pulse');
+    else if (user?.organizationKind !== 'client') navigate('/');
   }, [user, loading, navigate]);
 
   useEffect(() => {
@@ -78,7 +80,9 @@ export default function AdminHome() {
     }
   }
 
-  if (loading || !user || user.role !== 'admin') return null;
+  if (loading || !user || user.role !== 'admin' || user.organizationKind !== 'client') {
+    return null;
+  }
 
   return (
     <Layout user={user} onLogout={logout}>

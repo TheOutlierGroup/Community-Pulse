@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
+import { getPostLoginPath } from '../utils/postLogin.js';
+import { ArrowLeft } from 'lucide-react';
 import Heatmap from '../components/admin/Heatmap.jsx';
 import TensionMap from '../components/admin/TensionMap.jsx';
 import ActionPlan from '../components/admin/ActionPlan.jsx';
@@ -27,12 +29,15 @@ export default function AdminSession() {
   };
 
   useEffect(() => {
-    if (!loading && !user) navigate('/login');
-    else if (user && user.role !== 'admin') navigate('/pulse');
+    if (!loading && !user) navigate('/');
+    else if (user?.organizationKind === 'platform') navigate('/platform');
+    else if (!user || user.role !== 'admin' || user.organizationKind !== 'client') {
+      if (user) navigate(getPostLoginPath(user));
+    }
   }, [user, loading, navigate]);
 
   useEffect(() => {
-    if (user?.role === 'admin' && id) load();
+    if (user?.role === 'admin' && user?.organizationKind === 'client' && id) load();
   }, [user, id]);
 
   async function generatePlan() {
@@ -73,14 +78,19 @@ export default function AdminSession() {
     }
   }
 
-  if (loading || !user || user.role !== 'admin') return null;
+  if (loading || !user || user.role !== 'admin' || user.organizationKind !== 'client') {
+    return null;
+  }
 
   const analytics = data?.analytics;
 
   return (
     <Layout user={user} onLogout={logout}>
       <p>
-        <Link to="/admin">← Back to admin</Link>
+        <Link to="/admin" className="back-link">
+          <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+          Back to Pulse admin
+        </Link>
       </p>
       <h1>{data?.session?.name || 'Session'}</h1>
       {data?.session && (

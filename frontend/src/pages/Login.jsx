@@ -3,9 +3,12 @@ import { useNavigate, Link } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
+import { getPostLoginPath } from '../utils/postLogin.js';
+import { ExternalLink } from 'lucide-react';
+import outlierLogo from '../images/outlier-logo.png';
 
 export default function Login() {
-  const { user, setUserFromLogin, logout } = useAuth();
+  const { user, setUserFromLogin, logout, loading } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -13,8 +16,8 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (user) navigate(user.role === 'admin' ? '/admin' : '/pulse');
-  }, [user, navigate]);
+    if (!loading && user) navigate(getPostLoginPath(user), { replace: true });
+  }, [user, loading, navigate]);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -23,7 +26,7 @@ export default function Login() {
     try {
       const { data } = await api.post('/api/auth/login', { email, password });
       setUserFromLogin(data);
-      navigate(data.user.role === 'admin' ? '/admin' : '/pulse');
+      navigate(getPostLoginPath(data.user), { replace: true });
     } catch {
       setError('Invalid email or password.');
     } finally {
@@ -31,11 +34,33 @@ export default function Login() {
     }
   }
 
+  if (loading) {
+    return (
+      <Layout user={null} onLogout={logout}>
+        <p className="muted">Loading…</p>
+      </Layout>
+    );
+  }
+
+  if (user) return null;
+
   return (
-    <Layout user={user} onLogout={logout}>
-      <div className="card" style={{ maxWidth: 420, margin: '2rem auto' }}>
-        <h1>Welcome back</h1>
-        <p className="muted">Log in to continue your Pulse or open the admin view.</p>
+    <Layout user={null} onLogout={logout}>
+      <div className="login-hero">
+        <img src={outlierLogo} alt="Outlier" className="login-logo" width={160} height={48} />
+        <a
+          href="https://theoutliergroup.com.au"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="login-site-link"
+        >
+          theoutliergroup.com.au
+          <ExternalLink size={16} strokeWidth={2} aria-hidden style={{ marginLeft: 6 }} />
+        </a>
+      </div>
+      <div className="card login-card">
+        <h1>Sign in</h1>
+        <p className="muted">Use your Outlier or client account.</p>
         <form onSubmit={onSubmit}>
           <div className="field">
             <label htmlFor="email">Email</label>
@@ -62,13 +87,13 @@ export default function Login() {
           {error && <p className="error">{error}</p>}
           <div className="btn-row">
             <button type="submit" className="btn btn-primary" disabled={busy}>
-              {busy ? 'Signing in…' : 'Log in'}
+              {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </div>
         </form>
-        <p className="muted" style={{ marginTop: '1.5rem' }}>
-          Invited? Open your invite link, or{' '}
-          <Link to="/invite">enter your token</Link>.
+        <p className="muted" style={{ marginTop: '1.5rem', fontSize: '0.9rem' }}>
+          Have an invite link?{' '}
+          <Link to="/invite">Accept invite</Link>
         </p>
       </div>
     </Layout>

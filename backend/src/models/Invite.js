@@ -1,10 +1,10 @@
 import { query } from '../config/database.js';
 
-export async function createInvite({ email, token, organizationId, expiresAt }) {
+export async function createInvite({ email, token, organizationId, expiresAt, invitedRole = 'employee' }) {
   const { rows } = await query(
-    `INSERT INTO invites (email, token, organization_id, expires_at)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [email.toLowerCase().trim(), token, organizationId, expiresAt]
+    `INSERT INTO invites (email, token, organization_id, expires_at, invited_role)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [email.toLowerCase().trim(), token, organizationId, expiresAt, invitedRole]
   );
   return rows[0];
 }

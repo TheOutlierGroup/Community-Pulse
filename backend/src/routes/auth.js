@@ -15,13 +15,24 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+function publicUser(u) {
+  return {
+    id: u.id,
+    email: u.email,
+    role: u.role,
+    organizationId: u.organization_id,
+    organizationKind: u.organization_kind,
+    organizationName: u.organization_name,
+  };
+}
+
 router.post(
   '/login',
   authLimiter,
   requireBodyFields(['email', 'password']),
   async (req, res) => {
     const { email, password } = req.body;
-    const user = await User.findUserByEmail(email);
+    const user = await User.findUserByEmailWithOrg(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -33,28 +44,19 @@ router.post(
       sub: user.id,
       role: user.role,
       organizationId: user.organization_id,
+      organizationKind: user.organization_kind,
     });
     res.json({
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        organizationId: user.organization_id,
-      },
+      user: publicUser(user),
     });
   }
 );
 
 router.get('/me', requireAuth, async (req, res) => {
-  const user = await User.findUserById(req.user.id);
+  const user = await User.findUserByIdWithOrg(req.user.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
-  res.json({
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    organizationId: user.organization_id,
-  });
+  res.json(publicUser(user));
 });
 
 router.get('/invite/:token', authLimiter, async (req, res) => {
@@ -62,7 +64,11 @@ router.get('/invite/:token', authLimiter, async (req, res) => {
   if (!invite) {
     return res.status(404).json({ error: 'Invalid or expired invite' });
   }
-  res.json({ email: invite.email, organizationId: invite.organization_id });
+  res.json({
+    email: invite.email,
+    organizationId: invite.organization_id,
+    invitedRole: invite.invited_role || 'employee',
+  });
 });
 
 router.post(
@@ -82,27 +88,25 @@ router.post(
     if (existing) {
       return res.status(400).json({ error: 'User already exists — use login' });
     }
+    const invitedRole = invite.invited_role === 'admin' ? 'admin' : 'employee';
     const hash = await bcrypt.hash(password, 12);
     const user = await User.createUser({
       email: invite.email,
       passwordHash: hash,
-      role: 'employee',
+      role: invitedRole,
       organizationId: invite.organization_id,
     });
     await Invite.markInviteUsed(invite.id);
+    const full = await User.findUserByIdWithOrg(user.id);
     const jwt = signToken({
-      sub: user.id,
-      role: user.role,
-      organizationId: user.organization_id,
+      sub: full.id,
+      role: full.role,
+      organizationId: full.organization_id,
+      organizationKind: full.organization_kind,
     });
     res.status(201).json({
       token: jwt,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        organizationId: user.organization_id,
-      },
+      user: publicUser(full),
     });
   }
 );
