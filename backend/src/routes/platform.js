@@ -12,6 +12,8 @@ import { avatarFilePath, ensureStorageDirs } from '../config/storage.js';
 import * as Organization from '../models/Organization.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
+import * as ClientWorkTask from '../models/ClientWorkTask.js';
+import * as PulseSession from '../models/PulseSession.js';
 
 const router = Router();
 
@@ -140,6 +142,90 @@ router.post('/organizations/:id/invites', requireBodyFields(['email']), async (r
   });
 });
 
+async function assertClientOrganizationPlatform(id) {
+  const org = await Organization.getOrganization(id);
+  if (!org || org.kind !== 'client') return null;
+  return org;
+}
+
+function publicClientTask(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body ?? '',
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    createdByEmail: row.created_by_email ?? null,
+  };
+}
+
+function publicPulseSessionRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status,
+    createdAt: row.created_at,
+    closedAt: row.closed_at,
+  };
+}
+
+router.get('/organizations/:id', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  res.json({ organization: org });
+});
+
+router.get('/organizations/:id/pulse-sessions', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const sessions = await PulseSession.listSessionsForOrg(req.params.id);
+  res.json({ sessions: sessions.map(publicPulseSessionRow) });
+});
+
+router.get('/organizations/:id/tasks', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const rows = await ClientWorkTask.listTasksForClientOrg(req.params.id);
+  res.json({ tasks: rows.map(publicClientTask) });
+});
+
+router.post('/organizations/:id/tasks', requireBodyFields(['title']), async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const row = await ClientWorkTask.createTask(
+    req.params.id,
+    { title: req.body.title, body: req.body.body },
+    req.user.id
+  );
+  if (!row) return res.status(400).json({ error: 'Invalid task' });
+  res.status(201).json({ task: publicClientTask(row) });
+});
+
+router.patch('/organizations/:id/tasks/:taskId', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const body = req.body || {};
+  const patch = {};
+  if ('title' in body) patch.title = body.title;
+  if ('body' in body) patch.body = body.body;
+  if ('status' in body) patch.status = body.status;
+  if (!Object.keys(patch).length) {
+    return res.status(400).json({ error: 'Nothing to update' });
+  }
+  const row = await ClientWorkTask.updateTaskForOrg(req.params.taskId, req.params.id, patch);
+  if (!row) return res.status(404).json({ error: 'Task not found' });
+  res.json({ task: publicClientTask(row) });
+});
+
+router.delete('/organizations/:id/tasks/:taskId', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const ok = await ClientWorkTask.deleteTaskForOrg(req.params.taskId, req.params.id);
+  if (!ok) return res.status(404).json({ error: 'Task not found' });
+  res.json({ ok: true });
+});
+
 router.get('/staff', async (req, res) => {
   const users = await User.listUsersForOrg(req.user.organizationId, {});
   res.json({ users: users.map(publicStaffUser) });
@@ -147,7 +233,7 @@ router.get('/staff', async (req, res) => {
 
 router.get('/users/:userId/avatar', async (req, res) => {
   const target = await User.findUserById(req.params.userId);
-  if (!target || target.organization_id !== req.user.organizationId) {
+  if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
     return res.status(404).end();
   }
   const name = await User.getProfileAvatarFilename(req.params.userId);
@@ -222,7 +308,7 @@ router.post(
 router.patch('/users/:userId', async (req, res) => {
   const { userId } = req.params;
   const target = await User.findUserById(userId);
-  if (!target || target.organization_id !== req.user.organizationId) {
+  if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
     return res.status(404).json({ error: 'User not found' });
   }
   const body = req.body || {};
@@ -248,6 +334,34 @@ router.patch('/users/:userId', async (req, res) => {
   res.json({ user: publicStaffUser(row) });
 });
 
+router.delete('/users/:userId', async (req, res) => {
+  const { userId } = req.params;
+  if (userId === req.user.id) {
+    return res.status(400).json({ error: 'You cannot remove your own access' });
+  }
+  const target = await User.findUserById(userId);
+  if (!target || target.deactivated_at) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  const requesterOrg = await Organization.getOrganization(req.user.organizationId);
+  if (!requesterOrg || requesterOrg.kind !== 'platform') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const targetOrg = await Organization.getOrganization(target.organization_id);
+  if (!targetOrg) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  const allowed =
+    targetOrg.kind === 'client' ||
+    (targetOrg.kind === 'platform' && target.organization_id === req.user.organizationId);
+  if (!allowed) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const ok = await User.deactivateUserInOrg(userId, target.organization_id);
+  if (!ok) return res.status(404).json({ error: 'User not found' });
+  res.json({ ok: true });
+});
+
 router.post(
   '/users/:userId/avatar',
   (req, res, next) => {
@@ -263,7 +377,7 @@ router.post(
   async (req, res) => {
     const { userId } = req.params;
     const target = await User.findUserById(userId);
-    if (!target || target.organization_id !== req.user.organizationId) {
+    if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
       return res.status(404).json({ error: 'User not found' });
     }
     if (!req.file) {
@@ -294,7 +408,7 @@ router.post(
 router.delete('/users/:userId/avatar', async (req, res) => {
   const { userId } = req.params;
   const target = await User.findUserById(userId);
-  if (!target || target.organization_id !== req.user.organizationId) {
+  if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
     return res.status(404).json({ error: 'User not found' });
   }
   const prev = await User.clearProfileAvatarFilename(userId);

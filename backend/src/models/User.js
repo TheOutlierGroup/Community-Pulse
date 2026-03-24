@@ -24,7 +24,7 @@ export async function findUserByEmailWithOrg(email) {
             o.kind AS organization_kind, o.name AS organization_name
      FROM users u
      JOIN organizations o ON o.id = u.organization_id
-     WHERE u.email = $1`,
+     WHERE u.email = $1 AND u.deactivated_at IS NULL`,
     [email.toLowerCase().trim()]
   );
   return rows[0] || null;
@@ -32,7 +32,8 @@ export async function findUserByEmailWithOrg(email) {
 
 export async function findUserById(id) {
   const { rows } = await query(
-    `SELECT id, email, role, organization_id, first_name, last_name, profile_avatar_filename, created_at
+    `SELECT id, email, role, organization_id, first_name, last_name, profile_avatar_filename, created_at,
+            deactivated_at
      FROM users WHERE id = $1`,
     [id]
   );
@@ -42,7 +43,7 @@ export async function findUserById(id) {
 export async function findUserByIdWithOrg(id) {
   const { rows } = await query(
     `SELECT u.id, u.email, u.role, u.organization_id, u.created_at,
-            u.first_name, u.last_name, u.profile_avatar_filename,
+            u.first_name, u.last_name, u.profile_avatar_filename, u.deactivated_at,
             o.kind AS organization_kind, o.name AS organization_name
      FROM users u
      JOIN organizations o ON o.id = u.organization_id
@@ -88,7 +89,7 @@ export async function createUserWithProfile({
 
 export async function listUsersForOrg(organizationId, { role } = {}) {
   let sql = `SELECT id, email, role, organization_id, created_at, first_name, last_name, profile_avatar_filename
-             FROM users WHERE organization_id = $1`;
+             FROM users WHERE organization_id = $1 AND deactivated_at IS NULL`;
   const params = [organizationId];
   if (role) {
     sql += ` AND role = $2`;
@@ -97,6 +98,23 @@ export async function listUsersForOrg(organizationId, { role } = {}) {
   sql += ` ORDER BY created_at ASC`;
   const { rows } = await query(sql, params);
   return rows;
+}
+
+export async function isUserActive(userId) {
+  const { rows } = await query(
+    `SELECT 1 FROM users WHERE id = $1 AND deactivated_at IS NULL`,
+    [userId]
+  );
+  return rows.length > 0;
+}
+
+export async function deactivateUserInOrg(userId, organizationId) {
+  const { rowCount } = await query(
+    `UPDATE users SET deactivated_at = NOW()
+     WHERE id = $1 AND organization_id = $2 AND deactivated_at IS NULL`,
+    [userId, organizationId]
+  );
+  return rowCount > 0;
 }
 
 export async function getPasswordHashByUserId(userId) {
@@ -117,7 +135,7 @@ export async function getUserOrgKind(userId) {
     `SELECT u.organization_id, o.kind
      FROM users u
      JOIN organizations o ON o.id = u.organization_id
-     WHERE u.id = $1`,
+     WHERE u.id = $1 AND u.deactivated_at IS NULL`,
     [userId]
   );
   return rows[0] || null;
@@ -125,7 +143,7 @@ export async function getUserOrgKind(userId) {
 
 export async function updateStaffUserInOrg(userId, organizationId, body) {
   const target = await findUserById(userId);
-  if (!target || target.organization_id !== organizationId) return null;
+  if (!target || target.organization_id !== organizationId || target.deactivated_at) return null;
   const parts = [];
   const vals = [];
   let n = 1;
@@ -148,10 +166,13 @@ export async function updateStaffUserInOrg(userId, organizationId, body) {
   }
   if (!parts.length) return findUserById(userId);
   vals.push(userId, organizationId);
-  await query(
-    `UPDATE users SET ${parts.join(', ')} WHERE id = $${n++} AND organization_id = $${n++}`,
+  const { rows } = await query(
+    `UPDATE users SET ${parts.join(', ')}
+     WHERE id = $${n++} AND organization_id = $${n++} AND deactivated_at IS NULL
+     RETURNING id`,
     vals
   );
+  if (!rows.length) return null;
   return findUserById(userId);
 }
 

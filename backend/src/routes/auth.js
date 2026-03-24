@@ -62,7 +62,9 @@ router.post(
 
 router.get('/me', requireAuth, async (req, res) => {
   const user = await User.findUserByIdWithOrg(req.user.id);
-  if (!user) return res.status(404).json({ error: 'Not found' });
+  if (!user || user.deactivated_at) {
+    return res.status(401).json({ error: 'Account is no longer active' });
+  }
   res.json(publicUser(user));
 });
 

@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import * as Organization from '../models/Organization.js';
+import * as User from '../models/User.js';
 
 function getSecret() {
   const s = process.env.JWT_SECRET;
@@ -19,18 +20,29 @@ export function requireAuth(req, res, next) {
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  let decoded;
   try {
-    const decoded = jwt.verify(token, getSecret());
-    req.user = {
-      id: decoded.sub,
-      role: decoded.role,
-      organizationId: decoded.organizationId,
-      organizationKind: decoded.organizationKind,
-    };
-    next();
+    decoded = jwt.verify(token, getSecret());
   } catch {
     return res.status(401).json({ error: 'Invalid token' });
   }
+  (async () => {
+    try {
+      const active = await User.isUserActive(decoded.sub);
+      if (!active) {
+        return res.status(401).json({ error: 'Account is no longer active' });
+      }
+      req.user = {
+        id: decoded.sub,
+        role: decoded.role,
+        organizationId: decoded.organizationId,
+        organizationKind: decoded.organizationKind,
+      };
+      next();
+    } catch (e) {
+      next(e);
+    }
+  })();
 }
 
 export function requireAdmin(req, res, next) {

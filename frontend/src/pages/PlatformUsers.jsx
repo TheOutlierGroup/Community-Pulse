@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
+import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import PlatformUserAvatar from '../components/platform/PlatformUserAvatar.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
@@ -15,6 +16,7 @@ function roleLabel(role) {
 
 export default function PlatformUsers() {
   const { user, logout, loading } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const ok = usePlatformAccess(user, loading, navigate);
   const [staff, setStaff] = useState([]);
@@ -36,6 +38,7 @@ export default function PlatformUsers() {
   const [editRole, setEditRole] = useState('admin');
   const [editAvatarFile, setEditAvatarFile] = useState(null);
   const [editRemoveAvatar, setEditRemoveAvatar] = useState(false);
+  const [removeAccessStep, setRemoveAccessStep] = useState(0);
 
   const loadStaff = useCallback(async () => {
     const { data } = await api.get('/api/platform/staff');
@@ -81,6 +84,7 @@ export default function PlatformUsers() {
   function openEditModal(u) {
     setModalOpen(false);
     setError('');
+    setRemoveAccessStep(0);
     setEditUser(u);
     setEditFirst(u.firstName ?? '');
     setEditLast(u.lastName ?? '');
@@ -95,6 +99,7 @@ export default function PlatformUsers() {
     setError('');
     setEditAvatarFile(null);
     setEditRemoveAvatar(false);
+    setRemoveAccessStep(0);
   }
 
   async function createUser(e) {
@@ -111,6 +116,14 @@ export default function PlatformUsers() {
       if (formAvatar) fd.append('avatar', formAvatar);
       await api.post('/api/platform/users', fd);
       await loadStaff();
+      const createdEmail = formEmail.trim();
+      const createdName = [formFirst, formLast].map((s) => s.trim()).filter(Boolean).join(' ');
+      showToast(
+        createdName
+          ? `${createdName} was added and can sign in.`
+          : `${createdEmail} was added and can sign in.`,
+        { variant: 'success' }
+      );
       closeCreateModal();
     } catch (err) {
       setError(err.response?.data?.error || 'Could not create user.');
@@ -147,7 +160,24 @@ export default function PlatformUsers() {
     }
   }
 
+  async function confirmRemoveAccess() {
+    if (!editUser) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.delete(`/api/platform/users/${editUser.id}`);
+      await loadStaff();
+      closeEditModal();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not remove access.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading || !ok) return null;
+
+  const canRemoveAccess = editUser && String(editUser.id) !== String(user?.id);
 
   return (
     <Layout user={user} onLogout={logout}>
@@ -183,9 +213,6 @@ export default function PlatformUsers() {
           <table className="admin-table platform-users-table">
             <thead>
               <tr>
-                <th className="platform-users-table__photo" scope="col">
-                  Photo
-                </th>
                 <th scope="col">Name</th>
                 <th scope="col">Email</th>
                 <th scope="col">User type</th>
@@ -195,7 +222,7 @@ export default function PlatformUsers() {
             <tbody>
               {staff.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="muted" style={{ padding: '1.5rem' }}>
+                  <td colSpan={4} className="muted" style={{ padding: '1.5rem' }}>
                     No users yet. Add one to get started.
                   </td>
                 </tr>
@@ -217,16 +244,16 @@ export default function PlatformUsers() {
                     }}
                   >
                     <td>
-                      <div className="platform-users-table__avatar-cell">
-                        <PlatformUserAvatar
-                          userId={u.id}
-                          hasProfileAvatar={u.hasProfileAvatar}
-                          rev={avatarListRev}
-                        />
+                      <div className="platform-users-table__name-cell">
+                        <div className="platform-users-table__avatar-cell">
+                          <PlatformUserAvatar
+                            userId={u.id}
+                            hasProfileAvatar={u.hasProfileAvatar}
+                            rev={avatarListRev}
+                          />
+                        </div>
+                        <span className="platform-users-table__name">{name}</span>
                       </div>
-                    </td>
-                    <td>
-                      <span className="platform-users-table__name">{name}</span>
                     </td>
                     <td>{u.email}</td>
                     <td>
@@ -259,7 +286,7 @@ export default function PlatformUsers() {
           onKeyDown={(e) => e.key === 'Escape' && closeCreateModal()}
         >
           <div
-            className="modal-dialog card"
+            className="modal-dialog modal-dialog--wide card"
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-user-title"
@@ -283,24 +310,29 @@ export default function PlatformUsers() {
             </p>
             {error && modalOpen && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
             <form onSubmit={createUser}>
-              <div className="field">
-                <label htmlFor="add-first">First name</label>
-                <input
-                  id="add-first"
-                  value={formFirst}
-                  onChange={(e) => setFormFirst(e.target.value)}
-                  autoComplete="off"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="add-last">Last name</label>
-                <input
-                  id="add-last"
-                  value={formLast}
-                  onChange={(e) => setFormLast(e.target.value)}
-                  autoComplete="off"
-                />
-              </div>
+              <fieldset className="modal-dialog__fieldset">
+                <legend>Name</legend>
+                <div className="modal-dialog__name-row">
+                  <div className="field">
+                    <label htmlFor="add-first">First name</label>
+                    <input
+                      id="add-first"
+                      value={formFirst}
+                      onChange={(e) => setFormFirst(e.target.value)}
+                      autoComplete="given-name"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="add-last">Last name</label>
+                    <input
+                      id="add-last"
+                      value={formLast}
+                      onChange={(e) => setFormLast(e.target.value)}
+                      autoComplete="family-name"
+                    />
+                  </div>
+                </div>
+              </fieldset>
               <div className="field">
                 <label htmlFor="add-email">Email</label>
                 <input
@@ -368,7 +400,7 @@ export default function PlatformUsers() {
           onKeyDown={(e) => e.key === 'Escape' && closeEditModal()}
         >
           <div
-            className="modal-dialog card"
+            className="modal-dialog modal-dialog--wide card"
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-user-title"
@@ -392,24 +424,29 @@ export default function PlatformUsers() {
             </p>
             {error && editUser && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
             <form onSubmit={saveEditUser}>
-              <div className="field">
-                <label htmlFor="edit-first">First name</label>
-                <input
-                  id="edit-first"
-                  value={editFirst}
-                  onChange={(e) => setEditFirst(e.target.value)}
-                  autoComplete="off"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="edit-last">Last name</label>
-                <input
-                  id="edit-last"
-                  value={editLast}
-                  onChange={(e) => setEditLast(e.target.value)}
-                  autoComplete="off"
-                />
-              </div>
+              <fieldset className="modal-dialog__fieldset">
+                <legend>Name</legend>
+                <div className="modal-dialog__name-row">
+                  <div className="field">
+                    <label htmlFor="edit-first">First name</label>
+                    <input
+                      id="edit-first"
+                      value={editFirst}
+                      onChange={(e) => setEditFirst(e.target.value)}
+                      autoComplete="given-name"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="edit-last">Last name</label>
+                    <input
+                      id="edit-last"
+                      value={editLast}
+                      onChange={(e) => setEditLast(e.target.value)}
+                      autoComplete="family-name"
+                    />
+                  </div>
+                </div>
+              </fieldset>
               <div className="field">
                 <label htmlFor="edit-email">Email</label>
                 <input
@@ -470,6 +507,57 @@ export default function PlatformUsers() {
                 </button>
               </div>
             </form>
+            {canRemoveAccess && (
+              <div
+                className="modal-dialog__danger-zone"
+                style={{
+                  marginTop: '1.25rem',
+                  paddingTop: '1rem',
+                  borderTop: '1px solid var(--border)',
+                }}
+              >
+                {removeAccessStep === 0 ? (
+                  <>
+                    <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.65rem' }}>
+                      Remove this user from the list and block sign-in. Their profile and history stay in the
+                      database.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn-danger-ghost"
+                      onClick={() => setRemoveAccessStep(1)}
+                      disabled={busy}
+                    >
+                      Remove access
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="error" style={{ marginBottom: '0.75rem' }}>
+                      They will be signed out immediately and will no longer appear here. Continue?
+                    </p>
+                    <div className="modal-dialog__actions" style={{ marginTop: 0 }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setRemoveAccessStep(0)}
+                        disabled={busy}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger"
+                        onClick={confirmRemoveAccess}
+                        disabled={busy}
+                      >
+                        {busy ? 'Removing…' : 'Yes, remove access'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

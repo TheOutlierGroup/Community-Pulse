@@ -2,16 +2,18 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
+import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import { getPostLoginPath } from '../utils/postLogin.js';
+import { getLoginErrorMessage } from '../utils/loginErrors.js';
 import outlierLogo from '../images/outlier-logo.png';
 
 export default function Login() {
   const { user, setUserFromLogin, logout, loading } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -20,14 +22,13 @@ export default function Login() {
 
   async function onSubmit(e) {
     e.preventDefault();
-    setError('');
     setBusy(true);
     try {
       const { data } = await api.post('/api/auth/login', { email, password });
       setUserFromLogin(data);
       navigate(getPostLoginPath(data.user), { replace: true });
-    } catch {
-      setError('Invalid email or password.');
+    } catch (err) {
+      showToast(getLoginErrorMessage(err), { variant: 'error' });
     } finally {
       setBusy(false);
     }
@@ -74,7 +75,6 @@ export default function Login() {
               required
             />
           </div>
-          {error && <p className="error">{error}</p>}
           <div className="btn-row">
             <button type="submit" className="btn btn-primary" disabled={busy}>
               {busy ? 'Signing in…' : 'Sign in'}
