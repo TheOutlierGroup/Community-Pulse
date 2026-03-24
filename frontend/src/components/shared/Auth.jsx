@@ -31,6 +31,13 @@ export function AuthProvider({ children }) {
         setAuthToken(data.token);
         setUser(data.user);
       },
+      async refreshUser() {
+        const { data } = await api.get('/api/auth/me');
+        setUser(data);
+      },
+      setCurrentUser(nextUser) {
+        setUser(nextUser);
+      },
       logout() {
         setAuthToken(null);
         setUser(null);

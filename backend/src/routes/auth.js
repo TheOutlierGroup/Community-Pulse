@@ -1,8 +1,12 @@
+import fs from 'fs';
+import path from 'path';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { signToken, requireAuth } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
+import { uploadAvatarMiddleware } from '../middleware/avatarUpload.js';
+import { avatarFilePath, ensureStorageDirs } from '../config/storage.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
 
@@ -23,6 +27,9 @@ function publicUser(u) {
     organizationId: u.organization_id,
     organizationKind: u.organization_kind,
     organizationName: u.organization_name,
+    firstName: u.first_name ?? '',
+    lastName: u.last_name ?? '',
+    hasProfileAvatar: Boolean(u.profile_avatar_filename),
   };
 }
 
@@ -57,6 +64,98 @@ router.get('/me', requireAuth, async (req, res) => {
   const user = await User.findUserByIdWithOrg(req.user.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
   res.json(publicUser(user));
+});
+
+router.patch('/me', requireAuth, async (req, res) => {
+  const body = req.body || {};
+  const patch = {};
+  if ('firstName' in body) patch.firstName = body.firstName;
+  if ('lastName' in body) patch.lastName = body.lastName;
+  if (!Object.keys(patch).length) {
+    return res.status(400).json({ error: 'Provide firstName and/or lastName' });
+  }
+  const updated = await User.updateProfileNames(req.user.id, patch);
+  if (!updated) return res.status(404).json({ error: 'Not found' });
+  res.json(publicUser(updated));
+});
+
+router.post(
+  '/me/password',
+  authLimiter,
+  requireAuth,
+  requireBodyFields(['currentPassword', 'newPassword']),
+  async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+    const hash = await User.getPasswordHashByUserId(req.user.id);
+    if (!hash) return res.status(404).json({ error: 'Not found' });
+    const ok = await bcrypt.compare(currentPassword, hash);
+    if (!ok) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    const nextHash = await bcrypt.hash(newPassword, 12);
+    await User.updateUserPassword(req.user.id, nextHash);
+    res.json({ ok: true });
+  }
+);
+
+router.get('/me/avatar', requireAuth, async (req, res) => {
+  const name = await User.getProfileAvatarFilename(req.user.id);
+  if (!name) return res.status(404).end();
+  const full = path.resolve(avatarFilePath(name));
+  const { avatarsDir } = ensureStorageDirs();
+  const root = path.resolve(avatarsDir);
+  if (!full.startsWith(root + path.sep) && full !== root) {
+    return res.status(403).end();
+  }
+  if (!fs.existsSync(full)) return res.status(404).end();
+  res.sendFile(full);
+});
+
+router.post(
+  '/me/avatar',
+  requireAuth,
+  (req, res, next) => {
+    uploadAvatarMiddleware(req, res, (err) => {
+      if (err) {
+        const msg =
+          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 2MB or smaller' : err.message;
+        return res.status(400).json({ error: msg || 'Upload failed' });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const prev = await User.getProfileAvatarFilename(req.user.id);
+    if (prev && prev !== req.file.filename) {
+      try {
+        fs.unlinkSync(avatarFilePath(prev));
+      } catch {
+        /* ignore */
+      }
+    }
+    await User.setProfileAvatarFilename(req.user.id, req.file.filename);
+    const full = await User.findUserByIdWithOrg(req.user.id);
+    res.json({ user: publicUser(full) });
+  }
+);
+
+router.delete('/me/avatar', requireAuth, async (req, res) => {
+  const prev = await User.clearProfileAvatarFilename(req.user.id);
+  if (prev) {
+    try {
+      fs.unlinkSync(avatarFilePath(prev));
+    } catch {
+      /* ignore */
+    }
+  }
+  const full = await User.findUserByIdWithOrg(req.user.id);
+  res.json({ user: publicUser(full) });
 });
 
 router.get('/invite/:token', authLimiter, async (req, res) => {

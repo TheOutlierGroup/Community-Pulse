@@ -53,9 +53,9 @@ export default function Navigation({ user, onLogout, variant = 'header' }) {
                 <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
                 Dashboard
               </NavLink>
-              <NavLink to="/admin" className={sidebarLinkClass}>
-                <Activity size={20} strokeWidth={1.75} aria-hidden />
-                Pulse
+              <NavLink to="/admin#admin-team" className={sidebarLinkClass}>
+                <Users size={20} strokeWidth={1.75} aria-hidden />
+                Team
               </NavLink>
             </>
           )}
@@ -102,9 +102,9 @@ export default function Navigation({ user, onLogout, variant = 'header' }) {
         </Link>
       )}
       {user.organizationKind === 'client' && user.role === 'admin' && (
-        <Link to="/admin" className="btn btn-ghost nav-link-btn">
-          <Activity size={18} strokeWidth={2} aria-hidden />
-          Pulse
+        <Link to="/admin#admin-team" className="btn btn-ghost nav-link-btn">
+          <Users size={18} strokeWidth={2} aria-hidden />
+          Team
         </Link>
       )}
       {user.organizationKind === 'client' && user.role === 'employee' && (

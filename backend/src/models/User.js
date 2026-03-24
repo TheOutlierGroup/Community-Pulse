@@ -1,5 +1,14 @@
 import { query } from '../config/database.js';
 
+const NAME_MAX = 120;
+
+function sanitizeName(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  return s.slice(0, NAME_MAX);
+}
+
 export async function findUserByEmail(email) {
   const { rows } = await query(
     `SELECT id, email, password_hash, role, organization_id FROM users WHERE email = $1`,
@@ -11,6 +20,7 @@ export async function findUserByEmail(email) {
 export async function findUserByEmailWithOrg(email) {
   const { rows } = await query(
     `SELECT u.id, u.email, u.password_hash, u.role, u.organization_id,
+            u.first_name, u.last_name, u.profile_avatar_filename,
             o.kind AS organization_kind, o.name AS organization_name
      FROM users u
      JOIN organizations o ON o.id = u.organization_id
@@ -22,7 +32,8 @@ export async function findUserByEmailWithOrg(email) {
 
 export async function findUserById(id) {
   const { rows } = await query(
-    `SELECT id, email, role, organization_id, created_at FROM users WHERE id = $1`,
+    `SELECT id, email, role, organization_id, first_name, last_name, profile_avatar_filename, created_at
+     FROM users WHERE id = $1`,
     [id]
   );
   return rows[0] || null;
@@ -31,6 +42,7 @@ export async function findUserById(id) {
 export async function findUserByIdWithOrg(id) {
   const { rows } = await query(
     `SELECT u.id, u.email, u.role, u.organization_id, u.created_at,
+            u.first_name, u.last_name, u.profile_avatar_filename,
             o.kind AS organization_kind, o.name AS organization_name
      FROM users u
      JOIN organizations o ON o.id = u.organization_id
@@ -62,6 +74,11 @@ export async function listUsersForOrg(organizationId, { role } = {}) {
   return rows;
 }
 
+export async function getPasswordHashByUserId(userId) {
+  const { rows } = await query(`SELECT password_hash FROM users WHERE id = $1`, [userId]);
+  return rows[0]?.password_hash || null;
+}
+
 export async function updateUserPassword(userId, passwordHash) {
   const { rows } = await query(
     `UPDATE users SET password_hash = $2 WHERE id = $1 RETURNING id`,
@@ -79,4 +96,40 @@ export async function getUserOrgKind(userId) {
     [userId]
   );
   return rows[0] || null;
+}
+
+export async function updateProfileNames(userId, patch) {
+  const parts = [];
+  const vals = [];
+  let n = 1;
+  if ('firstName' in patch) {
+    parts.push(`first_name = $${n++}`);
+    vals.push(sanitizeName(patch.firstName));
+  }
+  if ('lastName' in patch) {
+    parts.push(`last_name = $${n++}`);
+    vals.push(sanitizeName(patch.lastName));
+  }
+  if (!parts.length) return null;
+  vals.push(userId);
+  await query(`UPDATE users SET ${parts.join(', ')} WHERE id = $${n}`, vals);
+  return findUserByIdWithOrg(userId);
+}
+
+export async function getProfileAvatarFilename(userId) {
+  const { rows } = await query(
+    `SELECT profile_avatar_filename FROM users WHERE id = $1`,
+    [userId]
+  );
+  return rows[0]?.profile_avatar_filename || null;
+}
+
+export async function setProfileAvatarFilename(userId, filename) {
+  await query(`UPDATE users SET profile_avatar_filename = $2 WHERE id = $1`, [userId, filename]);
+}
+
+export async function clearProfileAvatarFilename(userId) {
+  const prev = await getProfileAvatarFilename(userId);
+  await query(`UPDATE users SET profile_avatar_filename = NULL WHERE id = $1`, [userId]);
+  return prev;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
@@ -8,6 +8,7 @@ import Dashboard from '../components/admin/Dashboard.jsx';
 export default function AdminHome() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [overview, setOverview] = useState(null);
   const [name, setName] = useState('Q1 Pulse');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -34,6 +35,13 @@ export default function AdminHome() {
   useEffect(() => {
     if (user?.role === 'admin') load();
   }, [user]);
+
+  useEffect(() => {
+    const id = location.hash?.replace(/^#/, '');
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [location.hash, overview]);
 
   async function createSession(e) {
     e.preventDefault();
@@ -94,7 +102,7 @@ export default function AdminHome() {
 
       <Dashboard overview={overview} />
 
-      <div className="card" style={{ marginTop: '1.5rem' }}>
+      <div id="admin-sessions" className="card" style={{ marginTop: '1.5rem' }}>
         <h2 style={{ marginTop: 0 }}>New session</h2>
         <form onSubmit={createSession} className="grid-2" style={{ alignItems: 'end' }}>
           <div className="field" style={{ marginBottom: 0 }}>
@@ -114,7 +122,7 @@ export default function AdminHome() {
         </form>
       </div>
 
-      <div className="card" style={{ marginTop: '1.5rem' }}>
+      <div id="admin-team" className="card" style={{ marginTop: '1.5rem' }}>
         <h2 style={{ marginTop: 0 }}>Invite employee</h2>
         <form onSubmit={sendInvite} className="grid-2" style={{ alignItems: 'end' }}>
           <div className="field" style={{ marginBottom: 0 }}>

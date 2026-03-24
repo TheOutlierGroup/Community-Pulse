@@ -18,9 +18,16 @@ export function ensureStorageDirs() {
   const root = getStorageRoot();
   const exportsDir = path.join(root, 'exports');
   const uploadsDir = path.join(root, 'uploads');
+  const avatarsDir = path.join(uploadsDir, 'avatars');
   fs.mkdirSync(exportsDir, { recursive: true });
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  return { root, exportsDir, uploadsDir };
+  fs.mkdirSync(avatarsDir, { recursive: true });
+  return { root, exportsDir, uploadsDir, avatarsDir };
+}
+
+export function avatarFilePath(filename) {
+  const { avatarsDir } = ensureStorageDirs();
+  const safe = path.basename(filename);
+  return path.join(avatarsDir, safe);
 }
 
 export function exportFilePath(filename) {
