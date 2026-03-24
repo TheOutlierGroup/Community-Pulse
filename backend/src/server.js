@@ -22,7 +22,18 @@ const PORT = process.env.PORT || 3001;
 
 ensureStorageDirs();
 
-app.use(helmet());
+// Default Helmet CSP allows img-src 'self' data: only — <img src={blob URL}> from createObjectURL is blocked.
+// Opening that blob in a new tab still works; embedded avatars need blob: in img-src.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'img-src': ["'self'", 'data:', 'blob:'],
+      },
+    },
+  })
+);
 app.use(express.json({ limit: '1mb' }));
 
 const origin = process.env.FRONTEND_ORIGIN;

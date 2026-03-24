@@ -123,6 +123,38 @@ export async function getUserOrgKind(userId) {
   return rows[0] || null;
 }
 
+export async function updateStaffUserInOrg(userId, organizationId, body) {
+  const target = await findUserById(userId);
+  if (!target || target.organization_id !== organizationId) return null;
+  const parts = [];
+  const vals = [];
+  let n = 1;
+  if ('firstName' in body) {
+    parts.push(`first_name = $${n++}`);
+    vals.push(sanitizeName(body.firstName));
+  }
+  if ('lastName' in body) {
+    parts.push(`last_name = $${n++}`);
+    vals.push(sanitizeName(body.lastName));
+  }
+  if ('email' in body) {
+    parts.push(`email = $${n++}`);
+    vals.push(String(body.email).toLowerCase().trim());
+  }
+  if ('role' in body) {
+    const r = body.role === 'employee' ? 'employee' : 'admin';
+    parts.push(`role = $${n++}`);
+    vals.push(r);
+  }
+  if (!parts.length) return findUserById(userId);
+  vals.push(userId, organizationId);
+  await query(
+    `UPDATE users SET ${parts.join(', ')} WHERE id = $${n++} AND organization_id = $${n++}`,
+    vals
+  );
+  return findUserById(userId);
+}
+
 export async function updateProfileNames(userId, patch) {
   const parts = [];
   const vals = [];

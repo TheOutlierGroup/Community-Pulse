@@ -36,13 +36,10 @@ export default function PlatformHome() {
 
   return (
     <Layout user={user} onLogout={logout}>
-      <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
         <LayoutDashboard size={28} strokeWidth={1.75} aria-hidden />
         Dashboard
       </h1>
-      <p className="muted" style={{ marginBottom: '1.5rem' }}>
-        Platform overview — manage client companies and Outlier team access.
-      </p>
       {error && <p className="error">{error}</p>}
       <div className="grid-2" style={{ alignItems: 'stretch' }}>
         <Link to="/platform/clients" className="card platform-dash-card">

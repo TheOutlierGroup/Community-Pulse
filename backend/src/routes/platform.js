@@ -219,6 +219,96 @@ router.post(
   }
 );
 
+router.patch('/users/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const target = await User.findUserById(userId);
+  if (!target || target.organization_id !== req.user.organizationId) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  const body = req.body || {};
+  const patch = {};
+  if ('firstName' in body) patch.firstName = body.firstName;
+  if ('lastName' in body) patch.lastName = body.lastName;
+  if ('email' in body) patch.email = body.email;
+  if ('role' in body) patch.role = body.role;
+  if (!Object.keys(patch).length) {
+    return res.status(400).json({ error: 'Nothing to update' });
+  }
+  if ('email' in patch) {
+    const em = String(patch.email).toLowerCase().trim();
+    if (!em) return res.status(400).json({ error: 'Email is required' });
+    const ex = await User.findUserByEmail(em);
+    if (ex && ex.id !== userId) {
+      return res.status(409).json({ error: 'A user with this email already exists' });
+    }
+    patch.email = em;
+  }
+  const row = await User.updateStaffUserInOrg(userId, req.user.organizationId, patch);
+  if (!row) return res.status(404).json({ error: 'User not found' });
+  res.json({ user: publicStaffUser(row) });
+});
+
+router.post(
+  '/users/:userId/avatar',
+  (req, res, next) => {
+    platformUserCreateUpload(req, res, (err) => {
+      if (err) {
+        const msg =
+          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 2MB or smaller' : err.message;
+        return res.status(400).json({ error: msg || 'Upload failed' });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    const { userId } = req.params;
+    const target = await User.findUserById(userId);
+    if (!target || target.organization_id !== req.user.organizationId) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const prev = await User.getProfileAvatarFilename(userId);
+    const ext = extensionForUpload(req.file);
+    const base = `${userId}${ext || '.png'}`;
+    try {
+      if (prev && prev !== base) {
+        try {
+          fs.unlinkSync(avatarFilePath(prev));
+        } catch {
+          /* ignore */
+        }
+      }
+      fs.writeFileSync(avatarFilePath(base), req.file.buffer);
+      await User.setProfileAvatarFilename(userId, base);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: 'Could not save image' });
+    }
+    const outRow = await User.findUserById(userId);
+    res.json({ user: publicStaffUser(outRow) });
+  }
+);
+
+router.delete('/users/:userId/avatar', async (req, res) => {
+  const { userId } = req.params;
+  const target = await User.findUserById(userId);
+  if (!target || target.organization_id !== req.user.organizationId) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  const prev = await User.clearProfileAvatarFilename(userId);
+  if (prev) {
+    try {
+      fs.unlinkSync(avatarFilePath(prev));
+    } catch {
+      /* ignore */
+    }
+  }
+  const outRow = await User.findUserById(userId);
+  res.json({ user: publicStaffUser(outRow) });
+});
+
 router.post('/staff/invites', requireBodyFields(['email']), async (req, res) => {
   const email = req.body.email;
   const existing = await User.findUserByEmail(email);

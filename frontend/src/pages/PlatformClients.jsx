@@ -165,13 +165,10 @@ export default function PlatformClients() {
     <Layout user={user} onLogout={logout}>
       <div className="page-header-row">
         <div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
             <Building2 size={28} strokeWidth={1.75} aria-hidden />
             Clients
           </h1>
-          <p className="muted" style={{ margin: 0 }}>
-            Client companies, invites, and users per company.
-          </p>
         </div>
         <button
           type="button"

@@ -5,7 +5,7 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import PlatformUserAvatar from '../components/platform/PlatformUserAvatar.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
-import { KeyRound, Plus, Users, X } from 'lucide-react';
+import { Plus, Users, X } from 'lucide-react';
 
 function roleLabel(role) {
   if (role === 'admin') return 'Admin';
@@ -20,7 +20,6 @@ export default function PlatformUsers() {
   const [staff, setStaff] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [pwByUser, setPwByUser] = useState({});
   const [avatarListRev, setAvatarListRev] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [formFirst, setFormFirst] = useState('');
@@ -29,6 +28,14 @@ export default function PlatformUsers() {
   const [formPassword, setFormPassword] = useState('');
   const [formRole, setFormRole] = useState('admin');
   const [formAvatar, setFormAvatar] = useState(null);
+
+  const [editUser, setEditUser] = useState(null);
+  const [editFirst, setEditFirst] = useState('');
+  const [editLast, setEditLast] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState('admin');
+  const [editAvatarFile, setEditAvatarFile] = useState(null);
+  const [editRemoveAvatar, setEditRemoveAvatar] = useState(false);
 
   const loadStaff = useCallback(async () => {
     const { data } = await api.get('/api/platform/staff');
@@ -49,15 +56,18 @@ export default function PlatformUsers() {
   }, [ok, loadStaff]);
 
   useEffect(() => {
-    if (!modalOpen) return;
+    if (!modalOpen && !editUser) return;
     const onKey = (e) => {
-      if (e.key === 'Escape') setModalOpen(false);
+      if (e.key === 'Escape') {
+        if (editUser) closeEditModal();
+        else closeCreateModal();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [modalOpen]);
+  }, [modalOpen, editUser]);
 
-  function closeModal() {
+  function closeCreateModal() {
     setModalOpen(false);
     setError('');
     setFormFirst('');
@@ -66,6 +76,25 @@ export default function PlatformUsers() {
     setFormPassword('');
     setFormRole('admin');
     setFormAvatar(null);
+  }
+
+  function openEditModal(u) {
+    setModalOpen(false);
+    setError('');
+    setEditUser(u);
+    setEditFirst(u.firstName ?? '');
+    setEditLast(u.lastName ?? '');
+    setEditEmail(u.email ?? '');
+    setEditRole(u.role === 'employee' ? 'employee' : 'admin');
+    setEditAvatarFile(null);
+    setEditRemoveAvatar(false);
+  }
+
+  function closeEditModal() {
+    setEditUser(null);
+    setError('');
+    setEditAvatarFile(null);
+    setEditRemoveAvatar(false);
   }
 
   async function createUser(e) {
@@ -82,9 +111,37 @@ export default function PlatformUsers() {
       if (formAvatar) fd.append('avatar', formAvatar);
       await api.post('/api/platform/users', fd);
       await loadStaff();
-      closeModal();
+      closeCreateModal();
     } catch (err) {
       setError(err.response?.data?.error || 'Could not create user.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveEditUser(e) {
+    e.preventDefault();
+    if (!editUser) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.patch(`/api/platform/users/${editUser.id}`, {
+        firstName: editFirst.trim(),
+        lastName: editLast.trim(),
+        email: editEmail.trim(),
+        role: editRole,
+      });
+      if (editAvatarFile) {
+        const fd = new FormData();
+        fd.append('avatar', editAvatarFile);
+        await api.post(`/api/platform/users/${editUser.id}/avatar`, fd);
+      } else if (editRemoveAvatar && editUser.hasProfileAvatar) {
+        await api.delete(`/api/platform/users/${editUser.id}/avatar`);
+      }
+      await loadStaff();
+      closeEditModal();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not save user.');
     } finally {
       setBusy(false);
     }
@@ -96,19 +153,17 @@ export default function PlatformUsers() {
     <Layout user={user} onLogout={logout}>
       <div className="page-header-row">
         <div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
             <Users size={28} strokeWidth={1.75} aria-hidden />
             Users
           </h1>
-          <p className="muted" style={{ margin: 0 }}>
-            Platform team: create accounts, photos, and reset passwords.
-          </p>
         </div>
         <button
           type="button"
           className="btn btn-primary platform-header-cta"
           onClick={() => {
             setError('');
+            closeEditModal();
             setModalOpen(true);
           }}
         >
@@ -117,7 +172,11 @@ export default function PlatformUsers() {
         </button>
       </div>
 
-      {error && !modalOpen && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
+      {error && !modalOpen && !editUser && (
+        <p className="error" style={{ marginBottom: '1rem' }}>
+          {error}
+        </p>
+      )}
 
       <div className="card platform-users-card">
         <div className="table-wrap">
@@ -131,13 +190,12 @@ export default function PlatformUsers() {
                 <th scope="col">Email</th>
                 <th scope="col">User type</th>
                 <th scope="col">Joined</th>
-                <th scope="col">Password</th>
               </tr>
             </thead>
             <tbody>
               {staff.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="muted" style={{ padding: '1.5rem' }}>
+                  <td colSpan={5} className="muted" style={{ padding: '1.5rem' }}>
                     No users yet. Add one to get started.
                   </td>
                 </tr>
@@ -145,7 +203,19 @@ export default function PlatformUsers() {
               {staff.map((u) => {
                 const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || '—';
                 return (
-                  <tr key={u.id}>
+                  <tr
+                    key={u.id}
+                    className="platform-users-table__row platform-users-table__row--clickable"
+                    tabIndex={0}
+                    role="button"
+                    onClick={() => openEditModal(u)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openEditModal(u);
+                      }
+                    }}
+                  >
                     <td>
                       <div className="platform-users-table__avatar-cell">
                         <PlatformUserAvatar
@@ -173,46 +243,6 @@ export default function PlatformUsers() {
                           })
                         : '—'}
                     </td>
-                    <td>
-                      <div className="platform-users-table__pw">
-                        <input
-                          type="password"
-                          autoComplete="new-password"
-                          placeholder="Min 8 chars"
-                          value={pwByUser[`s-${u.id}`] || ''}
-                          onChange={(e) =>
-                            setPwByUser((prev) => ({ ...prev, [`s-${u.id}`]: e.target.value }))
-                          }
-                          aria-label={`New password for ${u.email}`}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-ghost platform-users-table__pw-btn"
-                          disabled={busy}
-                          onClick={() => {
-                            const p = pwByUser[`s-${u.id}`];
-                            if (!p || p.length < 8) {
-                              setError('Password must be at least 8 characters.');
-                              return;
-                            }
-                            setBusy(true);
-                            setError('');
-                            api
-                              .patch(`/api/platform/users/${u.id}/password`, { password: p })
-                              .then(() => {
-                                setPwByUser((prev) => ({ ...prev, [`s-${u.id}`]: '' }));
-                              })
-                              .catch((err) => {
-                                setError(err.response?.data?.error || 'Password update failed.');
-                              })
-                              .finally(() => setBusy(false));
-                          }}
-                        >
-                          <KeyRound size={16} aria-hidden />
-                          Set
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 );
               })}
@@ -225,8 +255,8 @@ export default function PlatformUsers() {
         <div
           className="modal-backdrop"
           role="presentation"
-          onClick={closeModal}
-          onKeyDown={(e) => e.key === 'Escape' && closeModal()}
+          onClick={closeCreateModal}
+          onKeyDown={(e) => e.key === 'Escape' && closeCreateModal()}
         >
           <div
             className="modal-dialog card"
@@ -242,7 +272,7 @@ export default function PlatformUsers() {
               <button
                 type="button"
                 className="btn btn-ghost modal-dialog__close"
-                onClick={closeModal}
+                onClick={closeCreateModal}
                 aria-label="Close"
               >
                 <X size={22} aria-hidden />
@@ -318,11 +348,125 @@ export default function PlatformUsers() {
                 </p>
               </div>
               <div className="modal-dialog__actions">
-                <button type="button" className="btn btn-ghost" onClick={closeModal} disabled={busy}>
+                <button type="button" className="btn btn-ghost" onClick={closeCreateModal} disabled={busy}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={busy}>
                   {busy ? 'Creating…' : 'Create user'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editUser && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={closeEditModal}
+          onKeyDown={(e) => e.key === 'Escape' && closeEditModal()}
+        >
+          <div
+            className="modal-dialog card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-user-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-dialog__head">
+              <h2 id="edit-user-title" style={{ margin: 0, fontSize: '1.15rem' }}>
+                Edit user
+              </h2>
+              <button
+                type="button"
+                className="btn btn-ghost modal-dialog__close"
+                onClick={closeEditModal}
+                aria-label="Close"
+              >
+                <X size={22} aria-hidden />
+              </button>
+            </div>
+            <p className="muted" style={{ marginTop: '0.35rem', marginBottom: '1rem' }}>
+              Update profile and role. Passwords can be changed by each user in Settings.
+            </p>
+            {error && editUser && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
+            <form onSubmit={saveEditUser}>
+              <div className="field">
+                <label htmlFor="edit-first">First name</label>
+                <input
+                  id="edit-first"
+                  value={editFirst}
+                  onChange={(e) => setEditFirst(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="edit-last">Last name</label>
+                <input
+                  id="edit-last"
+                  value={editLast}
+                  onChange={(e) => setEditLast(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="edit-email">Email</label>
+                <input
+                  id="edit-email"
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  required
+                  autoComplete="off"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="edit-role">User type</label>
+                <select
+                  id="edit-role"
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value)}
+                >
+                  <option value="admin">Admin</option>
+                  <option value="employee">Member</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="edit-avatar">Profile image</label>
+                <input
+                  key={editUser.id + (editRemoveAvatar ? '-rm' : '')}
+                  id="edit-avatar"
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  onChange={(e) => {
+                    setEditAvatarFile(e.target.files?.[0] || null);
+                    setEditRemoveAvatar(false);
+                  }}
+                />
+                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                  JPG, PNG, GIF, or WebP, up to 2&nbsp;MB. Leave empty to keep the current photo.
+                </p>
+                {editUser.hasProfileAvatar && !editAvatarFile && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ marginTop: '0.5rem' }}
+                    onClick={() => {
+                      setEditRemoveAvatar(true);
+                      setEditAvatarFile(null);
+                    }}
+                  >
+                    Remove photo
+                  </button>
+                )}
+              </div>
+              <div className="modal-dialog__actions">
+                <button type="button" className="btn btn-ghost" onClick={closeEditModal} disabled={busy}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={busy}>
+                  {busy ? 'Saving…' : 'Save changes'}
                 </button>
               </div>
             </form>

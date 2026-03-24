@@ -355,6 +355,19 @@ a:hover {
   font-weight: 600;
 }
 
+.platform-users-table__row--clickable {
+  cursor: pointer;
+}
+
+.platform-users-table__row--clickable:hover td {
+  background: var(--surface2);
+}
+
+.platform-users-table__row--clickable:focus-visible {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: -2px;
+}
+
 .platform-users-table__pw {
   display: flex;
   flex-wrap: wrap;
