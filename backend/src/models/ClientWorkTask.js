@@ -179,7 +179,7 @@ export async function getTaskListRow(taskId, organizationId) {
 
 export async function createTask(
   organizationId,
-  { title, body, notes, startDate, dueDate, assignedTo, taggedUserIds },
+  { title, body, notes, startDate, dueDate, assignedTo, taggedUserIds, status },
   createdByUserId
 ) {
   const t = trimTitle(title);
@@ -188,11 +188,12 @@ export async function createTask(
   const sd = parseDateInput(startDate);
   const dd = parseDateInput(dueDate);
   if (sd === false || dd === false) return null;
+  const st = normalizeTaskStatus(status);
 
   const { rows: posRows } = await query(
     `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
-     FROM client_work_tasks WHERE organization_id = $1 AND status = 'todo'`,
-    [organizationId]
+     FROM client_work_tasks WHERE organization_id = $1 AND status = $2`,
+    [organizationId, st]
   );
   const nextPos = posRows[0]?.next_pos ?? 0;
 
@@ -204,13 +205,14 @@ export async function createTask(
          organization_id, title, body, created_by, status, position,
          start_date, due_date, assigned_to
        )
-       VALUES ($1, $2, $3, $4, 'todo', $5, $6, $7, $8)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
       [
         organizationId,
         t,
         b,
         createdByUserId,
+        st,
         nextPos,
         sd === undefined ? null : sd,
         dd === undefined ? null : dd,
@@ -289,6 +291,16 @@ export async function updateTaskForOrg(taskId, organizationId, patch) {
     const s = normalizeTaskStatus(patch.status);
     parts.push(`status = $${n++}`);
     vals.push(s);
+    if (s !== existing.status && !('position' in patch)) {
+      const { rows: posRows } = await query(
+        `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
+         FROM client_work_tasks
+         WHERE organization_id = $1 AND status = $2`,
+        [organizationId, s]
+      );
+      parts.push(`position = $${n++}`);
+      vals.push(posRows[0]?.next_pos ?? 0);
+    }
   }
   if ('position' in patch) {
     const p = Number(patch.position);
@@ -538,6 +550,40 @@ export async function deleteCommentImage(imageId, commentId, taskId, organizatio
     [imageId, commentId, taskId, organizationId]
   );
   return rows[0]?.stored_filename || null;
+}
+
+export async function addTaskWatcher(taskId, organizationId, userId) {
+  await query(
+    `INSERT INTO client_work_task_watchers (task_id, user_id, organization_id)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (task_id, user_id) DO NOTHING`,
+    [taskId, userId, organizationId]
+  );
+}
+
+export async function removeTaskWatcher(taskId, organizationId, userId) {
+  await query(
+    `DELETE FROM client_work_task_watchers
+     WHERE task_id = $1 AND user_id = $2 AND organization_id = $3`,
+    [taskId, userId, organizationId]
+  );
+}
+
+export async function isUserWatchingTask(taskId, organizationId, userId) {
+  const { rows } = await query(
+    `SELECT 1 FROM client_work_task_watchers
+     WHERE task_id = $1 AND user_id = $2 AND organization_id = $3`,
+    [taskId, userId, organizationId]
+  );
+  return rows.length > 0;
+}
+
+export async function listWatcherUserIdsForTask(taskId, organizationId) {
+  const { rows } = await query(
+    `SELECT user_id FROM client_work_task_watchers WHERE task_id = $1 AND organization_id = $2`,
+    [taskId, organizationId]
+  );
+  return rows.map((r) => String(r.user_id));
 }
 
 export function newTaskImageFilename(taskId, ext) {

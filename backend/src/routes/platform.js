@@ -18,7 +18,9 @@ import * as Organization from '../models/Organization.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
 import * as ClientWorkTask from '../models/ClientWorkTask.js';
+import * as InAppNotification from '../models/InAppNotification.js';
 import * as PulseSession from '../models/PulseSession.js';
+import * as taskNotificationTriggers from '../services/taskNotificationTriggers.js';
 
 const router = Router();
 
@@ -88,6 +90,26 @@ router.get('/organizations', async (_req, res) => {
 });
 
 /** Logged-in platform user's tasks across client orgs (assignee = self). */
+router.get('/me/notifications', async (req, res) => {
+  const rows = await InAppNotification.listForUser(req.user.id, { limit: req.query.limit });
+  const unreadCount = await InAppNotification.countUnreadForUser(req.user.id);
+  res.json({
+    notifications: rows.map(InAppNotification.publicNotification),
+    unreadCount,
+  });
+});
+
+router.patch('/me/notifications/:id/read', async (req, res) => {
+  const ok = await InAppNotification.markRead(req.params.id, req.user.id);
+  if (!ok) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+router.post('/me/notifications/read-all', async (req, res) => {
+  await InAppNotification.markAllReadForUser(req.user.id);
+  res.json({ ok: true });
+});
+
 router.get('/me/tasks-dashboard', async (req, res) => {
   const weekStart = req.query.weekStart;
   const weekEnd = req.query.weekEnd;
@@ -458,10 +480,14 @@ function publicAssignableUser(row) {
   };
 }
 
-async function buildTaskDetail(orgId, taskId) {
+async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
   const row = await ClientWorkTask.getTaskListRow(taskId, orgId);
   if (!row) return null;
   const base = publicClientTask(row);
+  let watching = false;
+  if (viewerUserId) {
+    watching = await ClientWorkTask.isUserWatchingTask(taskId, orgId, viewerUserId);
+  }
   const imgs = await ClientWorkTask.listTaskImages(taskId, orgId);
   const comments = await ClientWorkTask.listCommentsForTask(taskId, orgId);
   const cids = comments.map((c) => c.id);
@@ -505,6 +531,7 @@ async function buildTaskDetail(orgId, taskId) {
   }));
   return {
     ...base,
+    watching,
     images: imgs.map((i) => ({
       id: i.id,
       sortOrder: i.sort_order,
@@ -666,11 +693,21 @@ router.post('/organizations/:id/tasks', requireBodyFields(['title']), async (req
       dueDate: b.dueDate,
       assignedTo: b.assignedTo || null,
       taggedUserIds: tagged,
+      status: b.status,
     },
     req.user.id
   );
   if (!row) return res.status(400).json({ error: 'Invalid task' });
-  const detail = await buildTaskDetail(req.params.id, row.id);
+  const detail = await buildTaskDetail(req.params.id, row.id, req.user.id);
+  if (detail?.assignedTo?.id) {
+    taskNotificationTriggers.scheduleNotifyTaskAssigned({
+      organizationId: req.params.id,
+      taskId: row.id,
+      assigneeId: detail.assignedTo.id,
+      actorId: req.user.id,
+      taskTitle: detail.title,
+    });
+  }
   res.status(201).json({ task: detail || publicClientTask(row) });
 });
 
@@ -691,8 +728,28 @@ router.patch('/organizations/:id/tasks/reorder', async (req, res) => {
 router.get('/organizations/:id/tasks/:taskId', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
-  const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
   if (!detail) return res.status(404).json({ error: 'Task not found' });
+  res.json({ task: detail });
+});
+
+router.post('/organizations/:id/tasks/:taskId/watch', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const task = await ClientWorkTask.getTaskForOrg(req.params.taskId, req.params.id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  await ClientWorkTask.addTaskWatcher(req.params.taskId, req.params.id, req.user.id);
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
+  res.json({ task: detail });
+});
+
+router.delete('/organizations/:id/tasks/:taskId/watch', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const task = await ClientWorkTask.getTaskForOrg(req.params.taskId, req.params.id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  await ClientWorkTask.removeTaskWatcher(req.params.taskId, req.params.id, req.user.id);
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
   res.json({ task: detail });
 });
 
@@ -726,9 +783,38 @@ router.patch('/organizations/:id/tasks/:taskId', async (req, res) => {
   if (!Object.keys(patch).length) {
     return res.status(400).json({ error: 'Nothing to update' });
   }
+  const beforeRow = await ClientWorkTask.getTaskListRow(req.params.taskId, req.params.id);
+  if (!beforeRow) return res.status(404).json({ error: 'Task not found' });
   const row = await ClientWorkTask.updateTaskForOrg(req.params.taskId, req.params.id, patch);
   if (!row) return res.status(404).json({ error: 'Task not found' });
-  const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+  const afterRow = await ClientWorkTask.getTaskListRow(req.params.taskId, req.params.id);
+
+  const oldA = beforeRow.assignee_id != null ? String(beforeRow.assignee_id) : null;
+  const newA = afterRow.assignee_id != null ? String(afterRow.assignee_id) : null;
+  if (newA !== oldA && newA) {
+    taskNotificationTriggers.scheduleNotifyTaskAssigned({
+      organizationId: req.params.id,
+      taskId: req.params.taskId,
+      assigneeId: newA,
+      actorId: req.user.id,
+      taskTitle: afterRow.title,
+    });
+  }
+
+  const notifyKeys = new Set(['title', 'body', 'notes', 'status', 'startDate', 'dueDate', 'assignedTo']);
+  const shouldNotifyWatchers = Object.keys(patch).some((k) => notifyKeys.has(k));
+  if (shouldNotifyWatchers) {
+    taskNotificationTriggers.scheduleNotifyTaskUpdatesForWatchers({
+      organizationId: req.params.id,
+      taskId: req.params.taskId,
+      actorId: req.user.id,
+      beforeRow,
+      afterRow,
+      taskTitle: afterRow.title,
+    });
+  }
+
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
   res.json({ task: detail || publicClientTask(row) });
 });
 
@@ -836,7 +922,16 @@ router.post('/organizations/:id/tasks/:taskId/comments', async (req, res) => {
     mentionIds
   );
   if (!commentId) return res.status(404).json({ error: 'Task not found' });
-  const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+  const taskRow = await ClientWorkTask.getTaskListRow(req.params.taskId, req.params.id);
+  taskNotificationTriggers.scheduleNotifyNewComment({
+    organizationId: req.params.id,
+    taskId: req.params.taskId,
+    commentId,
+    authorId: req.user.id,
+    mentionUserIds: mentionIds,
+    taskTitle: taskRow?.title || 'Task',
+  });
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
   res.status(201).json({ comment: { id: commentId }, task: detail });
 });
 
@@ -878,7 +973,7 @@ router.post(
       }
       return res.status(404).json({ error: 'Comment not found' });
     }
-    const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+    const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
     res.status(201).json({ task: detail });
   }
 );
@@ -925,7 +1020,7 @@ router.delete('/organizations/:id/tasks/:taskId/comments/:commentId/images/:imag
   } catch {
     /* ignore */
   }
-  const detail = await buildTaskDetail(req.params.id, req.params.taskId);
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
   res.json({ task: detail });
 });
 

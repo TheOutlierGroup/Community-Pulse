@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import Navigation from './Navigation.jsx';
+import PlatformNotificationBell from './PlatformNotificationBell.jsx';
 import { getPostLoginPath } from '../../utils/postLogin.js';
 import outlierLogo from '../../images/outlier-logo.png';
 
@@ -33,6 +34,12 @@ export default function Layout({ children, user, onLogout, hideHeader = false })
           </div>
         </aside>
         <div className="app-content">
+          <header className="app-topbar">
+            <div className="app-topbar__fill" aria-hidden />
+            {user.organizationKind === 'platform' && user.role === 'admin' ? (
+              <PlatformNotificationBell />
+            ) : null}
+          </header>
           <main className="app-main">{children}</main>
         </div>
       </div>
