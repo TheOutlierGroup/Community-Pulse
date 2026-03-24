@@ -19,6 +19,7 @@ export default function PlatformClients() {
   const [modalOpen, setModalOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
   const [newOrgAdminEmail, setNewOrgAdminEmail] = useState('');
+  const [newOrgLogo, setNewOrgLogo] = useState(null);
 
   const loadOrgs = useCallback(async () => {
     const { data } = await api.get('/api/platform/organizations');
@@ -45,6 +46,7 @@ export default function PlatformClients() {
         setError('');
         setNewOrgName('');
         setNewOrgAdminEmail('');
+        setNewOrgLogo(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -56,6 +58,7 @@ export default function PlatformClients() {
     setError('');
     setNewOrgName('');
     setNewOrgAdminEmail('');
+    setNewOrgLogo(null);
   }
 
   function openClient(orgId) {
@@ -67,9 +70,11 @@ export default function PlatformClients() {
     setBusy(true);
     setError('');
     try {
-      const body = { name: newOrgName.trim() };
-      if (newOrgAdminEmail.trim()) body.adminEmail = newOrgAdminEmail.trim();
-      const { data } = await api.post('/api/platform/organizations', body);
+      const fd = new FormData();
+      fd.append('name', newOrgName.trim());
+      if (newOrgAdminEmail.trim()) fd.append('adminEmail', newOrgAdminEmail.trim());
+      if (newOrgLogo) fd.append('logo', newOrgLogo);
+      const { data } = await api.post('/api/platform/organizations', fd);
       await loadOrgs();
       const companyName = newOrgName.trim();
       const fullInvite = data.inviteUrl
@@ -175,7 +180,7 @@ export default function PlatformClients() {
       {modalOpen && (
         <div className="modal-backdrop" role="presentation" onClick={closeCreateModal}>
           <div
-            className="modal-dialog card"
+            className="modal-dialog modal-dialog--wide card"
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-company-title"
@@ -195,7 +200,7 @@ export default function PlatformClients() {
               </button>
             </div>
             <p className="muted" style={{ marginTop: '0.35rem', marginBottom: '1rem' }}>
-              Add a client organization. Optionally invite a first admin by email.
+              Add a client organization, optional logo, and optionally invite a first admin by email.
             </p>
             {error && modalOpen && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
             <form onSubmit={createOrg}>
@@ -219,6 +224,18 @@ export default function PlatformClients() {
                   placeholder="invite@client.com"
                   autoComplete="off"
                 />
+              </div>
+              <div className="field">
+                <label htmlFor="c-logo">Company logo (optional)</label>
+                <input
+                  id="c-logo"
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  onChange={(e) => setNewOrgLogo(e.target.files?.[0] || null)}
+                />
+                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                  JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
+                </p>
               </div>
               <div className="modal-dialog__actions">
                 <button type="button" className="btn btn-ghost" onClick={closeCreateModal} disabled={busy}>

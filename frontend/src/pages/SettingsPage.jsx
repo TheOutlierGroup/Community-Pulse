@@ -3,42 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import api from '../services/api.js';
-import { Settings, UserCircle } from 'lucide-react';
-
-function sniffImageMime(arrayBuffer) {
-  const buf = new Uint8Array(arrayBuffer);
-  const n = buf.byteLength;
-  if (n < 12) return null;
-  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
-  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
-  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
-  if (
-    buf[0] === 0x52 &&
-    buf[1] === 0x49 &&
-    buf[2] === 0x46 &&
-    buf[3] === 0x46 &&
-    buf[8] === 0x57 &&
-    buf[9] === 0x45 &&
-    buf[10] === 0x42 &&
-    buf[11] === 0x50
-  ) {
-    return 'image/webp';
-  }
-  return null;
-}
-
-function jsonErrorFromBuffer(arrayBuffer) {
-  const head = new TextDecoder()
-    .decode(arrayBuffer.slice(0, Math.min(arrayBuffer.byteLength, 2048)))
-    .trim();
-  if (!head.startsWith('{')) return null;
-  try {
-    const j = JSON.parse(head);
-    return typeof j.error === 'string' ? j.error : null;
-  } catch {
-    return null;
-  }
-}
+import { Settings, UserCircle, Building2 } from 'lucide-react';
+import { jsonErrorFromBuffer, sniffImageMime } from '../utils/imageResponseHelpers.js';
 
 export default function SettingsPage() {
   const { user, logout, loading, setCurrentUser } = useAuth();
@@ -60,6 +26,12 @@ export default function SettingsPage() {
   const [passwordMessage, setPasswordMessage] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [avatarLoadError, setAvatarLoadError] = useState('');
+  const companyLogoInputRef = useRef(null);
+  const companyLogoBlobRef = useRef(null);
+  const [companyLogoPreview, setCompanyLogoPreview] = useState(null);
+  const [companyLogoRev, setCompanyLogoRev] = useState(0);
+  const [companyLogoLoadError, setCompanyLogoLoadError] = useState('');
+  const [companyLogoBusy, setCompanyLogoBusy] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) navigate('/');
@@ -141,6 +113,81 @@ export default function SettingsPage() {
       setAvatarPreview(null);
     };
   }, [user?.hasProfileAvatar, avatarRev]);
+
+  useEffect(() => {
+    if (user?.organizationKind !== 'client' || !user?.organizationHasCompanyLogo) {
+      if (companyLogoBlobRef.current) {
+        URL.revokeObjectURL(companyLogoBlobRef.current);
+        companyLogoBlobRef.current = null;
+      }
+      setCompanyLogoPreview(null);
+      setCompanyLogoLoadError('');
+      return;
+    }
+    let cancelled = false;
+    setCompanyLogoLoadError('');
+    api
+      .get('/api/auth/me/organization-logo', {
+        responseType: 'arraybuffer',
+        params: { v: companyLogoRev },
+      })
+      .then((res) => {
+        if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+        const ab = res.data;
+        if (!(ab instanceof ArrayBuffer) || ab.byteLength === 0) throw new Error('empty');
+        const jsonErr = jsonErrorFromBuffer(ab);
+        if (jsonErr) throw new Error(jsonErr);
+        const mime = sniffImageMime(ab);
+        if (!mime) throw new Error('not image data');
+        const ct = (res.headers['content-type'] || '').toLowerCase();
+        const blobType =
+          ct.startsWith('image/') && !ct.includes('json') ? ct.split(';')[0].trim() : mime;
+        const blob = new Blob([ab], { type: blobType });
+        const url = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        if (companyLogoBlobRef.current) URL.revokeObjectURL(companyLogoBlobRef.current);
+        companyLogoBlobRef.current = url;
+        setCompanyLogoPreview(url);
+        setCompanyLogoLoadError('');
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          if (companyLogoBlobRef.current) {
+            URL.revokeObjectURL(companyLogoBlobRef.current);
+            companyLogoBlobRef.current = null;
+          }
+          setCompanyLogoPreview(null);
+          const status = err.response?.status;
+          let msg = 'Could not load company logo.';
+          if (status === 404) {
+            msg = 'Company logo not found. Upload again if needed.';
+          } else if (status === 401 || status === 403) {
+            msg = 'Not allowed to load company logo. Sign in again.';
+          } else if (
+            err.message &&
+            !String(err.message).startsWith('Request failed with status code')
+          ) {
+            msg = err.message;
+          }
+          setCompanyLogoLoadError(msg);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.organizationKind, user?.organizationHasCompanyLogo, companyLogoRev]);
+
+  useEffect(() => {
+    return () => {
+      if (companyLogoBlobRef.current) {
+        URL.revokeObjectURL(companyLogoBlobRef.current);
+        companyLogoBlobRef.current = null;
+      }
+    };
+  }, []);
 
   if (loading || !user) return null;
 
@@ -243,6 +290,50 @@ export default function SettingsPage() {
     }
   }
 
+  async function onCompanyLogoFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError('');
+    setMessage('');
+    setCompanyLogoBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('logo', file);
+      const { data } = await api.post('/api/auth/me/organization-logo', fd);
+      setCurrentUser(data.user);
+      setCompanyLogoLoadError('');
+      setCompanyLogoRev((n) => n + 1);
+      setMessage('Company logo updated.');
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Could not upload company logo.';
+      setError(msg);
+    } finally {
+      setCompanyLogoBusy(false);
+    }
+  }
+
+  async function removeCompanyLogo() {
+    setError('');
+    setMessage('');
+    setCompanyLogoBusy(true);
+    try {
+      const { data } = await api.delete('/api/auth/me/organization-logo');
+      setCurrentUser(data.user);
+      if (companyLogoBlobRef.current) {
+        URL.revokeObjectURL(companyLogoBlobRef.current);
+        companyLogoBlobRef.current = null;
+      }
+      setCompanyLogoPreview(null);
+      setCompanyLogoLoadError('');
+      setMessage('Company logo removed.');
+    } catch {
+      setError('Could not remove company logo.');
+    } finally {
+      setCompanyLogoBusy(false);
+    }
+  }
+
   return (
     <Layout user={user} onLogout={logout}>
       <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -335,6 +426,67 @@ export default function SettingsPage() {
           </div>
         </form>
       </div>
+      {user.organizationKind === 'client' && user.role === 'admin' && (
+        <div className="card" style={{ maxWidth: 480, marginBottom: '1.25rem' }}>
+          <h2 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Building2 size={22} strokeWidth={1.75} aria-hidden />
+            Company logo
+          </h2>
+          <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+            Logo for {user.organizationName || 'your organization'}. Your team and Outlier platform staff can see it
+            in the client workspace.
+          </p>
+          {companyLogoLoadError && (
+            <p className="error" style={{ marginBottom: '0.75rem' }}>
+              {companyLogoLoadError}
+            </p>
+          )}
+          <div className="company-logo-preview-wrap">
+            {companyLogoPreview ? (
+              <img src={companyLogoPreview} alt="" className="company-logo-preview" />
+            ) : (
+              <span className="muted" style={{ fontSize: '0.9rem' }}>
+                No logo uploaded yet.
+              </span>
+            )}
+          </div>
+          <input
+            ref={companyLogoInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="visually-hidden"
+            onChange={onCompanyLogoFile}
+            disabled={companyLogoBusy}
+          />
+          <div className="settings-avatar-actions" style={{ marginTop: '0.25rem' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={companyLogoBusy}
+              onClick={() => companyLogoInputRef.current?.click()}
+            >
+              {companyLogoBusy
+                ? 'Working…'
+                : user.organizationHasCompanyLogo
+                  ? 'Change logo'
+                  : 'Upload logo'}
+            </button>
+            {user.organizationHasCompanyLogo && (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={companyLogoBusy}
+                onClick={removeCompanyLogo}
+              >
+                Remove logo
+              </button>
+            )}
+          </div>
+          <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.75rem', marginBottom: 0 }}>
+            JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
+          </p>
+        </div>
+      )}
       <div className="card" style={{ maxWidth: 480, marginBottom: '1.25rem' }}>
         <h2 className="settings-section-title">Password</h2>
         {(passwordMessage || passwordError) && (

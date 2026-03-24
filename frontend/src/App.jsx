@@ -8,7 +8,11 @@ import AdminHome from './pages/AdminHome.jsx';
 import AdminSession from './pages/AdminSession.jsx';
 import PlatformHome from './pages/PlatformHome.jsx';
 import PlatformClients from './pages/PlatformClients.jsx';
-import PlatformClientDashboard from './pages/PlatformClientDashboard.jsx';
+import PlatformClientLayout from './pages/PlatformClientLayout.jsx';
+import PlatformClientOverview from './pages/PlatformClientOverview.jsx';
+import PlatformClientUsers from './pages/PlatformClientUsers.jsx';
+import PlatformClientTasks from './pages/PlatformClientTasks.jsx';
+import PlatformClientPulse from './pages/PlatformClientPulse.jsx';
 import PlatformUsers from './pages/PlatformUsers.jsx';
 import ClientHome from './pages/ClientHome.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
@@ -24,7 +28,12 @@ export default function App() {
           <Route path="/invite/:token" element={<InviteAccept />} />
           <Route path="/pulse" element={<EmployeePulse />} />
           <Route path="/platform" element={<PlatformHome />} />
-          <Route path="/platform/clients/:orgId" element={<PlatformClientDashboard />} />
+          <Route path="/platform/clients/:orgId" element={<PlatformClientLayout />}>
+            <Route index element={<PlatformClientOverview />} />
+            <Route path="users" element={<PlatformClientUsers />} />
+            <Route path="tasks" element={<PlatformClientTasks />} />
+            <Route path="pulse" element={<PlatformClientPulse />} />
+          </Route>
           <Route path="/platform/clients" element={<PlatformClients />} />
           <Route path="/platform/users" element={<PlatformUsers />} />
           <Route path="/settings" element={<SettingsPage />} />

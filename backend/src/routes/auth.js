@@ -6,9 +6,12 @@ import rateLimit from 'express-rate-limit';
 import { signToken, requireAuth } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
 import { uploadAvatarMiddleware } from '../middleware/avatarUpload.js';
-import { avatarFilePath, ensureStorageDirs } from '../config/storage.js';
+import multer from 'multer';
+import { avatarFilePath, ensureStorageDirs, orgLogoFilePath } from '../config/storage.js';
+import { extensionForUpload } from '../middleware/avatarUpload.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
+import * as Organization from '../models/Organization.js';
 
 const router = Router();
 
@@ -30,6 +33,7 @@ function publicUser(u) {
     firstName: u.first_name ?? '',
     lastName: u.last_name ?? '',
     hasProfileAvatar: Boolean(u.profile_avatar_filename),
+    organizationHasCompanyLogo: Boolean(u.organization_company_logo_filename),
   };
 }
 
@@ -168,6 +172,101 @@ router.delete('/me/avatar', requireAuth, async (req, res) => {
   if (prev) {
     try {
       fs.unlinkSync(avatarFilePath(prev));
+    } catch {
+      /* ignore */
+    }
+  }
+  const full = await User.findUserByIdWithOrg(req.user.id);
+  res.json({ user: publicUser(full) });
+});
+
+function requireClientAdmin(req, res, next) {
+  if (req.user?.organizationKind !== 'client' || req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Client admin only' });
+  }
+  next();
+}
+
+const orgLogoClientUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (extensionForUpload(file)) cb(null, true);
+    else cb(new Error('Only JPEG, PNG, GIF, or WebP are allowed'));
+  },
+}).single('logo');
+
+router.get('/me/organization-logo', requireAuth, async (req, res) => {
+  if (req.user.organizationKind !== 'client') {
+    return res.status(403).end();
+  }
+  const org = await Organization.getOrganization(req.user.organizationId);
+  if (!org?.company_logo_filename) return res.status(404).end();
+  const safeName = path.basename(org.company_logo_filename);
+  const full = path.resolve(orgLogoFilePath(safeName));
+  const { orgLogosDir } = ensureStorageDirs();
+  const root = path.resolve(orgLogosDir);
+  const rel = path.relative(root, full);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return res.status(403).end();
+  }
+  if (!fs.existsSync(full)) return res.status(404).end();
+  res.setHeader('Content-Type', avatarContentType(safeName));
+  res.setHeader('Cache-Control', 'private, no-cache');
+  res.sendFile(full);
+});
+
+router.post(
+  '/me/organization-logo',
+  requireAuth,
+  requireClientAdmin,
+  (req, res, next) => {
+    orgLogoClientUpload(req, res, (err) => {
+      if (err) {
+        const msg =
+          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 2MB or smaller' : err.message;
+        return res.status(400).json({ error: msg || 'Upload failed' });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const orgId = req.user.organizationId;
+    const ext = extensionForUpload(req.file);
+    const base = `org-${orgId}${ext || '.png'}`;
+    const org = await Organization.getOrganization(orgId);
+    if (!org || org.kind !== 'client') {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    const prev = org.company_logo_filename;
+    try {
+      if (prev && prev !== base) {
+        try {
+          fs.unlinkSync(orgLogoFilePath(prev));
+        } catch {
+          /* ignore */
+        }
+      }
+      fs.writeFileSync(orgLogoFilePath(base), req.file.buffer);
+      await Organization.setCompanyLogoFilename(orgId, base);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: 'Could not save logo' });
+    }
+    const full = await User.findUserByIdWithOrg(req.user.id);
+    res.json({ user: publicUser(full) });
+  }
+);
+
+router.delete('/me/organization-logo', requireAuth, requireClientAdmin, async (req, res) => {
+  const orgId = req.user.organizationId;
+  const prev = await Organization.clearCompanyLogoFilename(orgId);
+  if (prev) {
+    try {
+      fs.unlinkSync(orgLogoFilePath(prev));
     } catch {
       /* ignore */
     }

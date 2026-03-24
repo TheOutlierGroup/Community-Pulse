@@ -21,7 +21,8 @@ export async function findUserByEmailWithOrg(email) {
   const { rows } = await query(
     `SELECT u.id, u.email, u.password_hash, u.role, u.organization_id,
             u.first_name, u.last_name, u.profile_avatar_filename,
-            o.kind AS organization_kind, o.name AS organization_name
+            o.kind AS organization_kind, o.name AS organization_name,
+            o.company_logo_filename AS organization_company_logo_filename
      FROM users u
      JOIN organizations o ON o.id = u.organization_id
      WHERE u.email = $1 AND u.deactivated_at IS NULL`,
@@ -44,7 +45,8 @@ export async function findUserByIdWithOrg(id) {
   const { rows } = await query(
     `SELECT u.id, u.email, u.role, u.organization_id, u.created_at,
             u.first_name, u.last_name, u.profile_avatar_filename, u.deactivated_at,
-            o.kind AS organization_kind, o.name AS organization_name
+            o.kind AS organization_kind, o.name AS organization_name,
+            o.company_logo_filename AS organization_company_logo_filename
      FROM users u
      JOIN organizations o ON o.id = u.organization_id
      WHERE u.id = $1`,

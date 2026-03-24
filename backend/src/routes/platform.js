@@ -8,7 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth, requirePlatformAdmin } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
 import { extensionForUpload } from '../middleware/avatarUpload.js';
-import { avatarFilePath, ensureStorageDirs } from '../config/storage.js';
+import { avatarFilePath, ensureStorageDirs, orgLogoFilePath } from '../config/storage.js';
 import * as Organization from '../models/Organization.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
@@ -59,14 +59,47 @@ const platformUserCreateUpload = multer({
   },
 }).single('avatar');
 
+const orgLogoPlatformUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (extensionForUpload(file)) cb(null, true);
+    else cb(new Error('Only JPEG, PNG, GIF, or WebP are allowed'));
+  },
+}).single('logo');
+
 router.get('/organizations', async (_req, res) => {
   const rows = await Organization.listOrganizationsByKind('client');
   res.json({ organizations: rows });
 });
 
-router.post('/organizations', requireBodyFields(['name']), async (req, res) => {
-  const { name, adminEmail } = req.body;
-  const org = await Organization.createOrganization(name.trim(), {}, 'client');
+router.post('/organizations', (req, res, next) => {
+  orgLogoPlatformUpload(req, res, (err) => {
+    if (err) {
+      const msg =
+        err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 2MB or smaller' : err.message;
+      return res.status(400).json({ error: msg || 'Upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  const name = req.body.name;
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+  const adminEmail = req.body.adminEmail;
+  let org = await Organization.createOrganization(name.trim(), {}, 'client');
+  if (req.file) {
+    const ext = extensionForUpload(req.file);
+    const base = `org-${org.id}${ext || '.png'}`;
+    try {
+      fs.writeFileSync(orgLogoFilePath(base), req.file.buffer);
+      const updated = await Organization.setCompanyLogoFilename(org.id, base);
+      if (updated) org = updated;
+    } catch (e) {
+      console.error(e);
+    }
+  }
   if (adminEmail && String(adminEmail).trim()) {
     const existing = await User.findUserByEmail(adminEmail);
     if (existing) {
@@ -174,6 +207,76 @@ router.get('/organizations/:id', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
   res.json({ organization: org });
+});
+
+router.get('/organizations/:id/logo', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org || !org.company_logo_filename) return res.status(404).end();
+  const safeName = path.basename(org.company_logo_filename);
+  const full = path.resolve(orgLogoFilePath(safeName));
+  const { orgLogosDir } = ensureStorageDirs();
+  const root = path.resolve(orgLogosDir);
+  const rel = path.relative(root, full);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return res.status(403).end();
+  }
+  if (!fs.existsSync(full)) return res.status(404).end();
+  res.setHeader('Content-Type', platformAvatarContentType(safeName));
+  res.setHeader('Cache-Control', 'private, no-cache');
+  res.sendFile(full);
+});
+
+router.post(
+  '/organizations/:id/logo',
+  (req, res, next) => {
+    orgLogoPlatformUpload(req, res, (err) => {
+      if (err) {
+        const msg =
+          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 2MB or smaller' : err.message;
+        return res.status(400).json({ error: msg || 'Upload failed' });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    const org = await assertClientOrganizationPlatform(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const ext = extensionForUpload(req.file);
+    const base = `org-${org.id}${ext || '.png'}`;
+    try {
+      if (org.company_logo_filename && org.company_logo_filename !== base) {
+        try {
+          fs.unlinkSync(orgLogoFilePath(org.company_logo_filename));
+        } catch {
+          /* ignore */
+        }
+      }
+      fs.writeFileSync(orgLogoFilePath(base), req.file.buffer);
+      const updated = await Organization.setCompanyLogoFilename(org.id, base);
+      res.json({ organization: updated });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Could not save logo' });
+    }
+  }
+);
+
+router.delete('/organizations/:id/logo', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const prev = await Organization.clearCompanyLogoFilename(req.params.id);
+  if (prev) {
+    try {
+      fs.unlinkSync(orgLogoFilePath(prev));
+    } catch {
+      /* ignore */
+    }
+  }
+  const updated = await Organization.getOrganization(req.params.id);
+  res.json({ organization: updated });
 });
 
 router.get('/organizations/:id/pulse-sessions', async (req, res) => {

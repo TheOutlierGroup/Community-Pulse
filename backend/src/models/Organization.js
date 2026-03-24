@@ -15,10 +15,26 @@ export async function getOrganization(id) {
 
 export async function listOrganizationsByKind(kind) {
   const { rows } = await query(
-    `SELECT id, name, kind, settings, created_at FROM organizations WHERE kind = $1 ORDER BY created_at ASC`,
+    `SELECT id, name, kind, settings, created_at, company_logo_filename
+     FROM organizations WHERE kind = $1 ORDER BY created_at ASC`,
     [kind]
   );
   return rows;
+}
+
+export async function setCompanyLogoFilename(id, filename) {
+  const { rows } = await query(
+    `UPDATE organizations SET company_logo_filename = $2 WHERE id = $1 AND kind = 'client' RETURNING *`,
+    [id, filename]
+  );
+  return rows[0] || null;
+}
+
+export async function clearCompanyLogoFilename(id) {
+  const org = await getOrganization(id);
+  const prev = org?.company_logo_filename || null;
+  await query(`UPDATE organizations SET company_logo_filename = NULL WHERE id = $1`, [id]);
+  return prev;
 }
 
 export async function updateOrganizationClient(id, { name, settings } = {}) {
