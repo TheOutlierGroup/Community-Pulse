@@ -1721,6 +1721,24 @@ input[type='range'] {
   font-size: 0.95rem;
 }
 
+.platform-dashboard-task-row--clickable {
+  cursor: pointer;
+}
+
+.platform-dashboard-task-row--clickable:hover td {
+  background: var(--surface2);
+}
+
+.platform-dashboard-task-row--clickable:focus-visible {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: -2px;
+}
+
+.platform-dashboard-task-row__title {
+  font-weight: 600;
+  color: var(--text);
+}
+
 .platform-pulse-toggle-row {
   margin: 1rem 0;
 }

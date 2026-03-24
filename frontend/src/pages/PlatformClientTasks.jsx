@@ -144,7 +144,7 @@ function SortableTaskCard({ id, task, onOpenTask }) {
         {dateLine ? <p className="task-board__card-dates muted">{dateLine}</p> : null}
         {extras ? <p className="task-board__card-meta muted">{extras}</p> : null}
         <p className="task-board__card-meta muted">
-          {task.createdByEmail ? `Added by ${task.createdByEmail}` : 'Added'}
+          {task.createdBy ? `Added by ${userLabel(task.createdBy) || 'Unknown'}` : 'Added'}
           {task.createdAt
             ? ` · ${new Date(task.createdAt).toLocaleDateString(undefined, {
                 month: 'short',

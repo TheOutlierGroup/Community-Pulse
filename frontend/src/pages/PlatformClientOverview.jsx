@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { ClipboardList, Users } from 'lucide-react';
@@ -52,6 +52,7 @@ function assigneeLabel(a) {
 
 export default function PlatformClientOverview() {
   const { org, orgId, clientLogoUrl } = useOutletContext();
+  const navigate = useNavigate();
   const week = useMemo(() => getLocalWeekRange(), []);
   const [dash, setDash] = useState(null);
   const [dashError, setDashError] = useState('');
@@ -145,14 +146,24 @@ export default function PlatformClientOverview() {
                 </thead>
                 <tbody>
                   {dash.tasksDueThisWeek.map((t) => (
-                    <tr key={t.id}>
+                    <tr
+                      key={t.id}
+                      className="platform-dashboard-task-row platform-dashboard-task-row--clickable"
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Open task: ${t.title}`}
+                      onClick={() =>
+                        navigate(`/platform/clients/${orgId}/tasks?task=${encodeURIComponent(t.id)}`)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          navigate(`/platform/clients/${orgId}/tasks?task=${encodeURIComponent(t.id)}`);
+                        }
+                      }}
+                    >
                       <td>
-                        <Link
-                          to={`/platform/clients/${orgId}/tasks?task=${encodeURIComponent(t.id)}`}
-                          className="platform-client-dashboard__task-link"
-                        >
-                          {t.title}
-                        </Link>
+                        <span className="platform-dashboard-task-row__title">{t.title}</span>
                       </td>
                       <td className="muted" style={{ whiteSpace: 'nowrap' }}>
                         {t.dueDate

@@ -44,6 +44,8 @@ const LIST_SELECT = `
          t.start_date, t.due_date, t.assigned_to,
          t.created_at, t.updated_at, t.created_by,
          u.email AS created_by_email,
+         u.first_name AS created_by_first_name,
+         u.last_name AS created_by_last_name,
          ua.id AS assignee_id, ua.email AS assignee_email,
          ua.first_name AS assignee_first_name, ua.last_name AS assignee_last_name,
          oa.kind AS assignee_org_kind,

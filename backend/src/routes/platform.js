@@ -363,6 +363,16 @@ function publicAssignee(row) {
   };
 }
 
+function publicCreatedBy(row) {
+  if (!row.created_by) return null;
+  return {
+    id: row.created_by,
+    email: row.created_by_email ?? '',
+    firstName: row.created_by_first_name ?? '',
+    lastName: row.created_by_last_name ?? '',
+  };
+}
+
 function publicClientTask(row) {
   let tagged = row.tagged_users_json;
   if (typeof tagged === 'string') {
@@ -394,6 +404,7 @@ function publicClientTask(row) {
     commentCount: row.comment_count ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    createdBy: publicCreatedBy(row),
     createdByEmail: row.created_by_email ?? null,
   };
 }

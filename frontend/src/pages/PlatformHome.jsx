@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
+import ClientTaskDetailPanel from '../components/platform/ClientTaskDetailPanel.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { CalendarRange, LayoutDashboard, ListTodo } from 'lucide-react';
 
@@ -55,6 +56,10 @@ export default function PlatformHome() {
   const [dashLoading, setDashLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const [detailOrgId, setDetailOrgId] = useState(null);
+  const [detailTaskId, setDetailTaskId] = useState(null);
+  const [assignableUsers, setAssignableUsers] = useState([]);
+
   const load = useCallback(async () => {
     setError('');
     setDashLoading(true);
@@ -74,6 +79,36 @@ export default function PlatformHome() {
   useEffect(() => {
     if (ok) load();
   }, [ok, load]);
+
+  const openTaskDetail = useCallback((organizationId, taskId) => {
+    setDetailOrgId(organizationId);
+    setDetailTaskId(taskId);
+  }, []);
+
+  const closeTaskDetail = useCallback(() => {
+    setDetailOrgId(null);
+    setDetailTaskId(null);
+    setAssignableUsers([]);
+  }, []);
+
+  useEffect(() => {
+    if (!detailOrgId) {
+      setAssignableUsers([]);
+      return undefined;
+    }
+    let cancelled = false;
+    api
+      .get(`/api/platform/organizations/${detailOrgId}/tasks/assignable-users`)
+      .then(({ data }) => {
+        if (!cancelled) setAssignableUsers(data.users || []);
+      })
+      .catch(() => {
+        if (!cancelled) setAssignableUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detailOrgId]);
 
   if (loading || !ok) return null;
 
@@ -139,15 +174,23 @@ export default function PlatformHome() {
                 </thead>
                 <tbody>
                   {dash.tasksDueThisWeek.map((t) => (
-                    <tr key={`${t.organizationId}-${t.id}`}>
+                    <tr
+                      key={`${t.organizationId}-${t.id}`}
+                      className="platform-dashboard-task-row platform-dashboard-task-row--clickable"
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Open task: ${t.title}`}
+                      onClick={() => openTaskDetail(t.organizationId, t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openTaskDetail(t.organizationId, t.id);
+                        }
+                      }}
+                    >
                       <td className="muted">{t.organizationName}</td>
                       <td>
-                        <Link
-                          to={`/platform/clients/${t.organizationId}/tasks?task=${encodeURIComponent(t.id)}`}
-                          className="platform-client-dashboard__task-link"
-                        >
-                          {t.title}
-                        </Link>
+                        <span className="platform-dashboard-task-row__title">{t.title}</span>
                       </td>
                       <td className="muted" style={{ whiteSpace: 'nowrap' }}>
                         {t.dueDate
@@ -199,15 +242,23 @@ export default function PlatformHome() {
                 </thead>
                 <tbody>
                   {dash.myTasks.map((t) => (
-                    <tr key={`${t.organizationId}-${t.id}`}>
+                    <tr
+                      key={`${t.organizationId}-${t.id}`}
+                      className="platform-dashboard-task-row platform-dashboard-task-row--clickable"
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Open task: ${t.title}`}
+                      onClick={() => openTaskDetail(t.organizationId, t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openTaskDetail(t.organizationId, t.id);
+                        }
+                      }}
+                    >
                       <td className="muted">{t.organizationName}</td>
                       <td>
-                        <Link
-                          to={`/platform/clients/${t.organizationId}/tasks?task=${encodeURIComponent(t.id)}`}
-                          className="platform-client-dashboard__task-link"
-                        >
-                          {t.title}
-                        </Link>
+                        <span className="platform-dashboard-task-row__title">{t.title}</span>
                       </td>
                       <td className="muted" style={{ whiteSpace: 'nowrap' }}>
                         {t.dueDate
@@ -231,6 +282,16 @@ export default function PlatformHome() {
           )}
         </div>
       </div>
+
+      {detailOrgId && detailTaskId ? (
+        <ClientTaskDetailPanel
+          orgId={detailOrgId}
+          taskId={detailTaskId}
+          assignableUsers={assignableUsers}
+          onClose={closeTaskDetail}
+          onTasksChanged={load}
+        />
+      ) : null}
     </Layout>
   );
 }
