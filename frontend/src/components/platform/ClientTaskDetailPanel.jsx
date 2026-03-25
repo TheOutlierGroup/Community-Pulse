@@ -14,7 +14,6 @@ import {
   Image as ImageIcon,
   MessageSquare,
   MoreHorizontal,
-  Plus,
   Tag,
   Trash2,
   UserPlus,
@@ -46,9 +45,10 @@ function commentImagePath(orgId, taskId, commentId, imageId) {
 function formatActivityTime(iso) {
   if (!iso) return '';
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString('en-US', {
       dateStyle: 'medium',
       timeStyle: 'short',
+      hour12: true,
     });
   } catch {
     return '';
@@ -125,11 +125,13 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
   const [moreOpen, setMoreOpen] = useState(false);
   const [datesOpen, setDatesOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const [labelInputDraft, setLabelInputDraft] = useState('');
+  const [checklistNewDraft, setChecklistNewDraft] = useState('');
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
-  const [showActivityDetails, setShowActivityDetails] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
 
   const listRef = useRef(null);
@@ -137,6 +139,8 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
   const taskImageInputRef = useRef(null);
   const commentEditorRef = useRef(null);
   const commentFileInputRef = useRef(null);
+  const checklistSectionRef = useRef(null);
+  const checklistNewInputRef = useRef(null);
 
   const load = useCallback(async () => {
     if (!taskId) return;
@@ -311,6 +315,74 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
       onClose();
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not delete.', { variant: 'error' });
+    }
+  }
+
+  function currentLabelNames() {
+    const raw = task?.labels;
+    if (!Array.isArray(raw)) return [];
+    return raw.map((lb) => String(lb?.name ?? '').trim()).filter(Boolean);
+  }
+
+  async function commitNewLabel() {
+    if (!task) return;
+    const next = labelInputDraft.trim();
+    if (!next) return;
+    const existing = currentLabelNames();
+    if (existing.some((n) => n.toLowerCase() === next.toLowerCase())) {
+      setLabelInputDraft('');
+      return;
+    }
+    await patchTask({ labels: [...existing, next] });
+    setLabelInputDraft('');
+  }
+
+  async function removeLabelByName(name) {
+    if (!task) return;
+    const filtered = currentLabelNames().filter((n) => n.toLowerCase() !== String(name).toLowerCase());
+    await patchTask({ labels: filtered });
+  }
+
+  async function submitChecklistNew() {
+    if (!taskId) return;
+    const text = checklistNewDraft.trim();
+    if (!text) return;
+    try {
+      const { data } = await api.post(`/api/platform/organizations/${orgId}/tasks/${taskId}/checklist-items`, {
+        text,
+      });
+      setTask(data.task);
+      setChecklistNewDraft('');
+      onTasksChanged?.();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not add item.', { variant: 'error' });
+    }
+  }
+
+  async function toggleChecklistItem(item) {
+    if (!taskId) return;
+    try {
+      const { data } = await api.patch(
+        `/api/platform/organizations/${orgId}/tasks/${taskId}/checklist-items/${item.id}`,
+        { done: !item.done }
+      );
+      setTask(data.task);
+      onTasksChanged?.();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not update item.', { variant: 'error' });
+    }
+  }
+
+  async function deleteChecklistItemLine(itemId) {
+    if (!taskId) return;
+    try {
+      const { data } = await api.delete(
+        `/api/platform/organizations/${orgId}/tasks/${taskId}/checklist-items/${itemId}`
+      );
+      setTask(data.task);
+      onTasksChanged?.();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not remove item.', { variant: 'error' });
     }
   }
 
@@ -504,11 +576,15 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                 </div>
 
                 <div className="task-card-modal__chips">
-                  <button type="button" className="task-card-modal__chip" onClick={() => taskImageInputRef.current?.click()}>
-                    <Plus size={14} strokeWidth={2} aria-hidden />
-                    Add
-                  </button>
-                  <button type="button" className="task-card-modal__chip" disabled title="Coming soon">
+                  <button
+                    type="button"
+                    className={`task-card-modal__chip${labelsOpen ? ' task-card-modal__chip--active' : ''}`}
+                    onClick={() => {
+                      setLabelsOpen((v) => !v);
+                      setDatesOpen(false);
+                      setMembersOpen(false);
+                    }}
+                  >
                     <Tag size={14} strokeWidth={2} aria-hidden />
                     Labels
                   </button>
@@ -518,12 +594,23 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                     onClick={() => {
                       setDatesOpen((v) => !v);
                       setMembersOpen(false);
+                      setLabelsOpen(false);
                     }}
                   >
                     <Clock size={14} strokeWidth={2} aria-hidden />
                     Dates
                   </button>
-                  <button type="button" className="task-card-modal__chip" disabled title="Coming soon">
+                  <button
+                    type="button"
+                    className="task-card-modal__chip"
+                    onClick={() => {
+                      setDatesOpen(false);
+                      setMembersOpen(false);
+                      setLabelsOpen(false);
+                      checklistSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                      requestAnimationFrame(() => checklistNewInputRef.current?.focus());
+                    }}
+                  >
                     <CheckSquare size={14} strokeWidth={2} aria-hidden />
                     Checklist
                   </button>
@@ -533,12 +620,64 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                     onClick={() => {
                       setMembersOpen((v) => !v);
                       setDatesOpen(false);
+                      setLabelsOpen(false);
                     }}
                   >
                     <UserPlus size={14} strokeWidth={2} aria-hidden />
                     Members
                   </button>
                 </div>
+
+                {(task.labels || []).length > 0 ? (
+                  <div className="task-card-modal__labels-row" aria-label="Card labels">
+                    {(task.labels || []).map((lb) => (
+                      <span key={lb.id} className="task-card-modal__label-pill task-card-modal__label-pill--display">
+                        {lb.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {labelsOpen && (
+                  <div className="task-card-modal__panel task-card-modal__panel--labels">
+                    <p className="task-card-modal__panel-hint muted">Short tags for this card (separate from people tagged via the description).</p>
+                    <div className="task-card-modal__label-pill-wrap">
+                      {currentLabelNames().map((name) => (
+                        <span key={name} className="task-card-modal__label-pill">
+                          {name}
+                          <button
+                            type="button"
+                            className="task-card-modal__label-pill-remove"
+                            aria-label={`Remove label ${name}`}
+                            onClick={() => removeLabelByName(name)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="task-card-modal__label-add-row">
+                      <input
+                        type="text"
+                        className="task-card-modal__label-input"
+                        value={labelInputDraft}
+                        onChange={(e) => setLabelInputDraft(e.target.value)}
+                        placeholder="New label"
+                        maxLength={80}
+                        disabled={metaSaving}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            commitNewLabel();
+                          }
+                        }}
+                      />
+                      <button type="button" className="btn btn-secondary" onClick={commitNewLabel} disabled={metaSaving}>
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {datesOpen && (
                   <div className="task-card-modal__panel">
@@ -636,6 +775,61 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                   )}
                 </section>
 
+                <section id="task-card-checklist" ref={checklistSectionRef} className="task-card-modal__checklist">
+                  <div className="task-card-modal__section-head">
+                    <div className="task-card-modal__section-head-title">
+                      <CheckSquare size={18} strokeWidth={1.75} aria-hidden />
+                      <span>Checklist</span>
+                    </div>
+                  </div>
+                  <ul className="task-card-modal__checklist-list">
+                    {(task.checklistItems || []).map((it) => (
+                      <li key={it.id} className="task-card-modal__checklist-item">
+                        <label className="task-card-modal__checklist-label">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(it.done)}
+                            onChange={() => toggleChecklistItem(it)}
+                            disabled={metaSaving}
+                          />
+                          <span className={it.done ? 'task-card-modal__checklist-text is-done' : 'task-card-modal__checklist-text'}>
+                            {it.text}
+                          </span>
+                        </label>
+                        <button
+                          type="button"
+                          className="task-card-modal__checklist-remove"
+                          aria-label="Remove checklist item"
+                          onClick={() => deleteChecklistItemLine(it.id)}
+                          disabled={metaSaving}
+                        >
+                          <Trash2 size={16} aria-hidden />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="task-card-modal__checklist-new">
+                    <input
+                      ref={checklistNewInputRef}
+                      type="text"
+                      className="task-card-modal__checklist-new-input"
+                      value={checklistNewDraft}
+                      onChange={(e) => setChecklistNewDraft(e.target.value)}
+                      placeholder="Add an item"
+                      disabled={metaSaving}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          submitChecklistNew();
+                        }
+                      }}
+                    />
+                    <button type="button" className="btn btn-secondary" onClick={submitChecklistNew} disabled={metaSaving}>
+                      Add
+                    </button>
+                  </div>
+                </section>
+
                 {(task.images || []).length > 0 && (
                   <section className="task-card-modal__attachments">
                     <h2 className="task-card-modal__attachments-title">Attachments</h2>
@@ -664,13 +858,6 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                     <MessageSquare size={18} strokeWidth={1.75} aria-hidden />
                     <span>Comments and activity</span>
                   </div>
-                  <button
-                    type="button"
-                    className="task-card-modal__show-details"
-                    onClick={() => setShowActivityDetails((v) => !v)}
-                  >
-                    {showActivityDetails ? 'Hide details' : 'Show details'}
-                  </button>
                 </div>
 
                 <form onSubmit={submitComment} className="task-card-modal__comment-form">
@@ -705,7 +892,6 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                           <p className="task-card-modal__activity-system-text">{item.text}</p>
                           <time className="task-card-modal__activity-time" dateTime={item.at}>
                             {formatActivityTime(item.at)}
-                            {showActivityDetails && item.at ? ` · ${item.at}` : ''}
                           </time>
                         </div>
                       );
@@ -724,11 +910,11 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                             </time>
                           </div>
                         </div>
-                        {showActivityDetails && c.mentions?.length > 0 && (
+                        {c.mentions?.length > 0 ? (
                           <p className="task-card-modal__mentions muted">
                             Mentioned: {c.mentions.map((m) => userLabel(m)).join(', ')}
                           </p>
-                        )}
+                        ) : null}
                         <div className="task-card-modal__comment-bubble">
                           <TaskCommentBodyDisplay body={c.body} />
                           {(c.images || []).length > 0 && (

@@ -1824,6 +1824,29 @@ input[type='range'] {
   outline-offset: 0;
 }
 
+.task-board__card-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.task-board__card-label {
+  max-width: 100%;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-radius: 3px;
+  background: rgba(9, 30, 66, 0.12);
+  color: #42526e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-board__card-top {
   display: flex;
   align-items: flex-start;
@@ -2280,6 +2303,157 @@ input[type='range'] {
   background: rgba(9, 30, 66, 0.04);
   border-radius: 8px;
   border: 1px solid rgba(9, 30, 66, 0.1);
+}
+
+.task-card-modal__panel--labels .task-card-modal__panel-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.task-card-modal__labels-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.task-card-modal__label-pill-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.task-card-modal__label-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem 0.45rem 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  background: rgba(9, 30, 66, 0.1);
+  color: #42526e;
+}
+
+.task-card-modal__label-pill--display {
+  padding: 0.2rem 0.55rem;
+}
+
+.task-card-modal__label-pill-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #6b778c;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.task-card-modal__label-pill-remove:hover {
+  background: rgba(9, 30, 66, 0.12);
+  color: #172b4d;
+}
+
+.task-card-modal__label-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.task-card-modal__label-input {
+  flex: 1;
+  min-width: 8rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid rgba(9, 30, 66, 0.2);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.task-card-modal__checklist {
+  margin-top: 1.25rem;
+}
+
+.task-card-modal__checklist-list {
+  list-style: none;
+  margin: 0 0 0.65rem;
+  padding: 0;
+}
+
+.task-card-modal__checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.task-card-modal__checklist-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.task-card-modal__checklist-label input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.task-card-modal__checklist-text.is-done {
+  text-decoration: line-through;
+  color: #6b778c;
+}
+
+.task-card-modal__checklist-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #6b778c;
+  cursor: pointer;
+}
+
+.task-card-modal__checklist-remove:hover:not(:disabled) {
+  background: rgba(9, 30, 66, 0.08);
+  color: #172b4d;
+}
+
+.task-card-modal__checklist-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.task-card-modal__checklist-new {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.task-card-modal__checklist-new-input {
+  flex: 1;
+  min-width: 8rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid rgba(9, 30, 66, 0.2);
+  border-radius: 6px;
+  font: inherit;
 }
 
 .task-card-modal__panel-label {
@@ -2943,6 +3117,24 @@ input[type='range'] {
     background: var(--surface-muted);
     border-color: var(--border);
     color: var(--text);
+  }
+
+  .task-card-modal__label-input,
+  .task-card-modal__checklist-new-input {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .task-card-modal__label-pill,
+  .task-card-modal__label-pill--display {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text);
+  }
+
+  .task-board__card-label {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-muted, #a6b5c9);
   }
 }
 

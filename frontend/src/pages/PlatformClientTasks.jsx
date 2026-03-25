@@ -125,6 +125,7 @@ function SortableTaskCard({ id, task, onOpenTask, isSelected, currentUserId, onT
   const imageCount = task.imageCount ?? 0;
   const isCompleted = normalizeStatus(task.status) === 'completed';
   const tagged = Array.isArray(task.taggedUsers) ? task.taggedUsers : [];
+  const cardLabels = Array.isArray(task.labels) ? task.labels : [];
   const showWatching =
     currentUserId != null && tagged.some((u) => String(u.id) === String(currentUserId));
 
@@ -149,6 +150,15 @@ function SortableTaskCard({ id, task, onOpenTask, isSelected, currentUserId, onT
         }
       }}
     >
+      {cardLabels.length > 0 ? (
+        <div className="task-board__card-labels" aria-hidden>
+          {cardLabels.map((lb) => (
+            <span key={lb.id} className="task-board__card-label" title={lb.name}>
+              {lb.name}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="task-board__card-top">
         <div className="task-board__card-title">{task.title}</div>
         <button

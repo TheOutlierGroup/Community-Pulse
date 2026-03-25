@@ -66,7 +66,15 @@ const LIST_SELECT = `
             JOIN organizations tou ON tou.id = tu.organization_id
             WHERE tt.task_id = t.id),
            '[]'::json
-         ) AS tagged_users_json
+         ) AS tagged_users_json,
+         COALESCE(
+           (SELECT json_agg(
+              json_build_object('id', lb.id, 'name', lb.name) ORDER BY lb.created_at ASC
+            )
+            FROM client_work_task_labels lb
+            WHERE lb.task_id = t.id),
+           '[]'::json
+         ) AS labels_json
   FROM client_work_tasks t
   LEFT JOIN users u ON u.id = t.created_by
   LEFT JOIN users ua ON ua.id = t.assigned_to
@@ -262,6 +270,127 @@ export async function replaceTaskTags(taskId, organizationId, userIds) {
   }
 }
 
+const MAX_CARD_LABELS = 25;
+const MAX_CARD_LABEL_LEN = 80;
+const MAX_CHECKLIST_ITEM_LEN = 2000;
+
+function normalizeCardLabelNames(rawNames) {
+  if (!Array.isArray(rawNames)) return null;
+  const seen = new Set();
+  const names = [];
+  for (const raw of rawNames) {
+    const s = String(raw ?? '').trim().slice(0, MAX_CARD_LABEL_LEN);
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(s);
+    if (names.length > MAX_CARD_LABELS) return null;
+  }
+  return names;
+}
+
+export async function replaceTaskCardLabels(taskId, organizationId, rawNames) {
+  const task = await getTaskForOrg(taskId, organizationId);
+  if (!task) return false;
+  const names = normalizeCardLabelNames(rawNames);
+  if (names === null) return false;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM client_work_task_labels WHERE task_id = $1 AND organization_id = $2`, [
+      taskId,
+      organizationId,
+    ]);
+    for (const name of names) {
+      await client.query(
+        `INSERT INTO client_work_task_labels (task_id, organization_id, name) VALUES ($1, $2, $3)`,
+        [taskId, organizationId, name]
+      );
+    }
+    await client.query('COMMIT');
+    return true;
+  } catch {
+    await client.query('ROLLBACK').catch(() => {});
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
+export async function listChecklistItemsForTask(taskId, organizationId) {
+  const { rows } = await query(
+    `SELECT id, task_id, body, done, sort_order, created_at
+     FROM client_work_task_checklist_items
+     WHERE task_id = $1 AND organization_id = $2
+     ORDER BY sort_order ASC, created_at ASC`,
+    [taskId, organizationId]
+  );
+  return rows;
+}
+
+export async function addChecklistItem(taskId, organizationId, text) {
+  const task = await getTaskForOrg(taskId, organizationId);
+  if (!task) return null;
+  const body = String(text ?? '').trim().slice(0, MAX_CHECKLIST_ITEM_LEN);
+  if (!body) return null;
+  const { rows: maxR } = await query(
+    `SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM client_work_task_checklist_items WHERE task_id = $1`,
+    [taskId]
+  );
+  const sortOrder = maxR[0]?.n ?? 0;
+  const { rows } = await query(
+    `INSERT INTO client_work_task_checklist_items (task_id, organization_id, body, sort_order)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, body, done, sort_order, created_at`,
+    [taskId, organizationId, body, sortOrder]
+  );
+  return rows[0] || null;
+}
+
+export async function updateChecklistItemForOrg(itemId, taskId, organizationId, patch) {
+  const { rows: existingRows } = await query(
+    `SELECT id FROM client_work_task_checklist_items
+     WHERE id = $1 AND task_id = $2 AND organization_id = $3`,
+    [itemId, taskId, organizationId]
+  );
+  if (!existingRows.length) return null;
+  const parts = [];
+  const vals = [];
+  let n = 1;
+  if ('text' in patch) {
+    const body = String(patch.text ?? '').trim().slice(0, MAX_CHECKLIST_ITEM_LEN);
+    if (!body) return null;
+    parts.push(`body = $${n++}`);
+    vals.push(body);
+  }
+  if ('done' in patch) {
+    parts.push(`done = $${n++}`);
+    vals.push(Boolean(patch.done));
+  }
+  if (!parts.length) {
+    const rows = await listChecklistItemsForTask(taskId, organizationId);
+    return rows.find((r) => String(r.id) === String(itemId)) || null;
+  }
+  vals.push(itemId, taskId, organizationId);
+  const { rows } = await query(
+    `UPDATE client_work_task_checklist_items SET ${parts.join(', ')}
+     WHERE id = $${n++} AND task_id = $${n++} AND organization_id = $${n++}
+     RETURNING id, body, done, sort_order, created_at`,
+    vals
+  );
+  return rows[0] || null;
+}
+
+export async function deleteChecklistItemForOrg(itemId, taskId, organizationId) {
+  const { rowCount } = await query(
+    `DELETE FROM client_work_task_checklist_items
+     WHERE id = $1 AND task_id = $2 AND organization_id = $3`,
+    [itemId, taskId, organizationId]
+  );
+  return rowCount > 0;
+}
+
 export async function getTaskForOrg(taskId, organizationId) {
   const { rows } = await query(
     `SELECT * FROM client_work_tasks WHERE id = $1 AND organization_id = $2`,
@@ -328,7 +457,9 @@ export async function updateTaskForOrg(taskId, organizationId, patch) {
     parts.push(`assigned_to = $${n++}`);
     vals.push(patch.assignedTo ? String(patch.assignedTo) : null);
   }
-  if (!parts.length && !('taggedUserIds' in patch)) return getTaskListRow(taskId, organizationId);
+  if (!parts.length && !('taggedUserIds' in patch) && !('labels' in patch)) {
+    return getTaskListRow(taskId, organizationId);
+  }
   if (parts.length) {
     parts.push(`updated_at = NOW()`);
     vals.push(taskId, organizationId);
@@ -342,6 +473,10 @@ export async function updateTaskForOrg(taskId, organizationId, patch) {
   }
   if ('taggedUserIds' in patch) {
     const ok = await replaceTaskTags(taskId, organizationId, patch.taggedUserIds);
+    if (!ok) return null;
+  }
+  if ('labels' in patch) {
+    const ok = await replaceTaskCardLabels(taskId, organizationId, patch.labels);
     if (!ok) return null;
   }
   return getTaskListRow(taskId, organizationId);

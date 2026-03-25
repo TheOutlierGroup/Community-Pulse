@@ -405,6 +405,15 @@ function publicClientTask(row) {
     }
   }
   if (!Array.isArray(tagged)) tagged = [];
+  let labels = row.labels_json;
+  if (typeof labels === 'string') {
+    try {
+      labels = JSON.parse(labels);
+    } catch {
+      labels = [];
+    }
+  }
+  if (!Array.isArray(labels)) labels = [];
   return {
     id: row.id,
     title: row.title,
@@ -421,6 +430,10 @@ function publicClientTask(row) {
       firstName: u.firstName ?? '',
       lastName: u.lastName ?? '',
       organizationKind: u.organizationKind,
+    })),
+    labels: labels.map((lb) => ({
+      id: lb.id,
+      name: lb.name ?? '',
     })),
     imageCount: row.image_count ?? 0,
     commentCount: row.comment_count ?? 0,
@@ -529,6 +542,14 @@ async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
     mentions: mentionByComment[c.id] || [],
     images: imagesByComment[c.id] || [],
   }));
+  const checklistRows = await ClientWorkTask.listChecklistItemsForTask(taskId, orgId);
+  const checklistItems = checklistRows.map((r) => ({
+    id: r.id,
+    text: r.body,
+    done: r.done,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }));
   return {
     ...base,
     watching,
@@ -538,6 +559,7 @@ async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
       createdAt: i.created_at,
     })),
     comments: publicComments,
+    checklistItems,
   };
 }
 
@@ -780,6 +802,12 @@ router.patch('/organizations/:id/tasks/:taskId', async (req, res) => {
   if ('dueDate' in body) patch.dueDate = body.dueDate;
   if ('assignedTo' in body) patch.assignedTo = body.assignedTo;
   if ('taggedUserIds' in body) patch.taggedUserIds = body.taggedUserIds;
+  if ('labels' in body) {
+    if (!Array.isArray(body.labels)) {
+      return res.status(400).json({ error: 'labels must be an array of strings' });
+    }
+    patch.labels = body.labels;
+  }
   if (!Object.keys(patch).length) {
     return res.status(400).json({ error: 'Nothing to update' });
   }
@@ -816,6 +844,52 @@ router.patch('/organizations/:id/tasks/:taskId', async (req, res) => {
 
   const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
   res.json({ task: detail || publicClientTask(row) });
+});
+
+router.post('/organizations/:id/tasks/:taskId/checklist-items', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const task = await ClientWorkTask.getTaskForOrg(req.params.taskId, req.params.id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  const text = (req.body || {}).text;
+  const row = await ClientWorkTask.addChecklistItem(req.params.taskId, req.params.id, text);
+  if (!row) return res.status(400).json({ error: 'Checklist item text is required' });
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
+  res.status(201).json({ task: detail });
+});
+
+router.patch('/organizations/:id/tasks/:taskId/checklist-items/:itemId', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const task = await ClientWorkTask.getTaskForOrg(req.params.taskId, req.params.id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  const body = req.body || {};
+  const itemPatch = {};
+  if ('text' in body) itemPatch.text = body.text;
+  if ('done' in body) itemPatch.done = body.done;
+  if (!Object.keys(itemPatch).length) {
+    return res.status(400).json({ error: 'Nothing to update' });
+  }
+  const row = await ClientWorkTask.updateChecklistItemForOrg(
+    req.params.itemId,
+    req.params.taskId,
+    req.params.id,
+    itemPatch
+  );
+  if (!row) return res.status(400).json({ error: 'Could not update checklist item' });
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
+  res.json({ task: detail });
+});
+
+router.delete('/organizations/:id/tasks/:taskId/checklist-items/:itemId', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const task = await ClientWorkTask.getTaskForOrg(req.params.taskId, req.params.id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  const ok = await ClientWorkTask.deleteChecklistItemForOrg(req.params.itemId, req.params.taskId, req.params.id);
+  if (!ok) return res.status(404).json({ error: 'Checklist item not found' });
+  const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
+  res.json({ task: detail });
 });
 
 router.post(
