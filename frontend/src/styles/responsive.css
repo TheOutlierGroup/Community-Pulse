@@ -715,7 +715,7 @@ a:hover {
 }
 
 .modal-dialog--task-card {
-  max-width: min(900px, 96vw);
+  max-width: min(1120px, 98vw);
   width: 100%;
   max-height: min(94vh, 920px);
 }
