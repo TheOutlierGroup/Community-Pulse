@@ -717,7 +717,11 @@ a:hover {
 .modal-dialog--task-card {
   max-width: min(1400px, 99vw);
   width: 100%;
-  max-height: min(94vh, 920px);
+  min-height: min(72vh, 880px);
+  max-height: min(96vh, 1200px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .platform-textarea--add-task-notes {
@@ -3057,6 +3061,11 @@ input[type='range'] {
 }
 
 @media (max-width: 720px) {
+  .modal-dialog--task-card {
+    min-height: min(56vh, 560px);
+    max-height: min(92vh, 1200px);
+  }
+
   .task-card-modal__layout {
     grid-template-columns: 1fr;
   }
