@@ -18,9 +18,9 @@ import ClientTaskDetailPanel from '../components/platform/ClientTaskDetailPanel.
 import { useAuth } from '../components/shared/Auth.jsx';
 import {
   Check,
+  CheckSquare,
   ClipboardList,
   Eye,
-  LayoutTemplate,
   MessageSquare,
   Paperclip,
   Plus,
@@ -123,6 +123,7 @@ function SortableTaskCard({ id, task, onOpenTask, isSelected, currentUserId, onT
   const hasDescription = descriptionText.length > 0;
   const commentCount = task.commentCount ?? 0;
   const imageCount = task.imageCount ?? 0;
+  const checklistItemCount = task.checklistItemCount ?? 0;
   const isCompleted = normalizeStatus(task.status) === 'completed';
   const tagged = Array.isArray(task.taggedUsers) ? task.taggedUsers : [];
   const cardLabels = Array.isArray(task.labels) ? task.labels : [];
@@ -189,6 +190,15 @@ function SortableTaskCard({ id, task, onOpenTask, isSelected, currentUserId, onT
           <span className="task-board__card-icon-slot task-board__card-icon-slot--comments" title="Comments">
             <MessageSquare size={14} strokeWidth={2} aria-hidden />
             <span className="task-board__card-icon-count">{commentCount}</span>
+          </span>
+        ) : null}
+        {checklistItemCount > 0 ? (
+          <span
+            className="task-board__card-icon-slot task-board__card-icon-slot--comments"
+            title={`Checklist (${checklistItemCount} item${checklistItemCount === 1 ? '' : 's'})`}
+          >
+            <CheckSquare size={14} strokeWidth={2} aria-hidden />
+            <span className="task-board__card-icon-count">{checklistItemCount}</span>
           </span>
         ) : null}
         {imageCount > 0 ? (
@@ -553,15 +563,6 @@ export default function PlatformClientTasks() {
                     >
                       <Plus size={16} strokeWidth={2} aria-hidden />
                       <span>Add a card</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="task-board__add-template"
-                      disabled
-                      title="Templates are not available yet"
-                      aria-label="Create from template (coming soon)"
-                    >
-                      <LayoutTemplate size={16} strokeWidth={2} aria-hidden />
                     </button>
                   </div>
                 )

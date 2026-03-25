@@ -437,6 +437,7 @@ function publicClientTask(row) {
     })),
     imageCount: row.image_count ?? 0,
     commentCount: row.comment_count ?? 0,
+    checklistItemCount: row.checklist_count ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     createdBy: publicCreatedBy(row),
@@ -692,6 +693,13 @@ router.get('/organizations/:id/tasks/assignable-users', async (req, res) => {
   if (!org) return res.status(404).json({ error: 'Organization not found' });
   const rows = await User.listAssignableUsersForClientTasks(req.params.id);
   res.json({ users: rows.map(publicAssignableUser) });
+});
+
+router.get('/organizations/:id/tasks/label-suggestions', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const labels = await ClientWorkTask.listDistinctCardLabelNamesForOrg(req.params.id);
+  res.json({ labels });
 });
 
 router.post('/organizations/:id/tasks', requireBodyFields(['title']), async (req, res) => {

@@ -64,6 +64,8 @@ const STATUS_LABEL = {
 
 const STATUS_ORDER = ['todo', 'working', 'review', 'completed'];
 
+const MAX_LABELS_PER_CARD = 25;
+
 function linkifyText(text) {
   if (!text) return null;
   const lines = text.split('\n');
@@ -127,6 +129,7 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
   const [membersOpen, setMembersOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelInputDraft, setLabelInputDraft] = useState('');
+  const [labelSuggestions, setLabelSuggestions] = useState([]);
   const [checklistNewDraft, setChecklistNewDraft] = useState('');
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState('');
@@ -171,6 +174,22 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
 
   useClickOutside(listRef, listOpen, () => setListOpen(false));
   useClickOutside(moreRef, moreOpen, () => setMoreOpen(false));
+
+  useEffect(() => {
+    if (!labelsOpen || !orgId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/platform/organizations/${orgId}/tasks/label-suggestions`);
+        if (!cancelled) setLabelSuggestions(Array.isArray(data.labels) ? data.labels : []);
+      } catch {
+        if (!cancelled) setLabelSuggestions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [labelsOpen, orgId]);
 
   useEffect(() => {
     if (task) {
@@ -324,16 +343,46 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
     return raw.map((lb) => String(lb?.name ?? '').trim()).filter(Boolean);
   }
 
-  async function commitNewLabel() {
+  const pickableLabelSuggestions = useMemo(() => {
+    const raw = task?.labels;
+    const onCard = new Set(
+      (Array.isArray(raw) ? raw : [])
+        .map((lb) => String(lb?.name ?? '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+    return (labelSuggestions || []).filter((s) => s && !onCard.has(String(s).toLowerCase()));
+  }, [labelSuggestions, task]);
+
+  async function addLabelToCard(rawName) {
     if (!task) return;
-    const next = labelInputDraft.trim();
+    const next = String(rawName ?? '').trim().slice(0, 80);
     if (!next) return;
     const existing = currentLabelNames();
-    if (existing.some((n) => n.toLowerCase() === next.toLowerCase())) {
-      setLabelInputDraft('');
+    if (existing.some((n) => n.toLowerCase() === next.toLowerCase())) return;
+    if (existing.length >= MAX_LABELS_PER_CARD) {
+      showToast(`You can add at most ${MAX_LABELS_PER_CARD} labels per card.`, { variant: 'error' });
       return;
     }
     await patchTask({ labels: [...existing, next] });
+    setLabelSuggestions((prev) =>
+      prev.some((p) => p.toLowerCase() === next.toLowerCase())
+        ? prev
+        : [...prev, next].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    );
+  }
+
+  async function commitNewLabel() {
+    const next = labelInputDraft.trim();
+    if (!next) return;
+    if (currentLabelNames().some((n) => n.toLowerCase() === next.toLowerCase())) {
+      setLabelInputDraft('');
+      return;
+    }
+    if (currentLabelNames().length >= MAX_LABELS_PER_CARD) {
+      showToast(`You can add at most ${MAX_LABELS_PER_CARD} labels per card.`, { variant: 'error' });
+      return;
+    }
+    await addLabelToCard(next);
     setLabelInputDraft('');
   }
 
@@ -641,6 +690,26 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
                 {labelsOpen && (
                   <div className="task-card-modal__panel task-card-modal__panel--labels">
                     <p className="task-card-modal__panel-hint muted">Short tags for this card (separate from people tagged via the description).</p>
+                    {pickableLabelSuggestions.length > 0 ? (
+                      <div className="task-card-modal__label-suggestions">
+                        <span className="task-card-modal__label-suggestions-title muted">Previously used in this workspace</span>
+                        <div className="task-card-modal__label-pick-list">
+                          {pickableLabelSuggestions.map((name) => (
+                            <button
+                              key={name}
+                              type="button"
+                              className="task-card-modal__label-pick"
+                              disabled={metaSaving}
+                              onClick={() => {
+                                void addLabelToCard(name);
+                              }}
+                            >
+                              {name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="task-card-modal__label-pill-wrap">
                       {currentLabelNames().map((name) => (
                         <span key={name} className="task-card-modal__label-pill">

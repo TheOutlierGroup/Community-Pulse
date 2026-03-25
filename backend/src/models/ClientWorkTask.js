@@ -51,6 +51,7 @@ const LIST_SELECT = `
          oa.kind AS assignee_org_kind,
          (SELECT COUNT(*)::int FROM client_work_task_images i WHERE i.task_id = t.id) AS image_count,
          (SELECT COUNT(*)::int FROM client_work_task_comments c WHERE c.task_id = t.id) AS comment_count,
+         (SELECT COUNT(*)::int FROM client_work_task_checklist_items ci WHERE ci.task_id = t.id) AS checklist_count,
          COALESCE(
            (SELECT json_agg(
               json_build_object(
@@ -316,6 +317,19 @@ export async function replaceTaskCardLabels(taskId, organizationId, rawNames) {
   } finally {
     client.release();
   }
+}
+
+/** Distinct label strings already used on any task in the org (for pick lists). */
+export async function listDistinctCardLabelNamesForOrg(organizationId) {
+  const { rows } = await query(
+    `SELECT MIN(btrim(name)) AS name
+     FROM client_work_task_labels
+     WHERE organization_id = $1
+     GROUP BY lower(btrim(name))
+     ORDER BY lower(MIN(btrim(name)))`,
+    [organizationId]
+  );
+  return rows.map((r) => r.name).filter((n) => n && String(n).trim());
 }
 
 export async function listChecklistItemsForTask(taskId, organizationId) {
