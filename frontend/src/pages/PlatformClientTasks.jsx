@@ -163,20 +163,6 @@ export default function PlatformClientTasks() {
     [orgId, showToast]
   );
 
-  const toggleTaskComplete = useCallback(
-    async (task) => {
-      const done = normalizeStatus(task.status) === 'completed';
-      const next = done ? 'todo' : 'completed';
-      try {
-        const { data } = await api.patch(`/api/platform/organizations/${orgId}/tasks/${task.id}`, { status: next });
-        if (data?.task) upsertTaskInBoard(data.task);
-      } catch (err) {
-        showToast(err.response?.data?.error || 'Could not update task.', { variant: 'error' });
-      }
-    },
-    [orgId, showToast, upsertTaskInBoard]
-  );
-
   function openComposer(columnId) {
     closeTaskDetail();
     setComposingColumnId(columnId);
@@ -231,6 +217,22 @@ export default function PlatformClientTasks() {
       return next;
     });
   }, []);
+
+  const toggleTaskComplete = useCallback(
+    async (task) => {
+      const done = normalizeStatus(task.status) === 'completed';
+      const next = done ? 'todo' : 'completed';
+      try {
+        const { data } = await api.patch(`/api/platform/organizations/${orgId}/tasks/${task.id}`, {
+          status: next,
+        });
+        if (data?.task) upsertTaskInBoard(data.task);
+      } catch (err) {
+        showToast(err.response?.data?.error || 'Could not update task.', { variant: 'error' });
+      }
+    },
+    [orgId, showToast, upsertTaskInBoard]
+  );
 
   const tasksById = useMemo(() => Object.fromEntries(tasks.map((t) => [String(t.id), t])), [tasks]);
 
