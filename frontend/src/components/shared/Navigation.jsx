@@ -6,8 +6,6 @@ import {
   BarChart3,
   LineChart,
   Gauge,
-  SlidersHorizontal,
-  Download,
   Building2,
   Activity,
   Users,
@@ -77,25 +75,18 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     Organisation Dashboard
                   </Link>
                   <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#score-breakdown`}
-                    className={pulseSectionLinkClass('score-breakdown')}
+                    to={`/platform/clients/${platformClientOrgId}/pulse#organisation-scores`}
+                    className={pulseSectionLinkClass('organisation-scores')}
                   >
                     <BarChart3 size={20} strokeWidth={1.75} aria-hidden />
-                    Score Breakdown
+                    Organisation Scores
                   </Link>
                   <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#trend-analysis`}
-                    className={pulseSectionLinkClass('trend-analysis')}
+                    to={`/platform/clients/${platformClientOrgId}/pulse#employee-breakdown`}
+                    className={pulseSectionLinkClass('employee-breakdown')}
                   >
                     <LineChart size={20} strokeWidth={1.75} aria-hidden />
-                    Trend Analysis
-                  </Link>
-                  <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#manager-load-report`}
-                    className={pulseSectionLinkClass('manager-load-report')}
-                  >
-                    <Gauge size={20} strokeWidth={1.75} aria-hidden />
-                    Manager Load Report
+                    Employee Breakdown
                   </Link>
                   <Link
                     to={`/platform/clients/${platformClientOrgId}/pulse#team-level-view`}
@@ -105,18 +96,11 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     Team-Level View
                   </Link>
                   <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#survey-configuration`}
-                    className={pulseSectionLinkClass('survey-configuration')}
+                    to={`/platform/clients/${platformClientOrgId}/pulse#manager-load-report`}
+                    className={pulseSectionLinkClass('manager-load-report')}
                   >
-                    <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
-                    Survey Configuration
-                  </Link>
-                  <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#export-data`}
-                    className={pulseSectionLinkClass('export-data')}
-                  >
-                    <Download size={20} strokeWidth={1.75} aria-hidden />
-                    Export Data
+                    <Gauge size={20} strokeWidth={1.75} aria-hidden />
+                    Manager Load Report
                   </Link>
                 </>
               ) : (

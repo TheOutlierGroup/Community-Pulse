@@ -1,28 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
-import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { Activity } from 'lucide-react';
 import { normalizeServices } from './platformClientUtils.js';
 
 const PULSE_SECTION_IDS = [
   'organisation-dashboard',
-  'score-breakdown',
-  'trend-analysis',
-  'manager-load-report',
+  'organisation-scores',
+  'employee-breakdown',
   'team-level-view',
-  'survey-configuration',
-  'export-data',
+  'manager-load-report',
 ];
-
-function toShortDate(value) {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 function formatScore(value) {
   if (value == null || Number.isNaN(value)) return '—';
@@ -36,8 +24,15 @@ function deltaLabel(value) {
   return 'No change vs previous';
 }
 
+function shortDelta(value) {
+  if (value == null || Number.isNaN(value)) return 'No prior';
+  if (value > 0) return `+${value.toFixed(1)}`;
+  if (value < 0) return `${value.toFixed(1)}`;
+  return '0.0';
+}
+
 export default function PlatformClientPulse() {
-  const { org, orgId, clientLogoUrl } = useOutletContext();
+  const { orgId } = useOutletContext();
   const navigate = useNavigate();
   const location = useLocation();
   const [dashboard, setDashboard] = useState(null);
@@ -86,27 +81,21 @@ export default function PlatformClientPulse() {
     month: 'long',
     year: 'numeric',
   });
-
-  function exportSessionsCsv() {
-    const header = ['Session', 'Status', 'Created', 'Closed'];
-    const rows = sessions.map((s) => [s.name, s.status, toShortDate(s.createdAt), toShortDate(s.closedAt)]);
-    const csv = [header, ...rows]
-      .map((cells) => cells.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${org.name.replaceAll(/\s+/g, '-').toLowerCase()}-pulse-sessions.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
+  const roleBreakdown = [
+    { label: 'Employee', value: kpis.completedEmployees ?? 0, trend: kpis.employeeParticipationRate ?? 0 },
+    { label: 'Manager', value: kpis.completedManagers ?? 0, trend: kpis.managerParticipationRate ?? 0 },
+  ];
+  const trendBars = (dashboard?.trend || []).slice(0, 4);
+  const maxTrendScore = Math.max(
+    40,
+    ...trendBars.flatMap((item) => [
+      item?.adoptionScore || 0,
+      item?.sponsorshipScore || 0,
+    ])
+  );
 
   return (
     <div className="platform-pulse-page">
-      <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
       <div className="platform-pulse-heading">
         <div>
           <div className="platform-pulse-heading__eyebrow">Client Administration</div>
@@ -122,10 +111,7 @@ export default function PlatformClientPulse() {
       {error && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
       {loading && <p className="muted" style={{ marginBottom: '1rem' }}>Loading Pulse dashboard…</p>}
       <div className="platform-client-dashboard-grid">
-        <section
-          id="organisation-dashboard"
-          className="card platform-client-dashboard__card platform-client-dashboard__card--wide platform-pulse-section"
-        >
+        <section id="organisation-dashboard" className="card platform-client-dashboard__card platform-client-dashboard__card--wide platform-pulse-section platform-pulse-panel">
           <div className="platform-pulse-section__label">Organisation Dashboard</div>
           <h2 className="platform-client-dashboard__h2 platform-pulse-section__title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Activity size={22} strokeWidth={1.75} aria-hidden />
@@ -180,7 +166,7 @@ export default function PlatformClientPulse() {
           </div>
         </section>
 
-        <section id="score-breakdown" className="card platform-pulse-section">
+        <section id="organisation-scores" className="card platform-pulse-section platform-pulse-panel">
           <div className="platform-pulse-section__label">Overview</div>
           <h3 className="platform-client-dashboard__h2">Organisation Scores</h3>
           <div className="platform-pulse-split-scores">
@@ -209,62 +195,61 @@ export default function PlatformClientPulse() {
               </div>
             )}
           </div>
-          {dashboard?.alerts?.length > 0 && (
-            <div className="platform-pulse-alerts">
-              {dashboard.alerts.map((alert) => (
-                <div key={alert.title} className={`platform-pulse-alert platform-pulse-alert--${alert.level}`}>
-                  <strong>{alert.title}</strong>
-                  <p>{alert.body}</p>
+        </section>
+
+        <section id="employee-breakdown" className="card platform-pulse-section platform-pulse-panel">
+          <div className="platform-pulse-section__label">Overview</div>
+          <h3 className="platform-client-dashboard__h2">Employee Breakdown</h3>
+          <div className="platform-pulse-role-bars">
+            {roleBreakdown.map((row) => (
+              <div key={row.label} className="platform-pulse-role-bars__row">
+                <span>{row.label}</span>
+                <strong>{row.value}</strong>
+                <em>{row.trend}%</em>
+              </div>
+            ))}
+          </div>
+          {!trendBars.length && <p className="muted">No session history yet.</p>}
+          {!!trendBars.length && (
+            <div className="platform-pulse-mini-chart">
+              {trendBars.map((t) => (
+                <div key={t.sessionId} className="platform-pulse-mini-chart__group">
+                  <div className="platform-pulse-mini-chart__bars">
+                    <div
+                      className="platform-pulse-mini-chart__bar platform-pulse-mini-chart__bar--adoption"
+                      style={{ height: `${Math.max(6, ((t.adoptionScore || 0) / maxTrendScore) * 64)}px` }}
+                      title={`Adoption ${formatScore(t.adoptionScore)}`}
+                    />
+                    <div
+                      className="platform-pulse-mini-chart__bar platform-pulse-mini-chart__bar--sponsorship"
+                      style={{ height: `${Math.max(6, ((t.sponsorshipScore || 0) / maxTrendScore) * 64)}px` }}
+                      title={`Sponsorship ${formatScore(t.sponsorshipScore)}`}
+                    />
+                  </div>
+                  <span className="platform-pulse-mini-chart__label">
+                    {(t.sessionName || '').slice(0, 6) || '—'}
+                  </span>
                 </div>
               ))}
             </div>
           )}
-        </section>
-
-        <section id="trend-analysis" className="card platform-pulse-section">
-          <div className="platform-pulse-section__label">Overview</div>
-          <h3 className="platform-client-dashboard__h2">Trend Analysis</h3>
-          {!dashboard?.trend?.length && <p className="muted">No session history yet.</p>}
-          {dashboard?.trend?.length > 0 && (
-            <div className="table-wrap">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Session</th>
-                    <th scope="col">Adoption</th>
-                    <th scope="col">Sponsorship</th>
-                    <th scope="col">Completed responses</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboard.trend.map((t) => (
-                    <tr key={t.sessionId}>
-                      <td>{t.sessionName}</td>
-                      <td>{formatScore(t.adoptionScore)}</td>
-                      <td>{formatScore(t.sponsorshipScore)}</td>
-                      <td>{t.completedResponses}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <section id="manager-load-report" className="card platform-pulse-section">
-          <div className="platform-pulse-section__label">People</div>
-          <h3 className="platform-client-dashboard__h2">Manager Load Report</h3>
-          <div className="platform-pulse-breakdown">
-            {(dashboard?.managerLoad?.bands || []).map((band) => (
-              <div key={band.name} className="platform-pulse-breakdown__row">
-                <span>{band.name}</span>
-                <strong>{band.percent}%</strong>
+          <div className="platform-pulse-alerts">
+            {(dashboard?.alerts || []).map((alert) => (
+              <div key={alert.title} className={`platform-pulse-alert platform-pulse-alert--${alert.level}`}>
+                <strong>{alert.title}</strong>
+                <p>{alert.body}</p>
               </div>
             ))}
+            {!dashboard?.alerts?.length && (
+              <div className="platform-pulse-alert platform-pulse-alert--info">
+                <strong>No active alerts</strong>
+                <p>Alert insights will appear here once enough responses are captured.</p>
+              </div>
+            )}
           </div>
         </section>
 
-        <section id="team-level-view" className="card platform-pulse-section">
+        <section id="team-level-view" className="card platform-pulse-section platform-pulse-panel">
           <div className="platform-pulse-section__label">People</div>
           <h3 className="platform-client-dashboard__h2">Dimension Breakdown</h3>
           {!dashboard?.dimensions?.length && <p className="muted">No dimension data yet.</p>}
@@ -276,7 +261,7 @@ export default function PlatformClientPulse() {
                     <th scope="col">Dimension</th>
                     <th scope="col">Friction avg</th>
                     <th scope="col">Energy avg</th>
-                    <th scope="col">% High energy</th>
+                    <th scope="col">Energy trend</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -285,7 +270,7 @@ export default function PlatformClientPulse() {
                       <td>{d.label}</td>
                       <td>{d.frictionAvg == null ? '—' : d.frictionAvg.toFixed(1)}</td>
                       <td>{d.energyAvg == null ? '—' : d.energyAvg.toFixed(1)}</td>
-                      <td>{d.highEnergyPercent}%</td>
+                      <td>{d.highEnergyPercent}% high</td>
                     </tr>
                   ))}
                 </tbody>
@@ -294,23 +279,29 @@ export default function PlatformClientPulse() {
           )}
         </section>
 
-        <section id="survey-configuration" className="card platform-pulse-section">
-          <div className="platform-pulse-section__label">Settings</div>
-          <h3 className="platform-client-dashboard__h2">Survey Configuration</h3>
-          <p className="muted">
-            Pulse availability and service controls are managed from the client Account tab.
-          </p>
-        </section>
-
-        <section id="export-data" className="card platform-pulse-section">
-          <div className="platform-pulse-section__label">Settings</div>
-          <h3 className="platform-client-dashboard__h2">Export Data</h3>
-          <p className="muted">
-            Export the current Pulse session register for this client as CSV.
-          </p>
-          <button type="button" className="btn btn-primary" onClick={exportSessionsCsv} disabled={!sessions.length}>
-            Export sessions CSV
-          </button>
+        <section id="manager-load-report" className="card platform-pulse-section platform-pulse-panel">
+          <div className="platform-pulse-section__label">People</div>
+          <h3 className="platform-client-dashboard__h2">Manager Load Report</h3>
+          <div className="platform-pulse-breakdown">
+            {(dashboard?.managerLoad?.bands || []).map((band) => (
+              <div key={band.name} className="platform-pulse-breakdown__row platform-pulse-breakdown__row--load">
+                <span>{band.name}</span>
+                <div className="platform-pulse-load-row-meta">
+                  <small>{band.count} managers</small>
+                  <strong>{band.percent}%</strong>
+                </div>
+              </div>
+            ))}
+            {!dashboard?.managerLoad?.bands?.length && (
+              <div className="platform-pulse-breakdown__row">
+                <span>No manager responses yet</span>
+                <strong>0%</strong>
+              </div>
+            )}
+          </div>
+          <div className="platform-pulse-footnote">
+            Adoption delta: {shortDelta(kpis.adoptionDelta)} | Sponsorship delta: {shortDelta(kpis.sponsorshipDelta)}
+          </div>
         </section>
       </div>
     </div>
