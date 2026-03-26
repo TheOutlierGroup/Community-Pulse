@@ -1,4 +1,4 @@
-import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   LogIn,
   LogOut,
@@ -24,10 +24,21 @@ function sidebarLinkClass({ isActive }) {
 export default function Navigation({ user, onLogout, variant = 'header', navContext = null }) {
   const navigate = useNavigate();
   const params = useParams();
+  const location = useLocation();
   const platformClientOrgId =
     user?.organizationKind === 'platform' && params.orgId ? params.orgId : null;
   const clientPulseEnabled = userHasService(user, CLIENT_SERVICE_PULSE);
   const platformViewedClientPulseEnabled = hasService(navContext?.clientOrganization?.settings, CLIENT_SERVICE_PULSE);
+  const isPlatformPulseRoute =
+    Boolean(platformClientOrgId) &&
+    location.pathname === `/platform/clients/${platformClientOrgId}/pulse`;
+  const activePulseSection = isPlatformPulseRoute
+    ? (location.hash || '#organisation-dashboard').replace(/^#/, '')
+    : '';
+
+  function pulseSectionLinkClass(sectionId) {
+    return `sidebar-nav-link sidebar-nav-link--pulse-subitem${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
+  }
 
   if (!user) {
     return (
@@ -68,10 +79,58 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 Tasks
               </NavLink>
               {platformViewedClientPulseEnabled && (
-                <NavLink to={`/platform/clients/${platformClientOrgId}/pulse`} className={sidebarLinkClass}>
-                  <Activity size={20} strokeWidth={1.75} aria-hidden />
-                  Pulse
-                </NavLink>
+                <>
+                  <NavLink to={`/platform/clients/${platformClientOrgId}/pulse`} className={sidebarLinkClass}>
+                    <Activity size={20} strokeWidth={1.75} aria-hidden />
+                    Pulse
+                  </NavLink>
+                  {isPlatformPulseRoute && (
+                    <div className="sidebar-nav-submenu" aria-label="Pulse sections">
+                      <Link
+                        to={`/platform/clients/${platformClientOrgId}/pulse#organisation-dashboard`}
+                        className={pulseSectionLinkClass('organisation-dashboard')}
+                      >
+                        Organisation Dashboard
+                      </Link>
+                      <Link
+                        to={`/platform/clients/${platformClientOrgId}/pulse#score-breakdown`}
+                        className={pulseSectionLinkClass('score-breakdown')}
+                      >
+                        Score Breakdown
+                      </Link>
+                      <Link
+                        to={`/platform/clients/${platformClientOrgId}/pulse#trend-analysis`}
+                        className={pulseSectionLinkClass('trend-analysis')}
+                      >
+                        Trend Analysis
+                      </Link>
+                      <Link
+                        to={`/platform/clients/${platformClientOrgId}/pulse#manager-load-report`}
+                        className={pulseSectionLinkClass('manager-load-report')}
+                      >
+                        Manager Load Report
+                      </Link>
+                      <Link
+                        to={`/platform/clients/${platformClientOrgId}/pulse#team-level-view`}
+                        className={pulseSectionLinkClass('team-level-view')}
+                      >
+                        Team-Level View
+                      </Link>
+                      <Link
+                        to={`/platform/clients/${platformClientOrgId}/pulse#survey-configuration`}
+                        className={pulseSectionLinkClass('survey-configuration')}
+                      >
+                        Survey Configuration
+                      </Link>
+                      <Link
+                        to={`/platform/clients/${platformClientOrgId}/pulse#export-data`}
+                        className={pulseSectionLinkClass('export-data')}
+                      >
+                        Export Data
+                      </Link>
+                    </div>
+                  )}
+                </>
               )}
               <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
                 <CircleUser size={20} strokeWidth={1.75} aria-hidden />

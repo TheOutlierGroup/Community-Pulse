@@ -465,6 +465,22 @@ a:hover {
   margin-top: 0.15rem;
 }
 
+.sidebar-nav-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0 0 0.5rem 1.25rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid var(--border);
+}
+
+.sidebar-nav-link--pulse-subitem {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+}
+
 .platform-dash-card {
   text-decoration: none;
   color: inherit;
@@ -3330,6 +3346,114 @@ input[type='range'] {
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
   margin-top: 0.5rem;
+}
+
+.platform-pulse-page {
+  display: block;
+}
+
+.platform-pulse-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  margin: 0.25rem 0 1rem;
+}
+
+.platform-pulse-heading__eyebrow {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+.platform-pulse-heading__title {
+  margin: 0;
+  font-size: 1.55rem;
+  line-height: 1.15;
+}
+
+.platform-pulse-heading__period {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+}
+
+.platform-pulse-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.platform-pulse-menu__item {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.platform-pulse-menu__item:hover {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+
+.platform-pulse-menu__item--active {
+  color: var(--text);
+  border-color: var(--accent-dim);
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.platform-pulse-section {
+  scroll-margin-top: 0.75rem;
+}
+
+.platform-pulse-section__label {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.platform-pulse-section__title {
+  margin-bottom: 0.45rem;
+}
+
+.platform-pulse-section__intro {
+  max-width: 66ch;
+}
+
+.platform-pulse-kpis .platform-client-stats__tile {
+  background: rgba(var(--accent-rgb), 0.05);
+}
+
+.platform-pulse-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.platform-pulse-breakdown__row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.7rem 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
 }
 
 .platform-back-link {
