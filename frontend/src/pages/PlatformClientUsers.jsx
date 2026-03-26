@@ -4,14 +4,10 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
-import PlatformUserAvatar from '../components/platform/PlatformUserAvatar.jsx';
-import { KeyRound, MailPlus, Plus, Users, X } from 'lucide-react';
-
-function roleLabel(role) {
-  if (role === 'admin') return 'Admin';
-  if (role === 'employee') return 'Member';
-  return role;
-}
+import { Plus, Users } from 'lucide-react';
+import UsersTable from './platformClientUsers/UsersTable.jsx';
+import InviteUserModal from './platformClientUsers/InviteUserModal.jsx';
+import EditUserModal from './platformClientUsers/EditUserModal.jsx';
 
 export default function PlatformClientUsers() {
   const { user } = useAuth();
@@ -206,340 +202,51 @@ export default function PlatformClientUsers() {
         </button>
       </div>
 
-      <div className="card platform-users-card" style={{ marginTop: '1rem' }}>
-        <div className="table-wrap">
-          <table className="admin-table platform-users-table">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Email</th>
-                <th scope="col">User type</th>
-                <th scope="col">Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orgUsers.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="muted" style={{ padding: '1.5rem' }}>
-                    No users yet. Add one to send an invite.
-                  </td>
-                </tr>
-              )}
-              {orgUsers.map((u) => {
-                const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || '—';
-                return (
-                  <tr
-                    key={u.id}
-                    className="platform-users-table__row platform-users-table__row--clickable"
-                    tabIndex={0}
-                    role="button"
-                    onClick={() => openEditModal(u)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        openEditModal(u);
-                      }
-                    }}
-                  >
-                    <td>
-                      <div className="platform-users-table__name-cell">
-                        <div className="platform-users-table__avatar-cell">
-                          <PlatformUserAvatar
-                            userId={u.id}
-                            hasProfileAvatar={u.hasProfileAvatar}
-                            rev={avatarListRev}
-                            organizationId={orgId}
-                          />
-                        </div>
-                        <span className="platform-users-table__name">{name}</span>
-                      </div>
-                    </td>
-                    <td>{u.email}</td>
-                    <td>
-                      <span className={`badge badge-${u.role === 'admin' ? 'active' : 'draft'}`}>
-                        {roleLabel(u.role)}
-                      </span>
-                    </td>
-                    <td className="muted" style={{ fontSize: '0.9rem' }}>
-                      {u.createdAt
-                        ? new Date(u.createdAt).toLocaleDateString(undefined, {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })
-                        : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <UsersTable
+        orgUsers={orgUsers}
+        avatarListRev={avatarListRev}
+        orgId={orgId}
+        onOpenEdit={openEditModal}
+      />
 
-      {modalOpen && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onClick={closeInviteModal}
-          onKeyDown={(e) => e.key === 'Escape' && closeInviteModal()}
-        >
-          <div
-            className="modal-dialog modal-dialog--wide card"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="invite-user-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-dialog__head">
-              <h2 id="invite-user-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-                Invite user
-              </h2>
-              <button
-                type="button"
-                className="btn btn-ghost modal-dialog__close"
-                onClick={closeInviteModal}
-                aria-label="Close"
-              >
-                <X size={22} aria-hidden />
-              </button>
-            </div>
-            <p className="muted" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.35rem', marginBottom: '1rem' }}>
-              <MailPlus size={18} strokeWidth={1.75} aria-hidden />
-              Creates an invite link you can share; they complete signup with a password.
-            </p>
-            {error && modalOpen && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
-            <form onSubmit={sendOrgInvite}>
-              <div className="field">
-                <label htmlFor="client-invite-email">Email</label>
-                <input
-                  id="client-invite-email"
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  required
-                  autoComplete="off"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="client-invite-role">User type</label>
-                <select
-                  id="client-invite-role"
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value)}
-                >
-                  <option value="employee">Member</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div className="modal-dialog__actions">
-                <button type="button" className="btn btn-ghost" onClick={closeInviteModal} disabled={busy}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={busy}>
-                  {busy ? 'Creating…' : 'Create invite'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <InviteUserModal
+        open={modalOpen}
+        error={modalOpen ? error : ''}
+        busy={busy}
+        inviteEmail={inviteEmail}
+        inviteRole={inviteRole}
+        setInviteEmail={setInviteEmail}
+        setInviteRole={setInviteRole}
+        onClose={closeInviteModal}
+        onSubmit={sendOrgInvite}
+      />
 
-      {editUser && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onClick={closeEditModal}
-          onKeyDown={(e) => e.key === 'Escape' && closeEditModal()}
-        >
-          <div
-            className="modal-dialog modal-dialog--wide card"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="edit-client-user-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-dialog__head">
-              <h2 id="edit-client-user-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-                Edit user
-              </h2>
-              <button
-                type="button"
-                className="btn btn-ghost modal-dialog__close"
-                onClick={closeEditModal}
-                aria-label="Close"
-              >
-                <X size={22} aria-hidden />
-              </button>
-            </div>
-            <p className="muted" style={{ marginTop: '0.35rem', marginBottom: '1rem' }}>
-              Update profile and role. Optionally set a new password for this account.
-            </p>
-            {error && editUser && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
-            <form onSubmit={saveEditUser}>
-              <fieldset className="modal-dialog__fieldset">
-                <legend>Name</legend>
-                <div className="modal-dialog__name-row">
-                  <div className="field">
-                    <label htmlFor="edit-client-first">First name</label>
-                    <input
-                      id="edit-client-first"
-                      value={editFirst}
-                      onChange={(e) => setEditFirst(e.target.value)}
-                      autoComplete="given-name"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="edit-client-last">Last name</label>
-                    <input
-                      id="edit-client-last"
-                      value={editLast}
-                      onChange={(e) => setEditLast(e.target.value)}
-                      autoComplete="family-name"
-                    />
-                  </div>
-                </div>
-              </fieldset>
-              <div className="field">
-                <label htmlFor="edit-client-email">Email</label>
-                <input
-                  id="edit-client-email"
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  required
-                  autoComplete="off"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="edit-client-role">User type</label>
-                <select
-                  id="edit-client-role"
-                  value={editRole}
-                  onChange={(e) => setEditRole(e.target.value)}
-                >
-                  <option value="admin">Admin</option>
-                  <option value="employee">Member</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="edit-client-avatar">Profile image</label>
-                <input
-                  key={editUser.id + (editRemoveAvatar ? '-rm' : '')}
-                  id="edit-client-avatar"
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  onChange={(e) => {
-                    setEditAvatarFile(e.target.files?.[0] || null);
-                    setEditRemoveAvatar(false);
-                  }}
-                />
-                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
-                  JPG, PNG, GIF, or WebP, up to 2&nbsp;MB. Leave empty to keep the current photo.
-                </p>
-                {editUser.hasProfileAvatar && !editAvatarFile && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ marginTop: '0.5rem' }}
-                    onClick={() => {
-                      setEditRemoveAvatar(true);
-                      setEditAvatarFile(null);
-                    }}
-                  >
-                    Remove photo
-                  </button>
-                )}
-              </div>
-              <fieldset className="modal-dialog__fieldset">
-                <legend>New password</legend>
-                <div className="platform-users-table__pw" style={{ maxWidth: '100%' }}>
-                  <input
-                    id="edit-client-pw"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Min 8 characters (optional)"
-                    value={editPassword}
-                    onChange={(e) => setEditPassword(e.target.value)}
-                    aria-label="New password for user"
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-ghost platform-users-table__pw-btn"
-                    disabled={busy}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setPasswordForEditUser();
-                    }}
-                  >
-                    <KeyRound size={16} aria-hidden />
-                    Set
-                  </button>
-                </div>
-              </fieldset>
-              <div className="modal-dialog__actions">
-                <button type="button" className="btn btn-ghost" onClick={closeEditModal} disabled={busy}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={busy}>
-                  {busy ? 'Saving…' : 'Save changes'}
-                </button>
-              </div>
-            </form>
-            {canRemoveAccess && (
-              <div
-                className="modal-dialog__danger-zone"
-                style={{
-                  marginTop: '1.25rem',
-                  paddingTop: '1rem',
-                  borderTop: '1px solid var(--border)',
-                }}
-              >
-                {removeAccessStep === 0 ? (
-                  <>
-                    <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.65rem' }}>
-                      Remove this user from the organization and block sign-in. Their profile and history stay in
-                      the database.
-                    </p>
-                    <button
-                      type="button"
-                      className="btn btn-danger-ghost"
-                      onClick={() => setRemoveAccessStep(1)}
-                      disabled={busy}
-                    >
-                      Remove access
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="error" style={{ marginBottom: '0.75rem' }}>
-                      They will be signed out immediately and will no longer appear here. Continue?
-                    </p>
-                    <div className="modal-dialog__actions" style={{ marginTop: 0 }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => setRemoveAccessStep(0)}
-                        disabled={busy}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-danger"
-                        onClick={confirmRemoveAccess}
-                        disabled={busy}
-                      >
-                        {busy ? 'Removing…' : 'Yes, remove access'}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <EditUserModal
+        editUser={editUser}
+        error={editUser ? error : ''}
+        busy={busy}
+        editFirst={editFirst}
+        setEditFirst={setEditFirst}
+        editLast={editLast}
+        setEditLast={setEditLast}
+        editEmail={editEmail}
+        setEditEmail={setEditEmail}
+        editRole={editRole}
+        setEditRole={setEditRole}
+        editAvatarFile={editAvatarFile}
+        setEditAvatarFile={setEditAvatarFile}
+        editRemoveAvatar={editRemoveAvatar}
+        setEditRemoveAvatar={setEditRemoveAvatar}
+        editPassword={editPassword}
+        setEditPassword={setEditPassword}
+        canRemoveAccess={canRemoveAccess}
+        removeAccessStep={removeAccessStep}
+        setRemoveAccessStep={setRemoveAccessStep}
+        onClose={closeEditModal}
+        onSave={saveEditUser}
+        onSetPassword={setPasswordForEditUser}
+        onConfirmRemoveAccess={confirmRemoveAccess}
+      />
     </>
   );
 }

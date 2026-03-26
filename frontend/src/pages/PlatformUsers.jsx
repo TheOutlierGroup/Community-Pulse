@@ -4,15 +4,11 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import PlatformUserAvatar from '../components/platform/PlatformUserAvatar.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
-import { Plus, Users, X } from 'lucide-react';
-
-function roleLabel(role) {
-  if (role === 'admin') return 'Admin';
-  if (role === 'employee') return 'Member';
-  return role;
-}
+import { Plus, Users } from 'lucide-react';
+import PlatformUsersTable from './platformUsers/PlatformUsersTable.jsx';
+import CreateUserModal from './platformUsers/CreateUserModal.jsx';
+import EditUserModal from './platformUsers/EditUserModal.jsx';
 
 export default function PlatformUsers() {
   const { user, logout, loading } = useAuth();
@@ -208,353 +204,54 @@ export default function PlatformUsers() {
         </p>
       )}
 
-      <div className="card platform-users-card">
-        <div className="table-wrap">
-          <table className="admin-table platform-users-table">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Email</th>
-                <th scope="col">User type</th>
-                <th scope="col">Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {staff.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="muted" style={{ padding: '1.5rem' }}>
-                    No users yet. Add one to get started.
-                  </td>
-                </tr>
-              )}
-              {staff.map((u) => {
-                const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || '—';
-                return (
-                  <tr
-                    key={u.id}
-                    className="platform-users-table__row platform-users-table__row--clickable"
-                    tabIndex={0}
-                    role="button"
-                    onClick={() => openEditModal(u)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        openEditModal(u);
-                      }
-                    }}
-                  >
-                    <td>
-                      <div className="platform-users-table__name-cell">
-                        <div className="platform-users-table__avatar-cell">
-                          <PlatformUserAvatar
-                            userId={u.id}
-                            hasProfileAvatar={u.hasProfileAvatar}
-                            rev={avatarListRev}
-                          />
-                        </div>
-                        <span className="platform-users-table__name">{name}</span>
-                      </div>
-                    </td>
-                    <td>{u.email}</td>
-                    <td>
-                      <span className={`badge badge-${u.role === 'admin' ? 'active' : 'draft'}`}>
-                        {roleLabel(u.role)}
-                      </span>
-                    </td>
-                    <td className="muted" style={{ fontSize: '0.9rem' }}>
-                      {u.createdAt
-                        ? new Date(u.createdAt).toLocaleDateString(undefined, {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })
-                        : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <PlatformUsersTable
+        staff={staff}
+        avatarListRev={avatarListRev}
+        onOpenEdit={openEditModal}
+      />
 
-      {modalOpen && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onClick={closeCreateModal}
-          onKeyDown={(e) => e.key === 'Escape' && closeCreateModal()}
-        >
-          <div
-            className="modal-dialog modal-dialog--wide card"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="add-user-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-dialog__head">
-              <h2 id="add-user-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-                Add user
-              </h2>
-              <button
-                type="button"
-                className="btn btn-ghost modal-dialog__close"
-                onClick={closeCreateModal}
-                aria-label="Close"
-              >
-                <X size={22} aria-hidden />
-              </button>
-            </div>
-            {error && modalOpen && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
-            <form onSubmit={createUser}>
-              <fieldset className="modal-dialog__fieldset">
-                <legend>Name</legend>
-                <div className="modal-dialog__name-row">
-                  <div className="field">
-                    <label htmlFor="add-first">First name</label>
-                    <input
-                      id="add-first"
-                      value={formFirst}
-                      onChange={(e) => setFormFirst(e.target.value)}
-                      autoComplete="given-name"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="add-last">Last name</label>
-                    <input
-                      id="add-last"
-                      value={formLast}
-                      onChange={(e) => setFormLast(e.target.value)}
-                      autoComplete="family-name"
-                    />
-                  </div>
-                </div>
-              </fieldset>
-              <div className="field">
-                <label htmlFor="add-email">Email</label>
-                <input
-                  id="add-email"
-                  type="email"
-                  value={formEmail}
-                  onChange={(e) => setFormEmail(e.target.value)}
-                  required
-                  autoComplete="off"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="add-pw">Initial password</label>
-                <input
-                  id="add-pw"
-                  type="password"
-                  value={formPassword}
-                  onChange={(e) => setFormPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="add-role">User type</label>
-                <select
-                  id="add-role"
-                  value={formRole}
-                  onChange={(e) => setFormRole(e.target.value)}
-                >
-                  <option value="admin">Admin</option>
-                  <option value="employee">Member</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="add-avatar">Profile image (optional)</label>
-                <input
-                  id="add-avatar"
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  onChange={(e) => setFormAvatar(e.target.files?.[0] || null)}
-                />
-                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
-                  JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
-                </p>
-              </div>
-              <div className="modal-dialog__actions">
-                <button type="button" className="btn btn-ghost" onClick={closeCreateModal} disabled={busy}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={busy}>
-                  {busy ? 'Creating…' : 'Create user'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CreateUserModal
+        open={modalOpen}
+        busy={busy}
+        error={modalOpen ? error : ''}
+        formFirst={formFirst}
+        setFormFirst={setFormFirst}
+        formLast={formLast}
+        setFormLast={setFormLast}
+        formEmail={formEmail}
+        setFormEmail={setFormEmail}
+        formPassword={formPassword}
+        setFormPassword={setFormPassword}
+        formRole={formRole}
+        setFormRole={setFormRole}
+        setFormAvatar={setFormAvatar}
+        onClose={closeCreateModal}
+        onSubmit={createUser}
+      />
 
-      {editUser && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onClick={closeEditModal}
-          onKeyDown={(e) => e.key === 'Escape' && closeEditModal()}
-        >
-          <div
-            className="modal-dialog modal-dialog--wide card"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="edit-user-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-dialog__head">
-              <h2 id="edit-user-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-                Edit user
-              </h2>
-              <button
-                type="button"
-                className="btn btn-ghost modal-dialog__close"
-                onClick={closeEditModal}
-                aria-label="Close"
-              >
-                <X size={22} aria-hidden />
-              </button>
-            </div>
-            {error && editUser && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
-            <form onSubmit={saveEditUser}>
-              <fieldset className="modal-dialog__fieldset">
-                <legend>Name</legend>
-                <div className="modal-dialog__name-row">
-                  <div className="field">
-                    <label htmlFor="edit-first">First name</label>
-                    <input
-                      id="edit-first"
-                      value={editFirst}
-                      onChange={(e) => setEditFirst(e.target.value)}
-                      autoComplete="given-name"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="edit-last">Last name</label>
-                    <input
-                      id="edit-last"
-                      value={editLast}
-                      onChange={(e) => setEditLast(e.target.value)}
-                      autoComplete="family-name"
-                    />
-                  </div>
-                </div>
-              </fieldset>
-              <div className="field">
-                <label htmlFor="edit-email">Email</label>
-                <input
-                  id="edit-email"
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  required
-                  autoComplete="off"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="edit-role">User type</label>
-                <select
-                  id="edit-role"
-                  value={editRole}
-                  onChange={(e) => setEditRole(e.target.value)}
-                >
-                  <option value="admin">Admin</option>
-                  <option value="employee">Member</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="edit-avatar">Profile image</label>
-                <input
-                  key={editUser.id + (editRemoveAvatar ? '-rm' : '')}
-                  id="edit-avatar"
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  onChange={(e) => {
-                    setEditAvatarFile(e.target.files?.[0] || null);
-                    setEditRemoveAvatar(false);
-                  }}
-                />
-                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
-                  JPG, PNG, GIF, or WebP, up to 2&nbsp;MB. Leave empty to keep the current photo.
-                </p>
-                {editUser.hasProfileAvatar && !editAvatarFile && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ marginTop: '0.5rem' }}
-                    onClick={() => {
-                      setEditRemoveAvatar(true);
-                      setEditAvatarFile(null);
-                    }}
-                  >
-                    Remove photo
-                  </button>
-                )}
-              </div>
-              <div className="modal-dialog__actions">
-                <button type="button" className="btn btn-ghost" onClick={closeEditModal} disabled={busy}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={busy}>
-                  {busy ? 'Saving…' : 'Save changes'}
-                </button>
-              </div>
-            </form>
-            {canRemoveAccess && (
-              <div
-                className="modal-dialog__danger-zone"
-                style={{
-                  marginTop: '1.25rem',
-                  paddingTop: '1rem',
-                  borderTop: '1px solid var(--border)',
-                }}
-              >
-                {removeAccessStep === 0 ? (
-                  <>
-                    <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.65rem' }}>
-                      Remove this user from the list and block sign-in. Their profile and history stay in the
-                      database.
-                    </p>
-                    <button
-                      type="button"
-                      className="btn btn-danger-ghost"
-                      onClick={() => setRemoveAccessStep(1)}
-                      disabled={busy}
-                    >
-                      Remove access
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="error" style={{ marginBottom: '0.75rem' }}>
-                      They will be signed out immediately and will no longer appear here. Continue?
-                    </p>
-                    <div className="modal-dialog__actions" style={{ marginTop: 0 }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => setRemoveAccessStep(0)}
-                        disabled={busy}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-danger"
-                        onClick={confirmRemoveAccess}
-                        disabled={busy}
-                      >
-                        {busy ? 'Removing…' : 'Yes, remove access'}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <EditUserModal
+        editUser={editUser}
+        error={editUser ? error : ''}
+        busy={busy}
+        editFirst={editFirst}
+        setEditFirst={setEditFirst}
+        editLast={editLast}
+        setEditLast={setEditLast}
+        editEmail={editEmail}
+        setEditEmail={setEditEmail}
+        editRole={editRole}
+        setEditRole={setEditRole}
+        editAvatarFile={editAvatarFile}
+        setEditAvatarFile={setEditAvatarFile}
+        editRemoveAvatar={editRemoveAvatar}
+        setEditRemoveAvatar={setEditRemoveAvatar}
+        canRemoveAccess={canRemoveAccess}
+        removeAccessStep={removeAccessStep}
+        setRemoveAccessStep={setRemoveAccessStep}
+        onClose={closeEditModal}
+        onSave={saveEditUser}
+        onConfirmRemoveAccess={confirmRemoveAccess}
+      />
     </Layout>
   );
 }

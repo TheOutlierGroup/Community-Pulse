@@ -4,6 +4,7 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import Dashboard from '../components/admin/Dashboard.jsx';
+import { CLIENT_SERVICE_PULSE, userHasService } from '../utils/postLogin.js';
 
 export default function AdminHome() {
   const { user, logout, loading } = useAuth();
@@ -28,8 +29,11 @@ export default function AdminHome() {
   useEffect(() => {
     if (!loading && !user) navigate('/');
     else if (user?.organizationKind === 'platform') navigate('/platform');
-    else if (user && user.role !== 'admin') navigate('/pulse');
+    else if (user && user.role !== 'admin') navigate(userHasService(user, CLIENT_SERVICE_PULSE) ? '/pulse' : '/settings');
     else if (user?.organizationKind !== 'client') navigate('/');
+    else if (user && user.role === 'admin' && !userHasService(user, CLIENT_SERVICE_PULSE)) {
+      navigate('/client');
+    }
   }, [user, loading, navigate]);
 
   useEffect(() => {
@@ -88,7 +92,13 @@ export default function AdminHome() {
     }
   }
 
-  if (loading || !user || user.role !== 'admin' || user.organizationKind !== 'client') {
+  if (
+    loading ||
+    !user ||
+    user.role !== 'admin' ||
+    user.organizationKind !== 'client' ||
+    !userHasService(user, CLIENT_SERVICE_PULSE)
+  ) {
     return null;
   }
 

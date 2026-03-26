@@ -12,6 +12,9 @@ import { extensionForUpload } from '../middleware/avatarUpload.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
 import * as Organization from '../models/Organization.js';
+import {
+  enabledServicesFromOrganizationSettings,
+} from '../services/clientServices.js';
 
 const router = Router();
 
@@ -23,6 +26,7 @@ const authLimiter = rateLimit({
 });
 
 function publicUser(u) {
+  const enabledServices = deriveEnabledServices(u);
   return {
     id: u.id,
     email: u.email,
@@ -34,7 +38,13 @@ function publicUser(u) {
     lastName: u.last_name ?? '',
     hasProfileAvatar: Boolean(u.profile_avatar_filename),
     organizationHasCompanyLogo: Boolean(u.organization_company_logo_filename),
+    enabledServices,
   };
+}
+
+function deriveEnabledServices(userRow) {
+  if (userRow.organization_kind !== 'client') return [];
+  return enabledServicesFromOrganizationSettings(userRow.organization_settings);
 }
 
 router.post(

@@ -11,16 +11,23 @@ import {
   ClipboardList,
   CircleUser,
 } from 'lucide-react';
+import {
+  CLIENT_SERVICE_PULSE,
+  hasService,
+  userHasService,
+} from '../../utils/clientServices.js';
 
 function sidebarLinkClass({ isActive }) {
   return `sidebar-nav-link${isActive ? ' sidebar-nav-link--active' : ''}`;
 }
 
-export default function Navigation({ user, onLogout, variant = 'header' }) {
+export default function Navigation({ user, onLogout, variant = 'header', navContext = null }) {
   const navigate = useNavigate();
   const params = useParams();
   const platformClientOrgId =
     user?.organizationKind === 'platform' && params.orgId ? params.orgId : null;
+  const clientPulseEnabled = userHasService(user, CLIENT_SERVICE_PULSE);
+  const platformViewedClientPulseEnabled = hasService(navContext?.clientOrganization?.settings, CLIENT_SERVICE_PULSE);
 
   if (!user) {
     return (
@@ -60,10 +67,12 @@ export default function Navigation({ user, onLogout, variant = 'header' }) {
                 <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
                 Tasks
               </NavLink>
-              <NavLink to={`/platform/clients/${platformClientOrgId}/pulse`} className={sidebarLinkClass}>
-                <Activity size={20} strokeWidth={1.75} aria-hidden />
-                Pulse
-              </NavLink>
+              {platformViewedClientPulseEnabled && (
+                <NavLink to={`/platform/clients/${platformClientOrgId}/pulse`} className={sidebarLinkClass}>
+                  <Activity size={20} strokeWidth={1.75} aria-hidden />
+                  Pulse
+                </NavLink>
+              )}
               <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
                 <CircleUser size={20} strokeWidth={1.75} aria-hidden />
                 Account
@@ -98,7 +107,7 @@ export default function Navigation({ user, onLogout, variant = 'header' }) {
               </NavLink>
             </>
           )}
-          {user.organizationKind === 'client' && user.role === 'employee' && (
+          {user.organizationKind === 'client' && user.role === 'employee' && clientPulseEnabled && (
             <NavLink to="/pulse" className={sidebarLinkClass}>
               <Activity size={20} strokeWidth={1.75} aria-hidden />
               My Pulse
@@ -146,7 +155,7 @@ export default function Navigation({ user, onLogout, variant = 'header' }) {
           Team
         </Link>
       )}
-      {user.organizationKind === 'client' && user.role === 'employee' && (
+      {user.organizationKind === 'client' && user.role === 'employee' && clientPulseEnabled && (
         <Link to="/pulse" className="btn btn-ghost nav-link-btn">
           <Activity size={18} strokeWidth={2} aria-hidden />
           My Pulse

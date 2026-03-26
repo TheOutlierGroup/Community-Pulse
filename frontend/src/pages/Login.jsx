@@ -51,7 +51,6 @@ export default function Login() {
       </div>
       <div className="card login-card">
         <h1>Sign in</h1>
-        <p className="muted">Use your Outlier or client account.</p>
         <form onSubmit={onSubmit}>
           <div className="field">
             <label htmlFor="email">Email</label>

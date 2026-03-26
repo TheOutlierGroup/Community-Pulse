@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import { getPostLoginPath } from '../utils/postLogin.js';
+import { CLIENT_SERVICE_PULSE, getPostLoginPath, userHasService } from '../utils/postLogin.js';
 import { ArrowLeft } from 'lucide-react';
-import Heatmap from '../components/admin/Heatmap.jsx';
-import TensionMap from '../components/admin/TensionMap.jsx';
-import ActionPlan from '../components/admin/ActionPlan.jsx';
-import Analytics from '../components/admin/Analytics.jsx';
+
+const Heatmap = lazy(() => import('../components/admin/Heatmap.jsx'));
+const TensionMap = lazy(() => import('../components/admin/TensionMap.jsx'));
+const ActionPlan = lazy(() => import('../components/admin/ActionPlan.jsx'));
+const Analytics = lazy(() => import('../components/admin/Analytics.jsx'));
 
 export default function AdminSession() {
   const { id } = useParams();
@@ -33,6 +34,8 @@ export default function AdminSession() {
     else if (user?.organizationKind === 'platform') navigate('/platform');
     else if (!user || user.role !== 'admin' || user.organizationKind !== 'client') {
       if (user) navigate(getPostLoginPath(user));
+    } else if (!userHasService(user, CLIENT_SERVICE_PULSE)) {
+      navigate('/client');
     }
   }, [user, loading, navigate]);
 
@@ -78,7 +81,13 @@ export default function AdminSession() {
     }
   }
 
-  if (loading || !user || user.role !== 'admin' || user.organizationKind !== 'client') {
+  if (
+    loading ||
+    !user ||
+    user.role !== 'admin' ||
+    user.organizationKind !== 'client' ||
+    !userHasService(user, CLIENT_SERVICE_PULSE)
+  ) {
     return null;
   }
 
@@ -101,7 +110,7 @@ export default function AdminSession() {
       {error && <p className="error">{error}</p>}
 
       {analytics && (
-        <>
+        <Suspense fallback={<p className="muted">Loading analytics…</p>}>
           <div className="card" style={{ marginTop: '1rem' }}>
             <h2 style={{ marginTop: 0 }}>Interpretation</h2>
             <p>{analytics.narrative}</p>
@@ -156,7 +165,7 @@ export default function AdminSession() {
             </div>
             <ActionPlan plan={data.actionPlan} />
           </div>
-        </>
+        </Suspense>
       )}
     </Layout>
   );

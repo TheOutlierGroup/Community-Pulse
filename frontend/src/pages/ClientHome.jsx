@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import { getPostLoginPath } from '../utils/postLogin.js';
+import { CLIENT_SERVICE_PULSE, getPostLoginPath, userHasService } from '../utils/postLogin.js';
 import { Activity, LayoutDashboard } from 'lucide-react';
 
 export default function ClientHome() {
@@ -12,7 +12,7 @@ export default function ClientHome() {
   useEffect(() => {
     if (!loading && !user) navigate('/');
     else if (user && user.organizationKind !== 'client') navigate(getPostLoginPath(user));
-    else if (user && user.role !== 'admin') navigate('/pulse');
+    else if (user && user.role !== 'admin') navigate(getPostLoginPath(user));
   }, [user, loading, navigate]);
 
   if (loading || !user || user.organizationKind !== 'client' || user.role !== 'admin') {
@@ -28,16 +28,25 @@ export default function ClientHome() {
       <p className="muted" style={{ marginBottom: '1.5rem' }}>
         {user.organizationName || 'Your organization'}
       </p>
-      <div className="card" style={{ maxWidth: 480 }}>
-        <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Activity size={22} strokeWidth={1.75} aria-hidden />
-          Pulse
-        </h2>
-        <p className="muted">Run diagnostics, invite employees, and review session analytics.</p>
-        <Link to="/admin" className="btn btn-primary" style={{ marginTop: '1rem', display: 'inline-flex' }}>
-          Open Pulse admin
-        </Link>
-      </div>
+      {userHasService(user, CLIENT_SERVICE_PULSE) ? (
+        <div className="card" style={{ maxWidth: 480 }}>
+          <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Activity size={22} strokeWidth={1.75} aria-hidden />
+            Pulse
+          </h2>
+          <p className="muted">Run diagnostics, invite employees, and review session analytics.</p>
+          <Link to="/admin" className="btn btn-primary" style={{ marginTop: '1rem', display: 'inline-flex' }}>
+            Open Pulse admin
+          </Link>
+        </div>
+      ) : (
+        <div className="card" style={{ maxWidth: 480 }}>
+          <h2 style={{ marginTop: 0 }}>No active services</h2>
+          <p className="muted" style={{ marginBottom: 0 }}>
+            Pulse is not enabled for this client.
+          </p>
+        </div>
+      )}
     </Layout>
   );
 }

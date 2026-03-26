@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
-import { useToast } from '../components/shared/ToastProvider.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { Activity } from 'lucide-react';
-import { normalizeSettings, sessionStatusLabel } from './platformClientUtils.js';
+import {
+  normalizeServices,
+  sessionStatusLabel,
+} from './platformClientUtils.js';
 
 export default function PlatformClientPulse() {
-  const { org, orgId, refreshOrg, clientLogoUrl } = useOutletContext();
-  const { showToast } = useToast();
+  const { org, orgId, clientLogoUrl } = useOutletContext();
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
-  const [pulseBusy, setPulseBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const settings = normalizeSettings(org.settings);
-  const pulseEnabled = settings.pulseEnabled === true;
+  const enabledServices = normalizeServices(org.settings);
+  const pulseEnabled = enabledServices.includes('pulse');
 
   const loadSessions = useCallback(async () => {
     const { data } = await api.get(`/api/platform/organizations/${orgId}/pulse-sessions`);
@@ -22,27 +23,12 @@ export default function PlatformClientPulse() {
   }, [orgId]);
 
   useEffect(() => {
-    loadSessions().catch(() => setSessions([]));
-  }, [loadSessions]);
-
-  async function togglePulse(next) {
-    setPulseBusy(true);
-    setError('');
-    try {
-      const nextSettings = { ...normalizeSettings(org.settings), pulseEnabled: next };
-      await api.patch(`/api/platform/organizations/${orgId}`, {
-        settings: nextSettings,
-      });
-      await refreshOrg();
-      showToast(next ? 'Pulse is on for this client.' : 'Pulse is off for this client.', {
-        variant: 'success',
-      });
-    } catch (err) {
-      setError(err.response?.data?.error || 'Could not update Pulse setting.');
-    } finally {
-      setPulseBusy(false);
+    if (!pulseEnabled) {
+      navigate(`/platform/clients/${orgId}/account`, { replace: true });
+      return;
     }
-  }
+    loadSessions().catch(() => setSessions([]));
+  }, [loadSessions, navigate, orgId, pulseEnabled]);
 
   const activeSession = sessions.find((s) => s.status === 'active');
 
@@ -57,21 +43,13 @@ export default function PlatformClientPulse() {
             Pulse
           </h2>
           <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
-            When Pulse is on, this client&apos;s admins can run employee pulse sessions in their dashboard.
+            Pulse status: <strong>{pulseEnabled ? 'Enabled' : 'Disabled'}</strong>. Manage services from the
+            Account tab.
+          </p>
+          <p className="muted" style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
+            When Pulse is enabled, this client&apos;s admins can run employee pulse sessions in their dashboard.
             Employees only see Pulse when there is an active session.
           </p>
-          <div className="platform-pulse-toggle-row">
-            <label className="platform-toggle">
-              <input
-                type="checkbox"
-                checked={pulseEnabled}
-                disabled={pulseBusy}
-                onChange={(e) => togglePulse(e.target.checked)}
-              />
-              <span className="platform-toggle__slider" aria-hidden />
-              <span className="platform-toggle__label">Pulse enabled for this client</span>
-            </label>
-          </div>
           <div className="platform-pulse-summary">
             <div>
               <span className="muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>

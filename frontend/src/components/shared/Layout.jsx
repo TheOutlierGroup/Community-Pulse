@@ -4,7 +4,7 @@ import PlatformNotificationBell from './PlatformNotificationBell.jsx';
 import { getPostLoginPath } from '../../utils/postLogin.js';
 import outlierLogo from '../../images/outlier-logo.png';
 
-export default function Layout({ children, user, onLogout, hideHeader = false }) {
+export default function Layout({ children, user, onLogout, hideHeader = false, navContext = null }) {
   if (hideHeader) {
     return (
       <div className="app-shell">
@@ -30,7 +30,7 @@ export default function Layout({ children, user, onLogout, hideHeader = false })
                 decoding="async"
               />
             </Link>
-            <Navigation user={user} onLogout={onLogout} variant="sidebar" />
+            <Navigation user={user} onLogout={onLogout} variant="sidebar" navContext={navContext} />
           </div>
         </aside>
         <div className="app-content">
@@ -52,7 +52,7 @@ export default function Layout({ children, user, onLogout, hideHeader = false })
         <Link to="/" className="brand brand-with-logo" aria-label="Outlier home">
           <img src={outlierLogo} alt="" className="brand-logo" decoding="async" />
         </Link>
-        <Navigation user={user} onLogout={onLogout} />
+        <Navigation user={user} onLogout={onLogout} navContext={navContext} />
       </header>
       <main className="app-main">{children}</main>
     </div>

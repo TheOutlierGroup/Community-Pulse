@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import ClientTaskDetailPanel from '../components/platform/ClientTaskDetailPanel.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { CalendarRange, LayoutDashboard, ListTodo } from 'lucide-react';
+
+const ClientTaskDetailPanel = lazy(() => import('../components/platform/ClientTaskDetailPanel.jsx'));
 
 function getLocalWeekRange() {
   const now = new Date();
@@ -284,13 +285,15 @@ export default function PlatformHome() {
       </div>
 
       {detailOrgId && detailTaskId ? (
-        <ClientTaskDetailPanel
-          orgId={detailOrgId}
-          taskId={detailTaskId}
-          assignableUsers={assignableUsers}
-          onClose={closeTaskDetail}
-          onTasksChanged={load}
-        />
+        <Suspense fallback={null}>
+          <ClientTaskDetailPanel
+            orgId={detailOrgId}
+            taskId={detailTaskId}
+            assignableUsers={assignableUsers}
+            onClose={closeTaskDetail}
+            onTasksChanged={load}
+          />
+        </Suspense>
       ) : null}
     </Layout>
   );

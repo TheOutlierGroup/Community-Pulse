@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireClientPulseService } from '../middleware/auth.js';
 import * as PulseSession from '../models/PulseSession.js';
 import * as EmployeeResponse from '../models/EmployeeResponse.js';
 import {
@@ -10,9 +10,12 @@ import {
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuth, requireClientPulseService);
 
 router.get('/themes', (req, res) => {
+  if (req.user.role !== 'employee') {
+    return res.status(403).json({ error: 'Employees only' });
+  }
   res.json({ themes: THEMES });
 });
 

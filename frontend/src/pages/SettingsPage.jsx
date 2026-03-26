@@ -3,8 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import api from '../services/api.js';
-import { Settings, UserCircle, Building2 } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { jsonErrorFromBuffer, sniffImageMime } from '../utils/imageResponseHelpers.js';
+import ProfileCard from './settingsPage/ProfileCard.jsx';
+import CompanyLogoCard from './settingsPage/CompanyLogoCard.jsx';
+import PasswordCard from './settingsPage/PasswordCard.jsx';
+import AccountCard from './settingsPage/AccountCard.jsx';
 
 export default function SettingsPage() {
   const { user, logout, loading, setCurrentUser } = useAuth();
@@ -348,211 +352,44 @@ export default function SettingsPage() {
           {error || message}
         </p>
       )}
-      <div className="card" style={{ maxWidth: 480, marginBottom: '1.25rem' }}>
-        <h2 className="settings-section-title">Your profile</h2>
-        {avatarLoadError && (
-          <p className="error" style={{ marginBottom: '0.75rem' }}>
-            {avatarLoadError}
-          </p>
-        )}
-        <div className="settings-avatar-row">
-          <div className="settings-avatar-wrap" aria-hidden>
-            {avatarPreview ? (
-              <img src={avatarPreview} alt="" className="settings-avatar-img" />
-            ) : (
-              <UserCircle className="settings-avatar-placeholder" strokeWidth={1.25} />
-            )}
-          </div>
-          <div className="settings-avatar-actions">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp"
-              className="visually-hidden"
-              onChange={onAvatarFile}
-              disabled={profileBusy}
-            />
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={profileBusy}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {profileBusy ? 'Working…' : user.hasProfileAvatar ? 'Change photo' : 'Upload photo'}
-            </button>
-            {user.hasProfileAvatar && (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={profileBusy}
-                onClick={removeAvatar}
-              >
-                Remove photo
-              </button>
-            )}
-          </div>
-        </div>
-        <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.75rem' }}>
-          JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
-        </p>
-        <form onSubmit={saveNames} style={{ marginTop: '1.25rem' }}>
-          <div className="field">
-            <label htmlFor="settings-first">First name</label>
-            <input
-              id="settings-first"
-              type="text"
-              autoComplete="given-name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="settings-last">Last name</label>
-            <input
-              id="settings-last"
-              type="text"
-              autoComplete="family-name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-            />
-          </div>
-          <p className="muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>
-            Display as: <strong style={{ color: 'var(--text)' }}>{displayPreview}</strong>
-          </p>
-          <div className="btn-row">
-            <button type="submit" className="btn btn-primary" disabled={namesBusy}>
-              {namesBusy ? 'Saving…' : 'Save name'}
-            </button>
-          </div>
-        </form>
-      </div>
-      {user.organizationKind === 'client' && user.role === 'admin' && (
-        <div className="card" style={{ maxWidth: 480, marginBottom: '1.25rem' }}>
-          <h2 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Building2 size={22} strokeWidth={1.75} aria-hidden />
-            Company logo
-          </h2>
-          <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
-            Logo for {user.organizationName || 'your organization'}. Your team and Outlier platform staff can see it
-            in the client workspace.
-          </p>
-          {companyLogoLoadError && (
-            <p className="error" style={{ marginBottom: '0.75rem' }}>
-              {companyLogoLoadError}
-            </p>
-          )}
-          <div className="company-logo-preview-wrap">
-            {companyLogoPreview ? (
-              <img src={companyLogoPreview} alt="" className="company-logo-preview" />
-            ) : (
-              <span className="muted" style={{ fontSize: '0.9rem' }}>
-                No logo uploaded yet.
-              </span>
-            )}
-          </div>
-          <input
-            ref={companyLogoInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            className="visually-hidden"
-            onChange={onCompanyLogoFile}
-            disabled={companyLogoBusy}
-          />
-          <div className="settings-avatar-actions" style={{ marginTop: '0.25rem' }}>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={companyLogoBusy}
-              onClick={() => companyLogoInputRef.current?.click()}
-            >
-              {companyLogoBusy
-                ? 'Working…'
-                : user.organizationHasCompanyLogo
-                  ? 'Change logo'
-                  : 'Upload logo'}
-            </button>
-            {user.organizationHasCompanyLogo && (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={companyLogoBusy}
-                onClick={removeCompanyLogo}
-              >
-                Remove logo
-              </button>
-            )}
-          </div>
-          <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.75rem', marginBottom: 0 }}>
-            JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
-          </p>
-        </div>
-      )}
-      <div className="card" style={{ maxWidth: 480, marginBottom: '1.25rem' }}>
-        <h2 className="settings-section-title">Password</h2>
-        {(passwordMessage || passwordError) && (
-          <p className={passwordError ? 'error' : 'muted'} style={{ marginBottom: '1rem' }}>
-            {passwordError || passwordMessage}
-          </p>
-        )}
-        <form onSubmit={changePassword}>
-          <div className="field">
-            <label htmlFor="settings-current-pw">Current password</label>
-            <input
-              id="settings-current-pw"
-              type="password"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="settings-new-pw">New password</label>
-            <input
-              id="settings-new-pw"
-              type="password"
-              autoComplete="new-password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-              minLength={8}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="settings-confirm-pw">Confirm new password</label>
-            <input
-              id="settings-confirm-pw"
-              type="password"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              minLength={8}
-            />
-          </div>
-          <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
-            At least 8 characters.
-          </p>
-          <div className="btn-row">
-            <button type="submit" className="btn btn-primary" disabled={passwordBusy}>
-              {passwordBusy ? 'Updating…' : 'Update password'}
-            </button>
-          </div>
-        </form>
-      </div>
-      <div className="card" style={{ maxWidth: 480 }}>
-        <h2 className="settings-section-title">Account</h2>
-        <dl className="settings-dl">
-          <dt>Email</dt>
-          <dd>{user.email}</dd>
-          <dt>Role</dt>
-          <dd style={{ textTransform: 'capitalize' }}>{user.role}</dd>
-          <dt>Organization</dt>
-          <dd>{orgLabel}</dd>
-          <dt>Account type</dt>
-          <dd style={{ textTransform: 'capitalize' }}>{user.organizationKind}</dd>
-        </dl>
-      </div>
+      <ProfileCard
+        user={user}
+        avatarLoadError={avatarLoadError}
+        avatarPreview={avatarPreview}
+        fileInputRef={fileInputRef}
+        onAvatarFile={onAvatarFile}
+        profileBusy={profileBusy}
+        removeAvatar={removeAvatar}
+        saveNames={saveNames}
+        firstName={firstName}
+        setFirstName={setFirstName}
+        lastName={lastName}
+        setLastName={setLastName}
+        displayPreview={displayPreview}
+        namesBusy={namesBusy}
+      />
+      <CompanyLogoCard
+        user={user}
+        companyLogoLoadError={companyLogoLoadError}
+        companyLogoPreview={companyLogoPreview}
+        companyLogoInputRef={companyLogoInputRef}
+        onCompanyLogoFile={onCompanyLogoFile}
+        companyLogoBusy={companyLogoBusy}
+        removeCompanyLogo={removeCompanyLogo}
+      />
+      <PasswordCard
+        passwordMessage={passwordMessage}
+        passwordError={passwordError}
+        changePassword={changePassword}
+        currentPassword={currentPassword}
+        setCurrentPassword={setCurrentPassword}
+        newPassword={newPassword}
+        setNewPassword={setNewPassword}
+        confirmPassword={confirmPassword}
+        setConfirmPassword={setConfirmPassword}
+        passwordBusy={passwordBusy}
+      />
+      <AccountCard user={user} orgLabel={orgLabel} />
     </Layout>
   );
 }

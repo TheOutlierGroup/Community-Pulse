@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import { getPostLoginPath } from '../utils/postLogin.js';
+import { CLIENT_SERVICE_PULSE, getPostLoginPath, userHasService } from '../utils/postLogin.js';
 import Step1WorkFeel from '../components/employee/Step1WorkFeel.jsx';
 import Step2Priorities from '../components/employee/Step2Priorities.jsx';
 import Step3Energy from '../components/employee/Step3Energy.jsx';
@@ -67,6 +67,8 @@ export default function EmployeePulse() {
     if (!loading && !user) navigate('/');
     else if (user && (user.role !== 'employee' || user.organizationKind !== 'client')) {
       navigate(getPostLoginPath(user));
+    } else if (user && !userHasService(user, CLIENT_SERVICE_PULSE)) {
+      navigate(getPostLoginPath(user));
     }
   }, [user, loading, navigate]);
 
@@ -112,7 +114,13 @@ export default function EmployeePulse() {
     }
   }
 
-  if (loading || !user || user.role !== 'employee' || user.organizationKind !== 'client') {
+  if (
+    loading ||
+    !user ||
+    user.role !== 'employee' ||
+    user.organizationKind !== 'client' ||
+    !userHasService(user, CLIENT_SERVICE_PULSE)
+  ) {
     return null;
   }
 

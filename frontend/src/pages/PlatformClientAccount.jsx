@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { Building2, Sparkles } from 'lucide-react';
+import { CLIENT_SERVICE_PULSE, normalizeServices, normalizeSettings } from './platformClientUtils.js';
+
+const SERVICE_OPTIONS = [{ id: CLIENT_SERVICE_PULSE, label: 'Pulse' }];
 
 function readCompanyAddress(settings) {
   if (settings == null) return '';
@@ -26,12 +29,14 @@ export default function PlatformClientAccount() {
   const logoInputRef = useRef(null);
   const [editName, setEditName] = useState(org.name);
   const [address, setAddress] = useState(() => readCompanyAddress(org.settings));
+  const [services, setServices] = useState(() => normalizeServices(org.settings));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     setEditName(org.name);
     setAddress(readCompanyAddress(org.settings));
+    setServices(normalizeServices(org.settings));
   }, [org.name, org.settings]);
 
   async function saveOrgName(e) {
@@ -101,6 +106,31 @@ export default function PlatformClientAccount() {
     }
   }
 
+  async function saveServices(nextServices) {
+    setBusy(true);
+    setError('');
+    try {
+      const nextSettings = { ...normalizeSettings(org.settings), services: nextServices };
+      if ('pulseEnabled' in nextSettings) delete nextSettings.pulseEnabled;
+      await api.patch(`/api/platform/organizations/${orgId}`, { settings: nextSettings });
+      await refreshOrg();
+      showToast('Services saved.', { variant: 'success' });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not save services.');
+      setServices(normalizeServices(org.settings));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onToggleService(serviceId, checked) {
+    const next = checked
+      ? Array.from(new Set([...services, serviceId]))
+      : services.filter((id) => id !== serviceId);
+    setServices(next);
+    saveServices(next);
+  }
+
   return (
     <>
       <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
@@ -129,6 +159,27 @@ export default function PlatformClientAccount() {
               Save name
             </button>
           </form>
+
+          <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+            <h2 className="platform-client-dashboard__h2">Services</h2>
+            <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+              Tick the services this client is paying for.
+            </p>
+            {SERVICE_OPTIONS.map((service) => (
+              <label
+                key={service.id}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.35rem 0' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={services.includes(service.id)}
+                  disabled={busy}
+                  onChange={(e) => onToggleService(service.id, e.target.checked)}
+                />
+                <span>{service.label}</span>
+              </label>
+            ))}
+          </div>
 
           <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
             <h2 className="platform-client-dashboard__h2" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -206,10 +257,6 @@ export default function PlatformClientAccount() {
                   day: 'numeric',
                 })
               : '—'}
-            {' · '}
-            <Link to={`/platform/clients/${orgId}`} className="platform-client-account__back-dash">
-              Back to dashboard
-            </Link>
           </p>
         </div>
       </div>

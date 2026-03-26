@@ -1,7 +1,9 @@
-export function normalizeSettings(raw) {
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
-  return {};
-}
+export {
+  CLIENT_SERVICE_PULSE,
+  normalizeSettings,
+  normalizeServices,
+  hasService,
+} from '../utils/clientServices.js';
 
 export function sessionStatusLabel(s) {
   if (s === 'active') return 'Active';

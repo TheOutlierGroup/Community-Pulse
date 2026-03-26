@@ -1,5 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomBytes } from 'crypto';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { pool } from '../config/database.js';
@@ -7,9 +8,16 @@ import { pool } from '../config/database.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 
-const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'hello@lukeford.dev';
-const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'Connor!7';
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'admin@localhost';
+const providedSeedPassword = process.env.SEED_ADMIN_PASSWORD;
+const generatedSeedPassword = randomBytes(18).toString('base64url');
+const ADMIN_PASSWORD = providedSeedPassword || generatedSeedPassword;
 const ORG_NAME = process.env.SEED_ORG_NAME || 'Outlier';
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction && !providedSeedPassword) {
+  throw new Error('SEED_ADMIN_PASSWORD is required in production');
+}
 
 async function ensureBootstrapOrgIsPlatform(client) {
   const { rows } = await client.query(
@@ -66,6 +74,9 @@ async function seed() {
     );
     await client.query('COMMIT');
     console.log(`Seeded platform admin: ${ADMIN_EMAIL} (org: ${ORG_NAME})`);
+    if (!providedSeedPassword) {
+      console.log(`Generated seed admin password (shown once): ${generatedSeedPassword}`);
+    }
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;

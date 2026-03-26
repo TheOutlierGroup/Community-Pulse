@@ -15,6 +15,8 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
+      - key: INVITE_TOKEN_SECRET
+        generateValue: true
       - key: DATABASE_URL
         fromDatabase:
           name: pulse-db
@@ -23,6 +25,8 @@ services:
         value: /var/pulse-storage
       - key: FRONTEND_ORIGIN
         sync: false
+      - key: ENFORCE_HTTPS
+        value: "true"
     disk:
       name: pulse-disk
       mountPath: /var/pulse-storage
