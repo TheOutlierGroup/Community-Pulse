@@ -129,12 +129,6 @@ const TEAM_SAMPLE_ROWS = [
   },
 ];
 
-const NAV_ITEMS = [
-  { section: 'Overview', items: ['Organisation Dashboard', 'Score Breakdown', 'Trend Analysis'] },
-  { section: 'People', items: ['Manager Load Report', 'Team-Level View'] },
-  { section: 'Settings', items: ['Survey Configuration', 'Export Data'] },
-];
-
 function sparkColor(load) {
   if (load === 'Sustainable') return 'var(--pulse-green)';
   if (load === 'Overloaded') return 'var(--pulse-red)';
@@ -150,7 +144,7 @@ function quadrantPillClass(name) {
 }
 
 export default function PlatformClientPulse() {
-  const { org, orgId } = useOutletContext();
+  const { orgId } = useOutletContext();
   const navigate = useNavigate();
   const location = useLocation();
   const [dashboard, setDashboard] = useState(null);
@@ -248,49 +242,23 @@ export default function PlatformClientPulse() {
 
   return (
     <div className="pulse-prototype-page">
-      <div className="pulse-prototype-topbar">
-        <div className="pulse-prototype-topbar__title">Organisation Dashboard</div>
-        <div className="pulse-prototype-topbar__right">
-          <span className="pulse-prototype-badge">Client Administration</span>
-          <span className="pulse-prototype-date">{todayLabel}</span>
-          <button type="button" className="pulse-prototype-refresh" onClick={loadDashboard} disabled={loading}>
-            {loading ? '↺ Refreshing…' : '↺ Refresh'}
+      <div className="pulse-platform-header">
+        <div>
+          <div className="pulse-platform-header__eyebrow">Client administration</div>
+          <h1 className="pulse-platform-header__title">Organisation Dashboard</h1>
+        </div>
+        <div className="pulse-platform-header__right">
+          <span className="pulse-platform-header__date">{todayLabel}</span>
+          <button type="button" className="btn btn-ghost" onClick={loadDashboard} disabled={loading}>
+            {loading ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
       </div>
 
-      <div className="pulse-prototype-body">
-        <aside className="pulse-prototype-sidebar">
-          <div className="pulse-prototype-sidebar__logo">
-            <div className="pulse-prototype-logo-text">Change Readiness</div>
-            <div className="pulse-prototype-logo-sub">Admin Console</div>
-          </div>
-          <div className="pulse-prototype-sidebar__nav">
-            {NAV_ITEMS.map((group) => (
-              <div key={group.section} className="pulse-prototype-nav-group">
-                <div className="pulse-prototype-nav-section">{group.section}</div>
-                {group.items.map((item, idx) => (
-                  <button
-                    key={item}
-                    type="button"
-                    className={`pulse-prototype-nav-item${group.section === 'Overview' && idx === 0 ? ' active' : ''}`}
-                  >
-                    <span className="pulse-prototype-nav-dot" aria-hidden />
-                    {item}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-          <div className="pulse-prototype-sidebar__footer">
-            <div className="pulse-prototype-sidebar__label">Client Organisation</div>
-            <div className="pulse-prototype-sidebar__name">{org?.name || '—'}</div>
-          </div>
-        </aside>
+      {error && <p className="error">{error}</p>}
+      {!error && loading && <p className="muted">Loading Pulse dashboard…</p>}
 
-        <div className="pulse-prototype-content">
-          {error && <p className="error">{error}</p>}
-          {!error && loading && <p className="muted">Loading Pulse dashboard…</p>}
+      <div className="pulse-prototype-content">
 
           <div className="pulse-prototype-kpis" id="organisation-dashboard">
             <div className="pulse-prototype-kpi">
@@ -578,7 +546,6 @@ export default function PlatformClientPulse() {
               </tbody>
             </table>
           </section>
-        </div>
       </div>
     </div>
   );
