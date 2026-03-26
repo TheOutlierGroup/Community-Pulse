@@ -3334,34 +3334,28 @@ input[type='range'] {
 
 .platform-pulse-page {
   display: block;
-  --pulse-bg: #090d14;
-  --pulse-surface: #0f1622;
-  --pulse-surface-2: #111c2c;
-  --pulse-border: #1f2d43;
-  --pulse-text: #d8e0ef;
-  --pulse-muted: #7f93b2;
-  --pulse-title: #f4f7ff;
-  --pulse-accent-blue: #44a3ff;
-  --pulse-accent-amber: #e6a463;
-  --pulse-accent-green: #29d391;
-  --pulse-accent-red: #f26a6a;
-  background: linear-gradient(180deg, #090d14 0%, #0a111b 100%);
-  border: 1px solid #131f31;
-  border-radius: 12px;
-  padding: 0.65rem 0.7rem 0.9rem;
+  --pulse-border: var(--border);
+  --pulse-text: var(--text);
+  --pulse-muted: var(--muted);
+  --pulse-title: var(--text);
+  --pulse-accent-blue: #3b82f6;
+  --pulse-accent-amber: #d97706;
+  --pulse-accent-green: #10b981;
+  --pulse-accent-red: #dc2626;
+  padding: 0;
 }
 
 .platform-pulse-page .platform-client-dashboard-grid {
-  gap: 0.62rem;
+  gap: 1rem;
 }
 
 .platform-pulse-page .card.platform-pulse-panel {
-  background: linear-gradient(180deg, #101927 0%, #0d1624 100%);
+  background: var(--surface);
   border: 1px solid var(--pulse-border);
-  box-shadow: 0 12px 24px rgba(2, 5, 12, 0.28);
+  box-shadow: var(--shadow);
   color: var(--pulse-text);
-  border-radius: 8px;
-  padding: 0.72rem 0.8rem;
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
 }
 
 .platform-pulse-page .platform-client-dashboard__h2 {
@@ -3376,7 +3370,7 @@ input[type='range'] {
 .platform-pulse-page .btn.btn-ghost {
   border-color: var(--pulse-border);
   color: var(--pulse-text);
-  background: rgba(17, 28, 44, 0.62);
+  background: transparent;
   min-height: 34px;
   padding: 0.35rem 0.75rem;
   border-radius: 6px;
@@ -3384,7 +3378,7 @@ input[type='range'] {
 }
 
 .platform-pulse-page .btn.btn-ghost:hover {
-  background: rgba(26, 40, 61, 0.85);
+  background: var(--surface2);
 }
 
 .platform-pulse-heading {
@@ -3392,8 +3386,7 @@ input[type='range'] {
   justify-content: space-between;
   align-items: flex-end;
   gap: 1rem;
-  margin: 0 0 0.55rem;
-  padding: 0.15rem 0.1rem;
+  margin: 0.35rem 0 0.95rem;
 }
 
 .platform-pulse-heading__eyebrow {
@@ -3406,7 +3399,7 @@ input[type='range'] {
 
 .platform-pulse-heading__title {
   margin: 0;
-  font-size: 1.28rem;
+  font-size: 1.4rem;
   color: var(--pulse-title);
   line-height: 1.15;
 }
@@ -3419,7 +3412,7 @@ input[type='range'] {
   border: 1px solid var(--pulse-border);
   border-radius: 4px;
   padding: 0.28rem 0.52rem;
-  background: rgba(12, 23, 38, 0.82);
+  background: var(--surface2);
 }
 
 .platform-pulse-heading__right {
@@ -3465,7 +3458,7 @@ input[type='range'] {
 .platform-pulse-kpi {
   border-right: 1px solid var(--pulse-border);
   padding: 0.62rem 0.72rem;
-  background: linear-gradient(180deg, #101a2a 0%, #0d1523 100%);
+  background: var(--surface2);
 }
 
 .platform-pulse-kpi:last-child {
@@ -3544,25 +3537,25 @@ input[type='range'] {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  background: rgba(13, 24, 39, 0.8);
+  background: var(--surface);
   color: var(--pulse-text);
   font-size: 0.74rem;
 }
 
 .platform-pulse-breakdown__row:nth-child(1) {
-  border-left: 3px solid #2ecf98;
+  border-left: 3px solid #34d399;
 }
 
 .platform-pulse-breakdown__row:nth-child(2) {
-  border-left: 3px solid #f2af61;
+  border-left: 3px solid #f59e0b;
 }
 
 .platform-pulse-breakdown__row:nth-child(3) {
-  border-left: 3px solid #f26a6a;
+  border-left: 3px solid #ef4444;
 }
 
 .platform-pulse-breakdown__row:nth-child(4) {
-  border-left: 3px solid #4fa9ff;
+  border-left: 3px solid #60a5fa;
 }
 
 .platform-pulse-breakdown__row--load {
@@ -3596,7 +3589,7 @@ input[type='range'] {
   border: 1px solid var(--pulse-border);
   border-radius: 6px;
   padding: 0.55rem 0.62rem;
-  background: rgba(12, 22, 35, 0.84);
+  background: var(--surface2);
 }
 
 .platform-pulse-alert strong {
@@ -3613,18 +3606,18 @@ input[type='range'] {
 }
 
 .platform-pulse-alert--critical {
-  border-color: rgba(242, 106, 106, 0.5);
-  background: rgba(82, 22, 26, 0.36);
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.08);
 }
 
 .platform-pulse-alert--warning {
-  border-color: rgba(230, 164, 99, 0.52);
-  background: rgba(76, 47, 17, 0.35);
+  border-color: rgba(217, 119, 6, 0.35);
+  background: rgba(217, 119, 6, 0.08);
 }
 
 .platform-pulse-alert--info {
-  border-color: rgba(68, 163, 255, 0.5);
-  background: rgba(24, 44, 73, 0.42);
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.08);
 }
 
 .platform-pulse-role-bars {
@@ -3641,7 +3634,7 @@ input[type='range'] {
   border: 1px solid var(--pulse-border);
   border-radius: 6px;
   padding: 0.42rem 0.58rem;
-  background: rgba(15, 24, 37, 0.84);
+  background: var(--surface2);
   font-size: 0.68rem;
 }
 
@@ -3681,7 +3674,7 @@ input[type='range'] {
   border: 1px solid var(--pulse-border);
   border-radius: 6px;
   padding: 0.32rem;
-  background: rgba(12, 20, 34, 0.9);
+  background: var(--surface2);
 }
 
 .platform-pulse-mini-chart__bar {
@@ -3718,7 +3711,7 @@ input[type='range'] {
 .platform-pulse-page .table-wrap {
   border: 1px solid var(--pulse-border);
   border-radius: 8px;
-  background: rgba(12, 22, 35, 0.88);
+  background: var(--surface);
 }
 
 .platform-pulse-page .admin-table {
@@ -3749,10 +3742,6 @@ input[type='range'] {
 }
 
 @media (max-width: 900px) {
-  .platform-pulse-page {
-    padding: 0.5rem;
-  }
-
   .platform-pulse-kpi-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
