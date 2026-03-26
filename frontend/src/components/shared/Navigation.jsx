@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   ClipboardList,
   CircleUser,
+  UserPlus,
 } from 'lucide-react';
 import {
   CLIENT_SERVICE_PULSE,
@@ -34,9 +35,11 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const platformViewedClientPulseEnabled = hasService(navContext?.clientOrganization?.settings, CLIENT_SERVICE_PULSE);
   const isPlatformPulseRoute =
     Boolean(platformClientOrgId) &&
-    location.pathname === `/platform/clients/${platformClientOrgId}/pulse`;
+    location.pathname.startsWith(`/platform/clients/${platformClientOrgId}/pulse`);
   const activePulseSection = isPlatformPulseRoute
-    ? (location.hash || '#organisation-dashboard').replace(/^#/, '')
+    ? location.pathname.endsWith('/pulse/users')
+      ? 'pulse-users'
+      : (location.hash || '#organisation-dashboard').replace(/^#/, '')
     : '';
 
   function pulseSectionLinkClass(sectionId) {
@@ -74,6 +77,13 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
                     Organisation Dashboard
                   </Link>
+                  <NavLink
+                    to={`/platform/clients/${platformClientOrgId}/pulse/users`}
+                    className={pulseSectionLinkClass('pulse-users')}
+                  >
+                    <UserPlus size={20} strokeWidth={1.75} aria-hidden />
+                    Users
+                  </NavLink>
                   <Link
                     to={`/platform/clients/${platformClientOrgId}/pulse#organisation-scores`}
                     className={pulseSectionLinkClass('organisation-scores')}

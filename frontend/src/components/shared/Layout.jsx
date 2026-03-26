@@ -21,7 +21,7 @@ export default function Layout({ children, user, onLogout, hideHeader = false, n
       user.organizationKind === 'platform' && params.orgId ? params.orgId : null;
     const isPlatformPulseRoute =
       Boolean(platformClientOrgId) &&
-      location.pathname === `/platform/clients/${platformClientOrgId}/pulse`;
+      location.pathname.startsWith(`/platform/clients/${platformClientOrgId}/pulse`);
     const sidebarBrandTarget = isPlatformPulseRoute
       ? `/platform/clients/${platformClientOrgId}`
       : getPostLoginPath(user);

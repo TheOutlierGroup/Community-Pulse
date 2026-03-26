@@ -1,0 +1,75 @@
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const FROM_ADDRESS = process.env.EMAIL_FROM || 'Employee Pulse <noreply@employeepulse.app>';
+
+export async function sendPasswordResetEmail(to, resetUrl) {
+  const { error } = await resend.emails.send({
+    from: FROM_ADDRESS,
+    to,
+    subject: 'Reset your password',
+    html: `
+      <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
+        <h2 style="margin: 0 0 1rem;">Reset your password</h2>
+        <p style="color: #555; line-height: 1.6;">
+          We received a request to reset your password. Click the button below to choose a new one.
+          This link expires in 1 hour.
+        </p>
+        <a href="${resetUrl}"
+           style="display: inline-block; margin: 1.5rem 0; padding: 0.75rem 1.5rem;
+                  background: #ffcc80; color: #1c1917; font-weight: 600;
+                  text-decoration: none; border-radius: 8px;">
+          Reset password
+        </a>
+        <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
+          If you didn't request this, you can safely ignore this email.
+          Your password won't change unless you click the link above.
+        </p>
+      </div>
+    `,
+  });
+
+  if (error) {
+    console.error('Resend email error:', error);
+    throw new Error('Failed to send password reset email');
+  }
+}
+
+export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizationName) {
+  const name = String(displayName || '').trim();
+  const greeting = name ? `Hi ${name},` : 'Hi,';
+  const orgLabel = organizationName ? String(organizationName).trim() : 'your organization';
+  const { error } = await resend.emails.send({
+    from: FROM_ADDRESS,
+    to,
+    subject: `Pulse questionnaire — ${orgLabel}`,
+    html: `
+      <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
+        <h2 style="margin: 0 0 1rem;">Your Pulse link</h2>
+        <p style="color: #555; line-height: 1.6;">
+          ${greeting}
+        </p>
+        <p style="color: #555; line-height: 1.6;">
+          You have been invited to complete a short Pulse questionnaire for <strong>${orgLabel}</strong>.
+          Use your personal link below. You do not need to sign in.
+        </p>
+        <a href="${pulseUrl}"
+           style="display: inline-block; margin: 1.5rem 0; padding: 0.75rem 1.5rem;
+                  background: #ffcc80; color: #1c1917; font-weight: 600;
+                  text-decoration: none; border-radius: 8px;">
+          Open Pulse
+        </a>
+        <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
+          If the button does not work, copy and paste this URL into your browser:<br />
+          <span style="word-break: break-all;">${pulseUrl}</span>
+        </p>
+      </div>
+    `,
+  });
+
+  if (error) {
+    console.error('Resend pulse invite error:', error);
+    throw new Error('Failed to send Pulse invite email');
+  }
+}

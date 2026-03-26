@@ -12,6 +12,8 @@ import { extensionForUpload } from '../middleware/avatarUpload.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
 import * as Organization from '../models/Organization.js';
+import * as PasswordResetToken from '../models/PasswordResetToken.js';
+import { sendPasswordResetEmail } from '../services/email.js';
 import {
   enabledServicesFromOrganizationSettings,
 } from '../services/clientServices.js';
@@ -284,6 +286,56 @@ router.delete('/me/organization-logo', requireAuth, requireClientAdmin, async (r
   const full = await User.findUserByIdWithOrg(req.user.id);
   res.json({ user: publicUser(full) });
 });
+
+router.post(
+  '/forgot-password',
+  authLimiter,
+  requireBodyFields(['email']),
+  async (req, res) => {
+    const { email } = req.body;
+    const user = await User.findUserByEmailWithOrg(email);
+
+    // Always return success to avoid leaking which emails exist
+    if (!user) {
+      return res.json({ ok: true });
+    }
+
+    try {
+      const token = await PasswordResetToken.createResetToken(user.id);
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const resetUrl = `${baseUrl}/reset-password/${token}`;
+      await sendPasswordResetEmail(user.email, resetUrl);
+    } catch (err) {
+      console.error('Password reset email failed:', err);
+    }
+
+    res.json({ ok: true });
+  }
+);
+
+router.post(
+  '/reset-password',
+  authLimiter,
+  requireBodyFields(['token', 'password']),
+  async (req, res) => {
+    const { token, password } = req.body;
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    const resetToken = await PasswordResetToken.findValidToken(token);
+    if (!resetToken) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+
+    const hash = await bcrypt.hash(password, 12);
+    await User.updateUserPassword(resetToken.user_id, hash);
+    await PasswordResetToken.markTokenUsed(resetToken.id);
+
+    res.json({ ok: true });
+  }
+);
 
 router.get('/invite/:token', authLimiter, async (req, res) => {
   const invite = await Invite.findValidInvite(req.params.token);

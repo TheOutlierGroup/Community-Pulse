@@ -15,6 +15,7 @@ import {
 } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import employeeRoutes from './routes/employees.js';
+import pulseLinkRoutes from './routes/pulseLink.js';
 import adminRoutes from './routes/admin.js';
 import analyticsRoutes from './routes/analytics.js';
 import platformRoutes from './routes/platformRouter.js';
@@ -105,6 +106,7 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/pulse', employeeRoutes);
+app.use('/api/pulse-link', pulseLinkRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/platform', platformRoutes);

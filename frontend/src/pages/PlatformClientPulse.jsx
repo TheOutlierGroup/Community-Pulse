@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
+import { useLocation, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
 
@@ -145,7 +145,6 @@ function quadrantPillClass(name) {
 
 export default function PlatformClientPulse() {
   const { org, orgId } = useOutletContext();
-  const navigate = useNavigate();
   const location = useLocation();
   const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState('');
@@ -171,12 +170,9 @@ export default function PlatformClientPulse() {
   }, [orgId]);
 
   useEffect(() => {
-    if (!pulseEnabled) {
-      navigate(`/platform/clients/${orgId}/account`, { replace: true });
-      return;
-    }
+    if (!pulseEnabled) return;
     loadDashboard();
-  }, [navigate, orgId, pulseEnabled, loadDashboard]);
+  }, [orgId, pulseEnabled, loadDashboard]);
 
   useEffect(() => {
     if (!location.hash) return;

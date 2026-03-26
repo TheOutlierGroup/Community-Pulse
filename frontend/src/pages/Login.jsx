@@ -80,7 +80,10 @@ export default function Login() {
             </button>
           </div>
         </form>
-        <p className="muted" style={{ marginTop: '1.5rem', fontSize: '0.9rem' }}>
+        <p className="muted" style={{ marginTop: '1rem', fontSize: '0.9rem' }}>
+          <Link to="/forgot-password">Forgot password?</Link>
+        </p>
+        <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
           Have an invite link?{' '}
           <Link to="/invite">Accept invite</Link>
         </p>

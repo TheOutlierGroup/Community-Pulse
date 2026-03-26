@@ -8,7 +8,10 @@ import * as User from '../../models/User.js';
 import * as Invite from '../../models/Invite.js';
 import * as PulseSession from '../../models/PulseSession.js';
 import * as EmployeeResponse from '../../models/EmployeeResponse.js';
+import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
+import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import { aggregateSessionResponses } from '../../services/analytics.js';
+import { sendPulseInviteEmail } from '../../services/email.js';
 import { THEMES } from '../../services/pulseEngine.js';
 import {
   assertClientOrganizationPlatform,
@@ -76,6 +79,33 @@ function managerLoadBand(loadIndex) {
   if (loadIndex <= 3) return 'Stretched';
   if (loadIndex <= 4) return 'At Capacity';
   return 'Overloaded';
+}
+
+async function listMergedResponsesForSession(sessionId) {
+  const userRows = await EmployeeResponse.listResponsesForSession(sessionId);
+  const linkRows = await PulseLinkResponse.listResponsesForSession(sessionId);
+  const mapped = linkRows.map((r) => ({
+    id: r.id,
+    user_id: null,
+    session_id: r.session_id,
+    current_step: r.current_step,
+    step1_data: r.step1_data,
+    step2_data: r.step2_data,
+    step3_data: r.step3_data,
+    step4_data: r.step4_data,
+    contribution_style: r.contribution_style,
+    completed_at: r.completed_at,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    email: r.email,
+    role: 'employee',
+  }));
+  return [...userRows, ...mapped];
+}
+
+function resolvePublicAppBaseUrl() {
+  const raw = process.env.APP_URL || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
+  return raw ? raw.replace(/\/$/, '') : '';
 }
 
 export function registerPlatformOrgRoutes(router) {
@@ -350,16 +380,17 @@ export function registerPlatformOrgRoutes(router) {
     const org = await assertClientOrganizationPlatform(req.params.id);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    const [sessions, activeUsersByRole] = await Promise.all([
+    const [sessions, activeUsersByRole, pulseLinkInvitedCount] = await Promise.all([
       PulseSession.listSessionsForOrg(req.params.id),
       User.countActiveUsersByRoleForOrg(req.params.id),
+      PulseLinkInvite.countSentInvitesForOrg(req.params.id),
     ]);
 
     const currentSession =
       sessions.find((s) => s.status === 'active') || sessions[0] || null;
 
     const currentRows = currentSession
-      ? await EmployeeResponse.listResponsesForSession(currentSession.id)
+      ? await listMergedResponsesForSession(currentSession.id)
       : [];
     const completedRows = currentRows.filter((r) => r.completed_at);
     const analytics = aggregateSessionResponses(currentRows);
@@ -382,7 +413,7 @@ export function registerPlatformOrgRoutes(router) {
 
     const invitedEmployees = activeUsersByRole.employee || 0;
     const invitedManagers = activeUsersByRole.admin || 0;
-    const invitedTotal = invitedEmployees + invitedManagers;
+    const invitedTotal = invitedEmployees + invitedManagers + pulseLinkInvitedCount;
     const completedTotal = completedRows.length;
 
     const quadrantBuckets = {
@@ -461,7 +492,7 @@ export function registerPlatformOrgRoutes(router) {
     const trendCandidates = sessions.slice(0, 4);
     const trendRows = await Promise.all(
       trendCandidates.map(async (session) => {
-        const rows = await EmployeeResponse.listResponsesForSession(session.id);
+        const rows = await listMergedResponsesForSession(session.id);
         const completed = rows.filter((r) => r.completed_at);
         const scored = completed
           .map((r) => responseScoresOutOf40(r))
@@ -516,11 +547,14 @@ export function registerPlatformOrgRoutes(router) {
         invitedTotal,
         invitedEmployees,
         invitedManagers,
+        pulseLinkInvitedCount,
         completedTotal,
         completedEmployees: completedEmployeeResponses,
         completedManagers: completedManagerResponses,
         participationRate: round1(ratio(completedTotal, invitedTotal) * 100),
-        employeeParticipationRate: round1(ratio(completedEmployeeResponses, invitedEmployees) * 100),
+        employeeParticipationRate: round1(
+          ratio(completedEmployeeResponses, invitedEmployees + pulseLinkInvitedCount) * 100
+        ),
         managerParticipationRate: round1(ratio(completedManagerResponses, invitedManagers) * 100),
         adoptionScore,
         sponsorshipScore,
@@ -534,5 +568,66 @@ export function registerPlatformOrgRoutes(router) {
       alerts,
       narrative: analytics.narrative,
     });
+  });
+
+  router.get('/organizations/:id/pulse-link-invites', async (req, res) => {
+    const org = await assertClientOrganizationPlatform(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const rows = await PulseLinkInvite.listInvitesForOrg(req.params.id);
+    res.json({ invites: rows.map(PulseLinkInvite.publicInviteRow) });
+  });
+
+  router.post('/organizations/:id/pulse-link-invites/import', async (req, res) => {
+    const org = await assertClientOrganizationPlatform(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const recipients = req.body?.recipients;
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({ error: 'recipients must be a non-empty array' });
+    }
+    if (recipients.length > 2000) {
+      return res.status(400).json({ error: 'Too many rows at once (max 2000)' });
+    }
+    let upserted = 0;
+    const errors = [];
+    for (let i = 0; i < recipients.length; i++) {
+      const r = recipients[i] || {};
+      const { row, error } = await PulseLinkInvite.upsertInviteRow({
+        organizationId: req.params.id,
+        displayName: r.name ?? r.displayName ?? '',
+        email: r.email,
+      });
+      if (error || !row) {
+        errors.push({ index: i, email: r.email, error: error || 'invalid' });
+        continue;
+      }
+      upserted += 1;
+    }
+    res.json({
+      upserted,
+      errorCount: errors.length,
+      errors: errors.slice(0, 50),
+    });
+  });
+
+  router.post('/organizations/:id/pulse-link-invites/:inviteId/send', async (req, res) => {
+    const orgId = req.params.id;
+    const org = await assertClientOrganizationPlatform(orgId);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId);
+    if (!invite) return res.status(404).json({ error: 'Invite not found' });
+    const baseUrl = resolvePublicAppBaseUrl();
+    if (!baseUrl) {
+      return res.status(500).json({ error: 'Set APP_URL or FRONTEND_ORIGIN to send invite emails' });
+    }
+    const rotated = await PulseLinkInvite.rotateTokenAndMarkSent(invite.id, orgId);
+    if (!rotated) return res.status(500).json({ error: 'Could not prepare invite link' });
+    const linkUrl = `${baseUrl}/pulse/link/${rotated.rawToken}`;
+    try {
+      await sendPulseInviteEmail(invite.email, invite.display_name, linkUrl, org.name);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: 'Could not send email' });
+    }
+    res.json({ ok: true, invite: PulseLinkInvite.publicInviteRow(rotated.row) });
   });
 }
