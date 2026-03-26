@@ -1,10 +1,26 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 const FROM_ADDRESS = process.env.EMAIL_FROM || 'Employee Pulse <noreply@employeepulse.app>';
 
+let resendSingleton = null;
+
+function getResend() {
+  const key = String(process.env.RESEND_API_KEY || '').trim();
+  if (!key) return null;
+  if (!resendSingleton) resendSingleton = new Resend(key);
+  return resendSingleton;
+}
+
+function requireResend() {
+  const client = getResend();
+  if (!client) {
+    throw new Error('RESEND_API_KEY is not configured');
+  }
+  return client;
+}
+
 export async function sendPasswordResetEmail(to, resetUrl) {
+  const resend = requireResend();
   const { error } = await resend.emails.send({
     from: FROM_ADDRESS,
     to,
@@ -37,6 +53,7 @@ export async function sendPasswordResetEmail(to, resetUrl) {
 }
 
 export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizationName) {
+  const resend = requireResend();
   const name = String(displayName || '').trim();
   const greeting = name ? `Hi ${name},` : 'Hi,';
   const orgLabel = organizationName ? String(organizationName).trim() : 'your organization';
