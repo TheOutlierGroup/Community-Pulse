@@ -144,7 +144,7 @@ function quadrantPillClass(name) {
 }
 
 export default function PlatformClientPulse() {
-  const { orgId } = useOutletContext();
+  const { org, orgId } = useOutletContext();
   const navigate = useNavigate();
   const location = useLocation();
   const [dashboard, setDashboard] = useState(null);
