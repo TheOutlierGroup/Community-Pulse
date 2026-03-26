@@ -1,27 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
-import {
-  Activity,
-  BarChart3,
-  Download,
-  Gauge,
-  LayoutDashboard,
-  LineChart,
-  SlidersHorizontal,
-  Users,
-} from 'lucide-react';
-import { normalizeServices, sessionStatusLabel } from './platformClientUtils.js';
+import { Activity } from 'lucide-react';
+import { normalizeServices } from './platformClientUtils.js';
 
-const PULSE_SECTIONS = [
-  { id: 'organisation-dashboard', label: 'Organisation Dashboard', icon: LayoutDashboard },
-  { id: 'score-breakdown', label: 'Score Breakdown', icon: BarChart3 },
-  { id: 'trend-analysis', label: 'Trend Analysis', icon: LineChart },
-  { id: 'manager-load-report', label: 'Manager Load Report', icon: Gauge },
-  { id: 'team-level-view', label: 'Team-Level View', icon: Users },
-  { id: 'survey-configuration', label: 'Survey Configuration', icon: SlidersHorizontal },
-  { id: 'export-data', label: 'Export Data', icon: Download },
+const PULSE_SECTION_IDS = [
+  'organisation-dashboard',
+  'score-breakdown',
+  'trend-analysis',
+  'manager-load-report',
+  'team-level-view',
+  'survey-configuration',
+  'export-data',
 ];
 
 function toShortDate(value) {
@@ -33,20 +24,42 @@ function toShortDate(value) {
   });
 }
 
+function formatScore(value) {
+  if (value == null || Number.isNaN(value)) return '—';
+  return value.toFixed(1);
+}
+
+function deltaLabel(value) {
+  if (value == null || Number.isNaN(value)) return 'No prior period';
+  if (value > 0) return `+${value.toFixed(1)} vs previous`;
+  if (value < 0) return `${value.toFixed(1)} vs previous`;
+  return 'No change vs previous';
+}
+
 export default function PlatformClientPulse() {
   const { org, orgId, clientLogoUrl } = useOutletContext();
   const navigate = useNavigate();
   const location = useLocation();
-  const [sessions, setSessions] = useState([]);
+  const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState('');
-  const [activeSection, setActiveSection] = useState(PULSE_SECTIONS[0].id);
+  const [loading, setLoading] = useState(true);
 
   const enabledServices = normalizeServices(org.settings);
   const pulseEnabled = enabledServices.includes('pulse');
 
-  const loadSessions = useCallback(async () => {
-    const { data } = await api.get(`/api/platform/organizations/${orgId}/pulse-sessions`);
-    setSessions(data.sessions || []);
+  const loadDashboard = useCallback(() => {
+    setLoading(true);
+    api
+      .get(`/api/platform/organizations/${orgId}/pulse-dashboard`)
+      .then(({ data }) => {
+        setDashboard(data || null);
+        setError('');
+      })
+      .catch(() => {
+        setError('Could not load Pulse dashboard data.');
+        setDashboard(null);
+      })
+      .finally(() => setLoading(false));
   }, [orgId]);
 
   useEffect(() => {
@@ -54,47 +67,25 @@ export default function PlatformClientPulse() {
       navigate(`/platform/clients/${orgId}/account`, { replace: true });
       return;
     }
-    loadSessions().catch(() => {
-      setError('Could not load Pulse dashboard.');
-      setSessions([]);
-    });
-  }, [loadSessions, navigate, orgId, pulseEnabled]);
+    loadDashboard();
+  }, [navigate, orgId, pulseEnabled, loadDashboard]);
 
   useEffect(() => {
     if (!location.hash) return;
     const fromHash = location.hash.replace(/^#/, '').trim();
-    if (!PULSE_SECTIONS.some((s) => s.id === fromHash)) return;
-    setActiveSection(fromHash);
+    if (!PULSE_SECTION_IDS.includes(fromHash)) return;
     const el = document.getElementById(fromHash);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [location.hash]);
 
-  const activeSession = sessions.find((s) => s.status === 'active');
-  const countsByStatus = useMemo(
-    () =>
-      sessions.reduce(
-        (acc, session) => {
-          if (session.status === 'active') acc.active += 1;
-          else if (session.status === 'closed') acc.closed += 1;
-          else acc.draft += 1;
-          return acc;
-        },
-        { active: 0, draft: 0, closed: 0 }
-      ),
-    [sessions]
-  );
+  const sessions = dashboard?.sessions || [];
+  const kpis = dashboard?.kpis || {};
+  const currentSession = dashboard?.currentSession || null;
   const newestSession = sessions[0] || null;
   const monthLabel = new Date().toLocaleDateString(undefined, {
     month: 'long',
     year: 'numeric',
   });
-
-  function jumpToSection(id) {
-    setActiveSection(id);
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    window.history.replaceState(null, '', `#${id}`);
-  }
 
   function exportSessionsCsv() {
     const header = ['Session', 'Status', 'Created', 'Closed'];
@@ -119,27 +110,17 @@ export default function PlatformClientPulse() {
       <div className="platform-pulse-heading">
         <div>
           <div className="platform-pulse-heading__eyebrow">Client Administration</div>
-          <h1 className="platform-pulse-heading__title">Pulse</h1>
+          <h1 className="platform-pulse-heading__title">Organisation Dashboard</h1>
         </div>
-        <span className="platform-pulse-heading__period">{monthLabel}</span>
+        <div className="platform-pulse-heading__right">
+          <span className="platform-pulse-heading__period">{monthLabel}</span>
+          <button type="button" className="btn btn-ghost" onClick={loadDashboard} disabled={loading}>
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </div>
       {error && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
-      <div className="platform-pulse-menu" role="tablist" aria-label="Pulse menu">
-        {PULSE_SECTIONS.map((section) => {
-          const Icon = section.icon;
-          return (
-            <button
-              key={section.id}
-              type="button"
-              className={`platform-pulse-menu__item${activeSection === section.id ? ' platform-pulse-menu__item--active' : ''}`}
-              onClick={() => jumpToSection(section.id)}
-            >
-              <Icon size={16} strokeWidth={1.9} aria-hidden />
-              {section.label}
-            </button>
-          );
-        })}
-      </div>
+      {loading && <p className="muted" style={{ marginBottom: '1rem' }}>Loading Pulse dashboard…</p>}
       <div className="platform-client-dashboard-grid">
         <section
           id="organisation-dashboard"
@@ -150,26 +131,37 @@ export default function PlatformClientPulse() {
             <Activity size={22} strokeWidth={1.75} aria-hidden />
             Change Readiness Pulse Dashboard
           </h2>
-          <p className="muted platform-pulse-section__intro" style={{ fontSize: '0.9rem', marginTop: 0 }}>
-            Pulse status: <strong>Enabled</strong>. This mirrors the Pulse workspace structure from the client
-            prototype with dedicated Pulse sections.
-          </p>
-          <div className="platform-client-stats platform-pulse-kpis" style={{ marginTop: '1rem' }}>
-            <div className="platform-client-stats__tile">
-              <div className="platform-client-stats__value">{sessions.length}</div>
-              <div className="platform-client-stats__label">Total Sessions</div>
+          <div className="platform-pulse-kpi-strip">
+            <div className="platform-pulse-kpi">
+              <div className="platform-pulse-kpi__label">Total responses</div>
+              <div className="platform-pulse-kpi__value">{kpis.completedTotal ?? 0}</div>
+              <div className="platform-pulse-kpi__meta">
+                of {kpis.invitedTotal ?? 0} invited · {kpis.participationRate ?? 0}%
+              </div>
             </div>
-            <div className="platform-client-stats__tile">
-              <div className="platform-client-stats__value">{countsByStatus.active}</div>
-              <div className="platform-client-stats__label">Active</div>
+            <div className="platform-pulse-kpi">
+              <div className="platform-pulse-kpi__label">Employee responses</div>
+              <div className="platform-pulse-kpi__value">{kpis.completedEmployees ?? 0}</div>
+              <div className="platform-pulse-kpi__meta">
+                of {kpis.invitedEmployees ?? 0} invited · {kpis.employeeParticipationRate ?? 0}%
+              </div>
             </div>
-            <div className="platform-client-stats__tile">
-              <div className="platform-client-stats__value">{countsByStatus.draft}</div>
-              <div className="platform-client-stats__label">Draft</div>
+            <div className="platform-pulse-kpi">
+              <div className="platform-pulse-kpi__label">Manager responses</div>
+              <div className="platform-pulse-kpi__value">{kpis.completedManagers ?? 0}</div>
+              <div className="platform-pulse-kpi__meta">
+                of {kpis.invitedManagers ?? 0} invited · {kpis.managerParticipationRate ?? 0}%
+              </div>
             </div>
-            <div className="platform-client-stats__tile">
-              <div className="platform-client-stats__value">{countsByStatus.closed}</div>
-              <div className="platform-client-stats__label">Closed</div>
+            <div className="platform-pulse-kpi">
+              <div className="platform-pulse-kpi__label">Avg adoption score</div>
+              <div className="platform-pulse-kpi__value">{formatScore(kpis.adoptionScore)}</div>
+              <div className="platform-pulse-kpi__meta">/40 · {deltaLabel(kpis.adoptionDelta)}</div>
+            </div>
+            <div className="platform-pulse-kpi">
+              <div className="platform-pulse-kpi__label">Avg sponsorship score</div>
+              <div className="platform-pulse-kpi__value">{formatScore(kpis.sponsorshipScore)}</div>
+              <div className="platform-pulse-kpi__meta">/40 · {deltaLabel(kpis.sponsorshipDelta)}</div>
             </div>
           </div>
           <div className="platform-pulse-summary">
@@ -177,7 +169,7 @@ export default function PlatformClientPulse() {
               <span className="muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 Active session
               </span>
-              <p style={{ margin: '0.25rem 0 0', fontWeight: 600 }}>{activeSession?.name || 'None'}</p>
+              <p style={{ margin: '0.25rem 0 0', fontWeight: 600 }}>{currentSession?.name || 'None'}</p>
             </div>
             <div>
               <span className="muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -190,54 +182,67 @@ export default function PlatformClientPulse() {
 
         <section id="score-breakdown" className="card platform-pulse-section">
           <div className="platform-pulse-section__label">Overview</div>
-          <h3 className="platform-client-dashboard__h2">Score Breakdown</h3>
-          <p className="muted" style={{ marginTop: 0 }}>
-            Session composition for this client right now.
-          </p>
-          <div className="platform-pulse-breakdown">
-            <div className="platform-pulse-breakdown__row">
-              <span>Active sessions</span>
-              <strong>{countsByStatus.active}</strong>
+          <h3 className="platform-client-dashboard__h2">Organisation Scores</h3>
+          <div className="platform-pulse-split-scores">
+            <div className="platform-pulse-split-scores__cell">
+              <div className="platform-pulse-split-scores__label">Adoption Readiness</div>
+              <div className="platform-pulse-split-scores__value">{formatScore(kpis.adoptionScore)}</div>
+              <div className="platform-pulse-split-scores__meta">/40 points</div>
             </div>
-            <div className="platform-pulse-breakdown__row">
-              <span>Draft sessions</span>
-              <strong>{countsByStatus.draft}</strong>
-            </div>
-            <div className="platform-pulse-breakdown__row">
-              <span>Closed sessions</span>
-              <strong>{countsByStatus.closed}</strong>
+            <div className="platform-pulse-split-scores__cell">
+              <div className="platform-pulse-split-scores__label">Sponsorship Credibility</div>
+              <div className="platform-pulse-split-scores__value">{formatScore(kpis.sponsorshipScore)}</div>
+              <div className="platform-pulse-split-scores__meta">/40 points</div>
             </div>
           </div>
+          <div className="platform-pulse-breakdown">
+            {(dashboard?.quadrants || []).map((q) => (
+              <div key={q.name} className="platform-pulse-breakdown__row">
+                <span>{q.name}</span>
+                <strong>{q.percent}%</strong>
+              </div>
+            ))}
+            {!dashboard?.quadrants?.length && (
+              <div className="platform-pulse-breakdown__row">
+                <span>No responses yet</span>
+                <strong>0%</strong>
+              </div>
+            )}
+          </div>
+          {dashboard?.alerts?.length > 0 && (
+            <div className="platform-pulse-alerts">
+              {dashboard.alerts.map((alert) => (
+                <div key={alert.title} className={`platform-pulse-alert platform-pulse-alert--${alert.level}`}>
+                  <strong>{alert.title}</strong>
+                  <p>{alert.body}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section id="trend-analysis" className="card platform-pulse-section">
           <div className="platform-pulse-section__label">Overview</div>
           <h3 className="platform-client-dashboard__h2">Trend Analysis</h3>
-          {!sessions.length && <p className="muted">No session history yet.</p>}
-          {sessions.length > 0 && (
+          {!dashboard?.trend?.length && <p className="muted">No session history yet.</p>}
+          {dashboard?.trend?.length > 0 && (
             <div className="table-wrap">
               <table className="admin-table">
                 <thead>
                   <tr>
                     <th scope="col">Session</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Created</th>
-                    <th scope="col">Closed</th>
+                    <th scope="col">Adoption</th>
+                    <th scope="col">Sponsorship</th>
+                    <th scope="col">Completed responses</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sessions.map((s) => (
-                    <tr key={s.id}>
-                      <td>{s.name}</td>
-                      <td>
-                        <span
-                          className={`badge badge-${s.status === 'active' ? 'active' : s.status === 'closed' ? 'closed' : 'draft'}`}
-                        >
-                          {sessionStatusLabel(s.status)}
-                        </span>
-                      </td>
-                      <td className="muted" style={{ fontSize: '0.85rem' }}>{toShortDate(s.createdAt)}</td>
-                      <td className="muted" style={{ fontSize: '0.85rem' }}>{toShortDate(s.closedAt)}</td>
+                  {dashboard.trend.map((t) => (
+                    <tr key={t.sessionId}>
+                      <td>{t.sessionName}</td>
+                      <td>{formatScore(t.adoptionScore)}</td>
+                      <td>{formatScore(t.sponsorshipScore)}</td>
+                      <td>{t.completedResponses}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -249,21 +254,44 @@ export default function PlatformClientPulse() {
         <section id="manager-load-report" className="card platform-pulse-section">
           <div className="platform-pulse-section__label">People</div>
           <h3 className="platform-client-dashboard__h2">Manager Load Report</h3>
-          <p className="muted" style={{ marginBottom: 0 }}>
-            Manager load insights are surfaced in each Pulse session analytics report. Select a session from Trend
-            Analysis to review current context before rollout decisions.
-          </p>
+          <div className="platform-pulse-breakdown">
+            {(dashboard?.managerLoad?.bands || []).map((band) => (
+              <div key={band.name} className="platform-pulse-breakdown__row">
+                <span>{band.name}</span>
+                <strong>{band.percent}%</strong>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section id="team-level-view" className="card platform-pulse-section">
           <div className="platform-pulse-section__label">People</div>
-          <h3 className="platform-client-dashboard__h2">Team-Level View</h3>
-          <p className="muted">
-            Team membership and access controls live in client Users.
-          </p>
-          <button type="button" className="btn btn-ghost" onClick={() => navigate(`/platform/clients/${orgId}/users`)}>
-            Open Users
-          </button>
+          <h3 className="platform-client-dashboard__h2">Dimension Breakdown</h3>
+          {!dashboard?.dimensions?.length && <p className="muted">No dimension data yet.</p>}
+          {dashboard?.dimensions?.length > 0 && (
+            <div className="table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Dimension</th>
+                    <th scope="col">Friction avg</th>
+                    <th scope="col">Energy avg</th>
+                    <th scope="col">% High energy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dashboard.dimensions.map((d) => (
+                    <tr key={d.id}>
+                      <td>{d.label}</td>
+                      <td>{d.frictionAvg == null ? '—' : d.frictionAvg.toFixed(1)}</td>
+                      <td>{d.energyAvg == null ? '—' : d.energyAvg.toFixed(1)}</td>
+                      <td>{d.highEnergyPercent}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         <section id="survey-configuration" className="card platform-pulse-section">
@@ -272,13 +300,6 @@ export default function PlatformClientPulse() {
           <p className="muted">
             Pulse availability and service controls are managed from the client Account tab.
           </p>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => navigate(`/platform/clients/${orgId}/account`)}
-          >
-            Open Account Settings
-          </button>
         </section>
 
         <section id="export-data" className="card platform-pulse-section">

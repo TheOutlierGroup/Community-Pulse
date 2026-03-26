@@ -7,6 +7,9 @@ import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
 import * as Invite from '../../models/Invite.js';
 import * as PulseSession from '../../models/PulseSession.js';
+import * as EmployeeResponse from '../../models/EmployeeResponse.js';
+import { aggregateSessionResponses } from '../../services/analytics.js';
+import { THEMES } from '../../services/pulseEngine.js';
 import {
   assertClientOrganizationPlatform,
   assertClientUserInOrg,
@@ -26,6 +29,53 @@ function parsePagination(query) {
     limit: Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 500) : 200,
     offset: Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0,
   };
+}
+
+function round1(value) {
+  return Math.round(value * 10) / 10;
+}
+
+function ratio(numerator, denominator) {
+  if (!denominator || denominator <= 0) return 0;
+  return numerator / denominator;
+}
+
+function avgThemeScore(valuesByTheme) {
+  const nums = Object.values(valuesByTheme).filter((v) => typeof v === 'number');
+  if (!nums.length) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+function responseScoresOutOf40(row) {
+  const step1Ratings = row?.step1_data?.ratings || {};
+  const step3Energy = row?.step3_data?.energy || {};
+  const sponsorshipAvg = avgThemeScore(step1Ratings);
+  const adoptionAvg = avgThemeScore(step3Energy);
+  return {
+    adoption: adoptionAvg == null ? null : adoptionAvg * 8,
+    sponsorship: sponsorshipAvg == null ? null : sponsorshipAvg * 8,
+  };
+}
+
+function quadrantLabel(adoption, sponsorship) {
+  const adoptionHigh = adoption >= 28;
+  const sponsorshipHigh = sponsorship >= 28;
+  if (adoptionHigh && sponsorshipHigh) return 'Optimal';
+  if (adoptionHigh && !sponsorshipHigh) return 'Motivated but Lost';
+  if (!adoptionHigh && sponsorshipHigh) return 'Capable but Wary';
+  return 'High Risk';
+}
+
+function scoreDelta(current, previous) {
+  if (current == null || previous == null) return null;
+  return round1(current - previous);
+}
+
+function managerLoadBand(loadIndex) {
+  if (loadIndex <= 2) return 'Sustainable';
+  if (loadIndex <= 3) return 'Stretched';
+  if (loadIndex <= 4) return 'At Capacity';
+  return 'Overloaded';
 }
 
 export function registerPlatformOrgRoutes(router) {
@@ -294,5 +344,195 @@ export function registerPlatformOrgRoutes(router) {
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const sessions = await PulseSession.listSessionsForOrg(req.params.id);
     res.json({ sessions: sessions.map(publicPulseSessionRow) });
+  });
+
+  router.get('/organizations/:id/pulse-dashboard', async (req, res) => {
+    const org = await assertClientOrganizationPlatform(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    const [sessions, activeUsersByRole] = await Promise.all([
+      PulseSession.listSessionsForOrg(req.params.id),
+      User.countActiveUsersByRoleForOrg(req.params.id),
+    ]);
+
+    const currentSession =
+      sessions.find((s) => s.status === 'active') || sessions[0] || null;
+
+    const currentRows = currentSession
+      ? await EmployeeResponse.listResponsesForSession(currentSession.id)
+      : [];
+    const completedRows = currentRows.filter((r) => r.completed_at);
+    const analytics = aggregateSessionResponses(currentRows);
+
+    const currentScored = completedRows
+      .map((r) => responseScoresOutOf40(r))
+      .filter((s) => s.adoption != null && s.sponsorship != null);
+
+    const adoptionScore =
+      currentScored.length > 0
+        ? round1(currentScored.reduce((sum, s) => sum + s.adoption, 0) / currentScored.length)
+        : null;
+    const sponsorshipScore =
+      currentScored.length > 0
+        ? round1(currentScored.reduce((sum, s) => sum + s.sponsorship, 0) / currentScored.length)
+        : null;
+
+    const completedEmployeeResponses = completedRows.filter((r) => r.role === 'employee').length;
+    const completedManagerResponses = completedRows.filter((r) => r.role === 'admin').length;
+
+    const invitedEmployees = activeUsersByRole.employee || 0;
+    const invitedManagers = activeUsersByRole.admin || 0;
+    const invitedTotal = invitedEmployees + invitedManagers;
+    const completedTotal = completedRows.length;
+
+    const quadrantBuckets = {
+      'Motivated but Lost': 0,
+      Optimal: 0,
+      'High Risk': 0,
+      'Capable but Wary': 0,
+    };
+    for (const s of currentScored) {
+      const q = quadrantLabel(s.adoption, s.sponsorship);
+      quadrantBuckets[q] += 1;
+    }
+    const quadrants = [
+      'Motivated but Lost',
+      'Optimal',
+      'High Risk',
+      'Capable but Wary',
+    ].map((name) => ({
+      name,
+      count: quadrantBuckets[name],
+      percent: completedTotal > 0 ? round1((quadrantBuckets[name] / completedTotal) * 100) : 0,
+    }));
+
+    const managerRows = completedRows.filter((r) => r.role === 'admin');
+    const managerLoadCounts = {
+      Sustainable: 0,
+      Stretched: 0,
+      'At Capacity': 0,
+      Overloaded: 0,
+    };
+    for (const row of managerRows) {
+      const paceFriction = row?.step1_data?.ratings?.pace;
+      const paceEnergy = row?.step3_data?.energy?.pace;
+      const loadIndex = ((6 - (typeof paceFriction === 'number' ? paceFriction : 3)) + (6 - (typeof paceEnergy === 'number' ? paceEnergy : 3))) / 2;
+      managerLoadCounts[managerLoadBand(loadIndex)] += 1;
+    }
+    const managerLoad = {
+      total: managerRows.length,
+      bands: ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'].map((name) => ({
+        name,
+        count: managerLoadCounts[name],
+        percent: managerRows.length > 0 ? round1((managerLoadCounts[name] / managerRows.length) * 100) : 0,
+      })),
+    };
+
+    const dimensions = THEMES.map((theme) => {
+      let frictionSum = 0;
+      let frictionCount = 0;
+      let energySum = 0;
+      let energyCount = 0;
+      let highEnergyCount = 0;
+
+      for (const row of completedRows) {
+        const friction = row?.step1_data?.ratings?.[theme.id];
+        const energy = row?.step3_data?.energy?.[theme.id];
+        if (typeof friction === 'number') {
+          frictionSum += friction;
+          frictionCount += 1;
+        }
+        if (typeof energy === 'number') {
+          energySum += energy;
+          energyCount += 1;
+          if (energy >= 4) highEnergyCount += 1;
+        }
+      }
+
+      return {
+        id: theme.id,
+        label: theme.label,
+        frictionAvg: frictionCount > 0 ? round1(frictionSum / frictionCount) : null,
+        energyAvg: energyCount > 0 ? round1(energySum / energyCount) : null,
+        highEnergyPercent: energyCount > 0 ? round1((highEnergyCount / energyCount) * 100) : 0,
+      };
+    });
+
+    const trendCandidates = sessions.slice(0, 4);
+    const trendRows = await Promise.all(
+      trendCandidates.map(async (session) => {
+        const rows = await EmployeeResponse.listResponsesForSession(session.id);
+        const completed = rows.filter((r) => r.completed_at);
+        const scored = completed
+          .map((r) => responseScoresOutOf40(r))
+          .filter((s) => s.adoption != null && s.sponsorship != null);
+        return {
+          sessionId: session.id,
+          sessionName: session.name,
+          adoptionScore:
+            scored.length > 0
+              ? round1(scored.reduce((sum, s) => sum + s.adoption, 0) / scored.length)
+              : null,
+          sponsorshipScore:
+            scored.length > 0
+              ? round1(scored.reduce((sum, s) => sum + s.sponsorship, 0) / scored.length)
+              : null,
+          completedResponses: completed.length,
+        };
+      })
+    );
+
+    const adoptionDelta = trendRows.length >= 2 ? scoreDelta(trendRows[0].adoptionScore, trendRows[1].adoptionScore) : null;
+    const sponsorshipDelta = trendRows.length >= 2 ? scoreDelta(trendRows[0].sponsorshipScore, trendRows[1].sponsorshipScore) : null;
+
+    const alerts = [];
+    const overloadedBand = managerLoad.bands.find((b) => b.name === 'Overloaded');
+    if (overloadedBand && overloadedBand.percent >= 10) {
+      alerts.push({
+        level: 'critical',
+        title: `${overloadedBand.percent}% of managers are overloaded`,
+        body: 'Launching with overloaded managers increases burnout risk. Reduce manager load before rollout.',
+      });
+    }
+    if (sponsorshipScore != null && sponsorshipScore < 28) {
+      alerts.push({
+        level: 'warning',
+        title: 'Sponsorship score is below threshold',
+        body: 'Leadership credibility signals are weaker than required for a confident rollout.',
+      });
+    }
+    if (adoptionScore != null && adoptionScore >= 28) {
+      alerts.push({
+        level: 'info',
+        title: 'Adoption readiness is above threshold',
+        body: 'Org conditions indicate teams can absorb change, pending sponsorship strength.',
+      });
+    }
+
+    res.json({
+      currentSession: currentSession ? publicPulseSessionRow(currentSession) : null,
+      sessions: sessions.map(publicPulseSessionRow),
+      kpis: {
+        invitedTotal,
+        invitedEmployees,
+        invitedManagers,
+        completedTotal,
+        completedEmployees: completedEmployeeResponses,
+        completedManagers: completedManagerResponses,
+        participationRate: round1(ratio(completedTotal, invitedTotal) * 100),
+        employeeParticipationRate: round1(ratio(completedEmployeeResponses, invitedEmployees) * 100),
+        managerParticipationRate: round1(ratio(completedManagerResponses, invitedManagers) * 100),
+        adoptionScore,
+        sponsorshipScore,
+        adoptionDelta,
+        sponsorshipDelta,
+      },
+      quadrants,
+      managerLoad,
+      dimensions,
+      trend: trendRows,
+      alerts,
+      narrative: analytics.narrative,
+    });
   });
 }

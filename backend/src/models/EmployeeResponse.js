@@ -78,7 +78,7 @@ export async function completeResponse({
 
 export async function listResponsesForSession(sessionId) {
   const { rows } = await query(
-    `SELECT er.*, u.email
+    `SELECT er.*, u.email, u.role
      FROM employee_responses er
      JOIN users u ON u.id = er.user_id
      WHERE er.session_id = $1`,

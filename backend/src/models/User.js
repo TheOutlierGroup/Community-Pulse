@@ -114,6 +114,22 @@ export async function countActiveUsersForClientOrg(organizationId) {
   return rows[0]?.c ?? 0;
 }
 
+export async function countActiveUsersByRoleForOrg(organizationId) {
+  const { rows } = await query(
+    `SELECT role, COUNT(*)::int AS c
+     FROM users
+     WHERE organization_id = $1 AND deactivated_at IS NULL
+     GROUP BY role`,
+    [organizationId]
+  );
+  const counts = { employee: 0, admin: 0 };
+  for (const row of rows) {
+    if (row.role === 'employee') counts.employee = row.c;
+    else if (row.role === 'admin') counts.admin = row.c;
+  }
+  return counts;
+}
+
 export async function listUsersForOrg(organizationId, { role, limit, offset } = {}) {
   const cappedLimit =
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 200;

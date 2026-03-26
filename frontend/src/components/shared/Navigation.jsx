@@ -66,7 +66,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 <>
                   <NavLink to={`/platform/clients/${platformClientOrgId}`} className={sidebarLinkClass} end>
                     <ArrowLeft size={20} strokeWidth={1.75} aria-hidden />
-                    Back to client data
+                    Back
                   </NavLink>
                   <div className="sidebar-nav-divider" aria-hidden />
                   <Link
