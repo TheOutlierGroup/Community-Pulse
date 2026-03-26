@@ -3,6 +3,11 @@ import {
   LogIn,
   LogOut,
   LayoutDashboard,
+  BarChart3,
+  LineChart,
+  Gauge,
+  SlidersHorizontal,
+  Download,
   Building2,
   Activity,
   Users,
@@ -37,7 +42,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     : '';
 
   function pulseSectionLinkClass(sectionId) {
-    return `sidebar-nav-link sidebar-nav-link--pulse-subitem${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
+    return `sidebar-nav-link${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
   }
 
   if (!user) {
@@ -57,85 +62,98 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         <nav className="sidebar-links" aria-label="Main">
           {user.organizationKind === 'platform' && platformClientOrgId && (
             <>
-              <NavLink to="/platform/clients" className={sidebarLinkClass}>
-                <ArrowLeft size={20} strokeWidth={1.75} aria-hidden />
-                All clients
-              </NavLink>
-              <div className="sidebar-nav-divider" aria-hidden />
-              <NavLink
-                to={`/platform/clients/${platformClientOrgId}`}
-                className={sidebarLinkClass}
-                end
-              >
-                <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
-                Dashboard
-              </NavLink>
-              <NavLink to={`/platform/clients/${platformClientOrgId}/users`} className={sidebarLinkClass}>
-                <Users size={20} strokeWidth={1.75} aria-hidden />
-                Users
-              </NavLink>
-              <NavLink to={`/platform/clients/${platformClientOrgId}/tasks`} className={sidebarLinkClass}>
-                <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
-                Tasks
-              </NavLink>
-              {platformViewedClientPulseEnabled && (
+              {isPlatformPulseRoute ? (
                 <>
-                  <NavLink to={`/platform/clients/${platformClientOrgId}/pulse`} className={sidebarLinkClass}>
-                    <Activity size={20} strokeWidth={1.75} aria-hidden />
-                    Pulse
+                  <NavLink to={`/platform/clients/${platformClientOrgId}`} className={sidebarLinkClass} end>
+                    <ArrowLeft size={20} strokeWidth={1.75} aria-hidden />
+                    Back to client data
                   </NavLink>
-                  {isPlatformPulseRoute && (
-                    <div className="sidebar-nav-submenu" aria-label="Pulse sections">
-                      <Link
-                        to={`/platform/clients/${platformClientOrgId}/pulse#organisation-dashboard`}
-                        className={pulseSectionLinkClass('organisation-dashboard')}
-                      >
-                        Organisation Dashboard
-                      </Link>
-                      <Link
-                        to={`/platform/clients/${platformClientOrgId}/pulse#score-breakdown`}
-                        className={pulseSectionLinkClass('score-breakdown')}
-                      >
-                        Score Breakdown
-                      </Link>
-                      <Link
-                        to={`/platform/clients/${platformClientOrgId}/pulse#trend-analysis`}
-                        className={pulseSectionLinkClass('trend-analysis')}
-                      >
-                        Trend Analysis
-                      </Link>
-                      <Link
-                        to={`/platform/clients/${platformClientOrgId}/pulse#manager-load-report`}
-                        className={pulseSectionLinkClass('manager-load-report')}
-                      >
-                        Manager Load Report
-                      </Link>
-                      <Link
-                        to={`/platform/clients/${platformClientOrgId}/pulse#team-level-view`}
-                        className={pulseSectionLinkClass('team-level-view')}
-                      >
-                        Team-Level View
-                      </Link>
-                      <Link
-                        to={`/platform/clients/${platformClientOrgId}/pulse#survey-configuration`}
-                        className={pulseSectionLinkClass('survey-configuration')}
-                      >
-                        Survey Configuration
-                      </Link>
-                      <Link
-                        to={`/platform/clients/${platformClientOrgId}/pulse#export-data`}
-                        className={pulseSectionLinkClass('export-data')}
-                      >
-                        Export Data
-                      </Link>
-                    </div>
+                  <div className="sidebar-nav-divider" aria-hidden />
+                  <Link
+                    to={`/platform/clients/${platformClientOrgId}/pulse#organisation-dashboard`}
+                    className={pulseSectionLinkClass('organisation-dashboard')}
+                  >
+                    <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
+                    Organisation Dashboard
+                  </Link>
+                  <Link
+                    to={`/platform/clients/${platformClientOrgId}/pulse#score-breakdown`}
+                    className={pulseSectionLinkClass('score-breakdown')}
+                  >
+                    <BarChart3 size={20} strokeWidth={1.75} aria-hidden />
+                    Score Breakdown
+                  </Link>
+                  <Link
+                    to={`/platform/clients/${platformClientOrgId}/pulse#trend-analysis`}
+                    className={pulseSectionLinkClass('trend-analysis')}
+                  >
+                    <LineChart size={20} strokeWidth={1.75} aria-hidden />
+                    Trend Analysis
+                  </Link>
+                  <Link
+                    to={`/platform/clients/${platformClientOrgId}/pulse#manager-load-report`}
+                    className={pulseSectionLinkClass('manager-load-report')}
+                  >
+                    <Gauge size={20} strokeWidth={1.75} aria-hidden />
+                    Manager Load Report
+                  </Link>
+                  <Link
+                    to={`/platform/clients/${platformClientOrgId}/pulse#team-level-view`}
+                    className={pulseSectionLinkClass('team-level-view')}
+                  >
+                    <Users size={20} strokeWidth={1.75} aria-hidden />
+                    Team-Level View
+                  </Link>
+                  <Link
+                    to={`/platform/clients/${platformClientOrgId}/pulse#survey-configuration`}
+                    className={pulseSectionLinkClass('survey-configuration')}
+                  >
+                    <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
+                    Survey Configuration
+                  </Link>
+                  <Link
+                    to={`/platform/clients/${platformClientOrgId}/pulse#export-data`}
+                    className={pulseSectionLinkClass('export-data')}
+                  >
+                    <Download size={20} strokeWidth={1.75} aria-hidden />
+                    Export Data
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <NavLink to="/platform/clients" className={sidebarLinkClass}>
+                    <ArrowLeft size={20} strokeWidth={1.75} aria-hidden />
+                    All clients
+                  </NavLink>
+                  <div className="sidebar-nav-divider" aria-hidden />
+                  <NavLink
+                    to={`/platform/clients/${platformClientOrgId}`}
+                    className={sidebarLinkClass}
+                    end
+                  >
+                    <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
+                    Dashboard
+                  </NavLink>
+                  <NavLink to={`/platform/clients/${platformClientOrgId}/users`} className={sidebarLinkClass}>
+                    <Users size={20} strokeWidth={1.75} aria-hidden />
+                    Users
+                  </NavLink>
+                  <NavLink to={`/platform/clients/${platformClientOrgId}/tasks`} className={sidebarLinkClass}>
+                    <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
+                    Tasks
+                  </NavLink>
+                  {platformViewedClientPulseEnabled && (
+                    <NavLink to={`/platform/clients/${platformClientOrgId}/pulse`} className={sidebarLinkClass}>
+                      <Activity size={20} strokeWidth={1.75} aria-hidden />
+                      Pulse
+                    </NavLink>
                   )}
+                  <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
+                    <CircleUser size={20} strokeWidth={1.75} aria-hidden />
+                    Account
+                  </NavLink>
                 </>
               )}
-              <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
-                <CircleUser size={20} strokeWidth={1.75} aria-hidden />
-                Account
-              </NavLink>
             </>
           )}
           {user.organizationKind === 'platform' && !platformClientOrgId && (
