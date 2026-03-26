@@ -15,10 +15,6 @@ const ADMIN_PASSWORD = providedSeedPassword || generatedSeedPassword;
 const ORG_NAME = process.env.SEED_ORG_NAME || 'Outlier';
 const isProduction = process.env.NODE_ENV === 'production';
 
-if (isProduction && !providedSeedPassword) {
-  throw new Error('SEED_ADMIN_PASSWORD is required in production');
-}
-
 async function ensureBootstrapOrgIsPlatform(client) {
   const { rows } = await client.query(
     `SELECT u.organization_id, o.kind
@@ -55,6 +51,13 @@ async function seed() {
     ]);
     if (existing.rows.length > 0) {
       console.log('Seed skipped: admin user already exists.');
+      return;
+    }
+
+    if (isProduction && !providedSeedPassword) {
+      console.log(
+        'Seed skipped: SEED_ADMIN_PASSWORD is not set in production; no admin user was created.'
+      );
       return;
     }
 
