@@ -19,7 +19,12 @@ function buildSslConfig() {
     };
   }
 
-  if (process.env.NODE_ENV === 'production' && process.env.DATABASE_SSL_ALLOW_SELF_SIGNED === 'true') {
+  const allowSelfSignedEnv = process.env.DATABASE_SSL_ALLOW_SELF_SIGNED;
+  const allowSelfSigned =
+    allowSelfSignedEnv === 'true' ||
+    (allowSelfSignedEnv == null && process.env.RENDER === 'true');
+
+  if (process.env.NODE_ENV === 'production' && allowSelfSigned) {
     return { rejectUnauthorized: false };
   }
 
