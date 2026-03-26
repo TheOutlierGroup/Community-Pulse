@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
-import { Activity } from 'lucide-react';
 import { normalizeServices } from './platformClientUtils.js';
 
 const PULSE_SECTION_IDS = [
   'organisation-dashboard',
   'organisation-scores',
-  'employee-breakdown',
-  'team-level-view',
   'manager-load-report',
+  'employee-breakdown',
+  'score-breakdown',
+  'team-level-view',
 ];
 
 function formatScore(value) {
@@ -17,29 +17,136 @@ function formatScore(value) {
   return value.toFixed(1);
 }
 
-function deltaLabel(value) {
-  if (value == null || Number.isNaN(value)) return 'No prior period';
-  if (value > 0) return `+${value.toFixed(1)} vs previous`;
-  if (value < 0) return `${value.toFixed(1)} vs previous`;
-  return 'No change vs previous';
+function formatPercent(value) {
+  if (value == null || Number.isNaN(value)) return '0%';
+  return `${Math.round(value)}%`;
 }
 
-function shortDelta(value) {
+function deltaText(value) {
   if (value == null || Number.isNaN(value)) return 'No prior';
   if (value > 0) return `+${value.toFixed(1)}`;
   if (value < 0) return `${value.toFixed(1)}`;
   return '0.0';
 }
 
-function toPercent(value) {
-  if (value == null || Number.isNaN(value)) return '0%';
-  return `${Math.round(value)}%`;
+function deltaClass(value) {
+  if (value == null || Number.isNaN(value) || value === 0) return 'flat';
+  return value > 0 ? 'up' : 'dn';
 }
 
-function loadTag(percent) {
-  if (percent >= 40) return 'high';
-  if (percent >= 20) return 'watch';
-  return 'stable';
+function heatClass(value) {
+  if (value == null || Number.isNaN(value)) return 'h1';
+  if (value >= 4.2) return 'h5';
+  if (value >= 3.4) return 'h4';
+  if (value >= 2.8) return 'h3';
+  if (value >= 2.4) return 'h2';
+  return 'h1';
+}
+
+function labelToId(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+const QUADRANT_ORDER = [
+  'Motivated but Lost',
+  'Optimal',
+  'High Risk',
+  'Capable but Wary',
+];
+
+const ADOPTION_DIMENSIONS = ['alignment', 'ownership', 'collaboration', 'pace'];
+
+const MANAGER_LOAD_NOTES = {
+  Sustainable: 'Manager has capacity. Ready to lead change actively.',
+  Stretched: 'At risk if change is significant. Prioritise toolkit support.',
+  'At Capacity': 'Requires active manager investment and executive air cover.',
+  Overloaded: 'Risk of burnout. Do not launch without addressing load first.',
+};
+
+const TEAM_SAMPLE_ROWS = [
+  {
+    id: 'finance-operations',
+    team: 'Finance Operations',
+    responses: 24,
+    adoption: 35.1,
+    sponsorship: 31.4,
+    load: 'Sustainable',
+    quadrant: 'Optimal',
+    trend: [31, 33, 34, 35],
+  },
+  {
+    id: 'customer-experience',
+    team: 'Customer Experience',
+    responses: 38,
+    adoption: 30.8,
+    sponsorship: 24.1,
+    load: 'Stretched',
+    quadrant: 'Capable but Wary',
+    trend: [28, 29, 31, 31],
+  },
+  {
+    id: 'technology-data',
+    team: 'Technology & Data',
+    responses: 29,
+    adoption: 27.3,
+    sponsorship: 30.1,
+    load: 'Stretched',
+    quadrant: 'Motivated but Lost',
+    trend: [29, 28, 27, 27],
+  },
+  {
+    id: 'risk-compliance',
+    team: 'Risk & Compliance',
+    responses: 16,
+    adoption: 24.4,
+    sponsorship: 22.7,
+    load: 'Overloaded',
+    quadrant: 'High Risk',
+    trend: [27, 25, 24, 24],
+  },
+  {
+    id: 'marketing-growth',
+    team: 'Marketing & Growth',
+    responses: 21,
+    adoption: 32.2,
+    sponsorship: 28.9,
+    load: 'Stretched',
+    quadrant: 'Optimal',
+    trend: [30, 31, 32, 32],
+  },
+  {
+    id: 'people-culture',
+    team: 'People & Culture',
+    responses: 18,
+    adoption: 28.6,
+    sponsorship: 21.3,
+    load: 'At Capacity',
+    quadrant: 'Capable but Wary',
+    trend: [30, 29, 29, 29],
+  },
+];
+
+const NAV_ITEMS = [
+  { section: 'Overview', items: ['Organisation Dashboard', 'Score Breakdown', 'Trend Analysis'] },
+  { section: 'People', items: ['Manager Load Report', 'Team-Level View'] },
+  { section: 'Settings', items: ['Survey Configuration', 'Export Data'] },
+];
+
+function sparkColor(load) {
+  if (load === 'Sustainable') return 'var(--pulse-green)';
+  if (load === 'Overloaded') return 'var(--pulse-red)';
+  if (load === 'At Capacity') return 'var(--pulse-orange)';
+  return 'var(--pulse-amber)';
+}
+
+function quadrantPillClass(name) {
+  if (name === 'Optimal') return 'opt';
+  if (name === 'Capable but Wary') return 'cw';
+  if (name === 'Motivated but Lost') return 'ml';
+  return 'hr';
 }
 
 export default function PlatformClientPulse() {
@@ -49,6 +156,7 @@ export default function PlatformClientPulse() {
   const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('employee');
 
   const enabledServices = normalizeServices(org.settings);
   const pulseEnabled = enabledServices.includes('pulse');
@@ -80,290 +188,397 @@ export default function PlatformClientPulse() {
     if (!location.hash) return;
     const fromHash = location.hash.replace(/^#/, '').trim();
     if (!PULSE_SECTION_IDS.includes(fromHash)) return;
-    const el = document.getElementById(fromHash);
+    const targetId = fromHash === 'score-breakdown' ? 'employee-breakdown' : fromHash;
+    const el = document.getElementById(targetId);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [location.hash]);
 
-  const sessions = dashboard?.sessions || [];
   const kpis = dashboard?.kpis || {};
-  const currentSession = dashboard?.currentSession || null;
-  const newestSession = sessions[0] || null;
-  const monthLabel = new Date().toLocaleDateString(undefined, {
+  const trendBars = useMemo(
+    () => [...(dashboard?.trend || []).slice(0, 4)].reverse(),
+    [dashboard?.trend]
+  );
+  const quadrants = useMemo(() => {
+    const source = dashboard?.quadrants || [];
+    return QUADRANT_ORDER.map((name) => source.find((q) => q.name === name) || { name, percent: 0 });
+  }, [dashboard?.quadrants]);
+  const dimensions = dashboard?.dimensions || [];
+  const managerBands = useMemo(() => {
+    const source = dashboard?.managerLoad?.bands || [];
+    return ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'].map(
+      (name) => source.find((b) => b.name === name) || { name, percent: 0, count: 0 }
+    );
+  }, [dashboard?.managerLoad?.bands]);
+
+  const threshold = 28;
+  const adoptionScore = kpis.adoptionScore ?? null;
+  const sponsorshipScore = kpis.sponsorshipScore ?? null;
+  const quadrantFocus =
+    quadrants.reduce((top, item) => (item.percent > top.percent ? item : top), quadrants[0] || { name: '—', percent: 0 }) || {
+      name: '—',
+      percent: 0,
+    };
+
+  const todayLabel = new Date().toLocaleDateString('en-GB', {
+    day: 'numeric',
     month: 'long',
     year: 'numeric',
   });
-  const roleBreakdown = [
-    { label: 'Employee', value: kpis.completedEmployees ?? 0, trend: kpis.employeeParticipationRate ?? 0 },
-    { label: 'Manager', value: kpis.completedManagers ?? 0, trend: kpis.managerParticipationRate ?? 0 },
-  ];
-  const trendBars = (dashboard?.trend || []).slice(0, 4);
-  const quadrants = dashboard?.quadrants || [
-    { name: 'Motivated but Lost', percent: 0 },
-    { name: 'Optimal', percent: 0 },
-    { name: 'High Risk', percent: 0 },
-    { name: 'Capable but Wary', percent: 0 },
-  ];
-  const dimensions = dashboard?.dimensions || [];
-  const managerBands = dashboard?.managerLoad?.bands || [];
-  const maxTrendScore = Math.max(
+
+  const trendMax = Math.max(
     40,
-    ...trendBars.flatMap((item) => [
-      item?.adoptionScore || 0,
-      item?.sponsorshipScore || 0,
-    ])
+    ...trendBars.flatMap((item) => [item?.adoptionScore || 0, item?.sponsorshipScore || 0])
   );
 
+  const employeeDimensionRows = dimensions.map((d) => ({
+    id: d.id,
+    label: d.label,
+    family: ADOPTION_DIMENSIONS.includes(d.id) ? 'a' : 's',
+    avg: d.energyAvg,
+    highPercent: d.highEnergyPercent,
+  }));
+  const managerDimensionRows = dimensions.map((d) => ({
+    id: d.id,
+    label: d.label,
+    family: ADOPTION_DIMENSIONS.includes(d.id) ? 'a' : 's',
+    avg: d.frictionAvg,
+    highPercent: d.highEnergyPercent,
+  }));
+  const activeDimensions = activeTab === 'employee' ? employeeDimensionRows : managerDimensionRows;
+
   return (
-    <div className="platform-pulse-page">
-      <div className="platform-pulse-heading">
-        <div>
-          <div className="platform-pulse-heading__eyebrow">Client Administration</div>
-          <h1 className="platform-pulse-heading__title">Organisation Dashboard</h1>
-        </div>
-        <div className="platform-pulse-heading__right">
-          <span className="platform-pulse-heading__period">{monthLabel}</span>
-          <button type="button" className="btn btn-ghost" onClick={loadDashboard} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
+    <div className="pulse-prototype-page">
+      <div className="pulse-prototype-topbar">
+        <div className="pulse-prototype-topbar__title">Organisation Dashboard</div>
+        <div className="pulse-prototype-topbar__right">
+          <span className="pulse-prototype-badge">Client Administration</span>
+          <span className="pulse-prototype-date">{todayLabel}</span>
+          <button type="button" className="pulse-prototype-refresh" onClick={loadDashboard} disabled={loading}>
+            {loading ? '↺ Refreshing…' : '↺ Refresh'}
           </button>
         </div>
       </div>
-      {error && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
-      {loading && <p className="muted" style={{ marginBottom: '1rem' }}>Loading Pulse dashboard…</p>}
-      <div className="platform-client-dashboard-grid">
-        <section id="organisation-dashboard" className="card platform-client-dashboard__card platform-client-dashboard__card--wide platform-pulse-section platform-pulse-panel">
-          <div className="platform-pulse-section__label">Organisation Dashboard</div>
-          <h2 className="platform-client-dashboard__h2 platform-pulse-section__title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Activity size={22} strokeWidth={1.75} aria-hidden />
-            Change Readiness Pulse Dashboard
-          </h2>
-          <div className="platform-pulse-kpi-strip">
-            <div className="platform-pulse-kpi">
-              <div className="platform-pulse-kpi__label">Total responses</div>
-              <div className="platform-pulse-kpi__value">{kpis.completedTotal ?? 0}</div>
-              <div className="platform-pulse-kpi__meta">
-                of {kpis.invitedTotal ?? 0} invited · {kpis.participationRate ?? 0}%
-              </div>
-            </div>
-            <div className="platform-pulse-kpi">
-              <div className="platform-pulse-kpi__label">Employee responses</div>
-              <div className="platform-pulse-kpi__value">{kpis.completedEmployees ?? 0}</div>
-              <div className="platform-pulse-kpi__meta">
-                of {kpis.invitedEmployees ?? 0} invited · {kpis.employeeParticipationRate ?? 0}%
-              </div>
-            </div>
-            <div className="platform-pulse-kpi">
-              <div className="platform-pulse-kpi__label">Manager responses</div>
-              <div className="platform-pulse-kpi__value">{kpis.completedManagers ?? 0}</div>
-              <div className="platform-pulse-kpi__meta">
-                of {kpis.invitedManagers ?? 0} invited · {kpis.managerParticipationRate ?? 0}%
-              </div>
-            </div>
-            <div className="platform-pulse-kpi">
-              <div className="platform-pulse-kpi__label">Avg adoption score</div>
-              <div className="platform-pulse-kpi__value">{formatScore(kpis.adoptionScore)}</div>
-              <div className="platform-pulse-kpi__meta">/40 · {deltaLabel(kpis.adoptionDelta)}</div>
-            </div>
-            <div className="platform-pulse-kpi">
-              <div className="platform-pulse-kpi__label">Avg sponsorship score</div>
-              <div className="platform-pulse-kpi__value">{formatScore(kpis.sponsorshipScore)}</div>
-              <div className="platform-pulse-kpi__meta">/40 · {deltaLabel(kpis.sponsorshipDelta)}</div>
-            </div>
-          </div>
-          <div className="platform-pulse-summary">
-            <div>
-              <span className="muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Active session
-              </span>
-              <p style={{ margin: '0.25rem 0 0', fontWeight: 600 }}>{currentSession?.name || 'None'}</p>
-            </div>
-            <div>
-              <span className="muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Latest session
-              </span>
-              <p style={{ margin: '0.25rem 0 0', fontWeight: 600 }}>{newestSession?.name || 'None'}</p>
-            </div>
-          </div>
-        </section>
 
-        <section id="organisation-scores" className="card platform-pulse-section platform-pulse-panel">
-          <div className="platform-pulse-section__label">Overview</div>
-          <h3 className="platform-client-dashboard__h2">Organisation Scores</h3>
-          <div className="platform-pulse-split-scores">
-            <div className="platform-pulse-split-scores__cell">
-              <div className="platform-pulse-split-scores__label">Adoption Readiness</div>
-              <div className="platform-pulse-split-scores__value">{formatScore(kpis.adoptionScore)}</div>
-              <div className="platform-pulse-split-scores__meta">/40 points</div>
-            </div>
-            <div className="platform-pulse-split-scores__cell">
-              <div className="platform-pulse-split-scores__label">Sponsorship Credibility</div>
-              <div className="platform-pulse-split-scores__value">{formatScore(kpis.sponsorshipScore)}</div>
-              <div className="platform-pulse-split-scores__meta">/40 points</div>
-            </div>
+      <div className="pulse-prototype-body">
+        <aside className="pulse-prototype-sidebar">
+          <div className="pulse-prototype-sidebar__logo">
+            <div className="pulse-prototype-logo-text">Change Readiness</div>
+            <div className="pulse-prototype-logo-sub">Admin Console</div>
           </div>
-          <div className="platform-pulse-distribution-grid">
-            {quadrants.map((q) => (
-              <div key={q.name} className="platform-pulse-distribution-grid__cell">
-                <div className="platform-pulse-distribution-grid__percent">{toPercent(q.percent)}</div>
-                <div className="platform-pulse-distribution-grid__label">{q.name}</div>
-              </div>
-            ))}
-          </div>
-          <div className="platform-pulse-response-strip">
-            {quadrants.map((q) => (
-              <div key={`strip-${q.name}`} className="platform-pulse-response-strip__item">
-                <span>{q.name}</span>
-                <strong>{toPercent(q.percent)}</strong>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section id="employee-breakdown" className="card platform-pulse-section platform-pulse-panel">
-          <div className="platform-pulse-section__label">Overview</div>
-          <h3 className="platform-client-dashboard__h2">Employee Breakdown</h3>
-          <div className="platform-pulse-employee-layout">
-            <div>
-              <div className="platform-pulse-role-bars">
-                {roleBreakdown.map((row) => (
-                  <div key={row.label} className="platform-pulse-role-bars__row">
-                    <span>{row.label}</span>
-                    <strong>{row.value}</strong>
-                    <em>{row.trend}%</em>
-                  </div>
+          <div className="pulse-prototype-sidebar__nav">
+            {NAV_ITEMS.map((group) => (
+              <div key={group.section} className="pulse-prototype-nav-group">
+                <div className="pulse-prototype-nav-section">{group.section}</div>
+                {group.items.map((item, idx) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`pulse-prototype-nav-item${group.section === 'Overview' && idx === 0 ? ' active' : ''}`}
+                  >
+                    <span className="pulse-prototype-nav-dot" aria-hidden />
+                    {item}
+                  </button>
                 ))}
               </div>
-              <div className="table-wrap">
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Dimension</th>
-                      <th scope="col">Avg friction</th>
-                      <th scope="col">% trend</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dimensions.map((d) => (
-                      <tr key={`employee-${d.id}`}>
-                        <td>{d.label}</td>
-                        <td>{d.frictionAvg == null ? '—' : d.frictionAvg.toFixed(1)}</td>
-                        <td>{toPercent(d.highEnergyPercent)}</td>
-                      </tr>
-                    ))}
-                    {!dimensions.length && (
-                      <tr>
-                        <td colSpan={3}>No dimension data yet.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+            ))}
+          </div>
+          <div className="pulse-prototype-sidebar__footer">
+            <div className="pulse-prototype-sidebar__label">Client Organisation</div>
+            <div className="pulse-prototype-sidebar__name">{org?.name || '—'}</div>
+          </div>
+        </aside>
+
+        <div className="pulse-prototype-content">
+          {error && <p className="error">{error}</p>}
+          {!error && loading && <p className="muted">Loading Pulse dashboard…</p>}
+
+          <div className="pulse-prototype-kpis" id="organisation-dashboard">
+            <div className="pulse-prototype-kpi">
+              <div className="pulse-prototype-kpi__label">Total Responses</div>
+              <div className="pulse-prototype-kpi__value neutral">{kpis.completedTotal ?? 0}</div>
+              <div className="pulse-prototype-kpi__meta">of {kpis.invitedTotal ?? 0} invited</div>
+              <div className={`pulse-prototype-kpi__delta ${deltaClass(kpis.participationRate)}`}>
+                {formatPercent(kpis.participationRate)}
               </div>
+              <div className="pulse-prototype-kpi__bar" />
             </div>
-            <div className="platform-pulse-trend-panel">
-              <div className="platform-pulse-trend-panel__label">Score trend · rolling 4 waves</div>
-              {!trendBars.length && <p className="muted">No session history yet.</p>}
-              {!!trendBars.length && (
-                <div className="platform-pulse-mini-chart">
-                  {trendBars.map((t) => (
-                    <div key={t.sessionId} className="platform-pulse-mini-chart__group">
-                      <div className="platform-pulse-mini-chart__bars">
-                        <div
-                          className="platform-pulse-mini-chart__bar platform-pulse-mini-chart__bar--adoption"
-                          style={{ height: `${Math.max(8, ((t.adoptionScore || 0) / maxTrendScore) * 66)}px` }}
-                          title={`Adoption ${formatScore(t.adoptionScore)}`}
-                        />
-                        <div
-                          className="platform-pulse-mini-chart__bar platform-pulse-mini-chart__bar--sponsorship"
-                          style={{ height: `${Math.max(8, ((t.sponsorshipScore || 0) / maxTrendScore) * 66)}px` }}
-                          title={`Sponsorship ${formatScore(t.sponsorshipScore)}`}
-                        />
-                      </div>
-                      <span className="platform-pulse-mini-chart__label">
-                        {(t.sessionName || '').slice(0, 6) || '—'}
-                      </span>
-                    </div>
-                  ))}
+            <div className="pulse-prototype-kpi">
+              <div className="pulse-prototype-kpi__label">Employee Responses</div>
+              <div className="pulse-prototype-kpi__value neutral">{kpis.completedEmployees ?? 0}</div>
+              <div className="pulse-prototype-kpi__meta">
+                of {kpis.invitedEmployees ?? 0} · {formatPercent(kpis.employeeParticipationRate)}
+              </div>
+              <div className="pulse-prototype-kpi__bar adoption" />
+            </div>
+            <div className="pulse-prototype-kpi">
+              <div className="pulse-prototype-kpi__label">Manager Responses</div>
+              <div className="pulse-prototype-kpi__value neutral">{kpis.completedManagers ?? 0}</div>
+              <div className="pulse-prototype-kpi__meta">
+                of {kpis.invitedManagers ?? 0} · {formatPercent(kpis.managerParticipationRate)}
+              </div>
+              <div className="pulse-prototype-kpi__bar sponsorship" />
+            </div>
+            <div className="pulse-prototype-kpi">
+              <div className="pulse-prototype-kpi__label">Avg Adoption Score</div>
+              <div className="pulse-prototype-kpi__value adoption">{formatScore(adoptionScore)}</div>
+              <div className="pulse-prototype-kpi__meta">/40 · Threshold: {threshold}</div>
+              <div className={`pulse-prototype-kpi__delta ${deltaClass(kpis.adoptionDelta)}`}>
+                {deltaText(kpis.adoptionDelta)}
+              </div>
+              <div className="pulse-prototype-kpi__bar adoption" />
+            </div>
+            <div className="pulse-prototype-kpi">
+              <div className="pulse-prototype-kpi__label">Avg Sponsorship Score</div>
+              <div className="pulse-prototype-kpi__value sponsorship">{formatScore(sponsorshipScore)}</div>
+              <div className="pulse-prototype-kpi__meta">
+                /40 · {sponsorshipScore != null && sponsorshipScore >= threshold ? 'At threshold' : 'Below threshold'}
+              </div>
+              <div className={`pulse-prototype-kpi__delta ${deltaClass(kpis.sponsorshipDelta)}`}>
+                {deltaText(kpis.sponsorshipDelta)}
+              </div>
+              <div className="pulse-prototype-kpi__bar sponsorship" />
+            </div>
+          </div>
+
+          <div className="pulse-prototype-grid pulse-prototype-grid--scores" id="organisation-scores">
+            <section className="pulse-prototype-card">
+              <div className="pulse-prototype-card__label">Organisation Scores · All Respondents</div>
+              <div className="pulse-prototype-score-split">
+                <div>
+                  <div className="pulse-prototype-score-tag adoption">Adoption Readiness</div>
+                  <div className="pulse-prototype-score-value adoption">{formatScore(adoptionScore)}</div>
+                  <div className="pulse-prototype-score-denom">/40 points</div>
+                  <div className="pulse-prototype-track">
+                    <div
+                      className="pulse-prototype-fill adoption"
+                      style={{ width: `${Math.max(0, Math.min(((adoptionScore || 0) / 40) * 100, 100))}%` }}
+                    />
+                  </div>
+                  <span className={`pulse-prototype-pill ${adoptionScore != null && adoptionScore >= threshold ? 'high' : 'low'}`}>
+                    {adoptionScore != null && adoptionScore >= threshold ? 'Above Threshold' : 'Below Threshold'}
+                  </span>
                 </div>
-              )}
-              <div className="platform-pulse-alerts">
-                {(dashboard?.alerts || []).map((alert) => (
-                  <div key={alert.title} className={`platform-pulse-alert platform-pulse-alert--${alert.level}`}>
-                    <strong>{alert.title}</strong>
-                    <p>{alert.body}</p>
+                <div className="pulse-prototype-divider" />
+                <div>
+                  <div className="pulse-prototype-score-tag sponsorship">Sponsorship Credibility</div>
+                  <div className="pulse-prototype-score-value sponsorship">{formatScore(sponsorshipScore)}</div>
+                  <div className="pulse-prototype-score-denom">/40 points</div>
+                  <div className="pulse-prototype-track">
+                    <div
+                      className="pulse-prototype-fill sponsorship"
+                      style={{ width: `${Math.max(0, Math.min(((sponsorshipScore || 0) / 40) * 100, 100))}%` }}
+                    />
+                  </div>
+                  <span
+                    className={`pulse-prototype-pill ${
+                      sponsorshipScore != null && sponsorshipScore >= threshold ? 'high' : 'low'
+                    }`}
+                  >
+                    {sponsorshipScore != null && sponsorshipScore >= threshold ? 'Above Threshold' : 'Below Threshold'}
+                  </span>
+                </div>
+              </div>
+              <div className="pulse-prototype-note">
+                <div className="pulse-prototype-note__title">Org Quadrant · {quadrantFocus.name}</div>
+                <p>
+                  {dashboard?.narrative ||
+                    'Leadership is trusted and visible, but adoption conditions remain weak. Build capacity before launch.'}
+                </p>
+              </div>
+            </section>
+
+            <section className="pulse-prototype-card">
+              <div className="pulse-prototype-card__label">Readiness Distribution · % of respondents</div>
+              <div className="pulse-prototype-quadrants">
+                {quadrants.map((q) => (
+                  <div
+                    key={q.name}
+                    className={`pulse-prototype-quadrant ${quadrantPillClass(q.name)}`}
+                    id={`quad-${labelToId(q.name)}`}
+                  >
+                    <div className="pulse-prototype-quadrant__pct">{formatPercent(q.percent)}</div>
+                    <div className="pulse-prototype-quadrant__name">{q.name}</div>
                   </div>
                 ))}
               </div>
-            </div>
+              <div className="pulse-prototype-axis">
+                <span>&larr; Low Sponsorship</span>
+                <span>High Sponsorship &rarr;</span>
+              </div>
+              <div className="pulse-prototype-axis-up">↑ High Adoption</div>
+            </section>
           </div>
-        </section>
 
-        <section id="team-level-view" className="card platform-pulse-section platform-pulse-panel">
-          <div className="platform-pulse-section__label">People</div>
-          <h3 className="platform-client-dashboard__h2">Team-Level Analyses</h3>
-          {!dimensions.length && <p className="muted">No dimension data yet.</p>}
-          {!!dimensions.length && (
-            <div className="table-wrap">
-              <table className="admin-table">
+          <section className="pulse-prototype-card" id="manager-load-report">
+            <div className="pulse-prototype-card__label accent">Manager Load Report · {dashboard?.managerLoad?.total ?? 0} manager respondents</div>
+            <div className="pulse-prototype-load-bar">
+              {managerBands.map((band) => (
+                <div
+                  key={band.name}
+                  className={`pulse-prototype-load-segment ${labelToId(band.name)}`}
+                  style={{ flex: Math.max(band.percent || 0, 1) }}
+                  title={`${band.name}: ${formatPercent(band.percent)}`}
+                />
+              ))}
+            </div>
+            <div className="pulse-prototype-load-grid">
+              {managerBands.map((band) => (
+                <div key={band.name} className={`pulse-prototype-load-cell ${labelToId(band.name)}`}>
+                  <div className="pulse-prototype-load-cell__pct">{formatPercent(band.percent)}</div>
+                  <div className="pulse-prototype-load-cell__name">{band.name}</div>
+                  <div className="pulse-prototype-load-cell__desc">{MANAGER_LOAD_NOTES[band.name]}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <div className="pulse-prototype-grid pulse-prototype-grid--analysis" id="employee-breakdown">
+            <section className="pulse-prototype-card">
+              <div className="pulse-prototype-tabs">
+                <button
+                  type="button"
+                  className={`pulse-prototype-tab ${activeTab === 'employee' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('employee')}
+                >
+                  Employee Dimensions
+                </button>
+                <button
+                  type="button"
+                  className={`pulse-prototype-tab ${activeTab === 'manager' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('manager')}
+                >
+                  Manager Dimensions
+                </button>
+              </div>
+              <table className="pulse-prototype-dtable">
                 <thead>
                   <tr>
-                    <th scope="col">Team Function</th>
-                    <th scope="col">Adoption</th>
-                    <th scope="col">Sponsorship</th>
-                    <th scope="col">Variability</th>
+                    <th>Dimension</th>
+                    <th>Avg (1-5)</th>
+                    <th>% High</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {dimensions.map((d) => (
-                    <tr key={d.id}>
-                      <td>{d.label}</td>
-                      <td>{d.energyAvg == null ? '—' : (d.energyAvg * 8).toFixed(1)}</td>
-                      <td>{d.frictionAvg == null ? '—' : ((6 - d.frictionAvg) * 8).toFixed(1)}</td>
-                      <td>{toPercent(d.highEnergyPercent)}</td>
+                  {activeDimensions.map((d) => (
+                    <tr key={`${activeTab}-${d.id}`}>
+                      <td>
+                        <span className="pulse-prototype-dname">{d.label}</span>
+                        <span className={`pulse-prototype-dtag ${d.family}`}>
+                          {d.family === 'a' ? 'Adoption' : 'Sponsorship'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`pulse-prototype-heat ${heatClass(d.avg)}`}>{formatScore(d.avg)}</span>
+                      </td>
+                      <td className="pulse-prototype-dpct">{formatPercent(d.highPercent)}</td>
                     </tr>
                   ))}
+                  {!activeDimensions.length && (
+                    <tr>
+                      <td colSpan={3} className="pulse-prototype-empty">
+                        No dimension data yet.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
-            </div>
-          )}
-        </section>
+            </section>
 
-        <section id="manager-load-report" className="card platform-pulse-section platform-pulse-panel">
-          <div className="platform-pulse-section__label">People</div>
-          <h3 className="platform-client-dashboard__h2">Manager Load Report</h3>
-          <div className="table-wrap">
-            <table className="admin-table">
+            <div className="pulse-prototype-side-stack">
+              <section className="pulse-prototype-card">
+                <div className="pulse-prototype-card__label">Score Trend · Rolling 4 Waves</div>
+                <div className="pulse-prototype-trend-chart">
+                  <div className="pulse-prototype-trend-threshold">
+                    <span>{threshold} (threshold)</span>
+                  </div>
+                  {trendBars.map((item, idx) => {
+                    const adoptionHeight = Math.max(6, ((item?.adoptionScore || 0) / trendMax) * 100);
+                    const sponsorshipHeight = Math.max(6, ((item?.sponsorshipScore || 0) / trendMax) * 100);
+                    return (
+                      <div key={item.sessionId || `${item.sessionName}-${idx}`} className="pulse-prototype-trend-group">
+                        <div className="pulse-prototype-trend-bars">
+                          <div className="pulse-prototype-trend-bar adoption" style={{ height: `${adoptionHeight}%` }} />
+                          <div className="pulse-prototype-trend-bar sponsorship" style={{ height: `${sponsorshipHeight}%` }} />
+                        </div>
+                        <div className="pulse-prototype-trend-label">W{idx + 1}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="pulse-prototype-legend">
+                  <div className="pulse-prototype-legend-item">
+                    <span className="pulse-prototype-legend-dot adoption" />
+                    Adoption
+                  </div>
+                  <div className="pulse-prototype-legend-item">
+                    <span className="pulse-prototype-legend-dot sponsorship" />
+                    Sponsorship
+                  </div>
+                </div>
+              </section>
+
+              <section className="pulse-prototype-card">
+                <div className="pulse-prototype-card__label">System Alerts</div>
+                <div className="pulse-prototype-alerts">
+                  {(dashboard?.alerts || []).map((alert) => (
+                    <div key={alert.title} className={`pulse-prototype-alert ${alert.level || 'info'}`}>
+                      <div className="pulse-prototype-alert-title">{alert.title}</div>
+                      <div className="pulse-prototype-alert-body">{alert.body}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <section className="pulse-prototype-card" id="team-level-view">
+            <div className="pulse-prototype-card__label">Team-Level Breakdown · Showing 6 of 18 teams</div>
+            <table className="pulse-prototype-rtable">
               <thead>
                 <tr>
-                  <th scope="col">Band</th>
-                  <th scope="col">Managers</th>
-                  <th scope="col">Capacity</th>
-                  <th scope="col">Avg trend</th>
+                  <th>Team / Function</th>
+                  <th>Responses</th>
+                  <th>Adoption</th>
+                  <th>Sponsorship</th>
+                  <th>Manager Load</th>
+                  <th>Quadrant</th>
+                  <th>4-Wk Trend</th>
                 </tr>
               </thead>
               <tbody>
-                {managerBands.map((band) => (
-                  <tr key={band.name}>
-                    <td>{band.name}</td>
-                    <td>{band.count}</td>
+                {TEAM_SAMPLE_ROWS.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.team}</td>
+                    <td className="pulse-prototype-mono">{row.responses}</td>
                     <td>
-                      <span className={`platform-pulse-tag platform-pulse-tag--${loadTag(band.percent)}`}>
-                        {loadTag(band.percent)}
-                      </span>
+                      <span className={`pulse-prototype-heat ${heatClass(row.adoption / 8)}`}>{row.adoption.toFixed(1)}</span>
                     </td>
-                    <td>{toPercent(band.percent)}</td>
+                    <td>
+                      <span className={`pulse-prototype-heat ${heatClass(row.sponsorship / 8)}`}>{row.sponsorship.toFixed(1)}</span>
+                    </td>
+                    <td className={`pulse-prototype-mono pulse-prototype-load-${labelToId(row.load)}`}>{row.load}</td>
+                    <td>
+                      <span className={`pulse-prototype-qpill ${quadrantPillClass(row.quadrant)}`}>{row.quadrant}</span>
+                    </td>
+                    <td>
+                      <div className="pulse-prototype-spark">
+                        {row.trend.map((value, idx) => (
+                          <span
+                            key={`${row.id}-spark-${idx}`}
+                            style={{
+                              height: `${Math.max(3, (value / 35) * 18)}px`,
+                              backgroundColor: sparkColor(row.load),
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </td>
                   </tr>
                 ))}
-                {!managerBands.length && (
-                  <tr>
-                    <td colSpan={4}>No manager responses yet.</td>
-                  </tr>
-                )}
               </tbody>
             </table>
-          </div>
-          <div className="platform-pulse-footnote">
-            Adoption delta: {shortDelta(kpis.adoptionDelta)} | Sponsorship delta: {shortDelta(kpis.sponsorshipDelta)}
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
     </div>
   );
