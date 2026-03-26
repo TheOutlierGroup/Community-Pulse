@@ -1,215 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
   PointerSensor,
   closestCorners,
-  useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
-import ClientTaskDetailPanel from '../components/platform/ClientTaskDetailPanel.jsx';
 import { useAuth } from '../components/shared/Auth.jsx';
+import { Check, ClipboardList, Plus, X } from 'lucide-react';
 import {
-  Check,
-  CheckSquare,
-  ClipboardList,
-  Eye,
-  MessageSquare,
-  Paperclip,
-  Plus,
-  X,
-} from 'lucide-react';
+  buildColumnItems,
+  COLUMN_IDS,
+  COLUMN_META,
+  columnItemsToUpdates,
+  emptyColumns,
+  findContainer,
+  normalizeStatus,
+} from './platformClientTasks/boardUtils.js';
+import TaskBoardColumn from './platformClientTasks/TaskBoardColumn.jsx';
+import TaskBoardCard from './platformClientTasks/TaskBoardCard.jsx';
 
-const COLUMN_IDS = ['todo', 'working', 'review', 'completed'];
-
-const COLUMN_META = {
-  todo: { title: 'To do' },
-  working: { title: 'Working on' },
-  review: { title: 'Review' },
-  completed: { title: 'Completed' },
-};
-
-function emptyColumns() {
-  return {
-    todo: [],
-    working: [],
-    review: [],
-    completed: [],
-  };
-}
-
-function normalizeStatus(s) {
-  if (s === 'open') return 'todo';
-  if (s === 'done') return 'completed';
-  return COLUMN_IDS.includes(s) ? s : 'todo';
-}
-
-function buildColumnItems(tasks) {
-  const m = emptyColumns();
-  for (const col of COLUMN_IDS) {
-    const arr = tasks
-      .filter((t) => normalizeStatus(t.status) === col)
-      .sort(
-        (a, b) =>
-          (a.position ?? 0) - (b.position ?? 0) || String(a.id).localeCompare(String(b.id))
-      );
-    m[col] = arr.map((t) => String(t.id));
-  }
-  return m;
-}
-
-function findContainer(id, items) {
-  const idStr = String(id);
-  if (COLUMN_IDS.includes(idStr)) return idStr;
-  for (const col of COLUMN_IDS) {
-    if (items[col].includes(idStr)) return col;
-  }
-  return undefined;
-}
-
-function columnItemsToUpdates(items) {
-  const updates = [];
-  for (const col of COLUMN_IDS) {
-    items[col].forEach((taskId, index) => {
-      updates.push({ id: taskId, status: col, position: index });
-    });
-  }
-  return updates;
-}
-
-function BoardColumn({ id, title, children, footer }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
-  return (
-    <div
-      ref={setNodeRef}
-      className={`task-board__column${isOver ? ' task-board__column--over' : ''}`}
-      data-column-id={id}
-    >
-      <div className="task-board__column-head">
-        <h2 className="task-board__column-title">{title}</h2>
-      </div>
-      <div className="task-board__column-body">{children}</div>
-      {footer}
-    </div>
-  );
-}
-
-function TaskCardDescriptionIcon() {
-  return (
-    <span className="task-board__card-desc-icon" aria-hidden>
-      <span />
-      <span />
-      <span />
-    </span>
-  );
-}
-
-function SortableTaskCard({ id, task, onOpenTask, isSelected, currentUserId, onToggleComplete }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.35 : 1,
-  };
-
-  const descriptionText = String(task.notes || task.body || '').trim();
-  const hasDescription = descriptionText.length > 0;
-  const commentCount = task.commentCount ?? 0;
-  const imageCount = task.imageCount ?? 0;
-  const checklistItemCount = task.checklistItemCount ?? 0;
-  const isCompleted = normalizeStatus(task.status) === 'completed';
-  const tagged = Array.isArray(task.taggedUsers) ? task.taggedUsers : [];
-  const cardLabels = Array.isArray(task.labels) ? task.labels : [];
-  const showWatching =
-    currentUserId != null && tagged.some((u) => String(u.id) === String(currentUserId));
-
-  function openCard() {
-    onOpenTask(task.id);
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`task-board__card${isSelected ? ' task-board__card--selected' : ''}`}
-      {...attributes}
-      {...listeners}
-      role="button"
-      tabIndex={0}
-      onClick={openCard}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          openCard();
-        }
-      }}
-    >
-      {cardLabels.length > 0 ? (
-        <div className="task-board__card-labels" aria-hidden>
-          {cardLabels.map((lb) => (
-            <span key={lb.id} className="task-board__card-label" title={lb.name}>
-              {lb.name}
-            </span>
-          ))}
-        </div>
-      ) : null}
-      <div className="task-board__card-top">
-        <div className="task-board__card-title">{task.title}</div>
-        <button
-          type="button"
-          className={`task-board__card-check${isCompleted ? ' task-board__card-check--done' : ''}`}
-          aria-label={isCompleted ? 'Mark as not done' : 'Mark complete'}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleComplete(task);
-          }}
-        >
-          <Check size={14} strokeWidth={2.5} aria-hidden />
-        </button>
-      </div>
-      <div className="task-board__card-icons">
-        {showWatching ? (
-          <span className="task-board__card-icon-slot" title="You are tagged on this card.">
-            <Eye size={14} strokeWidth={2} aria-hidden />
-          </span>
-        ) : null}
-        {hasDescription ? (
-          <span className="task-board__card-icon-slot" title="This card has a description.">
-            <TaskCardDescriptionIcon />
-          </span>
-        ) : null}
-        {commentCount > 0 ? (
-          <span className="task-board__card-icon-slot task-board__card-icon-slot--comments" title="Comments">
-            <MessageSquare size={14} strokeWidth={2} aria-hidden />
-            <span className="task-board__card-icon-count">{commentCount}</span>
-          </span>
-        ) : null}
-        {checklistItemCount > 0 ? (
-          <span
-            className="task-board__card-icon-slot task-board__card-icon-slot--comments"
-            title={`Checklist (${checklistItemCount} item${checklistItemCount === 1 ? '' : 's'})`}
-          >
-            <CheckSquare size={14} strokeWidth={2} aria-hidden />
-            <span className="task-board__card-icon-count">{checklistItemCount}</span>
-          </span>
-        ) : null}
-        {imageCount > 0 ? (
-          <span className="task-board__card-icon-slot" title={`${imageCount} attachment${imageCount === 1 ? '' : 's'}`}>
-            <Paperclip size={14} strokeWidth={2} aria-hidden />
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
-}
+const ClientTaskDetailPanel = lazy(() => import('../components/platform/ClientTaskDetailPanel.jsx'));
 
 export default function PlatformClientTasks() {
   const { org, orgId, clientLogoUrl } = useOutletContext();
@@ -351,13 +168,13 @@ export default function PlatformClientTasks() {
       const done = normalizeStatus(task.status) === 'completed';
       const next = done ? 'todo' : 'completed';
       try {
-        await api.patch(`/api/platform/organizations/${orgId}/tasks/${task.id}`, { status: next });
-        await loadTasks();
+        const { data } = await api.patch(`/api/platform/organizations/${orgId}/tasks/${task.id}`, { status: next });
+        if (data?.task) upsertTaskInBoard(data.task);
       } catch (err) {
         showToast(err.response?.data?.error || 'Could not update task.', { variant: 'error' });
       }
     },
-    [orgId, loadTasks, showToast]
+    [orgId, showToast, upsertTaskInBoard]
   );
 
   function openComposer(columnId) {
@@ -394,7 +211,28 @@ export default function PlatformClientTasks() {
     [composerTitle, orgId, loadTasks, showToast]
   );
 
-  const tasksById = Object.fromEntries(tasks.map((t) => [String(t.id), t]));
+  const upsertTaskInBoard = useCallback((nextTask) => {
+    if (!nextTask?.id) return;
+    setTasks((prev) => {
+      const id = String(nextTask.id);
+      const idx = prev.findIndex((t) => String(t.id) === id);
+      const next =
+        idx >= 0 ? [...prev.slice(0, idx), { ...prev[idx], ...nextTask }, ...prev.slice(idx + 1)] : [...prev, nextTask];
+      setColumnItems(buildColumnItems(next));
+      return next;
+    });
+  }, []);
+
+  const removeTaskFromBoard = useCallback((taskId) => {
+    const id = String(taskId);
+    setTasks((prev) => {
+      const next = prev.filter((t) => String(t.id) !== id);
+      setColumnItems(buildColumnItems(next));
+      return next;
+    });
+  }, []);
+
+  const tasksById = useMemo(() => Object.fromEntries(tasks.map((t) => [String(t.id), t])), [tasks]);
 
   function handleDragStart(e) {
     const c = columnItemsRef.current;
@@ -501,7 +339,7 @@ export default function PlatformClientTasks() {
       >
         <div className="task-board">
           {COLUMN_IDS.map((colId) => (
-            <BoardColumn
+            <TaskBoardColumn
               key={colId}
               id={colId}
               title={COLUMN_META[colId].title}
@@ -575,7 +413,7 @@ export default function PlatformClientTasks() {
                     if (!task) return null;
                     return (
                       <li key={tid} className="task-board__list-item">
-                        <SortableTaskCard
+                        <TaskBoardCard
                           id={tid}
                           task={task}
                           onOpenTask={openTaskDetail}
@@ -588,7 +426,7 @@ export default function PlatformClientTasks() {
                   })}
                 </ul>
               </SortableContext>
-            </BoardColumn>
+            </TaskBoardColumn>
           ))}
         </div>
         <DragOverlay dropAnimation={null}>
@@ -606,13 +444,16 @@ export default function PlatformClientTasks() {
       </DndContext>
 
       {detailTaskId && (
-        <ClientTaskDetailPanel
-          orgId={orgId}
-          taskId={detailTaskId}
-          assignableUsers={assignableUsers}
-          onClose={closeTaskDetail}
-          onTasksChanged={loadTasks}
-        />
+        <Suspense fallback={null}>
+          <ClientTaskDetailPanel
+            orgId={orgId}
+            taskId={detailTaskId}
+            assignableUsers={assignableUsers}
+            onClose={closeTaskDetail}
+            onTaskUpdated={upsertTaskInBoard}
+            onTaskDeleted={removeTaskFromBoard}
+          />
+        </Suspense>
       )}
 
     </>

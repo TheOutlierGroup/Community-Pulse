@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "test": "node --test",
+    "perf:platform-tasks": "node scripts/bench-platform-tasks.js",
+    "perf:compare": "node scripts/perf-compare.js",
     "migrate": "node src/migrations/run.js",
     "seed": "node src/seeds/run.js"
   },
@@ -17,7 +20,7 @@
     "express-rate-limit": "^7.4.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.0",
+    "multer": "^2.1.1",
     "pg": "^8.13.0",
     "uuid": "^10.0.0"
   }

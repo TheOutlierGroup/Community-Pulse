@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
@@ -112,6 +112,8 @@ export default function PlatformClientLayout() {
     };
   }, []);
 
+  const navContext = useMemo(() => ({ clientOrganization: org }), [org]);
+
   if (loading || !ok) return null;
 
   if (notFound) {
@@ -135,7 +137,7 @@ export default function PlatformClientLayout() {
   }
 
   return (
-    <Layout user={user} onLogout={logout}>
+    <Layout user={user} onLogout={logout} navContext={navContext}>
       <Outlet context={{ org, orgId, refreshOrg, clientLogoUrl, bumpClientLogo }} />
     </Layout>
   );

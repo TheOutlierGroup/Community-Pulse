@@ -82,21 +82,103 @@ const LIST_SELECT = `
   LEFT JOIN organizations oa ON oa.id = ua.organization_id
 `;
 
-export async function listTasksForClientOrg(organizationId) {
+const TASK_LIST_ORDER_BY = `
+  ORDER BY
+    CASE t.status
+      WHEN 'todo' THEN 0
+      WHEN 'working' THEN 1
+      WHEN 'review' THEN 2
+      WHEN 'completed' THEN 3
+      ELSE 4
+    END,
+    t.position ASC,
+    t.created_at ASC
+`;
+
+export async function listTasksForClientOrg(organizationId, { limit, offset } = {}) {
+  const cappedLimit =
+    Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 200;
+  const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
-    `${LIST_SELECT}
-     WHERE t.organization_id = $1
-     ORDER BY
-       CASE t.status
-         WHEN 'todo' THEN 0
-         WHEN 'working' THEN 1
-         WHEN 'review' THEN 2
-         WHEN 'completed' THEN 3
-         ELSE 4
-       END,
-       t.position ASC,
-       t.created_at ASC`,
-    [organizationId]
+    `WITH scoped_tasks AS (
+       SELECT t.id, t.organization_id, t.title, t.body, t.status, t.position,
+              t.start_date, t.due_date, t.assigned_to, t.created_at, t.updated_at, t.created_by
+       FROM client_work_tasks t
+       WHERE t.organization_id = $1
+       ${TASK_LIST_ORDER_BY}
+       LIMIT $2 OFFSET $3
+     ),
+     image_counts AS (
+       SELECT i.task_id, COUNT(*)::int AS image_count
+       FROM client_work_task_images i
+       WHERE i.task_id IN (SELECT id FROM scoped_tasks)
+       GROUP BY i.task_id
+     ),
+     comment_counts AS (
+       SELECT c.task_id, COUNT(*)::int AS comment_count
+       FROM client_work_task_comments c
+       WHERE c.task_id IN (SELECT id FROM scoped_tasks)
+       GROUP BY c.task_id
+     ),
+     checklist_counts AS (
+       SELECT ci.task_id, COUNT(*)::int AS checklist_count
+       FROM client_work_task_checklist_items ci
+       WHERE ci.task_id IN (SELECT id FROM scoped_tasks)
+       GROUP BY ci.task_id
+     ),
+     tagged_users AS (
+       SELECT tt.task_id,
+              json_agg(
+                json_build_object(
+                  'id', tu.id,
+                  'email', tu.email,
+                  'firstName', tu.first_name,
+                  'lastName', tu.last_name,
+                  'organizationKind', tou.kind
+                )
+                ORDER BY tu.email
+              ) AS tagged_users_json
+       FROM client_work_task_tags tt
+       JOIN users tu ON tu.id = tt.user_id
+       JOIN organizations tou ON tou.id = tu.organization_id
+       WHERE tt.task_id IN (SELECT id FROM scoped_tasks)
+       GROUP BY tt.task_id
+     ),
+     labels AS (
+       SELECT lb.task_id,
+              json_agg(
+                json_build_object('id', lb.id, 'name', lb.name)
+                ORDER BY lb.created_at ASC
+              ) AS labels_json
+       FROM client_work_task_labels lb
+       WHERE lb.task_id IN (SELECT id FROM scoped_tasks)
+       GROUP BY lb.task_id
+     )
+     SELECT t.id, t.organization_id, t.title, t.body, t.status, t.position,
+            t.start_date, t.due_date, t.assigned_to,
+            t.created_at, t.updated_at, t.created_by,
+            u.email AS created_by_email,
+            u.first_name AS created_by_first_name,
+            u.last_name AS created_by_last_name,
+            ua.id AS assignee_id, ua.email AS assignee_email,
+            ua.first_name AS assignee_first_name, ua.last_name AS assignee_last_name,
+            oa.kind AS assignee_org_kind,
+            COALESCE(ic.image_count, 0) AS image_count,
+            COALESCE(cc.comment_count, 0) AS comment_count,
+            COALESCE(kc.checklist_count, 0) AS checklist_count,
+            COALESCE(tu.tagged_users_json, '[]'::json) AS tagged_users_json,
+            COALESCE(l.labels_json, '[]'::json) AS labels_json
+     FROM scoped_tasks t
+     LEFT JOIN users u ON u.id = t.created_by
+     LEFT JOIN users ua ON ua.id = t.assigned_to
+     LEFT JOIN organizations oa ON oa.id = ua.organization_id
+     LEFT JOIN image_counts ic ON ic.task_id = t.id
+     LEFT JOIN comment_counts cc ON cc.task_id = t.id
+     LEFT JOIN checklist_counts kc ON kc.task_id = t.id
+     LEFT JOIN tagged_users tu ON tu.task_id = t.id
+     LEFT JOIN labels l ON l.task_id = t.id
+     ${TASK_LIST_ORDER_BY}`,
+    [organizationId, cappedLimit, safeOffset]
   );
   return rows;
 }
@@ -506,10 +588,16 @@ export async function deleteTaskForOrg(taskId, organizationId) {
 
 export async function reorderTasksForOrg(organizationId, updates) {
   if (!Array.isArray(updates) || updates.length === 0) return false;
-  const existing = await listTasksForClientOrg(organizationId);
-  const idSet = new Set(existing.map((r) => String(r.id)));
-  if (updates.length !== idSet.size) return false;
+  const { rows: existingRows } = await query(
+    `SELECT id FROM client_work_tasks WHERE organization_id = $1`,
+    [organizationId]
+  );
+  const idSet = new Set(existingRows.map((r) => String(r.id)));
+  if (updates.length !== existingRows.length) return false;
   const seen = new Set();
+  const statuses = [];
+  const positions = [];
+  const ids = [];
   for (const u of updates) {
     const id = String(u.id);
     if (!idSet.has(id) || seen.has(id)) return false;
@@ -517,19 +605,28 @@ export async function reorderTasksForOrg(organizationId, updates) {
     const p = Number(u.position);
     if (!Number.isInteger(p) || p < 0) return false;
     seen.add(id);
+    statuses.push(u.status);
+    positions.push(p);
+    ids.push(id);
   }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (const u of updates) {
-      const { rowCount } = await client.query(
-        `UPDATE client_work_tasks
-         SET status = $1, position = $2, updated_at = NOW()
-         WHERE id = $3 AND organization_id = $4`,
-        [u.status, u.position, u.id, organizationId]
-      );
-      if (rowCount !== 1) throw new Error('reorder');
-    }
+    const { rowCount } = await client.query(
+      `UPDATE client_work_tasks AS t
+       SET status = src.status,
+           position = src.position,
+           updated_at = NOW()
+       FROM (
+         SELECT unnest($1::uuid[]) AS id,
+                unnest($2::text[]) AS status,
+                unnest($3::int[]) AS position
+       ) AS src
+       WHERE t.id = src.id
+         AND t.organization_id = $4`,
+      [ids, statuses, positions, organizationId]
+    );
+    if (rowCount !== updates.length) throw new Error('reorder');
     await client.query('COMMIT');
     return true;
   } catch {

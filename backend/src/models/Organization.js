@@ -13,11 +13,17 @@ export async function getOrganization(id) {
   return rows[0] || null;
 }
 
-export async function listOrganizationsByKind(kind) {
+export async function listOrganizationsByKind(kind, { limit, offset } = {}) {
+  const cappedLimit =
+    Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 200;
+  const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
     `SELECT id, name, kind, settings, created_at, company_logo_filename
-     FROM organizations WHERE kind = $1 ORDER BY created_at ASC`,
-    [kind]
+     FROM organizations
+     WHERE kind = $1
+     ORDER BY created_at ASC
+     LIMIT $2 OFFSET $3`,
+    [kind, cappedLimit, safeOffset]
   );
   return rows;
 }

@@ -1,6 +1,10 @@
 import jwt from 'jsonwebtoken';
 import * as Organization from '../models/Organization.js';
 import * as User from '../models/User.js';
+import {
+  CLIENT_SERVICE_PULSE,
+  organizationHasService,
+} from '../services/clientServices.js';
 
 function getSecret() {
   const s = process.env.JWT_SECRET;
@@ -8,9 +12,19 @@ function getSecret() {
   return s;
 }
 
+function jwtOptions() {
+  const opts = { algorithms: ['HS256'] };
+  if (process.env.JWT_ISSUER) opts.issuer = process.env.JWT_ISSUER;
+  if (process.env.JWT_AUDIENCE) opts.audience = process.env.JWT_AUDIENCE;
+  return opts;
+}
+
 export function signToken(payload) {
   return jwt.sign(payload, getSecret(), {
+    algorithm: 'HS256',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    issuer: process.env.JWT_ISSUER || undefined,
+    audience: process.env.JWT_AUDIENCE || undefined,
   });
 }
 
@@ -22,7 +36,7 @@ export function requireAuth(req, res, next) {
   }
   let decoded;
   try {
-    decoded = jwt.verify(token, getSecret());
+    decoded = jwt.verify(token, getSecret(), jwtOptions());
   } catch {
     return res.status(401).json({ error: 'Invalid token' });
   }
@@ -54,10 +68,11 @@ export function requireAdmin(req, res, next) {
 
 export async function requireClientOrganization(req, res, next) {
   try {
-    const org = await Organization.getOrganization(req.user.organizationId);
+    const org = req.clientOrganization || (await Organization.getOrganization(req.user.organizationId));
     if (!org || org.kind !== 'client') {
       return res.status(403).json({ error: 'Client organization only' });
     }
+    req.clientOrganization = org;
     next();
   } catch (e) {
     next(e);
@@ -78,3 +93,25 @@ export async function requirePlatformAdmin(req, res, next) {
     next(e);
   }
 }
+
+export function buildRequireClientPulseService({
+  getOrganization = Organization.getOrganization,
+} = {}) {
+  return async function requireClientPulseService(req, res, next) {
+    try {
+      const org = req.clientOrganization || (await getOrganization(req.user.organizationId));
+      if (!org || org.kind !== 'client') {
+        return res.status(403).json({ error: 'Client organization only' });
+      }
+      req.clientOrganization = org;
+      if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
+        return res.status(403).json({ error: 'Pulse is not enabled for this client' });
+      }
+      next();
+    } catch (e) {
+      next(e);
+    }
+  };
+}
+
+export const requireClientPulseService = buildRequireClientPulseService();

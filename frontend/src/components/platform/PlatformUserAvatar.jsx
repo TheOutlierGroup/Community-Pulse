@@ -1,19 +1,72 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../services/api.js';
 import { UserCircle } from 'lucide-react';
 
-export default function PlatformUserAvatar({ userId, hasProfileAvatar, rev = 0, organizationId }) {
-  const [src, setSrc] = useState(null);
-  const urlRef = useRef(null);
+const avatarCache = new Map();
+const MAX_AVATAR_CACHE = 400;
+
+function cacheAvatar(key, objectUrl) {
+  avatarCache.set(key, objectUrl);
+  if (avatarCache.size <= MAX_AVATAR_CACHE) return;
+  const oldestKey = avatarCache.keys().next().value;
+  if (!oldestKey) return;
+  const oldUrl = avatarCache.get(oldestKey);
+  avatarCache.delete(oldestKey);
+  if (oldUrl) URL.revokeObjectURL(oldUrl);
+}
+
+function useInViewport(enabled) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(!enabled);
 
   useEffect(() => {
-    if (!hasProfileAvatar || !userId) {
+    if (!enabled) {
+      setVisible(true);
+      return undefined;
+    }
+    const node = ref.current;
+    if (!node) return undefined;
+    if (typeof IntersectionObserver !== 'function') {
+      setVisible(true);
+      return undefined;
+    }
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, [enabled]);
+
+  return { ref, visible };
+}
+
+export default function PlatformUserAvatar({ userId, hasProfileAvatar, rev = 0, organizationId, lazy = true }) {
+  const [src, setSrc] = useState(null);
+  const avatarPath = useMemo(
+    () =>
+      organizationId
+        ? `/api/platform/organizations/${organizationId}/users/${userId}/avatar`
+        : `/api/platform/users/${userId}/avatar`,
+    [organizationId, userId]
+  );
+  const cacheKey = `${avatarPath}?v=${rev}`;
+  const { ref, visible } = useInViewport(Boolean(lazy && hasProfileAvatar && userId));
+
+  useEffect(() => {
+    if (!hasProfileAvatar || !userId || !visible) {
       setSrc(null);
       return;
     }
-    const avatarPath = organizationId
-      ? `/api/platform/organizations/${organizationId}/users/${userId}/avatar`
-      : `/api/platform/users/${userId}/avatar`;
+    if (avatarCache.has(cacheKey)) {
+      setSrc(avatarCache.get(cacheKey));
+      return;
+    }
     let cancelled = false;
     api
       .get(avatarPath, {
@@ -37,36 +90,27 @@ export default function PlatformUserAvatar({ userId, hasProfileAvatar, rev = 0, 
           URL.revokeObjectURL(u);
           return;
         }
-        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-        urlRef.current = u;
+        cacheAvatar(cacheKey, u);
         setSrc(u);
       })
       .catch(() => {
-        if (!cancelled) {
-          if (urlRef.current) {
-            URL.revokeObjectURL(urlRef.current);
-            urlRef.current = null;
-          }
-          setSrc(null);
-        }
+        if (!cancelled) setSrc(null);
       });
     return () => {
       cancelled = true;
-      if (urlRef.current) {
-        URL.revokeObjectURL(urlRef.current);
-        urlRef.current = null;
-      }
     };
-  }, [userId, hasProfileAvatar, rev, organizationId]);
+  }, [avatarPath, cacheKey, hasProfileAvatar, rev, userId, visible]);
 
   if (!src) {
     return (
-      <UserCircle
-        className="platform-user-avatar platform-user-avatar--placeholder"
-        strokeWidth={1.5}
-        aria-hidden
-      />
+      <span ref={ref}>
+        <UserCircle
+          className="platform-user-avatar platform-user-avatar--placeholder"
+          strokeWidth={1.5}
+          aria-hidden
+        />
+      </span>
     );
   }
-  return <img src={src} alt="" className="platform-user-avatar" />;
+  return <img ref={ref} src={src} alt="" className="platform-user-avatar" loading="lazy" decoding="async" />;
 }

@@ -112,7 +112,15 @@ function useClickOutside(ref, isOpen, onClose) {
   }, [isOpen, onClose, ref]);
 }
 
-export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, onClose, onTasksChanged }) {
+export default function ClientTaskDetailPanel({
+  orgId,
+  taskId,
+  assignableUsers,
+  onClose,
+  onTaskUpdated,
+  onTaskDeleted,
+  onTasksChanged,
+}) {
   const { showToast } = useToast();
   const [task, setTask] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -198,21 +206,30 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
     }
   }, [task?.id, task?.title, task?.notes, task?.body]);
 
+  const syncTask = useCallback(
+    (nextTask) => {
+      if (!nextTask) return;
+      setTask(nextTask);
+      onTaskUpdated?.(nextTask);
+      onTasksChanged?.();
+    },
+    [onTaskUpdated, onTasksChanged]
+  );
+
   const patchTask = useCallback(
     async (body) => {
       if (!taskId) return;
       setMetaSaving(true);
       try {
         const { data } = await api.patch(`/api/platform/organizations/${orgId}/tasks/${taskId}`, body);
-        setTask(data.task);
-        onTasksChanged?.();
+        syncTask(data.task);
       } catch (err) {
         showToast(err.response?.data?.error || 'Could not save.', { variant: 'error' });
       } finally {
         setMetaSaving(false);
       }
     },
-    [orgId, taskId, onTasksChanged, showToast]
+    [orgId, taskId, syncTask, showToast]
   );
 
   async function toggleWatch() {
@@ -224,8 +241,8 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
       } else {
         await api.post(`/api/platform/organizations/${orgId}/tasks/${taskId}/watch`);
       }
-      await load();
-      onTasksChanged?.();
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/tasks/${taskId}`);
+      syncTask(data.task);
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not update watch.', { variant: 'error' });
     } finally {
@@ -256,8 +273,8 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
     fd.append('image', file);
     try {
       await api.post(`/api/platform/organizations/${orgId}/tasks/${taskId}/images`, fd);
-      await load();
-      onTasksChanged?.();
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/tasks/${taskId}`);
+      syncTask(data.task);
       showToast('Image added.', { variant: 'success' });
     } catch (err) {
       showToast(err.response?.data?.error || 'Upload failed.', { variant: 'error' });
@@ -266,9 +283,9 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
 
   async function removeTaskImage(imageId) {
     try {
-      await api.delete(`/api/platform/organizations/${orgId}/tasks/${taskId}/images/${imageId}`);
-      await load();
-      onTasksChanged?.();
+      const { data } = await api.delete(`/api/platform/organizations/${orgId}/tasks/${taskId}/images/${imageId}`);
+      const nextTask = data?.task;
+      if (nextTask) syncTask(nextTask);
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not remove image.', { variant: 'error' });
     }
@@ -288,7 +305,7 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
         mentionUserIds: taggedUserIdsFromMentionText(text, assignableUsers),
       });
       const newCommentId = data.comment?.id;
-      setTask(data.task);
+      syncTask(data.task);
       commentEditorRef.current?.clear?.();
       setCommentEditorEmpty(true);
       const files = [...commentFiles];
@@ -302,9 +319,9 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
             fd
           );
         }
-        await load();
+        const refreshed = await api.get(`/api/platform/organizations/${orgId}/tasks/${taskId}`);
+        syncTask(refreshed.data.task);
       }
-      onTasksChanged?.();
       showToast('Comment added.', { variant: 'success' });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not add comment.');
@@ -318,8 +335,7 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
       const { data } = await api.delete(
         `/api/platform/organizations/${orgId}/tasks/${taskId}/comments/${commentId}/images/${imageId}`
       );
-      setTask(data.task);
-      onTasksChanged?.();
+      syncTask(data.task);
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not remove image.', { variant: 'error' });
     }
@@ -330,6 +346,7 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
     try {
       await api.delete(`/api/platform/organizations/${orgId}/tasks/${taskId}`);
       showToast('Task deleted.', { variant: 'success' });
+      onTaskDeleted?.(taskId);
       onTasksChanged?.();
       onClose();
     } catch (err) {
@@ -400,9 +417,8 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
       const { data } = await api.post(`/api/platform/organizations/${orgId}/tasks/${taskId}/checklist-items`, {
         text,
       });
-      setTask(data.task);
+      syncTask(data.task);
       setChecklistNewDraft('');
-      onTasksChanged?.();
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not add item.', { variant: 'error' });
     }
@@ -415,8 +431,7 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
         `/api/platform/organizations/${orgId}/tasks/${taskId}/checklist-items/${item.id}`,
         { done: !item.done }
       );
-      setTask(data.task);
-      onTasksChanged?.();
+      syncTask(data.task);
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not update item.', { variant: 'error' });
     }
@@ -428,8 +443,7 @@ export default function ClientTaskDetailPanel({ orgId, taskId, assignableUsers, 
       const { data } = await api.delete(
         `/api/platform/organizations/${orgId}/tasks/${taskId}/checklist-items/${itemId}`
       );
-      setTask(data.task);
-      onTasksChanged?.();
+      syncTask(data.task);
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not remove item.', { variant: 'error' });
     }

@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin, requireClientOrganization } from '../middleware/auth.js';
+import {
+  requireAuth,
+  requireAdmin,
+  requireClientOrganization,
+  requireClientPulseService,
+} from '../middleware/auth.js';
 import * as PulseSession from '../models/PulseSession.js';
 import * as EmployeeResponse from '../models/EmployeeResponse.js';
 import * as ActionPlan from '../models/ActionPlan.js';
@@ -9,7 +14,7 @@ import { writeSessionExport } from '../services/exportService.js';
 
 const router = Router();
 
-router.use(requireAuth, requireAdmin, requireClientOrganization);
+router.use(requireAuth, requireAdmin, requireClientOrganization, requireClientPulseService);
 
 router.get('/sessions/:id', async (req, res) => {
   const session = await PulseSession.getSessionById(
@@ -65,7 +70,7 @@ router.post('/sessions/:id/export', async (req, res) => {
   const rows = await EmployeeResponse.listResponsesForSession(session.id);
   const analytics = aggregateSessionResponses(rows);
   const plan = await ActionPlan.getActionPlan(session.id, req.user.organizationId);
-  const { filename } = writeSessionExport(session.id, {
+  const { filename } = await writeSessionExport(session.id, {
     session,
     exportedAt: new Date().toISOString(),
     analytics,

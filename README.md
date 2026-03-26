@@ -29,7 +29,9 @@ Organizational diagnostic platform: employee Pulse flow and admin analytics. Sta
    cd ../frontend && npm install --include=dev && npm run build
    ```
 
-3. **Admin login** (from seed): `hello@lukeford.dev` / `Connor!7`
+3. **Admin login** (from seed):
+   - `SEED_ADMIN_EMAIL` defaults to `admin@localhost` if not set.
+   - Set `SEED_ADMIN_PASSWORD` explicitly, or for local dev use the generated password printed by `npm run seed`.
 
 4. Run API (serves built frontend if `frontend/dist` exists):
 
@@ -52,9 +54,57 @@ Organizational diagnostic platform: employee Pulse flow and admin analytics. Sta
 - Create a **PostgreSQL** instance and note `DATABASE_URL`.
 - Attach a **persistent disk** and set `STORAGE_PATH` to the mount path (e.g. `/var/data`).
 - Web service: root directory repo, build command `./build.sh`, start command `cd backend && npm start`.
-- Set env: `DATABASE_URL`, `JWT_SECRET`, `NODE_ENV=production`, `FRONTEND_ORIGIN` (your app URL), `DATABASE_SSL` omit or use defaults.
+- Set env: `DATABASE_URL`, `JWT_SECRET`, `INVITE_TOKEN_SECRET`, `NODE_ENV=production`, `FRONTEND_ORIGIN` (your app URL).
+- Optional hardening env:
+  - `JWT_ISSUER`, `JWT_AUDIENCE` (pins token issuer/audience)
+  - `DATABASE_CA_CERT_PATH` (verify DB server cert with CA; preferred)
+  - `DATABASE_SSL_ALLOW_SELF_SIGNED=true` (temporary fallback only)
+  - `ENFORCE_HTTPS=true` (default in production unless explicitly disabled)
 
 See [render.yaml](./render.yaml) for a blueprint-style reference.
+
+## Performance benchmark (task board)
+
+Use this to compare task-board API latency before/after backend changes.
+
+```bash
+cd backend
+PERF_BASE_URL="https://your-staging-host.com" \
+PERF_TOKEN="your-platform-jwt" \
+PERF_ORG_ID="client-org-uuid" \
+PERF_ENABLE_WRITES=true \
+PERF_OUTPUT_JSON="./perf-current.json" \
+npm run perf:platform-tasks
+```
+
+Environment variables:
+
+- `PERF_BASE_URL` (default: `http://localhost:5000`)
+- `PERF_TOKEN` (**required**)
+- `PERF_ORG_ID` (**required**)
+- `PERF_TASK_ID` (optional; defaults to first task in list)
+- `PERF_RUNS` (default: `20`)
+- `PERF_WARMUP` (default: `3`)
+- `PERF_TIMEOUT_MS` (default: `15000`)
+- `PERF_TASK_LIMIT` (default: `500`)
+- `PERF_ENABLE_WRITES` (default: `false`; set `true` to include reorder timings)
+- `PERF_OUTPUT_JSON` (optional; writes machine-readable JSON summary)
+
+Notes:
+
+- The script reports `avg`, `p50`, `p95`, `min`, and `max` for `task-list`, `task-detail`, and (optionally) `task-reorder`.
+- Reorder benchmarking performs real `PATCH` requests, so use it on dev/staging environments.
+
+Compare two runs:
+
+```bash
+cd backend
+npm run perf:compare -- \
+  --baseline ./perf-baseline.json \
+  --current ./perf-current.json
+```
+
+This prints side-by-side `p50`/`p95`/`avg` and percentage deltas, plus a simple p95 rollup.
 
 ## API overview
 

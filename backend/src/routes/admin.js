@@ -1,29 +1,26 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
-import { requireAuth, requireAdmin, requireClientOrganization } from '../middleware/auth.js';
+import {
+  requireAuth,
+  requireAdmin,
+  requireClientOrganization,
+  requireClientPulseService,
+} from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
 import * as PulseSession from '../models/PulseSession.js';
 import * as EmployeeResponse from '../models/EmployeeResponse.js';
-import * as ActionPlan from '../models/ActionPlan.js';
 import * as Invite from '../models/Invite.js';
-import { aggregateSessionResponses } from '../services/analytics.js';
-import { buildActionPlanDraft } from '../services/pulseEngine.js';
-import { writeSessionExport } from '../services/exportService.js';
 
 const router = Router();
 
-router.use(requireAuth, requireAdmin, requireClientOrganization);
+router.use(requireAuth, requireAdmin, requireClientOrganization, requireClientPulseService);
 
 router.get('/overview', async (req, res) => {
   const sessions = await PulseSession.listSessionsForOrg(req.user.organizationId);
   const active = sessions.find((s) => s.status === 'active');
   let participation = { total: 0, completed: 0 };
   if (active) {
-    const rows = await EmployeeResponse.listResponsesForSession(active.id);
-    participation = {
-      total: rows.length,
-      completed: rows.filter((r) => r.completed_at).length,
-    };
+    participation = await EmployeeResponse.countParticipationForSession(active.id);
   }
   res.json({
     sessions,
@@ -84,9 +81,9 @@ router.post('/invites', requireBodyFields(['email']), async (req, res) => {
       id: invite.id,
       email: invite.email,
       expiresAt: invite.expires_at,
-      token: invite.token,
+      token,
     },
-    inviteUrl: `/invite/${invite.token}`,
+    inviteUrl: `/invite/${token}`,
   });
 });
 

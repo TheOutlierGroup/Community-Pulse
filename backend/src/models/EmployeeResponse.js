@@ -87,6 +87,20 @@ export async function listResponsesForSession(sessionId) {
   return rows;
 }
 
+export async function countParticipationForSession(sessionId) {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed
+     FROM employee_responses
+     WHERE session_id = $1`,
+    [sessionId]
+  );
+  return {
+    total: rows[0]?.total ?? 0,
+    completed: rows[0]?.completed ?? 0,
+  };
+}
+
 export async function ensureResponseRow(userId, sessionId) {
   await query(
     `INSERT INTO employee_responses (user_id, session_id) VALUES ($1, $2)
