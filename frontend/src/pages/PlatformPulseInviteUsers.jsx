@@ -3,7 +3,8 @@ import { useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
-import { Upload } from 'lucide-react';
+import ModalDialog from '../components/shared/ModalDialog.jsx';
+import { Upload, UserPlus } from 'lucide-react';
 
 function splitCsvLine(line) {
   const parts = [];
@@ -114,6 +115,12 @@ export default function PlatformPulseInviteUsers() {
   const [error, setError] = useState('');
   const [busyImport, setBusyImport] = useState(false);
   const [sendingId, setSendingId] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addRole, setAddRole] = useState('staff');
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,6 +169,47 @@ export default function PlatformPulseInviteUsers() {
     }
   }
 
+  function closeAddModal() {
+    setAddOpen(false);
+    setAddError('');
+    setAddName('');
+    setAddEmail('');
+    setAddRole('staff');
+  }
+
+  async function submitAddRecipient(e) {
+    e.preventDefault();
+    const email = String(addEmail || '')
+      .trim()
+      .toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setAddError('Enter a valid email address.');
+      return;
+    }
+    setAddBusy(true);
+    setAddError('');
+    try {
+      const name = String(addName || '').trim() || email.split('@')[0];
+      const { data } = await api.post(`/api/platform/organizations/${orgId}/pulse-link-invites/import`, {
+        recipients: [{ name, email, role: addRole }],
+      });
+      if (data.errorCount > 0) {
+        const first = data.errors?.[0];
+        showToast(first?.error === 'invalid_role' ? 'Role must be staff or manager.' : 'Could not add recipient.', {
+          variant: 'error',
+        });
+        return;
+      }
+      showToast(`Added ${data.upserted} recipient.`, { variant: 'success' });
+      closeAddModal();
+      await load();
+    } catch (err) {
+      setAddError(err.response?.data?.error || 'Could not add recipient.');
+    } finally {
+      setAddBusy(false);
+    }
+  }
+
   async function sendInvite(id) {
     setSendingId(id);
     try {
@@ -183,29 +231,80 @@ export default function PlatformPulseInviteUsers() {
         <div>
           <div className="pulse-platform-header__eyebrow">Client administration</div>
           <h1 className="pulse-platform-header__title">Pulse link recipients</h1>
-          <p className="muted" style={{ marginTop: '0.35rem', maxWidth: '42rem' }}>
-            Upload names and email addresses to add people who can complete Pulse without an app login.
-            Send each person a personal link; resending generates a new link and invalidates the previous one.
-          </p>
         </div>
       </div>
 
       {error && <p className="error">{error}</p>}
 
-      <div className="pulse-prototype-card" style={{ marginBottom: '1.25rem' }}>
-        <div className="pulse-prototype-card__label">Upload CSV</div>
-        <p className="muted" style={{ marginBottom: '0.75rem' }}>
-          One row per person. Columns: <strong>name</strong>, <strong>email</strong>,{' '}
-          <strong>role</strong> (<code>staff</code> or <code>manager</code>). Header row optional; if role is
-          omitted it defaults to staff. Manager links open the manager Pulse session; staff links open the staff
-          session (same questionnaire flow, separate session for reporting).
-        </p>
-        <label className="btn btn-primary" style={{ cursor: busyImport ? 'wait' : 'pointer' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.65rem',
+          marginBottom: '1.25rem',
+          alignItems: 'center',
+        }}
+      >
+        <label className="btn btn-primary" style={{ cursor: busyImport ? 'wait' : 'pointer', margin: 0 }}>
           <Upload size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          {busyImport ? 'Importing…' : 'Choose CSV file'}
+          {busyImport ? 'Importing…' : 'Import CSV'}
           <input type="file" accept=".csv,text/csv" hidden disabled={busyImport} onChange={onFile} />
         </label>
+        <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
+          <UserPlus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
+          Add
+        </button>
       </div>
+
+      <ModalDialog
+        open={addOpen}
+        title="Add recipient"
+        titleId="pulse-add-recipient-title"
+        onClose={() => {
+          if (addBusy) return;
+          closeAddModal();
+        }}
+      >
+        <form onSubmit={submitAddRecipient} style={{ padding: '0 0 0.25rem' }}>
+          {addError ? <p className="error" style={{ marginBottom: '1rem' }}>{addError}</p> : null}
+          <div className="field">
+            <label htmlFor="pulse-add-name">Name</label>
+            <input
+              id="pulse-add-name"
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              autoComplete="name"
+              placeholder="Full name"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="pulse-add-email">Email</label>
+            <input
+              id="pulse-add-email"
+              type="email"
+              value={addEmail}
+              onChange={(e) => setAddEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="pulse-add-role">Role</label>
+            <select id="pulse-add-role" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
+              <option value="staff">Staff</option>
+              <option value="manager">Manager</option>
+            </select>
+          </div>
+          <div className="modal-dialog__actions">
+            <button type="button" className="btn btn-ghost" onClick={closeAddModal} disabled={addBusy}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={addBusy}>
+              {addBusy ? 'Adding…' : 'Add recipient'}
+            </button>
+          </div>
+        </form>
+      </ModalDialog>
 
       <div className="pulse-prototype-card">
         <div className="pulse-prototype-card__label">Recipients</div>
@@ -229,7 +328,7 @@ export default function PlatformPulseInviteUsers() {
                 {invites.length === 0 && (
                   <tr>
                     <td colSpan={5} className="muted" style={{ padding: '1.25rem' }}>
-                      No recipients yet. Upload a CSV to add people.
+                      No recipients yet. Use Add or Import CSV.
                     </td>
                   </tr>
                 )}
