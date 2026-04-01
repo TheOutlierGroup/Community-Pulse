@@ -91,6 +91,14 @@ export async function countSentInvitesBySurveyRole(organizationId) {
   return out;
 }
 
+export async function deleteInviteInOrg(inviteId, organizationId) {
+  const { rowCount } = await query(
+    `DELETE FROM pulse_link_invites WHERE id = $1 AND organization_id = $2`,
+    [inviteId, organizationId]
+  );
+  return rowCount > 0;
+}
+
 export async function rotateTokenAndMarkSent(inviteId, organizationId) {
   const raw = randomUUID();
   const tokenHash = hashInviteToken(raw);

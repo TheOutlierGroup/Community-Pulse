@@ -663,4 +663,15 @@ export function registerPlatformOrgRoutes(router) {
     }
     res.json({ ok: true, invite: PulseLinkInvite.publicInviteRow(rotated.row) });
   });
+
+  router.delete('/organizations/:id/pulse-link-invites/:inviteId', async (req, res) => {
+    const orgId = req.params.id;
+    const org = await assertClientOrganizationPlatform(orgId);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId);
+    if (!invite) return res.status(404).json({ error: 'Invite not found' });
+    const ok = await PulseLinkInvite.deleteInviteInOrg(invite.id, orgId);
+    if (!ok) return res.status(404).json({ error: 'Invite not found' });
+    res.status(204).end();
+  });
 }

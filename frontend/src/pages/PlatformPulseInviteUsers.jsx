@@ -4,7 +4,7 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
-import { Upload, UserPlus } from 'lucide-react';
+import { Trash2, Upload, UserPlus } from 'lucide-react';
 
 function splitCsvLine(line) {
   const parts = [];
@@ -115,6 +115,7 @@ export default function PlatformPulseInviteUsers() {
   const [error, setError] = useState('');
   const [busyImport, setBusyImport] = useState(false);
   const [sendingId, setSendingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
@@ -223,6 +224,24 @@ export default function PlatformPulseInviteUsers() {
     }
   }
 
+  async function deleteInvite(row) {
+    const label = row.displayName?.trim() || row.email;
+    const ok = window.confirm(
+      `Remove ${label} (${row.email}) from link recipients?\n\nThis cannot be undone.`
+    );
+    if (!ok) return;
+    setDeletingId(row.id);
+    try {
+      await api.delete(`/api/platform/organizations/${orgId}/pulse-link-invites/${row.id}`);
+      showToast('Recipient removed.', { variant: 'success' });
+      await load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not remove recipient.', { variant: 'error' });
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   if (!user) return null;
 
   return (
@@ -310,7 +329,7 @@ export default function PlatformPulseInviteUsers() {
                   <th scope="col">Email</th>
                   <th scope="col">Role</th>
                   <th scope="col">Link status</th>
-                  <th scope="col" style={{ width: '8rem' }}>
+                  <th scope="col" style={{ width: '11rem' }}>
                     Actions
                   </th>
                 </tr>
@@ -343,14 +362,27 @@ export default function PlatformPulseInviteUsers() {
                         )}
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          disabled={sendingId === row.id}
-                          onClick={() => sendInvite(row.id)}
-                        >
-                          {sendingId === row.id ? 'Sending…' : sent ? 'Resend link' : 'Send link'}
-                        </button>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={sendingId === row.id || deletingId === row.id}
+                            onClick={() => sendInvite(row.id)}
+                          >
+                            {sendingId === row.id ? 'Sending…' : sent ? 'Resend link' : 'Send link'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={deletingId === row.id || sendingId === row.id}
+                            onClick={() => deleteInvite(row)}
+                            title="Remove recipient"
+                            style={{ color: 'var(--danger, #b91c1c)', gap: '0.35rem' }}
+                          >
+                            <Trash2 size={18} strokeWidth={2} aria-hidden />
+                            {deletingId === row.id ? 'Removing…' : 'Delete'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
