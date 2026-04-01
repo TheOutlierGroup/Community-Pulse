@@ -5,47 +5,89 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import { Upload } from 'lucide-react';
 
+function splitCsvLine(line) {
+  const parts = [];
+  let cur = '';
+  let inQ = false;
+  for (let j = 0; j < line.length; j++) {
+    const c = line[j];
+    if (c === '"') {
+      inQ = !inQ;
+    } else if (c === ',' && !inQ) {
+      parts.push(cur.trim());
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  parts.push(cur.trim());
+  return parts.map((p) => p.replace(/^"|"$/g, ''));
+}
+
 function parseRecipientCsv(text) {
   const lines = String(text || '')
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
   if (lines.length === 0) return [];
+
+  const headerCells = splitCsvLine(lines[0]);
+  const headerLower = headerCells.map((c) => c.toLowerCase());
+  const hasHeader = headerLower.includes('email');
   let start = 0;
-  if (/^name\s*,\s*email/i.test(lines[0]) || /^email\s*,\s*name/i.test(lines[0])) {
+  let colEmail = -1;
+  let colName = -1;
+  let colRole = -1;
+
+  if (hasHeader) {
     start = 1;
+    colEmail = headerLower.indexOf('email');
+    colName = headerLower.indexOf('name');
+    if (colName < 0) colName = headerLower.indexOf('display name');
+    colRole = headerLower.indexOf('role');
+    if (colRole < 0) colRole = headerLower.indexOf('survey_role');
+    if (colRole < 0) colRole = headerLower.indexOf('survey role');
   }
+
   const out = [];
   for (let i = start; i < lines.length; i++) {
-    const line = lines[i];
-    const parts = [];
-    let cur = '';
-    let inQ = false;
-    for (let j = 0; j < line.length; j++) {
-      const c = line[j];
-      if (c === '"') {
-        inQ = !inQ;
-      } else if (c === ',' && !inQ) {
-        parts.push(cur.trim());
-        cur = '';
-      } else {
-        cur += c;
-      }
-    }
-    parts.push(cur.trim());
-    const cells = parts.map((p) => p.replace(/^"|"$/g, ''));
+    const cells = splitCsvLine(lines[i]);
     let name = '';
     let email = '';
-    if (cells.length >= 2) {
+    let roleRaw;
+
+    if (hasHeader) {
+      email = colEmail >= 0 ? cells[colEmail] || '' : '';
+      name = colName >= 0 ? cells[colName] || '' : '';
+      roleRaw = colRole >= 0 ? cells[colRole] : undefined;
+      if (!email) {
+        for (const c of cells) {
+          if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(c).toLowerCase())) {
+            email = c;
+            break;
+          }
+        }
+      }
+    } else if (cells.length >= 2) {
       if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cells[0].toLowerCase())) {
         email = cells[0];
-        name = cells.slice(1).join(', ');
+        name = cells[1] || '';
+        roleRaw = cells[2];
       } else {
         name = cells[0];
-        email = cells[1];
+        email = cells[1] || '';
+        roleRaw = cells[2];
       }
     }
-    if (email) out.push({ name: name || email.split('@')[0], email });
+
+    const em = String(email).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) continue;
+
+    const rec = { name: String(name || '').trim() || em.split('@')[0], email: em };
+    if (roleRaw != null && String(roleRaw).trim() !== '') {
+      rec.role = String(roleRaw).trim();
+    }
+    out.push(rec);
   }
   return out;
 }
@@ -100,7 +142,9 @@ export default function PlatformPulseInviteUsers() {
       const text = await file.text();
       const recipients = parseRecipientCsv(text);
       if (recipients.length === 0) {
-        showToast('No rows found. Use a CSV with columns: name, email.', { variant: 'error' });
+        showToast('No rows found. Use a CSV with columns: name, email, and optional role (staff or manager).', {
+          variant: 'error',
+        });
         return;
       }
       const { data } = await api.post(`/api/platform/organizations/${orgId}/pulse-link-invites/import`, {
@@ -151,7 +195,10 @@ export default function PlatformPulseInviteUsers() {
       <div className="pulse-prototype-card" style={{ marginBottom: '1.25rem' }}>
         <div className="pulse-prototype-card__label">Upload CSV</div>
         <p className="muted" style={{ marginBottom: '0.75rem' }}>
-          One row per person. Columns: <strong>name</strong>, <strong>email</strong> (header row optional).
+          One row per person. Columns: <strong>name</strong>, <strong>email</strong>,{' '}
+          <strong>role</strong> (<code>staff</code> or <code>manager</code>). Header row optional; if role is
+          omitted it defaults to staff. Manager links open the manager Pulse session; staff links open the staff
+          session (same questionnaire flow, separate session for reporting).
         </p>
         <label className="btn btn-primary" style={{ cursor: busyImport ? 'wait' : 'pointer' }}>
           <Upload size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
@@ -171,6 +218,7 @@ export default function PlatformPulseInviteUsers() {
                 <tr>
                   <th scope="col">Name</th>
                   <th scope="col">Email</th>
+                  <th scope="col">Role</th>
                   <th scope="col">Link status</th>
                   <th scope="col" style={{ width: '8rem' }}>
                     Actions
@@ -180,7 +228,7 @@ export default function PlatformPulseInviteUsers() {
               <tbody>
                 {invites.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="muted" style={{ padding: '1.25rem' }}>
+                    <td colSpan={5} className="muted" style={{ padding: '1.25rem' }}>
                       No recipients yet. Upload a CSV to add people.
                     </td>
                   </tr>
@@ -191,6 +239,7 @@ export default function PlatformPulseInviteUsers() {
                     <tr key={row.id}>
                       <td>{row.displayName || '—'}</td>
                       <td className="pulse-prototype-mono">{row.email}</td>
+                      <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
                       <td>
                         {sent ? (
                           <span>

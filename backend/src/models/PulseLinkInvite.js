@@ -14,6 +14,7 @@ export function publicInviteRow(row) {
     id: row.id,
     displayName: row.display_name,
     email: row.email,
+    surveyRole: row.survey_role || 'staff',
     lastInvitedAt: row.last_invited_at,
     createdAt: row.created_at,
   };
@@ -21,7 +22,7 @@ export function publicInviteRow(row) {
 
 export async function listInvitesForOrg(organizationId) {
   const { rows } = await query(
-    `SELECT id, display_name, email, last_invited_at, created_at
+    `SELECT id, display_name, email, survey_role, last_invited_at, created_at
      FROM pulse_link_invites
      WHERE organization_id = $1
      ORDER BY lower(email)`,
@@ -43,18 +44,20 @@ export async function findByTokenHash(tokenHash) {
   return rows[0] || null;
 }
 
-export async function upsertInviteRow({ organizationId, displayName, email }) {
+export async function upsertInviteRow({ organizationId, displayName, email, surveyRole = 'staff' }) {
   const em = normalizeEmail(email);
   if (!em) return { row: null, error: 'invalid_email' };
+  const role = surveyRole === 'manager' ? 'manager' : 'staff';
   const name = String(displayName || '').trim();
   const { rows } = await query(
-    `INSERT INTO pulse_link_invites (organization_id, display_name, email)
-     VALUES ($1, $2, $3)
+    `INSERT INTO pulse_link_invites (organization_id, display_name, email, survey_role)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (organization_id, email) DO UPDATE SET
        display_name = EXCLUDED.display_name,
+       survey_role = EXCLUDED.survey_role,
        updated_at = NOW()
      RETURNING *`,
-    [organizationId, name, em]
+    [organizationId, name, em, role]
   );
   return { row: rows[0], error: null };
 }
@@ -69,6 +72,23 @@ export async function countSentInvitesForOrg(organizationId) {
     [organizationId]
   );
   return rows[0]?.n ?? 0;
+}
+
+/** Count of recipients who have been sent a link at least once, by survey role. */
+export async function countSentInvitesBySurveyRole(organizationId) {
+  const { rows } = await query(
+    `SELECT survey_role, COUNT(*)::int AS n
+     FROM pulse_link_invites
+     WHERE organization_id = $1 AND last_invited_at IS NOT NULL
+     GROUP BY survey_role`,
+    [organizationId]
+  );
+  const out = { staff: 0, manager: 0 };
+  for (const r of rows) {
+    if (r.survey_role === 'manager') out.manager = r.n;
+    else out.staff = r.n;
+  }
+  return out;
 }
 
 export async function rotateTokenAndMarkSent(inviteId, organizationId) {

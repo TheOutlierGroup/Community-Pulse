@@ -12,6 +12,7 @@ export default function AdminHome() {
   const location = useLocation();
   const [overview, setOverview] = useState(null);
   const [name, setName] = useState('Q1 Pulse');
+  const [sessionAudience, setSessionAudience] = useState('staff');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteLink, setInviteLink] = useState('');
   const [error, setError] = useState('');
@@ -52,8 +53,9 @@ export default function AdminHome() {
     setBusy(true);
     setError('');
     try {
-      await api.post('/api/admin/sessions', { name, status: 'draft' });
+      await api.post('/api/admin/sessions', { name, status: 'draft', audience: sessionAudience });
       setName('Q1 Pulse');
+      setSessionAudience('staff');
       await load();
     } catch (err) {
       setError(err.response?.data?.error || 'Could not create session.');
@@ -124,6 +126,17 @@ export default function AdminHome() {
               required
             />
           </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label htmlFor="saud">Survey audience</label>
+            <select
+              id="saud"
+              value={sessionAudience}
+              onChange={(e) => setSessionAudience(e.target.value)}
+            >
+              <option value="staff">Staff (employees)</option>
+              <option value="manager">Managers</option>
+            </select>
+          </div>
           <div>
             <button type="submit" className="btn btn-primary" disabled={busy}>
               Create draft
@@ -166,6 +179,7 @@ export default function AdminHome() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Audience</th>
                 <th>Status</th>
                 <th>Actions</th>
                 <th />
@@ -175,6 +189,7 @@ export default function AdminHome() {
               {overview.sessions.map((s) => (
                 <tr key={s.id}>
                   <td>{s.name}</td>
+                  <td>{s.audience === 'manager' ? 'Managers' : 'Staff'}</td>
                   <td>
                     <span className={`badge badge-${s.status}`}>{s.status}</span>
                   </td>

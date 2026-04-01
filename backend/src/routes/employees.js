@@ -23,7 +23,7 @@ router.get('/active-session', async (req, res) => {
   if (req.user.role !== 'employee') {
     return res.status(403).json({ error: 'Employees only' });
   }
-  const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId);
+  const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId, 'staff');
   if (!session) {
     return res.json({ session: null });
   }
@@ -34,7 +34,7 @@ router.get('/response', async (req, res) => {
   if (req.user.role !== 'employee') {
     return res.status(403).json({ error: 'Employees only' });
   }
-  const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId);
+  const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId, 'staff');
   if (!session) {
     return res.status(404).json({ error: 'No active Pulse session' });
   }
@@ -76,7 +76,7 @@ router.put('/response/step/:step', async (req, res) => {
   if (step < 1 || step > 5) {
     return res.status(400).json({ error: 'Invalid step' });
   }
-  const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId);
+  const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId, 'staff');
   if (!session) {
     return res.status(404).json({ error: 'No active Pulse session' });
   }
@@ -118,7 +118,7 @@ router.post('/response/complete', async (req, res) => {
   if (req.user.role !== 'employee') {
     return res.status(403).json({ error: 'Employees only' });
   }
-  const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId);
+  const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId, 'staff');
   if (!session) {
     return res.status(404).json({ error: 'No active Pulse session' });
   }

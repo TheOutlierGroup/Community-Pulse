@@ -98,7 +98,7 @@ async function listMergedResponsesForSession(sessionId) {
     created_at: r.created_at,
     updated_at: r.updated_at,
     email: r.email,
-    role: 'employee',
+    role: r.survey_role === 'manager' ? 'admin' : 'employee',
   }));
   return [...userRows, ...mapped];
 }
@@ -106,6 +106,16 @@ async function listMergedResponsesForSession(sessionId) {
 function resolvePublicAppBaseUrl() {
   const raw = process.env.APP_URL || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
   return raw ? raw.replace(/\/$/, '') : '';
+}
+
+function normalizeSurveyRoleFromImport(raw) {
+  const s = String(raw ?? '')
+    .trim()
+    .toLowerCase();
+  if (s === '') return 'staff';
+  if (s === 'manager') return 'manager';
+  if (s === 'staff' || s === 'employee') return 'staff';
+  return null;
 }
 
 export function registerPlatformOrgRoutes(router) {
@@ -380,18 +390,27 @@ export function registerPlatformOrgRoutes(router) {
     const org = await assertClientOrganizationPlatform(req.params.id);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    const [sessions, activeUsersByRole, pulseLinkInvitedCount] = await Promise.all([
+    const [sessions, activeUsersByRole, pulseLinkByRole] = await Promise.all([
       PulseSession.listSessionsForOrg(req.params.id),
       User.countActiveUsersByRoleForOrg(req.params.id),
-      PulseLinkInvite.countSentInvitesForOrg(req.params.id),
+      PulseLinkInvite.countSentInvitesBySurveyRole(req.params.id),
     ]);
 
+    const activeSessions = sessions.filter((s) => s.status === 'active');
     const currentSession =
-      sessions.find((s) => s.status === 'active') || sessions[0] || null;
+      sessions.find((s) => s.status === 'active' && s.audience === 'staff') ||
+      sessions.find((s) => s.status === 'active' && s.audience === 'manager') ||
+      sessions[0] ||
+      null;
 
-    const currentRows = currentSession
-      ? await listMergedResponsesForSession(currentSession.id)
-      : [];
+    const sessionsForCurrentRows =
+      activeSessions.length > 0 ? activeSessions : currentSession ? [currentSession] : [];
+    const currentRows =
+      sessionsForCurrentRows.length > 0
+        ? (
+            await Promise.all(sessionsForCurrentRows.map((s) => listMergedResponsesForSession(s.id)))
+          ).flat()
+        : [];
     const completedRows = currentRows.filter((r) => r.completed_at);
     const analytics = aggregateSessionResponses(currentRows);
 
@@ -413,6 +432,9 @@ export function registerPlatformOrgRoutes(router) {
 
     const invitedEmployees = activeUsersByRole.employee || 0;
     const invitedManagers = activeUsersByRole.admin || 0;
+    const pulseLinkStaff = pulseLinkByRole.staff;
+    const pulseLinkManager = pulseLinkByRole.manager;
+    const pulseLinkInvitedCount = pulseLinkStaff + pulseLinkManager;
     const invitedTotal = invitedEmployees + invitedManagers + pulseLinkInvitedCount;
     const completedTotal = completedRows.length;
 
@@ -553,9 +575,13 @@ export function registerPlatformOrgRoutes(router) {
         completedManagers: completedManagerResponses,
         participationRate: round1(ratio(completedTotal, invitedTotal) * 100),
         employeeParticipationRate: round1(
-          ratio(completedEmployeeResponses, invitedEmployees + pulseLinkInvitedCount) * 100
+          ratio(completedEmployeeResponses, invitedEmployees + pulseLinkStaff) * 100
         ),
-        managerParticipationRate: round1(ratio(completedManagerResponses, invitedManagers) * 100),
+        managerParticipationRate: round1(
+          ratio(completedManagerResponses, invitedManagers + pulseLinkManager) * 100
+        ),
+        pulseLinkInvitedStaff: pulseLinkStaff,
+        pulseLinkInvitedManager: pulseLinkManager,
         adoptionScore,
         sponsorshipScore,
         adoptionDelta,
@@ -591,10 +617,17 @@ export function registerPlatformOrgRoutes(router) {
     const errors = [];
     for (let i = 0; i < recipients.length; i++) {
       const r = recipients[i] || {};
+      const rawRole = r.role ?? r.surveyRole;
+      const surveyRole = normalizeSurveyRoleFromImport(rawRole);
+      if (rawRole != null && String(rawRole).trim() !== '' && surveyRole === null) {
+        errors.push({ index: i, email: r.email, error: 'invalid_role' });
+        continue;
+      }
       const { row, error } = await PulseLinkInvite.upsertInviteRow({
         organizationId: req.params.id,
         displayName: r.name ?? r.displayName ?? '',
         email: r.email,
+        surveyRole: surveyRole || 'staff',
       });
       if (error || !row) {
         errors.push({ index: i, email: r.email, error: error || 'invalid' });

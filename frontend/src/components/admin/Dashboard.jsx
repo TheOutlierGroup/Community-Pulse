@@ -27,6 +27,7 @@ export default function Dashboard({ overview }) {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Audience</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -34,6 +35,7 @@ export default function Dashboard({ overview }) {
               {sessions.map((s) => (
                 <tr key={s.id}>
                   <td>{s.name}</td>
+                  <td>{s.audience === 'manager' ? 'Managers' : 'Staff'}</td>
                   <td>
                     <span className={`badge badge-${s.status}`}>{s.status}</span>
                   </td>

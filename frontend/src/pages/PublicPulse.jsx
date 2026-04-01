@@ -34,6 +34,7 @@ export default function PublicPulse() {
   const [reflection, setReflection] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [surveyAudience, setSurveyAudience] = useState(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -45,6 +46,7 @@ export default function PublicPulse() {
       ]);
       setThemes(tRes.data.themes || []);
       setSession(sRes.data.session);
+      setSurveyAudience(sRes.data.surveyAudience ?? null);
       if (!sRes.data.session) return;
 
       const rRes = await api.get('/api/pulse-link/response', linkParams);
@@ -143,7 +145,9 @@ export default function PublicPulse() {
         </p>
         {!session && (
           <p className="muted">
-            There is no active diagnostic right now. Please check back later or contact your administrator.
+            {surveyAudience === 'manager'
+              ? 'There is no active manager Pulse session right now. Your organization may still be preparing the manager survey, or it may have ended. Please check back later or contact your administrator.'
+              : 'There is no active diagnostic right now. Please check back later or contact your administrator.'}
           </p>
         )}
         {session && (

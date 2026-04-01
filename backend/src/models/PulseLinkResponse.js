@@ -86,7 +86,7 @@ export async function ensureResponseRow(inviteId, sessionId) {
 
 export async function listResponsesForSession(sessionId) {
   const { rows } = await query(
-    `SELECT plr.*, pli.email, pli.display_name
+    `SELECT plr.*, pli.email, pli.display_name, pli.survey_role
      FROM pulse_link_responses plr
      JOIN pulse_link_invites pli ON pli.id = plr.invite_id
      WHERE plr.session_id = $1`,

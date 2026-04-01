@@ -94,6 +94,7 @@ export function publicPulseSessionRow(row) {
     id: row.id,
     name: row.name,
     status: row.status,
+    audience: row.audience || 'staff',
     createdAt: row.created_at,
     closedAt: row.closed_at,
   };

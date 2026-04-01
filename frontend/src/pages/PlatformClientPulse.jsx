@@ -174,14 +174,20 @@ export default function PlatformClientPulse() {
     loadDashboard();
   }, [orgId, pulseEnabled, loadDashboard]);
 
-  useEffect(() => {
-    if (!location.hash) return;
-    const fromHash = location.hash.replace(/^#/, '').trim();
-    if (!PULSE_SECTION_IDS.includes(fromHash)) return;
-    const targetId = fromHash === 'score-breakdown' ? 'employee-breakdown' : fromHash;
-    const el = document.getElementById(targetId);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const pulseFocusedSection = useMemo(() => {
+    const rawHash = location.hash.replace(/^#/, '').trim();
+    const fullOverview = !rawHash || rawHash === 'organisation-dashboard';
+    if (fullOverview) return null;
+    if (rawHash === 'score-breakdown') return 'employee-breakdown';
+    if (PULSE_SECTION_IDS.includes(rawHash)) return rawHash;
+    return null;
   }, [location.hash]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    const main = document.querySelector('.pulse-prototype-content');
+    if (main && typeof main.scrollTop === 'number') main.scrollTop = 0;
+  }, [pulseFocusedSection]);
 
   const kpis = dashboard?.kpis || {};
   const trendBars = useMemo(
@@ -236,12 +242,25 @@ export default function PlatformClientPulse() {
   }));
   const activeDimensions = activeTab === 'employee' ? employeeDimensionRows : managerDimensionRows;
 
+  const showSection = (sectionId) => pulseFocusedSection == null || pulseFocusedSection === sectionId;
+
+  const pageTitle =
+    pulseFocusedSection === 'organisation-scores'
+      ? 'Organisation Scores'
+      : pulseFocusedSection === 'manager-load-report'
+        ? 'Manager Load Report'
+        : pulseFocusedSection === 'employee-breakdown'
+          ? 'Employee Breakdown'
+          : pulseFocusedSection === 'team-level-view'
+            ? 'Team-Level View'
+            : 'Organisation Dashboard';
+
   return (
     <div className="pulse-prototype-page">
       <div className="pulse-platform-header">
         <div>
           <div className="pulse-platform-header__eyebrow">Client administration</div>
-          <h1 className="pulse-platform-header__title">Organisation Dashboard</h1>
+          <h1 className="pulse-platform-header__title">{pageTitle}</h1>
         </div>
         <div className="pulse-platform-header__right">
           <span className="pulse-platform-header__date">{todayLabel}</span>
@@ -256,6 +275,7 @@ export default function PlatformClientPulse() {
 
       <div className="pulse-prototype-content">
 
+          {showSection('organisation-dashboard') && (
           <div className="pulse-prototype-kpis" id="organisation-dashboard">
             <div className="pulse-prototype-kpi">
               <div className="pulse-prototype-kpi__label">Total Responses</div>
@@ -303,7 +323,9 @@ export default function PlatformClientPulse() {
               <div className="pulse-prototype-kpi__bar sponsorship" />
             </div>
           </div>
+          )}
 
+          {showSection('organisation-scores') && (
           <div className="pulse-prototype-grid pulse-prototype-grid--scores" id="organisation-scores">
             <section className="pulse-prototype-card">
               <div className="pulse-prototype-card__label">Organisation Scores · All Respondents</div>
@@ -372,7 +394,9 @@ export default function PlatformClientPulse() {
               <div className="pulse-prototype-axis-up">↑ High Adoption</div>
             </section>
           </div>
+          )}
 
+          {showSection('manager-load-report') && (
           <section className="pulse-prototype-card" id="manager-load-report">
             <div className="pulse-prototype-card__label accent">Manager Load Report · {dashboard?.managerLoad?.total ?? 0} manager respondents</div>
             <div className="pulse-prototype-load-bar">
@@ -395,7 +419,9 @@ export default function PlatformClientPulse() {
               ))}
             </div>
           </section>
+          )}
 
+          {showSection('employee-breakdown') && (
           <div className="pulse-prototype-grid pulse-prototype-grid--analysis" id="employee-breakdown">
             <section className="pulse-prototype-card">
               <div className="pulse-prototype-tabs">
@@ -494,7 +520,9 @@ export default function PlatformClientPulse() {
               </section>
             </div>
           </div>
+          )}
 
+          {showSection('team-level-view') && (
           <section className="pulse-prototype-card" id="team-level-view">
             <div className="pulse-prototype-card__label">Team-Level Breakdown · Showing 6 of 18 teams</div>
             <table className="pulse-prototype-rtable">
@@ -542,6 +570,7 @@ export default function PlatformClientPulse() {
               </tbody>
             </table>
           </section>
+          )}
       </div>
     </div>
   );

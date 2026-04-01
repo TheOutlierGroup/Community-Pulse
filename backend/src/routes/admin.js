@@ -17,28 +17,27 @@ router.use(requireAuth, requireAdmin, requireClientOrganization, requireClientPu
 
 router.get('/overview', async (req, res) => {
   const sessions = await PulseSession.listSessionsForOrg(req.user.organizationId);
-  const active = sessions.find((s) => s.status === 'active');
+  const activeStaff =
+    sessions.find((s) => s.status === 'active' && s.audience === 'staff') ||
+    sessions.find((s) => s.status === 'active');
   let participation = { total: 0, completed: 0 };
-  if (active) {
-    participation = await EmployeeResponse.countParticipationForSession(active.id);
+  if (activeStaff) {
+    participation = await EmployeeResponse.countParticipationForSession(activeStaff.id);
   }
   res.json({
     sessions,
-    activeSession: active || null,
+    activeSession: activeStaff || null,
     participation,
   });
 });
 
 router.post('/sessions', requireBodyFields(['name']), async (req, res) => {
-  const { name, status = 'draft' } = req.body;
+  const { name, status = 'draft', audience = 'staff' } = req.body;
   if (!['draft', 'active', 'closed'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
   }
-  const session = await PulseSession.createSession(
-    req.user.organizationId,
-    name,
-    status
-  );
+  const aud = audience === 'manager' ? 'manager' : 'staff';
+  const session = await PulseSession.createSession(req.user.organizationId, name, status, aud);
   res.status(201).json(session);
 });
 
