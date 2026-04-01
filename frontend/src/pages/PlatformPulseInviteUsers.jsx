@@ -232,29 +232,20 @@ export default function PlatformPulseInviteUsers() {
           <div className="pulse-platform-header__eyebrow">Client administration</div>
           <h1 className="pulse-platform-header__title">Pulse link recipients</h1>
         </div>
+        <div className="pulse-platform-header__right" style={{ flexWrap: 'wrap' }}>
+          <label className="btn btn-primary" style={{ cursor: busyImport ? 'wait' : 'pointer', margin: 0 }}>
+            <Upload size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
+            {busyImport ? 'Importing…' : 'Import CSV'}
+            <input type="file" accept=".csv,text/csv" hidden disabled={busyImport} onChange={onFile} />
+          </label>
+          <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
+            <UserPlus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
+            Add
+          </button>
+        </div>
       </div>
 
       {error && <p className="error">{error}</p>}
-
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '0.65rem',
-          marginBottom: '1.25rem',
-          alignItems: 'center',
-        }}
-      >
-        <label className="btn btn-primary" style={{ cursor: busyImport ? 'wait' : 'pointer', margin: 0 }}>
-          <Upload size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          {busyImport ? 'Importing…' : 'Import CSV'}
-          <input type="file" accept=".csv,text/csv" hidden disabled={busyImport} onChange={onFile} />
-        </label>
-        <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
-          <UserPlus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          Add
-        </button>
-      </div>
 
       <ModalDialog
         open={addOpen}
