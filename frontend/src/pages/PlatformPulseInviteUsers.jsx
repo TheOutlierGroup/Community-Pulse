@@ -4,7 +4,16 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
-import { Trash2, Upload, UserPlus } from 'lucide-react';
+import { Mail, Trash2, Upload, UserPlus } from 'lucide-react';
+
+/** Minimum gap between each send request to stay under typical email API rate limits (e.g. Resend ~2 rps). */
+const BULK_SEND_INTERVAL_MS = 700;
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
 
 function splitCsvLine(line) {
   const parts = [];
@@ -116,6 +125,8 @@ export default function PlatformPulseInviteUsers() {
   const [busyImport, setBusyImport] = useState(false);
   const [sendingId, setSendingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
@@ -123,8 +134,11 @@ export default function PlatformPulseInviteUsers() {
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (options = {}) => {
+    const silent = Boolean(options.silent);
+    if (!silent) {
+      setLoading(true);
+    }
     setError('');
     try {
       const { data } = await api.get(`/api/platform/organizations/${orgId}/pulse-link-invites`);
@@ -133,7 +147,9 @@ export default function PlatformPulseInviteUsers() {
       setError(e.response?.data?.error || 'Could not load invite list.');
       setInvites([]);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [orgId]);
 
@@ -224,6 +240,49 @@ export default function PlatformPulseInviteUsers() {
     }
   }
 
+  async function bulkSendAll() {
+    const snapshot = invites.map((r) => r.id);
+    if (snapshot.length === 0) return;
+    const ok = window.confirm(
+      `Send Pulse links to all ${snapshot.length} recipients?\n\nEach person receives an email. Sends run one at a time with a short pause between each to avoid hitting email API rate limits, so a long list may take a few minutes.`
+    );
+    if (!ok) return;
+
+    setBulkSending(true);
+    let success = 0;
+    let failed = 0;
+    const total = snapshot.length;
+
+    try {
+      for (let i = 0; i < snapshot.length; i += 1) {
+        setBulkProgress({ current: i + 1, total });
+        try {
+          await api.post(`/api/platform/organizations/${orgId}/pulse-link-invites/${snapshot[i]}/send`);
+          success += 1;
+        } catch {
+          failed += 1;
+        }
+        if (i < snapshot.length - 1) {
+          await delay(BULK_SEND_INTERVAL_MS);
+        }
+      }
+    } finally {
+      setBulkProgress(null);
+      setBulkSending(false);
+      await load({ silent: true });
+      if (failed === 0) {
+        showToast(
+          `Sent links to ${success} recipient${success === 1 ? '' : 's'}.`,
+          { variant: 'success' }
+        );
+      } else if (success === 0) {
+        showToast('Bulk send failed. Check configuration and try again.', { variant: 'error' });
+      } else {
+        showToast(`Finished: ${success} sent, ${failed} failed.`, { variant: 'error' });
+      }
+    }
+  }
+
   async function deleteInvite(row) {
     const label = row.displayName?.trim() || row.email;
     const ok = window.confirm(
@@ -252,12 +311,26 @@ export default function PlatformPulseInviteUsers() {
           <h1 className="pulse-platform-header__title">Pulse link recipients</h1>
         </div>
         <div className="pulse-platform-header__right" style={{ flexWrap: 'wrap' }}>
-          <label className="btn btn-primary" style={{ cursor: busyImport ? 'wait' : 'pointer', margin: 0 }}>
+          <label
+            className="btn btn-primary"
+            style={{ cursor: busyImport || bulkSending ? 'wait' : 'pointer', margin: 0 }}
+          >
             <Upload size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
             {busyImport ? 'Importing…' : 'Import CSV'}
-            <input type="file" accept=".csv,text/csv" hidden disabled={busyImport} onChange={onFile} />
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              disabled={busyImport || bulkSending}
+              onChange={onFile}
+            />
           </label>
-          <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setAddOpen(true)}
+            disabled={bulkSending}
+          >
             <UserPlus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
             Add
           </button>
@@ -306,10 +379,14 @@ export default function PlatformPulseInviteUsers() {
             </select>
           </div>
           <div className="modal-dialog__actions">
-            <button type="button" className="btn btn-ghost" onClick={closeAddModal} disabled={addBusy}>
+            <button type="button" className="btn btn-ghost" onClick={closeAddModal} disabled={addBusy || bulkSending}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={addBusy}>
+            <button
+              type="submit"
+              className="btn btn-primary modal-dialog__submit"
+              disabled={addBusy || bulkSending}
+            >
               {addBusy ? 'Adding…' : 'Add recipient'}
             </button>
           </div>
@@ -317,7 +394,30 @@ export default function PlatformPulseInviteUsers() {
       </ModalDialog>
 
       <div className="pulse-prototype-card">
-        <div className="pulse-prototype-card__label">Recipients</div>
+        <div
+          className="pulse-prototype-card__label"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.65rem',
+          }}
+        >
+          <span>Recipients</span>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={loading || invites.length === 0 || bulkSending || busyImport}
+            onClick={bulkSendAll}
+            style={{ fontSize: '0.9rem' }}
+          >
+            <Mail size={18} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+            {bulkSending && bulkProgress
+              ? `Sending ${bulkProgress.current}/${bulkProgress.total}…`
+              : `Send all (${invites.length})`}
+          </button>
+        </div>
         {loading ? (
           <p className="muted">Loading…</p>
         ) : (
@@ -329,7 +429,7 @@ export default function PlatformPulseInviteUsers() {
                   <th scope="col">Email</th>
                   <th scope="col">Role</th>
                   <th scope="col">Link status</th>
-                  <th scope="col" style={{ width: '11rem' }}>
+                  <th scope="col" style={{ width: '9.5rem' }}>
                     Actions
                   </th>
                 </tr>
@@ -362,11 +462,19 @@ export default function PlatformPulseInviteUsers() {
                         )}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            flexWrap: 'nowrap',
+                            gap: '0.35rem',
+                            alignItems: 'center',
+                          }}
+                        >
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            disabled={sendingId === row.id || deletingId === row.id}
+                            disabled={bulkSending || sendingId === row.id || deletingId === row.id}
                             onClick={() => sendInvite(row.id)}
                           >
                             {sendingId === row.id ? 'Sending…' : sent ? 'Resend link' : 'Send link'}
@@ -374,13 +482,18 @@ export default function PlatformPulseInviteUsers() {
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            disabled={deletingId === row.id || sendingId === row.id}
+                            disabled={bulkSending || deletingId === row.id || sendingId === row.id}
                             onClick={() => deleteInvite(row)}
-                            title="Remove recipient"
-                            style={{ color: 'var(--danger, #b91c1c)', gap: '0.35rem' }}
+                            title={deletingId === row.id ? 'Removing…' : 'Remove recipient'}
+                            aria-label={deletingId === row.id ? 'Removing recipient' : `Remove ${row.email}`}
+                            style={{
+                              color: 'var(--danger, #b91c1c)',
+                              padding: '0.4rem 0.5rem',
+                              minWidth: '2.25rem',
+                              justifyContent: 'center',
+                            }}
                           >
                             <Trash2 size={18} strokeWidth={2} aria-hidden />
-                            {deletingId === row.id ? 'Removing…' : 'Delete'}
                           </button>
                         </div>
                       </td>
