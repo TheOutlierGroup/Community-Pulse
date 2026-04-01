@@ -124,7 +124,8 @@ export default function PlatformPulseInviteUsers() {
   const [error, setError] = useState('');
   const [busyImport, setBusyImport] = useState(false);
   const [sendingId, setSendingId] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
+  const [deleteConfirmRow, setDeleteConfirmRow] = useState(null);
+  const [deleteWorking, setDeleteWorking] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -283,21 +284,23 @@ export default function PlatformPulseInviteUsers() {
     }
   }
 
-  async function deleteInvite(row) {
-    const label = row.displayName?.trim() || row.email;
-    const ok = window.confirm(
-      `Remove ${label} (${row.email}) from link recipients?\n\nThis cannot be undone.`
-    );
-    if (!ok) return;
-    setDeletingId(row.id);
+  function closeDeleteConfirm() {
+    if (deleteWorking) return;
+    setDeleteConfirmRow(null);
+  }
+
+  async function confirmDeleteRecipient() {
+    if (!deleteConfirmRow) return;
+    setDeleteWorking(true);
     try {
-      await api.delete(`/api/platform/organizations/${orgId}/pulse-link-invites/${row.id}`);
+      await api.delete(`/api/platform/organizations/${orgId}/pulse-link-invites/${deleteConfirmRow.id}`);
       showToast('Recipient removed.', { variant: 'success' });
+      setDeleteConfirmRow(null);
       await load();
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not remove recipient.', { variant: 'error' });
     } finally {
-      setDeletingId(null);
+      setDeleteWorking(false);
     }
   }
 
@@ -338,6 +341,60 @@ export default function PlatformPulseInviteUsers() {
       </div>
 
       {error && <p className="error">{error}</p>}
+
+      <ModalDialog
+        open={Boolean(deleteConfirmRow)}
+        title="Remove recipient?"
+        titleId="pulse-delete-recipient-title"
+        onClose={closeDeleteConfirm}
+      >
+        {deleteConfirmRow ? (
+          <div style={{ padding: '0 0 0.25rem' }}>
+            <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.55 }}>
+              They will be removed from this client’s Pulse link list and won’t receive new links from here.
+            </p>
+            <div
+              style={{
+                margin: '0 0 1.25rem',
+                padding: '0.85rem 1rem',
+                borderRadius: '10px',
+                background: 'var(--surface-muted, rgba(0,0,0,0.04))',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>
+                {deleteConfirmRow.displayName?.trim() || deleteConfirmRow.email}
+              </div>
+              <div className="pulse-prototype-mono" style={{ fontSize: '0.9rem', color: 'var(--muted)' }}>
+                {deleteConfirmRow.email}
+              </div>
+            </div>
+            <p
+              style={{
+                margin: '0 0 1.35rem',
+                fontSize: '0.88rem',
+                fontWeight: 600,
+                color: 'var(--danger)',
+              }}
+            >
+              This cannot be undone.
+            </p>
+            <div className="modal-dialog__actions">
+              <button type="button" className="btn btn-ghost" onClick={closeDeleteConfirm} disabled={deleteWorking}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger modal-dialog__submit"
+                onClick={confirmDeleteRecipient}
+                disabled={deleteWorking}
+              >
+                {deleteWorking ? 'Removing…' : 'Remove recipient'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </ModalDialog>
 
       <ModalDialog
         open={addOpen}
@@ -415,7 +472,7 @@ export default function PlatformPulseInviteUsers() {
             <Mail size={18} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
             {bulkSending && bulkProgress
               ? `Sending ${bulkProgress.current}/${bulkProgress.total}…`
-              : `Send all (${invites.length})`}
+              : 'Send all'}
           </button>
         </div>
         {loading ? (
@@ -429,7 +486,7 @@ export default function PlatformPulseInviteUsers() {
                   <th scope="col">Email</th>
                   <th scope="col">Role</th>
                   <th scope="col">Link status</th>
-                  <th scope="col" style={{ width: '9.5rem' }}>
+                  <th scope="col" style={{ minWidth: '12.5rem', whiteSpace: 'nowrap' }}>
                     Actions
                   </th>
                 </tr>
@@ -461,10 +518,10 @@ export default function PlatformPulseInviteUsers() {
                           <span className="badge badge-draft">Link not sent</span>
                         )}
                       </td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         <div
                           style={{
-                            display: 'flex',
+                            display: 'inline-flex',
                             flexDirection: 'row',
                             flexWrap: 'nowrap',
                             gap: '0.35rem',
@@ -474,18 +531,24 @@ export default function PlatformPulseInviteUsers() {
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            disabled={bulkSending || sendingId === row.id || deletingId === row.id}
+                            disabled={bulkSending || sendingId === row.id || deleteWorking}
                             onClick={() => sendInvite(row.id)}
+                            style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                           >
                             {sendingId === row.id ? 'Sending…' : sent ? 'Resend link' : 'Send link'}
                           </button>
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            disabled={bulkSending || deletingId === row.id || sendingId === row.id}
-                            onClick={() => deleteInvite(row)}
-                            title={deletingId === row.id ? 'Removing…' : 'Remove recipient'}
-                            aria-label={deletingId === row.id ? 'Removing recipient' : `Remove ${row.email}`}
+                            disabled={
+                              bulkSending ||
+                              deleteWorking ||
+                              Boolean(deleteConfirmRow) ||
+                              sendingId === row.id
+                            }
+                            onClick={() => setDeleteConfirmRow(row)}
+                            title="Remove recipient"
+                            aria-label={`Remove ${row.email}`}
                             style={{
                               color: 'var(--danger, #b91c1c)',
                               padding: '0.4rem 0.5rem',

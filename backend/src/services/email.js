@@ -19,6 +19,16 @@ function requireResend() {
   return client;
 }
 
+/** Public HTTPS URL for the Outlier wordmark (served from frontend `public/brand/outlier-logo.png`). */
+function resolvePulseEmailLogoUrl() {
+  const custom = String(process.env.PULSE_EMAIL_LOGO_URL || '').trim();
+  if (custom) return custom;
+  const raw = process.env.APP_URL || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
+  if (!raw) return null;
+  const base = raw.replace(/\/$/, '');
+  return `${base}/brand/outlier-logo.png`;
+}
+
 export async function sendPasswordResetEmail(to, resetUrl) {
   const resend = requireResend();
   const { error } = await resend.emails.send({
@@ -57,12 +67,19 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
   const name = String(displayName || '').trim();
   const greeting = name ? `Hi ${name},` : 'Hi,';
   const orgLabel = organizationName ? String(organizationName).trim() : 'your organization';
+  const logoUrl = resolvePulseEmailLogoUrl();
+  const logoBlock = logoUrl
+    ? `<div style="text-align: center; margin: 0 0 1.5rem;">
+        <img src="${logoUrl.replace(/&/g, '&amp;')}" alt="Outlier" width="160" height="48" style="display: inline-block; border: 0; outline: none; max-width: 180px; width: 160px; height: auto;" />
+      </div>`
+    : '';
   const { error } = await resend.emails.send({
     from: FROM_ADDRESS,
     to,
     subject: `Pulse questionnaire — ${orgLabel}`,
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
+        ${logoBlock}
         <h2 style="margin: 0 0 1rem;">Your Pulse link</h2>
         <p style="color: #555; line-height: 1.6;">
           ${greeting}
