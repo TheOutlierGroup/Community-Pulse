@@ -1,119 +1,47 @@
 # Pulse
 
-Organizational diagnostic platform: employee Pulse flow and admin analytics. Stack: **Node.js (Express)**, **PostgreSQL**, **React (Vite)**.
+**Pulse** is an organisational diagnostic product for measuring how teams experience work—readiness for change, leadership credibility (sponsorship), friction and energy across themes, and manager load. It is designed for consultancies and internal transformation teams who run structured “waves” of listening with clients, then review results in a single place.
 
-## Prerequisites
+Outlier uses this codebase (also mirrored as **Community Pulse**) to support **client organisations** on the platform: running Pulse sessions, inviting participants, and reviewing dashboards without treating Pulse as a generic survey tool.
 
-- Node.js 20+
-- PostgreSQL 14+
+---
 
-## Local setup
+## What it does
 
-1. Create a database and copy env:
+- **Pulse questionnaire** — A guided, multi-step flow (work feel, priorities, energy, context, reflection) aligned to a consistent theme model so scores and narratives are comparable across teams and over time.
+- **Session waves** — Client admins define **Pulse sessions** (draft → active → closed). Separate **staff** and **manager** audiences let the same diagnostic run on parallel tracks so reporting stays clean (employees vs managers, including people who only participate via email link).
+- **Link-based participation** — People can complete Pulse with a **personal link** (no app account). CSV import can tag each recipient as **staff** or **manager** so their link attaches to the correct active session for that audience.
+- **Signed-in participation** — Employees in a client org complete Pulse inside the app against the active **staff** session.
+- **Analytics and narrative** — Organisation-level views combine responses for adoption/sponsorship scores, quadrant distribution, dimension breakdowns, manager load bands, trend across recent waves, and alert-style signals—oriented to rollout and risk conversations, not just raw charts.
 
-   ```bash
-   cp backend/.env.example backend/.env
-   # Edit DATABASE_URL, JWT_SECRET
-   ```
+---
 
-2. Install and migrate (from repo root):
+## Who uses it
 
-   ```bash
-   ./build.sh
-   ```
+| Role | Purpose |
+|------|--------|
+| **Platform (Outlier)** | Manage client organisations, enable services, open each client’s Pulse dashboard (scores, breakdowns, manager load, team-level views), configure link recipients, and work client tasks alongside other delivery workflows. |
+| **Client admin** | Create and activate Pulse sessions (per audience where needed), invite team members to the client org, and use admin analytics for a given session. |
+| **Client employee** | Complete the Pulse flow when a session is live. |
+| **Link-only participant** | Completes Pulse via email link; counted and segmented by **staff** / **manager** for participation and dashboards. |
 
-   Or manually:
+---
 
-   ```bash
-   cd backend && npm install && npm run migrate && npm run seed
-   cd ../frontend && npm install --include=dev && npm run build
-   ```
+## Product surface (at a glance)
 
-3. **Admin login** (from seed):
-   - `SEED_ADMIN_EMAIL` defaults to `admin@localhost` if not set.
-   - Set `SEED_ADMIN_PASSWORD` explicitly, or for local dev use the generated password printed by `npm run seed`.
+- **Platform client workspace** — Per-client dashboard, users, tasks, account, and **Pulse** with sectioned views (full organisation overview vs focused views for scores, employee breakdown, team-level sample, manager load).
+- **Client admin** — Session lifecycle, invites, and session-scoped analytics.
+- **Employee** — Pulse completion and reflection.
+- **Public Pulse link** — Tokenised access tied to an invite and organisation; respects Pulse service flags and active session for that invite’s role.
 
-4. Run API (serves built frontend if `frontend/dist` exists):
+---
 
-   ```bash
-   cd backend && npm run dev
-   ```
+## Stack (for orientation)
 
-5. For frontend hot reload during development:
+Node.js (Express), PostgreSQL, React (Vite). This README describes **what the product is**; environment and deployment details live in `backend/.env.example`, `build.sh`, and `render.yaml` for teams who run or ship it.
 
-   ```bash
-   cd frontend && npm run dev
-   ```
-
-   Vite proxies `/api` to `http://localhost:3001`. Set `FRONTEND_ORIGIN=http://localhost:5173` in `backend/.env`.
-
-## Render.com
-
-- On Render, `NODE_ENV` is often `production` during build, so a plain `npm install` **omits devDependencies**. This repo’s `build.sh` uses `npm install --include=dev` in `frontend/` so **Vite** is available for `vite build`.
-
-- Create a **PostgreSQL** instance and note `DATABASE_URL`.
-- Attach a **persistent disk** and set `STORAGE_PATH` to the mount path (e.g. `/var/data`).
-- Web service: root directory repo, build command `./build.sh`, start command `cd backend && npm start`.
-- Set env: `DATABASE_URL`, `JWT_SECRET`, `INVITE_TOKEN_SECRET`, `NODE_ENV=production`, `FRONTEND_ORIGIN` (your app URL).
-- Optional hardening env:
-  - `JWT_ISSUER`, `JWT_AUDIENCE` (pins token issuer/audience)
-  - `DATABASE_CA_CERT_PATH` (verify DB server cert with CA; preferred)
-  - `DATABASE_SSL_ALLOW_SELF_SIGNED=true` (temporary fallback only)
-  - `ENFORCE_HTTPS=true` (default in production unless explicitly disabled)
-
-See [render.yaml](./render.yaml) for a blueprint-style reference.
-
-## Performance benchmark (task board)
-
-Use this to compare task-board API latency before/after backend changes.
-
-```bash
-cd backend
-PERF_BASE_URL="https://your-staging-host.com" \
-PERF_TOKEN="your-platform-jwt" \
-PERF_ORG_ID="client-org-uuid" \
-PERF_ENABLE_WRITES=true \
-PERF_OUTPUT_JSON="./perf-current.json" \
-npm run perf:platform-tasks
-```
-
-Environment variables:
-
-- `PERF_BASE_URL` (default: `http://localhost:5000`)
-- `PERF_TOKEN` (**required**)
-- `PERF_ORG_ID` (**required**)
-- `PERF_TASK_ID` (optional; defaults to first task in list)
-- `PERF_RUNS` (default: `20`)
-- `PERF_WARMUP` (default: `3`)
-- `PERF_TIMEOUT_MS` (default: `15000`)
-- `PERF_TASK_LIMIT` (default: `500`)
-- `PERF_ENABLE_WRITES` (default: `false`; set `true` to include reorder timings)
-- `PERF_OUTPUT_JSON` (optional; writes machine-readable JSON summary)
-
-Notes:
-
-- The script reports `avg`, `p50`, `p95`, `min`, and `max` for `task-list`, `task-detail`, and (optionally) `task-reorder`.
-- Reorder benchmarking performs real `PATCH` requests, so use it on dev/staging environments.
-
-Compare two runs:
-
-```bash
-cd backend
-npm run perf:compare -- \
-  --baseline ./perf-baseline.json \
-  --current ./perf-current.json
-```
-
-This prints side-by-side `p50`/`p95`/`avg` and percentage deltas, plus a simple p95 rollup.
-
-## API overview
-
-- `POST /api/auth/login` — email/password
-- `GET /api/auth/invite/:token` — validate invite
-- `POST /api/auth/accept-invite` — `{ token, password }`
-- `GET /api/pulse/*` — employee Pulse (JWT, role `employee`)
-- `GET|POST /api/admin/*`, `/api/analytics/*` — admin (JWT, role `admin`)
+---
 
 ## License
 
-Private / your org.
+Private / your organisation.
