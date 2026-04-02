@@ -61,7 +61,7 @@ export default function ResetPassword() {
           </>
         ) : (
           <>
-            <h1>Choose a new password</h1>
+            <h1>Set your password</h1>
             <form onSubmit={onSubmit}>
               <div className="field">
                 <label htmlFor="password">New password</label>

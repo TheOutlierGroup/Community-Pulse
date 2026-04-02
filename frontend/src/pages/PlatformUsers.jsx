@@ -110,19 +110,25 @@ export default function PlatformUsers() {
       fd.append('password', formPassword);
       fd.append('role', formRole);
       if (formAvatar) fd.append('avatar', formAvatar);
-      await api.post('/api/platform/users', fd);
+      const { data } = await api.post('/api/platform/users', fd);
       await loadStaff();
       const createdEmail = formEmail.trim();
       const createdName = [formFirst, formLast].map((s) => s.trim()).filter(Boolean).join(' ');
+      const sent = Boolean(data?.welcomeEmailSent);
+      const baseMsg = createdName
+        ? `${createdName} was added.`
+        : `${createdEmail} was added.`;
       showToast(
-        createdName
-          ? `${createdName} was added and can sign in.`
-          : `${createdEmail} was added and can sign in.`,
+        sent
+          ? `${baseMsg} A welcome email with sign-in and create-password links was sent.`
+          : `${baseMsg} Welcome email was not sent — check RESEND_API_KEY and APP_URL, or share credentials manually.`,
         { variant: 'success' }
       );
       closeCreateModal();
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not create user.');
+      const d = err.response?.data;
+      const detail = d?.details ? ` ${d.details}` : '';
+      setError((d?.error || 'Could not create user.') + detail);
     } finally {
       setBusy(false);
     }

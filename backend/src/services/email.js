@@ -147,3 +147,78 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     throw new Error(detail || 'Failed to send Pulse invite email');
   }
 }
+
+const PLATFORM_WELCOME_TOKEN_DAYS = 7;
+
+/**
+ * Welcome email for platform-org users created from the admin UI.
+ * @param {string} organizationName — e.g. platform org display name
+ */
+export async function sendPlatformWelcomeEmail(
+  to,
+  displayName,
+  loginUrl,
+  setPasswordUrl,
+  organizationName
+) {
+  const resend = requireResend();
+  const name = String(displayName || '').trim();
+  const greetingHtml = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const orgPlain = organizationName ? String(organizationName).trim() : 'Outlier';
+  const orgLabelHtml = escapeHtml(orgPlain);
+  const logoUrl = resolvePulseEmailLogoUrl();
+  const logoBlock = logoUrl
+    ? `<div style="text-align: center; margin: 0 0 1.5rem;">
+        <img src="${escapeHtmlAttr(logoUrl)}" alt="Outlier" width="160" height="48" style="display: inline-block; border: 0; outline: none; max-width: 180px; width: 160px; height: auto;" />
+      </div>`
+    : '';
+  const safeLogin = String(loginUrl || '');
+  const safeSetPw = String(setPasswordUrl || '');
+  const { error } = await resend.emails.send({
+    from: getResendFromAddress(),
+    to,
+    subject: `Welcome to ${orgPlain.replace(/[\r\n]+/g, ' ').slice(0, 120)}`,
+    html: `
+      <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
+        ${logoBlock}
+        <h2 style="margin: 0 0 1rem;">Your account is ready</h2>
+        <p style="color: #555; line-height: 1.6;">
+          ${greetingHtml}
+        </p>
+        <p style="color: #555; line-height: 1.6;">
+          You have been added to the <strong>${orgLabelHtml}</strong> team on Outlier.
+          Use <strong>Create password</strong> to set or update the password for this account
+          (link expires in ${PLATFORM_WELCOME_TOKEN_DAYS} days), then use <strong>Sign in</strong>.
+        </p>
+        <a href="${escapeHtmlAttr(safeSetPw)}"
+           style="display: inline-block; margin: 1.5rem 0.75rem 1.5rem 0; padding: 0.75rem 1.5rem;
+                  background: #ffcc80; color: #1c1917; font-weight: 600;
+                  text-decoration: none; border-radius: 8px;">
+          Create password
+        </a>
+        <a href="${escapeHtmlAttr(safeLogin)}"
+           style="display: inline-block; margin: 1.5rem 0; padding: 0.75rem 1.5rem;
+                  background: transparent; color: #1c1917; font-weight: 600;
+                  text-decoration: none; border-radius: 8px; border: 2px solid #d6d3d1;">
+          Sign in
+        </a>
+        <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
+          The create-password link expires in ${PLATFORM_WELCOME_TOKEN_DAYS} days.
+          If a button does not work, copy the URL:<br />
+          <span style="word-break: break-all;">${escapeHtml(safeSetPw)}</span>
+        </p>
+      </div>
+    `,
+  });
+
+  if (error) {
+    console.error('Resend platform welcome error:', error);
+    const detail =
+      error && typeof error.message === 'string'
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error);
+    throw new Error(detail || 'Failed to send welcome email');
+  }
+}

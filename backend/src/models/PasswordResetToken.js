@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { query } from '../config/database.js';
 
-const TOKEN_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+const TOKEN_EXPIRY_MS = 60 * 60 * 1000; // 1 hour (forgot-password flow)
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -11,7 +11,16 @@ export function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-export async function createResetToken(userId) {
+/**
+ * @param {string} userId
+ * @param {{ expiresInMs?: number }} [options] — default 1h; platform welcome emails use a longer TTL
+ */
+export async function createResetToken(userId, options = {}) {
+  const expiresInMs =
+    typeof options.expiresInMs === 'number' && options.expiresInMs > 0
+      ? options.expiresInMs
+      : TOKEN_EXPIRY_MS;
+
   await query(
     `UPDATE password_reset_tokens SET used_at = NOW()
      WHERE user_id = $1 AND used_at IS NULL`,
@@ -20,7 +29,7 @@ export async function createResetToken(userId) {
 
   const token = generateToken();
   const tokenHash = hashToken(token);
-  const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS);
+  const expiresAt = new Date(Date.now() + expiresInMs);
 
   await query(
     `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)

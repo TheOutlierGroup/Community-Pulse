@@ -59,16 +59,20 @@ export default function CreateUserModal({
           />
         </div>
         <div className="field">
-          <label htmlFor="add-pw">Initial password</label>
+          <label htmlFor="add-pw">Initial password (optional)</label>
           <input
             id="add-pw"
             type="password"
             value={formPassword}
             onChange={(e) => setFormPassword(e.target.value)}
-            required
             minLength={8}
             autoComplete="new-password"
           />
+          <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+            Leave blank to email them a link to create their password (requires Resend and APP_URL or FRONTEND_ORIGIN).
+            Otherwise use at least 8 characters; they still get a welcome email with sign-in and password links when
+            email is configured.
+          </p>
         </div>
         <div className="field">
           <label htmlFor="add-role">User type</label>

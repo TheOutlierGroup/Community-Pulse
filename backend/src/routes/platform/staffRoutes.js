@@ -1,17 +1,26 @@
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { requireBodyFields } from '../../middleware/validation.js';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath } from '../../config/storage.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
 import * as Invite from '../../models/Invite.js';
+import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import {
   handlePlatformUserCreateUpload,
   publicStaffUser,
   sendAvatarFileOr404,
 } from './shared.js';
+import { isResendConfigured, sendPlatformWelcomeEmail } from '../../services/email.js';
+
+const PLATFORM_WELCOME_RESET_MS = 7 * 24 * 60 * 60 * 1000;
+
+function resolvePublicAppBaseUrl() {
+  const raw = process.env.APP_URL || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
+  return raw ? raw.replace(/\/$/, '') : '';
+}
 
 function parsePagination(query) {
   const rawLimit = Number.parseInt(String(query?.limit ?? ''), 10);
@@ -47,14 +56,34 @@ export function registerPlatformStaffRoutes(router) {
     if (!email || String(email).trim() === '') {
       return res.status(400).json({ error: 'Email is required' });
     }
-    if (!password || String(password).length < 8) {
+    const trimmedPassword = password != null ? String(password).trim() : '';
+    if (trimmedPassword.length > 0 && trimmedPassword.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const baseUrl = resolvePublicAppBaseUrl();
+    if (trimmedPassword.length === 0) {
+      if (!baseUrl) {
+        return res.status(400).json({
+          error:
+            'Set APP_URL or FRONTEND_ORIGIN to create a user without an initial password, or provide a password (8+ characters).',
+        });
+      }
+      if (!isResendConfigured()) {
+        return res.status(503).json({
+          error: 'Email is not configured',
+          details:
+            'Add RESEND_API_KEY to create users without an initial password, or set an initial password (8+ characters).',
+        });
+      }
     }
     const existing = await User.findUserByEmail(String(email));
     if (existing) {
       return res.status(409).json({ error: 'A user with this email already exists' });
     }
-    const hash = await bcrypt.hash(String(password), 12);
+    const hash =
+      trimmedPassword.length >= 8
+        ? await bcrypt.hash(trimmedPassword, 12)
+        : await bcrypt.hash(randomBytes(32).toString('base64url'), 12);
     const row = await User.createUserWithProfile({
       email: String(email).trim(),
       passwordHash: hash,
@@ -75,7 +104,34 @@ export function registerPlatformStaffRoutes(router) {
         console.error(e);
       }
     }
-    res.status(201).json({ user: publicStaffUser(outRow) });
+
+    let welcomeEmailSent = false;
+    if (baseUrl && isResendConfigured()) {
+      try {
+        const resetToken = await PasswordResetToken.createResetToken(row.id, {
+          expiresInMs: PLATFORM_WELCOME_RESET_MS,
+        });
+        const loginUrl = `${baseUrl}/login`;
+        const setPasswordUrl = `${baseUrl}/reset-password/${resetToken}`;
+        const org = await Organization.getOrganization(req.user.organizationId);
+        const displayName = [firstName, lastName]
+          .map((s) => String(s || '').trim())
+          .filter(Boolean)
+          .join(' ');
+        await sendPlatformWelcomeEmail(
+          String(email).trim(),
+          displayName,
+          loginUrl,
+          setPasswordUrl,
+          org?.name || 'Outlier'
+        );
+        welcomeEmailSent = true;
+      } catch (e) {
+        console.error('Platform welcome email failed:', e);
+      }
+    }
+
+    res.status(201).json({ user: publicStaffUser(outRow), welcomeEmailSent });
   });
 
   router.patch('/users/:userId', async (req, res) => {
