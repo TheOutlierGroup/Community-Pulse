@@ -115,6 +115,15 @@ function formatSentAt(iso) {
   }
 }
 
+function apiErrorDetail(err, fallback) {
+  const d = err?.response?.data;
+  if (!d || typeof d !== 'object') return fallback;
+  const msg = typeof d.error === 'string' ? d.error : fallback;
+  const det = typeof d.details === 'string' ? d.details.trim() : '';
+  if (det) return `${msg}\n\n${det}`;
+  return msg;
+}
+
 export default function PlatformPulseInviteUsers() {
   const { orgId } = useOutletContext();
   const { user } = useAuth();
@@ -235,7 +244,10 @@ export default function PlatformPulseInviteUsers() {
       showToast('Invite sent.', { variant: 'success' });
       await load();
     } catch (err) {
-      showToast(err.response?.data?.error || 'Could not send invite.', { variant: 'error' });
+      showToast(apiErrorDetail(err, 'Could not send invite.'), {
+        variant: 'error',
+        durationMs: 14000,
+      });
     } finally {
       setSendingId(null);
     }
@@ -252,6 +264,7 @@ export default function PlatformPulseInviteUsers() {
     setBulkSending(true);
     let success = 0;
     let failed = 0;
+    let lastSendError = null;
     const total = snapshot.length;
 
     try {
@@ -260,8 +273,9 @@ export default function PlatformPulseInviteUsers() {
         try {
           await api.post(`/api/platform/organizations/${orgId}/pulse-link-invites/${snapshot[i]}/send`);
           success += 1;
-        } catch {
+        } catch (e) {
           failed += 1;
+          lastSendError = e;
         }
         if (i < snapshot.length - 1) {
           await delay(BULK_SEND_INTERVAL_MS);
@@ -277,9 +291,12 @@ export default function PlatformPulseInviteUsers() {
           { variant: 'success' }
         );
       } else if (success === 0) {
-        showToast('Bulk send failed. Check configuration and try again.', { variant: 'error' });
+        showToast(apiErrorDetail(lastSendError, 'Bulk send failed. Check configuration and try again.'), {
+          variant: 'error',
+          durationMs: 16000,
+        });
       } else {
-        showToast(`Finished: ${success} sent, ${failed} failed.`, { variant: 'error' });
+        showToast(`Finished: ${success} sent, ${failed} failed.`, { variant: 'error', durationMs: 10000 });
       }
     }
   }

@@ -25,6 +25,17 @@ services:
         value: /var/pulse-storage
       - key: FRONTEND_ORIGIN
         sync: false
+      # Public site URL for Pulse links and email logo (often same as your Render web URL)
+      - key: APP_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: RESEND_FROM_NAME
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
       - key: ENFORCE_HTTPS
         value: "true"
     disk:

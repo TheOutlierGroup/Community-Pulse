@@ -1,6 +1,18 @@
 import { Resend } from 'resend';
 
-const FROM_ADDRESS = process.env.EMAIL_FROM || 'Employee Pulse <noreply@employeepulse.app>';
+const DEFAULT_FROM = 'Employee Pulse <noreply@employeepulse.app>';
+
+/** Resend `from`: RESEND_FROM_EMAIL (+ optional RESEND_FROM_NAME), else legacy EMAIL_FROM, else default. */
+export function getResendFromAddress() {
+  const email = String(process.env.RESEND_FROM_EMAIL || '').trim();
+  const displayName = String(process.env.RESEND_FROM_NAME || '').trim();
+  if (email) {
+    return displayName ? `${displayName} <${email}>` : email;
+  }
+  const legacy = String(process.env.EMAIL_FROM || '').trim();
+  if (legacy) return legacy;
+  return DEFAULT_FROM;
+}
 
 let resendSingleton = null;
 
@@ -11,12 +23,31 @@ function getResend() {
   return resendSingleton;
 }
 
+export function isResendConfigured() {
+  return getResend() != null;
+}
+
 function requireResend() {
   const client = getResend();
   if (!client) {
     throw new Error('RESEND_API_KEY is not configured');
   }
   return client;
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escapeHtmlAttr(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
 }
 
 /** Public HTTPS URL for the Outlier wordmark (served from frontend `public/brand/outlier-logo.png`). */
@@ -32,7 +63,7 @@ function resolvePulseEmailLogoUrl() {
 export async function sendPasswordResetEmail(to, resetUrl) {
   const resend = requireResend();
   const { error } = await resend.emails.send({
-    from: FROM_ADDRESS,
+    from: getResendFromAddress(),
     to,
     subject: 'Reset your password',
     html: `
@@ -65,30 +96,33 @@ export async function sendPasswordResetEmail(to, resetUrl) {
 export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizationName) {
   const resend = requireResend();
   const name = String(displayName || '').trim();
-  const greeting = name ? `Hi ${name},` : 'Hi,';
-  const orgLabel = organizationName ? String(organizationName).trim() : 'your organization';
+  const greetingHtml = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const orgPlain = organizationName ? String(organizationName).trim() : 'your organization';
+  const orgLabelHtml = escapeHtml(orgPlain);
+  const subjectPlain = `Pulse questionnaire — ${orgPlain.replace(/[\r\n]+/g, ' ').slice(0, 200)}`;
+  const safePulseUrl = String(pulseUrl || '');
   const logoUrl = resolvePulseEmailLogoUrl();
   const logoBlock = logoUrl
     ? `<div style="text-align: center; margin: 0 0 1.5rem;">
-        <img src="${logoUrl.replace(/&/g, '&amp;')}" alt="Outlier" width="160" height="48" style="display: inline-block; border: 0; outline: none; max-width: 180px; width: 160px; height: auto;" />
+        <img src="${escapeHtmlAttr(logoUrl)}" alt="Outlier" width="160" height="48" style="display: inline-block; border: 0; outline: none; max-width: 180px; width: 160px; height: auto;" />
       </div>`
     : '';
   const { error } = await resend.emails.send({
-    from: FROM_ADDRESS,
+    from: getResendFromAddress(),
     to,
-    subject: `Pulse questionnaire — ${orgLabel}`,
+    subject: subjectPlain,
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
         ${logoBlock}
         <h2 style="margin: 0 0 1rem;">Your Pulse link</h2>
         <p style="color: #555; line-height: 1.6;">
-          ${greeting}
+          ${greetingHtml}
         </p>
         <p style="color: #555; line-height: 1.6;">
-          You have been invited to complete a short Pulse questionnaire for <strong>${orgLabel}</strong>.
+          You have been invited to complete a short Pulse questionnaire for <strong>${orgLabelHtml}</strong>.
           Use your personal link below. You do not need to sign in.
         </p>
-        <a href="${pulseUrl}"
+        <a href="${escapeHtmlAttr(safePulseUrl)}"
            style="display: inline-block; margin: 1.5rem 0; padding: 0.75rem 1.5rem;
                   background: #ffcc80; color: #1c1917; font-weight: 600;
                   text-decoration: none; border-radius: 8px;">
@@ -96,7 +130,7 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
         </a>
         <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
           If the button does not work, copy and paste this URL into your browser:<br />
-          <span style="word-break: break-all;">${pulseUrl}</span>
+          <span style="word-break: break-all;">${escapeHtml(safePulseUrl)}</span>
         </p>
       </div>
     `,
@@ -104,6 +138,12 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
 
   if (error) {
     console.error('Resend pulse invite error:', error);
-    throw new Error('Failed to send Pulse invite email');
+    const detail =
+      error && typeof error.message === 'string'
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error);
+    throw new Error(detail || 'Failed to send Pulse invite email');
   }
 }

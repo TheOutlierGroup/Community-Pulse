@@ -11,7 +11,7 @@ import * as EmployeeResponse from '../../models/EmployeeResponse.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
 import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import { aggregateSessionResponses } from '../../services/analytics.js';
-import { sendPulseInviteEmail } from '../../services/email.js';
+import { isResendConfigured, sendPulseInviteEmail } from '../../services/email.js';
 import { THEMES } from '../../services/pulseEngine.js';
 import {
   assertClientOrganizationPlatform,
@@ -652,14 +652,26 @@ export function registerPlatformOrgRoutes(router) {
     if (!baseUrl) {
       return res.status(500).json({ error: 'Set APP_URL or FRONTEND_ORIGIN to send invite emails' });
     }
+    if (!isResendConfigured()) {
+      return res.status(503).json({
+        error: 'Email is not configured',
+        details: 'Add RESEND_API_KEY in the server environment (e.g. Render → Environment).',
+      });
+    }
     const rotated = await PulseLinkInvite.rotateTokenAndMarkSent(invite.id, orgId);
     if (!rotated) return res.status(500).json({ error: 'Could not prepare invite link' });
     const linkUrl = `${baseUrl}/pulse/link/${rotated.rawToken}`;
     try {
       await sendPulseInviteEmail(invite.email, invite.display_name, linkUrl, org.name);
     } catch (e) {
-      console.error(e);
-      return res.status(500).json({ error: 'Could not send email' });
+      console.error('Pulse link invite send failed:', e);
+      const details = String(e?.message || '').slice(0, 500);
+      return res.status(500).json({
+        error: 'Could not send email',
+        details:
+          details ||
+          'Check RESEND_API_KEY, RESEND_FROM_EMAIL (or EMAIL_FROM) domain verification, and Resend logs.',
+      });
     }
     res.json({ ok: true, invite: PulseLinkInvite.publicInviteRow(rotated.row) });
   });
