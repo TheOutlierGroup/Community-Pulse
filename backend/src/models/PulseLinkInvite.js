@@ -10,6 +10,17 @@ function normalizeEmail(email) {
 
 export function publicInviteRow(row) {
   if (!row) return null;
+  const completedAt = row.survey_completed_at ?? null;
+  const inProgress = Boolean(row.survey_in_progress);
+  const hasOpened = Boolean(row.survey_has_opened);
+  const sent = Boolean(row.last_invited_at);
+
+  let surveyStatus = 'not_sent';
+  if (completedAt) surveyStatus = 'completed';
+  else if (inProgress) surveyStatus = 'in_progress';
+  else if (hasOpened) surveyStatus = 'opened';
+  else if (sent) surveyStatus = 'sent';
+
   return {
     id: row.id,
     displayName: row.display_name,
@@ -17,15 +28,45 @@ export function publicInviteRow(row) {
     surveyRole: row.survey_role || 'staff',
     lastInvitedAt: row.last_invited_at,
     createdAt: row.created_at,
+    surveyStatus,
+    surveyCompletedAt: completedAt,
   };
 }
 
 export async function listInvitesForOrg(organizationId) {
   const { rows } = await query(
-    `SELECT id, display_name, email, survey_role, last_invited_at, created_at
-     FROM pulse_link_invites
-     WHERE organization_id = $1
-     ORDER BY lower(email)`,
+    `SELECT pli.id,
+            pli.display_name,
+            pli.email,
+            pli.survey_role,
+            pli.last_invited_at,
+            pli.created_at,
+            (SELECT MAX(plr.completed_at)
+             FROM pulse_link_responses plr
+             WHERE plr.invite_id = pli.id
+               AND plr.completed_at IS NOT NULL) AS survey_completed_at,
+            (SELECT EXISTS (
+               SELECT 1
+               FROM pulse_link_responses plr
+               WHERE plr.invite_id = pli.id
+                 AND plr.completed_at IS NULL
+                 AND (
+                   plr.current_step > 1
+                   OR plr.step1_data <> '{}'::jsonb
+                   OR plr.step2_data <> '{}'::jsonb
+                   OR plr.step3_data <> '{}'::jsonb
+                   OR plr.step4_data <> '{}'::jsonb
+                 )
+             )) AS survey_in_progress,
+            (SELECT EXISTS (
+               SELECT 1
+               FROM pulse_link_responses plr
+               WHERE plr.invite_id = pli.id
+                 AND plr.completed_at IS NULL
+             )) AS survey_has_opened
+     FROM pulse_link_invites pli
+     WHERE pli.organization_id = $1
+     ORDER BY lower(pli.email)`,
     [organizationId]
   );
   return rows;

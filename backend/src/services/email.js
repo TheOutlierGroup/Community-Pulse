@@ -1,4 +1,12 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Same CID in HTML and attachment so clients don't need to fetch a public URL. */
+const OUTLIER_LOGO_CONTENT_ID = 'outlier-logo';
 
 const DEFAULT_FROM = 'Employee Pulse <noreply@employeepulse.app>';
 
@@ -50,7 +58,7 @@ function escapeHtmlAttr(text) {
     .replace(/</g, '&lt;');
 }
 
-/** Public HTTPS URL for the Outlier wordmark (served from frontend `public/brand/outlier-logo.png`). */
+/** Public HTTPS URL fallback when the logo file is not on disk (e.g. minimal backend-only deploy). */
 function resolvePulseEmailLogoUrl() {
   const custom = String(process.env.PULSE_EMAIL_LOGO_URL || '').trim();
   if (custom) return custom;
@@ -60,14 +68,53 @@ function resolvePulseEmailLogoUrl() {
   return `${base}/brand/outlier-logo.png`;
 }
 
+/**
+ * Prefer inline CID attachment (reliable in email clients). Fall back to absolute URL only if no file found.
+ * @returns {{ logoBlock: string, attachments: object[] | undefined }}
+ */
+function buildOutlierEmailLogoParts() {
+  const distLogo = path.join(__dirname, '../../../frontend/dist/brand/outlier-logo.png');
+  const publicLogo = path.join(__dirname, '../../../frontend/public/brand/outlier-logo.png');
+  const logoPath = fs.existsSync(distLogo) ? distLogo : fs.existsSync(publicLogo) ? publicLogo : null;
+
+  let imgSrc = null;
+  let attachments;
+
+  if (logoPath) {
+    imgSrc = `cid:${OUTLIER_LOGO_CONTENT_ID}`;
+    attachments = [
+      {
+        filename: 'outlier-logo.png',
+        path: logoPath,
+        contentType: 'image/png',
+        contentId: OUTLIER_LOGO_CONTENT_ID,
+      },
+    ];
+  } else {
+    const url = resolvePulseEmailLogoUrl();
+    if (url) imgSrc = url;
+  }
+
+  const logoBlock = imgSrc
+    ? `<div style="text-align: center; margin: 0 0 1.5rem;">
+        <img src="${escapeHtmlAttr(imgSrc)}" alt="Outlier" width="160" height="48" style="display: inline-block; border: 0; outline: none; max-width: 180px; width: 160px; height: auto;" />
+      </div>`
+    : '';
+
+  return { logoBlock, attachments };
+}
+
 export async function sendPasswordResetEmail(to, resetUrl) {
   const resend = requireResend();
+  const { logoBlock, attachments } = buildOutlierEmailLogoParts();
   const { error } = await resend.emails.send({
     from: getResendFromAddress(),
     to,
     subject: 'Reset your password',
+    ...(attachments ? { attachments } : {}),
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
+        ${logoBlock}
         <h2 style="margin: 0 0 1rem;">Reset your password</h2>
         <p style="color: #555; line-height: 1.6;">
           We received a request to reset your password. Click the button below to choose a new one.
@@ -101,16 +148,12 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
   const orgLabelHtml = escapeHtml(orgPlain);
   const subjectPlain = `Pulse questionnaire — ${orgPlain.replace(/[\r\n]+/g, ' ').slice(0, 200)}`;
   const safePulseUrl = String(pulseUrl || '');
-  const logoUrl = resolvePulseEmailLogoUrl();
-  const logoBlock = logoUrl
-    ? `<div style="text-align: center; margin: 0 0 1.5rem;">
-        <img src="${escapeHtmlAttr(logoUrl)}" alt="Outlier" width="160" height="48" style="display: inline-block; border: 0; outline: none; max-width: 180px; width: 160px; height: auto;" />
-      </div>`
-    : '';
+  const { logoBlock, attachments } = buildOutlierEmailLogoParts();
   const { error } = await resend.emails.send({
     from: getResendFromAddress(),
     to,
     subject: subjectPlain,
+    ...(attachments ? { attachments } : {}),
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
         ${logoBlock}
@@ -166,18 +209,14 @@ export async function sendPlatformWelcomeEmail(
   const greetingHtml = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
   const orgPlain = organizationName ? String(organizationName).trim() : 'Outlier';
   const orgLabelHtml = escapeHtml(orgPlain);
-  const logoUrl = resolvePulseEmailLogoUrl();
-  const logoBlock = logoUrl
-    ? `<div style="text-align: center; margin: 0 0 1.5rem;">
-        <img src="${escapeHtmlAttr(logoUrl)}" alt="Outlier" width="160" height="48" style="display: inline-block; border: 0; outline: none; max-width: 180px; width: 160px; height: auto;" />
-      </div>`
-    : '';
+  const { logoBlock, attachments } = buildOutlierEmailLogoParts();
   const safeLogin = String(loginUrl || '');
   const safeSetPw = String(setPasswordUrl || '');
   const { error } = await resend.emails.send({
     from: getResendFromAddress(),
     to,
     subject: `Welcome to ${orgPlain.replace(/[\r\n]+/g, ' ').slice(0, 120)}`,
+    ...(attachments ? { attachments } : {}),
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
         ${logoBlock}

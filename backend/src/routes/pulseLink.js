@@ -65,31 +65,34 @@ function audienceForInvite(invite) {
   return invite.survey_role === 'manager' ? 'manager' : 'staff';
 }
 
+function sessionJsonForLink(session) {
+  if (!session) return null;
+  const purpose = session.session_purpose || 'standard';
+  return {
+    id: session.id,
+    name: session.name,
+    status: session.status,
+    audience: session.audience,
+    sessionPurpose: purpose,
+  };
+}
+
 router.get('/active-session', requirePulseLink, async (req, res) => {
   const audience = audienceForInvite(req.pulseLinkInvite);
-  const session = await PulseSession.getActiveSessionForOrg(
-    req.pulseLinkInvite.organization_id,
-    audience
-  );
-  if (!session) {
-    return res.json({ session: null, surveyAudience: audience });
-  }
+  const session = await PulseSession.resolveSessionForPulseLink(req.pulseLinkInvite.organization_id, audience);
   res.json({
-    session: { id: session.id, name: session.name, status: session.status, audience: session.audience },
+    session: sessionJsonForLink(session),
     surveyAudience: audience,
   });
 });
 
 router.get('/response', requirePulseLink, async (req, res) => {
   const audience = audienceForInvite(req.pulseLinkInvite);
-  const session = await PulseSession.getActiveSessionForOrg(req.pulseLinkInvite.organization_id, audience);
-  if (!session) {
-    return res.status(404).json({ error: 'No active Pulse session' });
-  }
+  const session = await PulseSession.resolveSessionForPulseLink(req.pulseLinkInvite.organization_id, audience);
   await PulseLinkResponse.ensureResponseRow(req.pulseLinkInvite.id, session.id);
   const row = await PulseLinkResponse.getResponse(req.pulseLinkInvite.id, session.id);
   res.json({
-    session: { id: session.id, name: session.name, status: session.status },
+    session: sessionJsonForLink(session),
     response: {
       currentStep: row.current_step,
       step1: row.step1_data,
@@ -118,10 +121,7 @@ router.put('/response/step/:step', requirePulseLink, async (req, res) => {
     return res.status(400).json({ error: 'Invalid step' });
   }
   const audience = audienceForInvite(req.pulseLinkInvite);
-  const session = await PulseSession.getActiveSessionForOrg(req.pulseLinkInvite.organization_id, audience);
-  if (!session) {
-    return res.status(404).json({ error: 'No active Pulse session' });
-  }
+  const session = await PulseSession.resolveSessionForPulseLink(req.pulseLinkInvite.organization_id, audience);
 
   const body = req.body || {};
   let step1 = body.step1;
@@ -158,10 +158,7 @@ router.put('/response/step/:step', requirePulseLink, async (req, res) => {
 
 router.post('/response/complete', requirePulseLink, async (req, res) => {
   const audience = audienceForInvite(req.pulseLinkInvite);
-  const session = await PulseSession.getActiveSessionForOrg(req.pulseLinkInvite.organization_id, audience);
-  if (!session) {
-    return res.status(404).json({ error: 'No active Pulse session' });
-  }
+  const session = await PulseSession.resolveSessionForPulseLink(req.pulseLinkInvite.organization_id, audience);
 
   const body = req.body || {};
   const existing = await PulseLinkResponse.getResponse(req.pulseLinkInvite.id, session.id);

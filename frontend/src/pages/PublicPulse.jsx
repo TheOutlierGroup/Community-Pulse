@@ -47,7 +47,10 @@ export default function PublicPulse() {
       setThemes(tRes.data.themes || []);
       setSession(sRes.data.session);
       setSurveyAudience(sRes.data.surveyAudience ?? null);
-      if (!sRes.data.session) return;
+      if (!sRes.data.session) {
+        setError('Could not start the questionnaire. Please try again later.');
+        return;
+      }
 
       const rRes = await api.get('/api/pulse-link/response', linkParams);
       const r = rRes.data.response;
@@ -143,18 +146,23 @@ export default function PublicPulse() {
         <p className="muted" style={{ marginBottom: '1rem' }}>
           Complete the steps below. You do not need an account.
         </p>
-        {!session && (
-          <p className="muted">
-            {surveyAudience === 'manager'
-              ? 'There is no active manager Pulse session right now. Your organization may still be preparing the manager survey, or it may have ended. Please check back later or contact your administrator.'
-              : 'There is no active diagnostic right now. Please check back later or contact your administrator.'}
-          </p>
+        {!session && error && <p className="error">{error}</p>}
+        {!session && !error && (
+          <p className="muted">Loading questionnaire…</p>
         )}
         {session && (
           <>
-            <p className="muted" style={{ marginBottom: '1.25rem' }}>
-              Session: <strong>{session.name}</strong>
-            </p>
+            {session.sessionPurpose === 'link_invite' ? (
+              <p className="muted" style={{ marginBottom: '1.25rem' }}>
+                {surveyAudience === 'manager'
+                  ? 'You’re completing the manager Pulse questionnaire.'
+                  : 'You’re completing the Pulse questionnaire.'}
+              </p>
+            ) : (
+              <p className="muted" style={{ marginBottom: '1.25rem' }}>
+                Pulse wave: <strong>{session.name}</strong>
+              </p>
+            )}
             {error && <p className="error">{error}</p>}
             {step === 1 && (
               <Step1WorkFeel themes={themes} ratings={ratings} onChange={setRatings} />

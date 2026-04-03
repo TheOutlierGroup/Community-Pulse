@@ -115,6 +115,69 @@ function formatSentAt(iso) {
   }
 }
 
+function InviteLinkSurveyStatus({ row }) {
+  const sent = Boolean(row.lastInvitedAt);
+  if (!sent) {
+    return <span className="badge badge-draft">Link not sent</span>;
+  }
+  const sentLine = (
+    <span>
+      Link sent{' '}
+      <span className="muted" style={{ fontSize: '0.9rem' }}>
+        {formatSentAt(row.lastInvitedAt)}
+      </span>
+    </span>
+  );
+  const status = row.surveyStatus || 'sent';
+  if (status === 'completed') {
+    return (
+      <span>
+        {sentLine}
+        <br />
+        <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>
+          Completed{' '}
+          {row.surveyCompletedAt ? (
+            <span className="muted" style={{ fontWeight: 500 }}>
+              {formatSentAt(row.surveyCompletedAt)}
+            </span>
+          ) : null}
+        </span>
+      </span>
+    );
+  }
+  if (status === 'in_progress') {
+    return (
+      <span>
+        {sentLine}
+        <br />
+        <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--warn, #b45309)' }}>
+          In progress
+        </span>
+      </span>
+    );
+  }
+  if (status === 'opened') {
+    return (
+      <span>
+        {sentLine}
+        <br />
+        <span className="muted" style={{ fontSize: '0.88rem' }}>
+          Opened · not finished
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span>
+      {sentLine}
+      <br />
+      <span className="muted" style={{ fontSize: '0.88rem' }}>
+        Not opened yet
+      </span>
+    </span>
+  );
+}
+
 function apiErrorDetail(err, fallback) {
   const d = err?.response?.data;
   if (!d || typeof d !== 'object') return fallback;
@@ -502,7 +565,7 @@ export default function PlatformPulseInviteUsers() {
                   <th scope="col">Name</th>
                   <th scope="col">Email</th>
                   <th scope="col">Role</th>
-                  <th scope="col">Link status</th>
+                  <th scope="col">Link &amp; survey</th>
                   <th scope="col" style={{ minWidth: '12.5rem', whiteSpace: 'nowrap' }}>
                     Actions
                   </th>
@@ -517,23 +580,13 @@ export default function PlatformPulseInviteUsers() {
                   </tr>
                 )}
                 {invites.map((row) => {
-                  const sent = Boolean(row.lastInvitedAt);
                   return (
                     <tr key={row.id}>
                       <td>{row.displayName || '—'}</td>
                       <td className="pulse-prototype-mono">{row.email}</td>
                       <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
                       <td>
-                        {sent ? (
-                          <span>
-                            Link sent{' '}
-                            <span className="muted" style={{ fontSize: '0.9rem' }}>
-                              {formatSentAt(row.lastInvitedAt)}
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="badge badge-draft">Link not sent</span>
-                        )}
+                        <InviteLinkSurveyStatus row={row} />
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <div
