@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { query } from '../config/database.js';
 import { hashInviteToken } from '../security/inviteToken.js';
+import * as PulseLinkResponse from './PulseLinkResponse.js';
 
 function normalizeEmail(email) {
   return String(email || '')
@@ -104,7 +105,8 @@ export async function upsertInviteRow({ organizationId, displayName, email, surv
 }
 
 /**
- * Rotates token and sets last_invited_at. Returns raw token for the email link.
+ * Clears incomplete survey rows for this invite, rotates token (prior links stop working),
+ * and sets last_invited_at. Returns raw token for the email link.
  */
 export async function countSentInvitesForOrg(organizationId) {
   const { rows } = await query(
@@ -141,6 +143,7 @@ export async function deleteInviteInOrg(inviteId, organizationId) {
 }
 
 export async function rotateTokenAndMarkSent(inviteId, organizationId) {
+  await PulseLinkResponse.deleteIncompleteForInvite(inviteId);
   const raw = randomUUID();
   const tokenHash = hashInviteToken(raw);
   const { rows } = await query(

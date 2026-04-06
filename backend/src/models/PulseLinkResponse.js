@@ -84,6 +84,13 @@ export async function ensureResponseRow(inviteId, sessionId) {
   );
 }
 
+/** Clears draft / in-progress Pulse data when a link is (re)sent so status resets; completed surveys stay. */
+export async function deleteIncompleteForInvite(inviteId) {
+  await query(`DELETE FROM pulse_link_responses WHERE invite_id = $1 AND completed_at IS NULL`, [
+    inviteId,
+  ]);
+}
+
 export async function listResponsesForSession(sessionId) {
   const { rows } = await query(
     `SELECT plr.*, pli.email, pli.display_name, pli.survey_role
