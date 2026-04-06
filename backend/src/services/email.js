@@ -81,11 +81,13 @@ function buildOutlierEmailLogoParts() {
   let attachments;
 
   if (logoPath) {
+    // Resend rejects filesystem paths on `path` (requires http/https). Inline via base64 `content`.
+    const content = fs.readFileSync(logoPath).toString('base64');
     imgSrc = `cid:${OUTLIER_LOGO_CONTENT_ID}`;
     attachments = [
       {
         filename: 'outlier-logo.png',
-        path: logoPath,
+        content,
         contentType: 'image/png',
         contentId: OUTLIER_LOGO_CONTENT_ID,
       },
