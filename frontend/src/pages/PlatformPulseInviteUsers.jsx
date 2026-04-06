@@ -116,8 +116,7 @@ function formatSentAt(iso) {
 }
 
 function InviteLinkSurveyStatus({ row }) {
-  const sent = Boolean(row.lastInvitedAt);
-  if (!sent) {
+  if (!row.lastInvitedAt) {
     return <span className="badge badge-draft">Link not sent</span>;
   }
   const sentLine = (
@@ -579,60 +578,62 @@ export default function PlatformPulseInviteUsers() {
                     </td>
                   </tr>
                 )}
-                {invites.map((row) => {
-                  return (
-                    <tr key={row.id}>
-                      <td>{row.displayName || '—'}</td>
-                      <td className="pulse-prototype-mono">{row.email}</td>
-                      <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
-                      <td>
-                        <InviteLinkSurveyStatus row={row} />
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <div
+                {invites.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.displayName || '—'}</td>
+                    <td className="pulse-prototype-mono">{row.email}</td>
+                    <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
+                    <td>
+                      <InviteLinkSurveyStatus row={row} />
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          flexDirection: 'row',
+                          flexWrap: 'nowrap',
+                          gap: '0.35rem',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={bulkSending || sendingId === row.id || deleteWorking}
+                          onClick={() => sendInvite(row.id)}
+                          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                        >
+                          {sendingId === row.id
+                            ? 'Sending…'
+                            : row.lastInvitedAt
+                              ? 'Resend link'
+                              : 'Send link'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={
+                            bulkSending ||
+                            deleteWorking ||
+                            Boolean(deleteConfirmRow) ||
+                            sendingId === row.id
+                          }
+                          onClick={() => setDeleteConfirmRow(row)}
+                          title="Remove recipient"
+                          aria-label={`Remove ${row.email}`}
                           style={{
-                            display: 'inline-flex',
-                            flexDirection: 'row',
-                            flexWrap: 'nowrap',
-                            gap: '0.35rem',
-                            alignItems: 'center',
+                            color: 'var(--danger, #b91c1c)',
+                            padding: '0.4rem 0.5rem',
+                            minWidth: '2.25rem',
+                            justifyContent: 'center',
                           }}
                         >
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={bulkSending || sendingId === row.id || deleteWorking}
-                            onClick={() => sendInvite(row.id)}
-                            style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-                          >
-                            {sendingId === row.id ? 'Sending…' : sent ? 'Resend link' : 'Send link'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={
-                              bulkSending ||
-                              deleteWorking ||
-                              Boolean(deleteConfirmRow) ||
-                              sendingId === row.id
-                            }
-                            onClick={() => setDeleteConfirmRow(row)}
-                            title="Remove recipient"
-                            aria-label={`Remove ${row.email}`}
-                            style={{
-                              color: 'var(--danger, #b91c1c)',
-                              padding: '0.4rem 0.5rem',
-                              minWidth: '2.25rem',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Trash2 size={18} strokeWidth={2} aria-hidden />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                          <Trash2 size={18} strokeWidth={2} aria-hidden />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
