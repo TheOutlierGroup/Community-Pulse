@@ -3,8 +3,15 @@ const LABELS = ['Very hard', 'Hard', 'OK', 'Easy', 'Very easy'];
 export default function Step1WorkFeel({ themes, ratings, onChange }) {
   return (
     <div>
-      <p className="pulse-intro">
-        How do these ways of working feel <strong>day to day</strong>? Slide toward what feels true.
+      <div className="step1-intro">
+        <p className="step1-intro-lead">
+          How do these ways of working feel <strong>day to day</strong>?
+        </p>
+        <p className="step1-intro-hint muted">Slide toward what feels true.</p>
+      </div>
+      <p className="step1-scale-legend muted">
+        <span>Very hard — feels draining or difficult</span>
+        <span>Very easy — feels light or sustainable</span>
       </p>
       {themes.map((t) => (
         <div key={t.id} className="theme-row">

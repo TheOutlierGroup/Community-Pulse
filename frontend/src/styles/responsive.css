@@ -1206,6 +1206,47 @@ a:hover {
   margin-bottom: 1.5rem;
 }
 
+.step1-intro {
+  margin-bottom: 0.75rem;
+}
+
+.step1-intro-lead {
+  font-size: 1.2rem;
+  line-height: 1.45;
+  margin: 0 0 0.35rem;
+}
+
+.step1-intro-hint {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.step1-scale-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  margin: 0 0 1.25rem;
+  padding: 0 0.125rem;
+}
+
+.step1-scale-legend span {
+  max-width: 46%;
+}
+
+@media (max-width: 520px) {
+  .step1-scale-legend {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .step1-scale-legend span {
+    max-width: 100%;
+  }
+}
+
 .theme-row {
   display: flex;
   flex-direction: column;
@@ -1340,6 +1381,39 @@ input[type='range'] {
 .step-dot.active {
   background: var(--accent);
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35);
+}
+
+.step5-reflection {
+  margin-bottom: 0.5rem;
+}
+
+.step5-thank-you {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0 0 0.5rem;
+  color: var(--text-primary, #292524);
+}
+
+.step5-thank-you-sub {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+}
+
+.step5-intro {
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  margin: 0 0 1.1rem;
+}
+
+.step5-reflection .reflection-box {
+  margin-top: 0;
+}
+
+.step5-closing {
+  margin-bottom: 0;
+  line-height: 1.55;
 }
 
 .reflection-box {

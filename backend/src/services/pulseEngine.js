@@ -95,7 +95,7 @@ export function buildPersonalReflection(step1, step2, step3, step4, contribution
     advocacy: s4.nps,
     closingNote:
       s4.comment ||
-      'Your reflection is captured. Leaders see patterns in aggregate — your voice adds important context.',
+      'Your answers are in. Leaders only see team-level patterns — not your individual responses — and what you shared still gives them something concrete to act on. Thanks again for showing up with this.',
   };
 }
 

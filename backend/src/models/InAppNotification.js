@@ -53,7 +53,7 @@ const LIST_SELECT = `
          o.name AS organization_name,
          au.first_name AS actor_first_name, au.last_name AS actor_last_name, au.email AS actor_email
   FROM in_app_notifications n
-  JOIN organizations o ON o.id = n.organization_id
+  LEFT JOIN organizations o ON o.id = n.organization_id
   LEFT JOIN users au ON au.id = n.actor_user_id
 `;
 

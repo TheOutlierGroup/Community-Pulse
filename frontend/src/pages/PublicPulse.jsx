@@ -257,21 +257,11 @@ export default function PublicPulse() {
                 <span key={s} className={`step-dot ${step === s ? 'active' : ''}`} title={`Step ${s}`} />
               ))}
             </div>
-            <h1>Pulse questionnaire</h1>
-            <p className="muted" style={{ marginBottom: '1rem' }}>
-              Complete the steps below. You do not need an account.
-            </p>
-            {session.sessionPurpose === 'link_invite' ? (
-              <p className="muted" style={{ marginBottom: '1.25rem' }}>
-                {surveyAudience === 'manager'
-                  ? 'You’re completing the manager Pulse questionnaire.'
-                  : 'You’re completing the Pulse questionnaire.'}
-              </p>
-            ) : (
+            {session.sessionPurpose !== 'link_invite' ? (
               <p className="muted" style={{ marginBottom: '1.25rem' }}>
                 Pulse wave: <strong>{session.name}</strong>
               </p>
-            )}
+            ) : null}
             {error && <p className="error">{error}</p>}
             {step === 1 && (
               <Step1WorkFeel themes={themes} ratings={ratings} onChange={setRatings} />
