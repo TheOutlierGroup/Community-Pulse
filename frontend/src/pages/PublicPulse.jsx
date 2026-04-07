@@ -21,6 +21,9 @@ const DEFAULT_ORDER = [
 
 const EXPIRED_OR_INVALID_LINK_RE = /invalid or expired link/i;
 
+const PUBLIC_PULSE_LOGO = { width: 176, height: 53 };
+const loginHeroBelowLogo = { marginBottom: '2rem' };
+
 function shouldSkipWelcomeIntro(r) {
   if (!r) return true;
   if (r.completedAt) return true;
@@ -161,8 +164,14 @@ export default function PublicPulse() {
   if (error && EXPIRED_OR_INVALID_LINK_RE.test(error)) {
     return (
       <Layout user={null} onLogout={logout} hideHeader>
-        <div className="login-hero" style={{ marginBottom: '0.5rem' }}>
-          <img src={outlierLogo} alt="Outlier" className="login-logo" width={140} height={42} />
+        <div className="login-hero" style={loginHeroBelowLogo}>
+          <img
+            src={outlierLogo}
+            alt="Outlier"
+            className="login-logo"
+            width={PUBLIC_PULSE_LOGO.width}
+            height={PUBLIC_PULSE_LOGO.height}
+          />
         </div>
         <div
           className="card login-card"
@@ -185,15 +194,21 @@ export default function PublicPulse() {
 
   return (
     <Layout user={null} onLogout={logout} hideHeader>
-      <div className="login-hero" style={{ marginBottom: '0.5rem' }}>
-        <img src={outlierLogo} alt="Outlier" className="login-logo" width={140} height={42} />
+      <div className="login-hero" style={loginHeroBelowLogo}>
+        <img
+          src={outlierLogo}
+          alt="Outlier"
+          className="login-logo"
+          width={PUBLIC_PULSE_LOGO.width}
+          height={PUBLIC_PULSE_LOGO.height}
+        />
       </div>
       <div className="card login-card" style={{ maxWidth: 640, margin: '0 auto 2rem' }}>
         {!session && error && <p className="error">{error}</p>}
         {!session && !error && <p className="muted">Loading questionnaire…</p>}
 
         {session && showWelcomeIntro && (
-          <>
+          <div style={{ textAlign: 'center' }}>
             <p
               className="muted"
               style={{
@@ -218,8 +233,8 @@ export default function PublicPulse() {
             ) : null}
             <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1.5rem' }}>
               {surveyAudience === 'manager'
-                ? 'Your perspective as a manager helps leaders see what’s working and what might need attention. You don’t need an account — this link is yours alone.'
-                : 'Your answers help leaders understand what’s working and what might need attention. You don’t need an account — this link is yours alone.'}
+                ? 'Your perspective as a manager helps leaders see what’s working and what might need attention.'
+                : 'Your answers help leaders understand what’s working and what might need attention.'}
             </p>
             {error ? <p className="error" style={{ marginBottom: '1rem' }}>{error}</p> : null}
             <div className="btn-row" style={{ justifyContent: 'center', marginTop: '0.25rem' }}>
@@ -232,7 +247,7 @@ export default function PublicPulse() {
                 {introStartBusy ? 'Starting…' : 'Start'}
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {session && !showWelcomeIntro && (
