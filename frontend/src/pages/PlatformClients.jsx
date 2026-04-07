@@ -36,6 +36,10 @@ export default function PlatformClients() {
   const [newOrgName, setNewOrgName] = useState('');
   const [newOrgAddress, setNewOrgAddress] = useState('');
   const [newOrgAdminEmail, setNewOrgAdminEmail] = useState('');
+  const [newOrgAdminFirstName, setNewOrgAdminFirstName] = useState('');
+  const [newOrgAdminLastName, setNewOrgAdminLastName] = useState('');
+  const [sendWelcomeEmail, setSendWelcomeEmail] = useState(false);
+  const [enableLogin, setEnableLogin] = useState(true);
   const [newOrgLogo, setNewOrgLogo] = useState(null);
 
   const loadOrgs = useCallback(async () => {
@@ -64,6 +68,10 @@ export default function PlatformClients() {
         setNewOrgName('');
         setNewOrgAddress('');
         setNewOrgAdminEmail('');
+        setNewOrgAdminFirstName('');
+        setNewOrgAdminLastName('');
+        setSendWelcomeEmail(false);
+        setEnableLogin(true);
         setNewOrgLogo(null);
       }
     };
@@ -77,6 +85,10 @@ export default function PlatformClients() {
     setNewOrgName('');
     setNewOrgAddress('');
     setNewOrgAdminEmail('');
+    setNewOrgAdminFirstName('');
+    setNewOrgAdminLastName('');
+    setSendWelcomeEmail(false);
+    setEnableLogin(true);
     setNewOrgLogo(null);
   }
 
@@ -93,19 +105,36 @@ export default function PlatformClients() {
       fd.append('name', newOrgName.trim());
       if (newOrgAddress.trim()) fd.append('companyAddress', newOrgAddress.trim());
       if (newOrgAdminEmail.trim()) fd.append('adminEmail', newOrgAdminEmail.trim());
+      if (newOrgAdminFirstName.trim()) fd.append('adminFirstName', newOrgAdminFirstName.trim());
+      if (newOrgAdminLastName.trim()) fd.append('adminLastName', newOrgAdminLastName.trim());
+      if (newOrgAdminEmail.trim()) {
+        fd.append('sendWelcomeEmail', sendWelcomeEmail ? 'true' : 'false');
+        fd.append('enableLogin', enableLogin ? 'true' : 'false');
+      }
       if (newOrgLogo) fd.append('logo', newOrgLogo);
       const { data } = await api.post('/api/platform/organizations', fd);
       await loadOrgs();
       const companyName = newOrgName.trim();
-      const fullInvite = data.inviteUrl
-        ? `${window.location.origin}${data.inviteUrl}`
-        : '';
-      showToast(
-        fullInvite
-          ? `${companyName} was created.\n\nInvite link:\n${fullInvite}`
-          : `${companyName} was added as a client company.`,
-        { variant: 'success', durationMs: fullInvite ? 20000 : undefined }
-      );
+      let toastMsg = `${companyName} was added as a client company.`;
+      let durationMs;
+      if (data.firstUser) {
+        toastMsg = `${companyName} was created.\n\nFirst admin: ${data.firstUser.email}`;
+        if (data.welcomeEmailSent) {
+          toastMsg +=
+            '\n\nA welcome email was sent with a link to create their password.';
+        } else if (data.welcomeEmailRequested) {
+          toastMsg +=
+            '\n\nWelcome email was not sent (check Resend and APP_URL). Login is enabled — they can use “Forgot password” on the sign-in page to set a password.';
+          durationMs = 20000;
+        } else if (data.firstUser.loginEnabled === false) {
+          toastMsg +=
+            '\n\nLogin is disabled for this user. They cannot sign in or use password reset until login is enabled for their account.';
+        } else if (!sendWelcomeEmail) {
+          toastMsg +=
+            '\n\nThey can use “Forgot password” on the sign-in page to choose a password when you are ready.';
+        }
+      }
+      showToast(toastMsg, { variant: 'success', durationMs });
       closeCreateModal();
     } catch (err) {
       setError(err.response?.data?.error || 'Could not create organization.');
@@ -262,9 +291,73 @@ export default function PlatformClients() {
                   type="email"
                   value={newOrgAdminEmail}
                   onChange={(e) => setNewOrgAdminEmail(e.target.value)}
-                  placeholder="invite@client.com"
+                  placeholder="admin@client.com"
                   autoComplete="off"
                 />
+                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                  If set, we create this user as a company admin (no invite link).
+                </p>
+              </div>
+              <div className="field" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 10rem' }}>
+                  <label htmlFor="afirst">First name (optional)</label>
+                  <input
+                    id="afirst"
+                    value={newOrgAdminFirstName}
+                    onChange={(e) => setNewOrgAdminFirstName(e.target.value)}
+                    autoComplete="given-name"
+                  />
+                </div>
+                <div style={{ flex: '1 1 10rem' }}>
+                  <label htmlFor="alast">Last name (optional)</label>
+                  <input
+                    id="alast"
+                    value={newOrgAdminLastName}
+                    onChange={(e) => setNewOrgAdminLastName(e.target.value)}
+                    autoComplete="family-name"
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <p className="muted" style={{ fontSize: '0.85rem', margin: '0 0 0.5rem' }}>
+                  First admin options (when email is set)
+                </p>
+                <label
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.35rem 0' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={sendWelcomeEmail}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setSendWelcomeEmail(on);
+                      if (on) setEnableLogin(true);
+                    }}
+                  />
+                  <span>
+                    Send welcome email
+                    <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                      Sends a link to create their password. Also turns on login.
+                    </span>
+                  </span>
+                </label>
+                <label
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.35rem 0' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={enableLogin}
+                    disabled={busy || sendWelcomeEmail}
+                    onChange={(e) => setEnableLogin(e.target.checked)}
+                  />
+                  <span>
+                    Enable login
+                    <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                      If off, they cannot sign in or use password reset and have no access to the platform.
+                    </span>
+                  </span>
+                </label>
               </div>
               <div className="field">
                 <label htmlFor="c-logo">Company logo (optional)</label>

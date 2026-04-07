@@ -56,7 +56,7 @@ router.post(
   async (req, res) => {
     const { email, password } = req.body;
     const user = await User.findUserByEmailWithOrg(email);
-    if (!user) {
+    if (!user || !user.login_enabled) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const ok = await bcrypt.compare(password, user.password_hash);
@@ -78,7 +78,7 @@ router.post(
 
 router.get('/me', requireAuth, async (req, res) => {
   const user = await User.findUserByIdWithOrg(req.user.id);
-  if (!user || user.deactivated_at) {
+  if (!user || user.deactivated_at || !user.login_enabled) {
     return res.status(401).json({ error: 'Account is no longer active' });
   }
   res.json(publicUser(user));
@@ -296,7 +296,7 @@ router.post(
     const user = await User.findUserByEmailWithOrg(email);
 
     // Always return success to avoid leaking which emails exist
-    if (!user) {
+    if (!user || !user.login_enabled) {
       return res.json({ ok: true });
     }
 
@@ -326,6 +326,11 @@ router.post(
 
     const resetToken = await PasswordResetToken.findValidToken(token);
     if (!resetToken) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+
+    const resetUser = await User.findUserById(resetToken.user_id);
+    if (!resetUser || resetUser.deactivated_at || !resetUser.login_enabled) {
       return res.status(400).json({ error: 'Invalid or expired reset link' });
     }
 

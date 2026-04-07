@@ -30,6 +30,7 @@ export default function PlatformClientUsers() {
   const [editAvatarFile, setEditAvatarFile] = useState(null);
   const [editRemoveAvatar, setEditRemoveAvatar] = useState(false);
   const [editPassword, setEditPassword] = useState('');
+  const [editLoginEnabled, setEditLoginEnabled] = useState(true);
   const [removeAccessStep, setRemoveAccessStep] = useState(0);
 
   const loadUsers = useCallback(async () => {
@@ -70,6 +71,7 @@ export default function PlatformClientUsers() {
     setEditLast(u.lastName ?? '');
     setEditEmail(u.email ?? '');
     setEditRole(u.role === 'employee' ? 'employee' : 'admin');
+    setEditLoginEnabled(u.loginEnabled !== false);
     setEditAvatarFile(null);
     setEditRemoveAvatar(false);
     setEditPassword('');
@@ -119,6 +121,7 @@ export default function PlatformClientUsers() {
         lastName: editLast.trim(),
         email: editEmail.trim(),
         role: editRole,
+        loginEnabled: editLoginEnabled,
       });
       if (editAvatarFile) {
         const fd = new FormData();
@@ -239,6 +242,8 @@ export default function PlatformClientUsers() {
         setEditRemoveAvatar={setEditRemoveAvatar}
         editPassword={editPassword}
         setEditPassword={setEditPassword}
+        editLoginEnabled={editLoginEnabled}
+        setEditLoginEnabled={setEditLoginEnabled}
         canRemoveAccess={canRemoveAccess}
         removeAccessStep={removeAccessStep}
         setRemoveAccessStep={setRemoveAccessStep}

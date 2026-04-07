@@ -53,6 +53,7 @@ export function publicStaffUser(row) {
     lastName: row.last_name ?? '',
     hasProfileAvatar: Boolean(row.profile_avatar_filename),
     createdAt: row.created_at,
+    loginEnabled: row.login_enabled !== false,
   };
 }
 

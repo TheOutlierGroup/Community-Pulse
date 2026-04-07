@@ -20,7 +20,7 @@ export async function findUserByEmail(email) {
 export async function findUserByEmailWithOrg(email) {
   const { rows } = await query(
     `SELECT u.id, u.email, u.password_hash, u.role, u.organization_id,
-            u.first_name, u.last_name, u.profile_avatar_filename,
+            u.first_name, u.last_name, u.profile_avatar_filename, u.login_enabled,
             o.kind AS organization_kind, o.name AS organization_name,
             o.company_logo_filename AS organization_company_logo_filename,
             o.settings AS organization_settings
@@ -35,7 +35,7 @@ export async function findUserByEmailWithOrg(email) {
 export async function findUserById(id) {
   const { rows } = await query(
     `SELECT id, email, role, organization_id, first_name, last_name, profile_avatar_filename, created_at,
-            deactivated_at
+            deactivated_at, login_enabled
      FROM users WHERE id = $1`,
     [id]
   );
@@ -45,7 +45,7 @@ export async function findUserById(id) {
 export async function findUserByIdWithOrg(id) {
   const { rows } = await query(
     `SELECT u.id, u.email, u.role, u.organization_id, u.created_at,
-            u.first_name, u.last_name, u.profile_avatar_filename, u.deactivated_at,
+            u.first_name, u.last_name, u.profile_avatar_filename, u.deactivated_at, u.login_enabled,
             o.kind AS organization_kind, o.name AS organization_name,
             o.company_logo_filename AS organization_company_logo_filename,
             o.settings AS organization_settings
@@ -57,12 +57,12 @@ export async function findUserByIdWithOrg(id) {
   return rows[0] || null;
 }
 
-export async function createUser({ email, passwordHash, role, organizationId }) {
+export async function createUser({ email, passwordHash, role, organizationId, loginEnabled = true }) {
   const { rows } = await query(
-    `INSERT INTO users (email, password_hash, role, organization_id)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, email, role, organization_id, created_at`,
-    [email.toLowerCase().trim(), passwordHash, role, organizationId]
+    `INSERT INTO users (email, password_hash, role, organization_id, login_enabled)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, email, role, organization_id, created_at, login_enabled`,
+    [email.toLowerCase().trim(), passwordHash, role, organizationId, Boolean(loginEnabled)]
   );
   return rows[0];
 }
@@ -74,11 +74,12 @@ export async function createUserWithProfile({
   organizationId,
   firstName,
   lastName,
+  loginEnabled = true,
 }) {
   const { rows } = await query(
-    `INSERT INTO users (email, password_hash, role, organization_id, first_name, last_name)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, email, role, organization_id, first_name, last_name, profile_avatar_filename, created_at`,
+    `INSERT INTO users (email, password_hash, role, organization_id, first_name, last_name, login_enabled)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, email, role, organization_id, first_name, last_name, profile_avatar_filename, created_at, login_enabled`,
     [
       email.toLowerCase().trim(),
       passwordHash,
@@ -86,6 +87,7 @@ export async function createUserWithProfile({
       organizationId,
       sanitizeName(firstName),
       sanitizeName(lastName),
+      Boolean(loginEnabled),
     ]
   );
   return rows[0];
@@ -134,7 +136,7 @@ export async function listUsersForOrg(organizationId, { role, limit, offset } = 
   const cappedLimit =
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 200;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
-  let sql = `SELECT id, email, role, organization_id, created_at, first_name, last_name, profile_avatar_filename
+  let sql = `SELECT id, email, role, organization_id, created_at, first_name, last_name, profile_avatar_filename, login_enabled
              FROM users WHERE organization_id = $1 AND deactivated_at IS NULL`;
   const params = [organizationId];
   let idx = 2;
@@ -150,7 +152,7 @@ export async function listUsersForOrg(organizationId, { role, limit, offset } = 
 
 export async function isUserActive(userId) {
   const { rows } = await query(
-    `SELECT 1 FROM users WHERE id = $1 AND deactivated_at IS NULL`,
+    `SELECT 1 FROM users WHERE id = $1 AND deactivated_at IS NULL AND login_enabled = true`,
     [userId]
   );
   return rows.length > 0;
@@ -211,6 +213,10 @@ export async function updateStaffUserInOrg(userId, organizationId, body) {
     const r = body.role === 'employee' ? 'employee' : 'admin';
     parts.push(`role = $${n++}`);
     vals.push(r);
+  }
+  if ('loginEnabled' in body) {
+    parts.push(`login_enabled = $${n++}`);
+    vals.push(Boolean(body.loginEnabled));
   }
   if (!parts.length) return findUserById(userId);
   vals.push(userId, organizationId);

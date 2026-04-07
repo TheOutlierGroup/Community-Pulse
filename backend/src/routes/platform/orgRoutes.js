@@ -1,17 +1,23 @@
 import fs from 'fs';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
+import bcrypt from 'bcryptjs';
 import { requireBodyFields } from '../../middleware/validation.js';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath, orgLogoFilePath } from '../../config/storage.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
 import * as Invite from '../../models/Invite.js';
+import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import * as PulseSession from '../../models/PulseSession.js';
 import * as EmployeeResponse from '../../models/EmployeeResponse.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
 import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import { aggregateSessionResponses } from '../../services/analytics.js';
-import { isResendConfigured, sendPulseInviteEmail } from '../../services/email.js';
+import {
+  isResendConfigured,
+  sendPlatformWelcomeEmail,
+  sendPulseInviteEmail,
+} from '../../services/email.js';
 import { THEMES } from '../../services/pulseEngine.js';
 import {
   assertClientOrganizationPlatform,
@@ -108,6 +114,14 @@ function resolvePublicAppBaseUrl() {
   return raw ? raw.replace(/\/$/, '') : '';
 }
 
+const CLIENT_FIRST_ADMIN_WELCOME_RESET_MS = 7 * 24 * 60 * 60 * 1000;
+
+function parseMultipartBool(v) {
+  if (v === true || v === 'true' || v === '1') return true;
+  if (v === false || v === 'false' || v === '0') return false;
+  return false;
+}
+
 function normalizeSurveyRoleFromImport(raw) {
   const s = String(raw ?? '')
     .trim()
@@ -152,18 +166,56 @@ export function registerPlatformOrgRoutes(router) {
       if (existing) {
         return res.status(409).json({ error: 'A user with this email already exists' });
       }
-      const token = randomUUID();
-      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
-      await Invite.createInvite({
-        email: adminEmail,
-        token,
+      let sendWelcomeEmail = parseMultipartBool(req.body.sendWelcomeEmail);
+      let enableLogin = parseMultipartBool(req.body.enableLogin);
+      if (sendWelcomeEmail) {
+        enableLogin = true;
+      }
+      const passwordHash = await bcrypt.hash(randomBytes(32).toString('base64url'), 12);
+      const adminFirstName = req.body.adminFirstName;
+      const adminLastName = req.body.adminLastName;
+      const row = await User.createUserWithProfile({
+        email: String(adminEmail).trim(),
+        passwordHash,
+        role: 'admin',
         organizationId: org.id,
-        expiresAt,
-        invitedRole: 'admin',
+        firstName: adminFirstName,
+        lastName: adminLastName,
+        loginEnabled: enableLogin,
       });
+      let outRow = await User.findUserById(row.id);
+      let welcomeEmailSent = false;
+      if (sendWelcomeEmail) {
+        const baseUrl = resolvePublicAppBaseUrl();
+        if (baseUrl && isResendConfigured()) {
+          try {
+            const resetToken = await PasswordResetToken.createResetToken(row.id, {
+              expiresInMs: CLIENT_FIRST_ADMIN_WELCOME_RESET_MS,
+            });
+            const loginUrl = `${baseUrl}/login`;
+            const setPasswordUrl = `${baseUrl}/reset-password/${resetToken}`;
+            const displayName = [adminFirstName, adminLastName]
+              .map((s) => String(s || '').trim())
+              .filter(Boolean)
+              .join(' ');
+            await sendPlatformWelcomeEmail(
+              String(adminEmail).trim(),
+              displayName,
+              loginUrl,
+              setPasswordUrl,
+              org.name
+            );
+            welcomeEmailSent = true;
+          } catch (e) {
+            console.error('Client first admin welcome email failed:', e);
+          }
+        }
+      }
       return res.status(201).json({
         organization: org,
-        inviteUrl: `/invite/${token}`,
+        firstUser: publicStaffUser(outRow),
+        welcomeEmailRequested: sendWelcomeEmail,
+        welcomeEmailSent,
       });
     }
     res.status(201).json({ organization: org });
@@ -223,6 +275,7 @@ export function registerPlatformOrgRoutes(router) {
     if ('lastName' in body) patch.lastName = body.lastName;
     if ('email' in body) patch.email = body.email;
     if ('role' in body) patch.role = body.role;
+    if ('loginEnabled' in body) patch.loginEnabled = body.loginEnabled;
     if (!Object.keys(patch).length) {
       return res.status(400).json({ error: 'Nothing to update' });
     }

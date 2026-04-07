@@ -16,13 +16,14 @@ export default function UsersTable({
               <th scope="col">Name</th>
               <th scope="col">Email</th>
               <th scope="col">User type</th>
+              <th scope="col">Sign-in</th>
               <th scope="col">Joined</th>
             </tr>
           </thead>
           <tbody>
             {orgUsers.length === 0 && (
               <tr>
-                <td colSpan={4} className="muted" style={{ padding: '1.5rem' }}>
+                <td colSpan={5} className="muted" style={{ padding: '1.5rem' }}>
                   No users yet. Add one to send an invite.
                 </td>
               </tr>
@@ -59,6 +60,9 @@ export default function UsersTable({
                   <span className={`badge badge-${u.role === 'admin' ? 'active' : 'draft'}`}>
                     {roleLabel(u.role)}
                   </span>
+                </td>
+                <td className="muted" style={{ fontSize: '0.9rem' }}>
+                  {u.loginEnabled === false ? 'Off' : 'On'}
                 </td>
                 <td className="muted" style={{ fontSize: '0.9rem' }}>
                   {formatJoinedDate(u.createdAt)}

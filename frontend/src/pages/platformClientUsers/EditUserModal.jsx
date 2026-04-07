@@ -20,6 +20,8 @@ export default function EditUserModal({
   setEditRemoveAvatar,
   editPassword,
   setEditPassword,
+  editLoginEnabled,
+  setEditLoginEnabled,
   canRemoveAccess,
   removeAccessStep,
   setRemoveAccessStep,
@@ -82,6 +84,22 @@ export default function EditUserModal({
               <option value="employee">Member</option>
             </select>
           </div>
+          <label
+            style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.35rem 0' }}
+          >
+            <input
+              type="checkbox"
+              checked={editLoginEnabled}
+              disabled={busy}
+              onChange={(e) => setEditLoginEnabled(e.target.checked)}
+            />
+            <span>
+              Enable login
+              <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                When off, this user cannot sign in or use password reset.
+              </span>
+            </span>
+          </label>
           <div className="field">
             <label htmlFor="edit-client-avatar">Profile image</label>
             <input
