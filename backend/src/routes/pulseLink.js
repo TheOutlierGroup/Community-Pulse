@@ -65,6 +65,19 @@ function audienceForInvite(invite) {
   return invite.survey_role === 'manager' ? 'manager' : 'staff';
 }
 
+/** Returning participants who skip the welcome intro still need survey_started_at set for admin status. */
+function pulseResponseImpliesStarted(row) {
+  if (!row || row.completed_at) return false;
+  if ((row.current_step || 1) > 1) return true;
+  const nonEmpty = (data) => JSON.stringify(data || {}) !== '{}';
+  return (
+    nonEmpty(row.step1_data) ||
+    nonEmpty(row.step2_data) ||
+    nonEmpty(row.step3_data) ||
+    nonEmpty(row.step4_data)
+  );
+}
+
 function sessionJsonForLink(session) {
   if (!session) return null;
   const purpose = session.session_purpose || 'standard';
@@ -90,7 +103,11 @@ router.get('/response', requirePulseLink, async (req, res) => {
   const audience = audienceForInvite(req.pulseLinkInvite);
   const session = await PulseSession.resolveSessionForPulseLink(req.pulseLinkInvite.organization_id, audience);
   await PulseLinkResponse.ensureResponseRow(req.pulseLinkInvite.id, session.id);
-  const row = await PulseLinkResponse.getResponse(req.pulseLinkInvite.id, session.id);
+  let row = await PulseLinkResponse.getResponse(req.pulseLinkInvite.id, session.id);
+  if (row && !row.survey_started_at && pulseResponseImpliesStarted(row)) {
+    await PulseLinkResponse.markSurveyStarted(req.pulseLinkInvite.id, session.id);
+    row = await PulseLinkResponse.getResponse(req.pulseLinkInvite.id, session.id);
+  }
   res.json({
     session: sessionJsonForLink(session),
     response: {
@@ -113,6 +130,17 @@ router.get('/response', requirePulseLink, async (req, res) => {
           : null,
     },
   });
+});
+
+router.post('/survey-started', requirePulseLink, async (req, res) => {
+  const audience = audienceForInvite(req.pulseLinkInvite);
+  const session = await PulseSession.resolveSessionForPulseLink(req.pulseLinkInvite.organization_id, audience);
+  await PulseLinkResponse.ensureResponseRow(req.pulseLinkInvite.id, session.id);
+  const updated = await PulseLinkResponse.markSurveyStarted(req.pulseLinkInvite.id, session.id);
+  if (!updated) {
+    return res.status(500).json({ error: 'Could not record survey start' });
+  }
+  res.json({ ok: true });
 });
 
 router.put('/response/step/:step', requirePulseLink, async (req, res) => {

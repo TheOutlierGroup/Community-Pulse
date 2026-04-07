@@ -27,6 +27,7 @@ export async function upsertResponseDraft({
        step2_data = EXCLUDED.step2_data,
        step3_data = EXCLUDED.step3_data,
        step4_data = EXCLUDED.step4_data,
+       survey_started_at = COALESCE(pulse_link_responses.survey_started_at, NOW()),
        updated_at = NOW()
      RETURNING *`,
     [
@@ -59,6 +60,7 @@ export async function completeResponse({
        step3_data = $5::jsonb,
        step4_data = $6::jsonb,
        contribution_style = $7,
+       survey_started_at = COALESCE(survey_started_at, NOW()),
        completed_at = NOW(),
        updated_at = NOW()
      WHERE invite_id = $1 AND session_id = $2
@@ -78,10 +80,24 @@ export async function completeResponse({
 
 export async function ensureResponseRow(inviteId, sessionId) {
   await query(
-    `INSERT INTO pulse_link_responses (invite_id, session_id) VALUES ($1, $2)
-     ON CONFLICT (invite_id, session_id) DO NOTHING`,
+    `INSERT INTO pulse_link_responses (invite_id, session_id, link_opened_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (invite_id, session_id) DO UPDATE SET
+       link_opened_at = COALESCE(pulse_link_responses.link_opened_at, NOW())`,
     [inviteId, sessionId]
   );
+}
+
+export async function markSurveyStarted(inviteId, sessionId) {
+  const { rows } = await query(
+    `UPDATE pulse_link_responses SET
+       survey_started_at = COALESCE(survey_started_at, NOW()),
+       updated_at = NOW()
+     WHERE invite_id = $1 AND session_id = $2
+     RETURNING *`,
+    [inviteId, sessionId]
+  );
+  return rows[0] || null;
 }
 
 /** Clears draft / in-progress Pulse data when a link is (re)sent so status resets; completed surveys stay. */

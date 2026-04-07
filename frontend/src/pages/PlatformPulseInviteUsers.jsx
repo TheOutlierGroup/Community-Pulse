@@ -144,13 +144,13 @@ function InviteLinkSurveyStatus({ row }) {
       </span>
     );
   }
-  if (status === 'in_progress') {
+  if (status === 'started' || status === 'in_progress') {
     return (
       <span>
         {sentLine}
         <br />
         <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--warn, #b45309)' }}>
-          In progress
+          Started
         </span>
       </span>
     );
@@ -161,7 +161,7 @@ function InviteLinkSurveyStatus({ row }) {
         {sentLine}
         <br />
         <span className="muted" style={{ fontSize: '0.88rem' }}>
-          Opened · not finished
+          Opened link · intro not started
         </span>
       </span>
     );

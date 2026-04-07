@@ -12,14 +12,14 @@ function normalizeEmail(email) {
 export function publicInviteRow(row) {
   if (!row) return null;
   const completedAt = row.survey_completed_at ?? null;
-  const inProgress = Boolean(row.survey_in_progress);
-  const hasOpened = Boolean(row.survey_has_opened);
+  const started = Boolean(row.survey_started);
+  const openedOnly = Boolean(row.survey_opened_only);
   const sent = Boolean(row.last_invited_at);
 
   let surveyStatus = 'not_sent';
   if (completedAt) surveyStatus = 'completed';
-  else if (inProgress) surveyStatus = 'in_progress';
-  else if (hasOpened) surveyStatus = 'opened';
+  else if (started) surveyStatus = 'started';
+  else if (openedOnly) surveyStatus = 'opened';
   else if (sent) surveyStatus = 'sent';
 
   return {
@@ -52,19 +52,27 @@ export async function listInvitesForOrg(organizationId) {
                WHERE plr.invite_id = pli.id
                  AND plr.completed_at IS NULL
                  AND (
-                   plr.current_step > 1
+                   plr.survey_started_at IS NOT NULL
+                   OR plr.current_step > 1
                    OR plr.step1_data <> '{}'::jsonb
                    OR plr.step2_data <> '{}'::jsonb
                    OR plr.step3_data <> '{}'::jsonb
                    OR plr.step4_data <> '{}'::jsonb
                  )
-             )) AS survey_in_progress,
+             )) AS survey_started,
             (SELECT EXISTS (
                SELECT 1
                FROM pulse_link_responses plr
                WHERE plr.invite_id = pli.id
                  AND plr.completed_at IS NULL
-             )) AS survey_has_opened
+                 AND plr.link_opened_at IS NOT NULL
+                 AND plr.survey_started_at IS NULL
+                 AND plr.current_step <= 1
+                 AND plr.step1_data = '{}'::jsonb
+                 AND plr.step2_data = '{}'::jsonb
+                 AND plr.step3_data = '{}'::jsonb
+                 AND plr.step4_data = '{}'::jsonb
+             )) AS survey_opened_only
      FROM pulse_link_invites pli
      WHERE pli.organization_id = $1
      ORDER BY lower(pli.email)`,
