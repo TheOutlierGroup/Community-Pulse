@@ -648,6 +648,12 @@ export function registerPlatformOrgRoutes(router) {
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId);
     if (!invite) return res.status(404).json({ error: 'Invite not found' });
+    if (await PulseLinkInvite.inviteHasCompletedSurvey(invite.id)) {
+      return res.status(409).json({
+        error: 'Survey already completed',
+        details: 'This recipient has finished the questionnaire. The link cannot be resent.',
+      });
+    }
     const baseUrl = resolvePublicAppBaseUrl();
     if (!baseUrl) {
       return res.status(500).json({ error: 'Set APP_URL or FRONTEND_ORIGIN to send invite emails' });
@@ -682,6 +688,12 @@ export function registerPlatformOrgRoutes(router) {
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId);
     if (!invite) return res.status(404).json({ error: 'Invite not found' });
+    if (await PulseLinkInvite.inviteHasCompletedSurvey(invite.id)) {
+      return res.status(409).json({
+        error: 'Survey already completed',
+        details: 'This recipient has finished the questionnaire. They cannot be removed from the list.',
+      });
+    }
     const ok = await PulseLinkInvite.deleteInviteInOrg(invite.id, orgId);
     if (!ok) return res.status(404).json({ error: 'Invite not found' });
     res.status(204).end();

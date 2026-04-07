@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
@@ -8,6 +8,9 @@ import { Mail, Trash2, Upload, UserPlus } from 'lucide-react';
 
 /** Minimum gap between each send request to stay under typical email API rate limits (e.g. Resend ~2 rps). */
 const BULK_SEND_INTERVAL_MS = 700;
+
+const COMPLETED_SURVEY_ACTIONS_TITLE =
+  'This person has already completed the survey. Resend and remove are not available.';
 
 function delay(ms) {
   return new Promise((resolve) => {
@@ -206,6 +209,11 @@ export default function PlatformPulseInviteUsers() {
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState('');
 
+  const sendableInviteIds = useMemo(
+    () => invites.filter((r) => r.surveyStatus !== 'completed').map((r) => r.id),
+    [invites]
+  );
+
   const load = useCallback(async (options = {}) => {
     const silent = Boolean(options.silent);
     if (!silent) {
@@ -316,10 +324,10 @@ export default function PlatformPulseInviteUsers() {
   }
 
   async function bulkSendAll() {
-    const snapshot = invites.map((r) => r.id);
+    const snapshot = sendableInviteIds;
     if (snapshot.length === 0) return;
     const ok = window.confirm(
-      `Send Pulse links to all ${snapshot.length} recipients?\n\nEach person receives an email. Sends run one at a time with a short pause between each to avoid hitting email API rate limits, so a long list may take a few minutes.`
+      `Send Pulse links to ${snapshot.length} recipient${snapshot.length === 1 ? '' : 's'} who have not completed the survey?\n\nEach person receives an email. Sends run one at a time with a short pause between each to avoid hitting email API rate limits, so a long list may take a few minutes.`
     );
     if (!ok) return;
 
@@ -370,6 +378,11 @@ export default function PlatformPulseInviteUsers() {
 
   async function confirmDeleteRecipient() {
     if (!deleteConfirmRow) return;
+    if (deleteConfirmRow.surveyStatus === 'completed') {
+      showToast('This recipient has completed the survey and cannot be removed.', { variant: 'error' });
+      setDeleteConfirmRow(null);
+      return;
+    }
     setDeleteWorking(true);
     try {
       await api.delete(`/api/platform/organizations/${orgId}/pulse-link-invites/${deleteConfirmRow.id}`);
@@ -544,7 +557,9 @@ export default function PlatformPulseInviteUsers() {
           <button
             type="button"
             className="btn btn-ghost"
-            disabled={loading || invites.length === 0 || bulkSending || busyImport}
+            disabled={
+              loading || invites.length === 0 || sendableInviteIds.length === 0 || bulkSending || busyImport
+            }
             onClick={bulkSendAll}
             style={{ fontSize: '0.9rem' }}
           >
@@ -578,62 +593,76 @@ export default function PlatformPulseInviteUsers() {
                     </td>
                   </tr>
                 )}
-                {invites.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.displayName || '—'}</td>
-                    <td className="pulse-prototype-mono">{row.email}</td>
-                    <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
-                    <td>
-                      <InviteLinkSurveyStatus row={row} />
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <div
-                        style={{
-                          display: 'inline-flex',
-                          flexDirection: 'row',
-                          flexWrap: 'nowrap',
-                          gap: '0.35rem',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          disabled={bulkSending || sendingId === row.id || deleteWorking}
-                          onClick={() => sendInvite(row.id)}
-                          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-                        >
-                          {sendingId === row.id
-                            ? 'Sending…'
-                            : row.lastInvitedAt
-                              ? 'Resend link'
-                              : 'Send link'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          disabled={
-                            bulkSending ||
-                            deleteWorking ||
-                            Boolean(deleteConfirmRow) ||
-                            sendingId === row.id
-                          }
-                          onClick={() => setDeleteConfirmRow(row)}
-                          title="Remove recipient"
-                          aria-label={`Remove ${row.email}`}
+                {invites.map((row) => {
+                  const surveyComplete = row.surveyStatus === 'completed';
+                  return (
+                    <tr key={row.id}>
+                      <td>{row.displayName || '—'}</td>
+                      <td className="pulse-prototype-mono">{row.email}</td>
+                      <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
+                      <td>
+                        <InviteLinkSurveyStatus row={row} />
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div
                           style={{
-                            color: 'var(--danger, #b91c1c)',
-                            padding: '0.4rem 0.5rem',
-                            minWidth: '2.25rem',
-                            justifyContent: 'center',
+                            display: 'inline-flex',
+                            flexDirection: 'row',
+                            flexWrap: 'nowrap',
+                            gap: '0.35rem',
+                            alignItems: 'center',
                           }}
                         >
-                          <Trash2 size={18} strokeWidth={2} aria-hidden />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={
+                              surveyComplete ||
+                              bulkSending ||
+                              sendingId === row.id ||
+                              deleteWorking
+                            }
+                            onClick={() => sendInvite(row.id)}
+                            title={surveyComplete ? COMPLETED_SURVEY_ACTIONS_TITLE : undefined}
+                            style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                          >
+                            {sendingId === row.id
+                              ? 'Sending…'
+                              : row.lastInvitedAt
+                                ? 'Resend link'
+                                : 'Send link'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={
+                              surveyComplete ||
+                              bulkSending ||
+                              deleteWorking ||
+                              Boolean(deleteConfirmRow) ||
+                              sendingId === row.id
+                            }
+                            onClick={() => setDeleteConfirmRow(row)}
+                            title={
+                              surveyComplete
+                                ? COMPLETED_SURVEY_ACTIONS_TITLE
+                                : 'Remove recipient'
+                            }
+                            aria-label={surveyComplete ? 'Remove unavailable — survey completed' : `Remove ${row.email}`}
+                            style={{
+                              color: 'var(--danger, #b91c1c)',
+                              padding: '0.4rem 0.5rem',
+                              minWidth: '2.25rem',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Trash2 size={18} strokeWidth={2} aria-hidden />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

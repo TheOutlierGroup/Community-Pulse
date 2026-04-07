@@ -89,6 +89,17 @@ export async function getInviteInOrg(inviteId, organizationId) {
   return rows[0] || null;
 }
 
+/** True if this invite has at least one completed pulse_link_responses row. */
+export async function inviteHasCompletedSurvey(inviteId) {
+  const { rows } = await query(
+    `SELECT 1 FROM pulse_link_responses
+     WHERE invite_id = $1 AND completed_at IS NOT NULL
+     LIMIT 1`,
+    [inviteId]
+  );
+  return Boolean(rows[0]);
+}
+
 export async function findByTokenHash(tokenHash) {
   const { rows } = await query(`SELECT * FROM pulse_link_invites WHERE token_hash = $1`, [tokenHash]);
   return rows[0] || null;
