@@ -12,6 +12,7 @@ export default function InviteAccept() {
   const [token, setToken] = useState(routeToken || '');
   const [password, setPassword] = useState('');
   const [emailPreview, setEmailPreview] = useState('');
+  const [namePreview, setNamePreview] = useState('');
   const [invitedRolePreview, setInvitedRolePreview] = useState('employee');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -22,9 +23,13 @@ export default function InviteAccept() {
       const { data } = await api.get(`/api/auth/invite/${t}`);
       setEmailPreview(data.email);
       setInvitedRolePreview(data.invitedRole || 'employee');
+      const fn = String(data.firstName || '').trim();
+      const ln = String(data.lastName || '').trim();
+      setNamePreview([fn, ln].filter(Boolean).join(' '));
       setError('');
     } catch {
       setEmailPreview('');
+      setNamePreview('');
       setInvitedRolePreview('employee');
       setError('Invalid or expired invite.');
     }
@@ -82,6 +87,12 @@ export default function InviteAccept() {
           {emailPreview && (
             <p className="muted">
               Creating account for <strong>{emailPreview}</strong>
+              {namePreview ? (
+                <>
+                  <br />
+                  <span style={{ fontSize: '0.95em' }}>Name: {namePreview}</span>
+                </>
+              ) : null}
             </p>
           )}
           <div className="field">

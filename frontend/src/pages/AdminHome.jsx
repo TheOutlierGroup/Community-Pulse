@@ -14,6 +14,8 @@ export default function AdminHome() {
   const [name, setName] = useState('Q1 Pulse');
   const [sessionAudience, setSessionAudience] = useState('staff');
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteFirstName, setInviteFirstName] = useState('');
+  const [inviteLastName, setInviteLastName] = useState('');
   const [inviteLink, setInviteLink] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -83,10 +85,16 @@ export default function AdminHome() {
     setError('');
     setInviteLink('');
     try {
-      const { data } = await api.post('/api/admin/invites', { email: inviteEmail });
+      const { data } = await api.post('/api/admin/invites', {
+        email: inviteEmail,
+        firstName: inviteFirstName.trim() || undefined,
+        lastName: inviteLastName.trim() || undefined,
+      });
       const base = window.location.origin;
       setInviteLink(`${base}${data.inviteUrl}`);
       setInviteEmail('');
+      setInviteFirstName('');
+      setInviteLastName('');
     } catch (err) {
       setError(err.response?.data?.error || 'Invite failed.');
     } finally {
@@ -147,8 +155,8 @@ export default function AdminHome() {
 
       <div id="admin-team" className="card" style={{ marginTop: '1.5rem' }}>
         <h2 style={{ marginTop: 0 }}>Invite employee</h2>
-        <form onSubmit={sendInvite} className="grid-2" style={{ alignItems: 'end' }}>
-          <div className="field" style={{ marginBottom: 0 }}>
+        <form onSubmit={sendInvite}>
+          <div className="field">
             <label htmlFor="inv">Email</label>
             <input
               id="inv"
@@ -157,6 +165,26 @@ export default function AdminHome() {
               onChange={(e) => setInviteEmail(e.target.value)}
               required
             />
+          </div>
+          <div className="field" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div className="field" style={{ flex: '1 1 10rem', marginBottom: 0 }}>
+              <label htmlFor="inv-first">First name (optional)</label>
+              <input
+                id="inv-first"
+                value={inviteFirstName}
+                onChange={(e) => setInviteFirstName(e.target.value)}
+                autoComplete="given-name"
+              />
+            </div>
+            <div className="field" style={{ flex: '1 1 10rem', marginBottom: 0 }}>
+              <label htmlFor="inv-last">Last name (optional)</label>
+              <input
+                id="inv-last"
+                value={inviteLastName}
+                onChange={(e) => setInviteLastName(e.target.value)}
+                autoComplete="family-name"
+              />
+            </div>
           </div>
           <div>
             <button type="submit" className="btn btn-primary" disabled={busy}>

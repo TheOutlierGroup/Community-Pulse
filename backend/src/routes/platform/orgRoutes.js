@@ -356,6 +356,8 @@ export function registerPlatformOrgRoutes(router) {
     }
     const invitedRole = req.body.invitedRole === 'admin' ? 'admin' : 'employee';
     const email = req.body.email;
+    const firstName = req.body.firstName;
+    const lastName = req.body.lastName;
     const existing = await User.findUserByEmail(email);
     if (existing) {
       return res.status(409).json({ error: 'A user with this email already exists' });
@@ -368,6 +370,8 @@ export function registerPlatformOrgRoutes(router) {
       organizationId: org.id,
       expiresAt,
       invitedRole,
+      firstName,
+      lastName,
     });
     res.status(201).json({
       invite: {
@@ -375,6 +379,8 @@ export function registerPlatformOrgRoutes(router) {
         email: invite.email,
         expiresAt: invite.expires_at,
         invitedRole: invite.invited_role,
+        firstName: invite.first_name ?? '',
+        lastName: invite.last_name ?? '',
       },
       inviteUrl: `/invite/${token}`,
     });

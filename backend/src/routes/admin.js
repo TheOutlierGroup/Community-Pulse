@@ -74,6 +74,8 @@ router.post('/invites', requireBodyFields(['email']), async (req, res) => {
     organizationId: req.user.organizationId,
     expiresAt,
     invitedRole: 'employee',
+    firstName: req.body.firstName,
+    lastName: req.body.lastName,
   });
   res.status(201).json({
     invite: {

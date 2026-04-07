@@ -253,6 +253,8 @@ export function registerPlatformStaffRoutes(router) {
       organizationId: req.user.organizationId,
       expiresAt,
       invitedRole: 'admin',
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
     });
     res.status(201).json({
       invite: {

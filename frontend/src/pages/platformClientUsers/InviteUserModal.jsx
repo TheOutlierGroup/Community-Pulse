@@ -6,8 +6,12 @@ export default function InviteUserModal({
   error,
   busy,
   inviteEmail,
+  inviteFirstName,
+  inviteLastName,
   inviteRole,
   setInviteEmail,
+  setInviteFirstName,
+  setInviteLastName,
   setInviteRole,
   onClose,
   onSubmit,
@@ -32,6 +36,26 @@ export default function InviteUserModal({
             required
             autoComplete="off"
           />
+        </div>
+        <div className="field" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 10rem' }}>
+            <label htmlFor="client-invite-first">First name (optional)</label>
+            <input
+              id="client-invite-first"
+              value={inviteFirstName}
+              onChange={(e) => setInviteFirstName(e.target.value)}
+              autoComplete="given-name"
+            />
+          </div>
+          <div style={{ flex: '1 1 10rem' }}>
+            <label htmlFor="client-invite-last">Last name (optional)</label>
+            <input
+              id="client-invite-last"
+              value={inviteLastName}
+              onChange={(e) => setInviteLastName(e.target.value)}
+              autoComplete="family-name"
+            />
+          </div>
         </div>
         <div className="field">
           <label htmlFor="client-invite-role">User type</label>

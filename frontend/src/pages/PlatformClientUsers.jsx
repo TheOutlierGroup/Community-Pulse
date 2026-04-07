@@ -20,6 +20,8 @@ export default function PlatformClientUsers() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteFirstName, setInviteFirstName] = useState('');
+  const [inviteLastName, setInviteLastName] = useState('');
   const [inviteRole, setInviteRole] = useState('employee');
 
   const [editUser, setEditUser] = useState(null);
@@ -59,6 +61,8 @@ export default function PlatformClientUsers() {
     setModalOpen(false);
     setError('');
     setInviteEmail('');
+    setInviteFirstName('');
+    setInviteLastName('');
     setInviteRole('employee');
   }
 
@@ -95,6 +99,8 @@ export default function PlatformClientUsers() {
       const { data } = await api.post(`/api/platform/organizations/${orgId}/invites`, {
         email: invitedTo,
         invitedRole: inviteRole,
+        firstName: inviteFirstName.trim() || undefined,
+        lastName: inviteLastName.trim() || undefined,
       });
       const fullInvite = `${window.location.origin}${data.inviteUrl}`;
       showToast(`Invite link for ${invitedTo}:\n\n${fullInvite}`, {
@@ -217,8 +223,12 @@ export default function PlatformClientUsers() {
         error={modalOpen ? error : ''}
         busy={busy}
         inviteEmail={inviteEmail}
+        inviteFirstName={inviteFirstName}
+        inviteLastName={inviteLastName}
         inviteRole={inviteRole}
         setInviteEmail={setInviteEmail}
+        setInviteFirstName={setInviteFirstName}
+        setInviteLastName={setInviteLastName}
         setInviteRole={setInviteRole}
         onClose={closeInviteModal}
         onSubmit={sendOrgInvite}

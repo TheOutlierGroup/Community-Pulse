@@ -1,12 +1,37 @@
 import { query } from '../config/database.js';
 import { hashInviteToken } from '../security/inviteToken.js';
 
-export async function createInvite({ email, token, organizationId, expiresAt, invitedRole = 'employee' }) {
+const NAME_MAX = 120;
+
+function sanitizeName(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  return s.slice(0, NAME_MAX);
+}
+
+export async function createInvite({
+  email,
+  token,
+  organizationId,
+  expiresAt,
+  invitedRole = 'employee',
+  firstName,
+  lastName,
+}) {
   const tokenHash = hashInviteToken(token);
   const { rows } = await query(
-    `INSERT INTO invites (email, token, organization_id, expires_at, invited_role)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [email.toLowerCase().trim(), tokenHash, organizationId, expiresAt, invitedRole]
+    `INSERT INTO invites (email, token, organization_id, expires_at, invited_role, first_name, last_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [
+      email.toLowerCase().trim(),
+      tokenHash,
+      organizationId,
+      expiresAt,
+      invitedRole,
+      sanitizeName(firstName),
+      sanitizeName(lastName),
+    ]
   );
   return {
     ...rows[0],

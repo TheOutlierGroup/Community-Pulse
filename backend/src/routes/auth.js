@@ -351,6 +351,8 @@ router.get('/invite/:token', authLimiter, async (req, res) => {
     email: invite.email,
     organizationId: invite.organization_id,
     invitedRole: invite.invited_role || 'employee',
+    firstName: invite.first_name ?? '',
+    lastName: invite.last_name ?? '',
   });
 });
 
@@ -373,11 +375,13 @@ router.post(
     }
     const invitedRole = invite.invited_role === 'admin' ? 'admin' : 'employee';
     const hash = await bcrypt.hash(password, 12);
-    const user = await User.createUser({
+    const user = await User.createUserWithProfile({
       email: invite.email,
       passwordHash: hash,
       role: invitedRole,
       organizationId: invite.organization_id,
+      firstName: invite.first_name,
+      lastName: invite.last_name,
     });
     await Invite.markInviteUsed(invite.id);
     const full = await User.findUserByIdWithOrg(user.id);
