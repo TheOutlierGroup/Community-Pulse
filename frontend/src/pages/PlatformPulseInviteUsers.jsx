@@ -9,9 +9,6 @@ import { Mail, Trash2, Upload, UserPlus } from 'lucide-react';
 /** Minimum gap between each send request to stay under typical email API rate limits (e.g. Resend ~2 rps). */
 const BULK_SEND_INTERVAL_MS = 700;
 
-const COMPLETED_SURVEY_ACTIONS_TITLE =
-  'This person has already completed the survey. Resend and remove are not available.';
-
 function delay(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
@@ -604,61 +601,60 @@ export default function PlatformPulseInviteUsers() {
                         <InviteLinkSurveyStatus row={row} />
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <div
-                          style={{
-                            display: 'inline-flex',
-                            flexDirection: 'row',
-                            flexWrap: 'nowrap',
-                            gap: '0.35rem',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={
-                              surveyComplete ||
-                              bulkSending ||
-                              sendingId === row.id ||
-                              deleteWorking
-                            }
-                            onClick={() => sendInvite(row.id)}
-                            title={surveyComplete ? COMPLETED_SURVEY_ACTIONS_TITLE : undefined}
-                            style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                        {surveyComplete ? (
+                          <span
+                            className="muted"
+                            style={{ fontSize: '0.9rem' }}
+                            aria-label="No actions — survey completed"
                           >
-                            {sendingId === row.id
-                              ? 'Sending…'
-                              : row.lastInvitedAt
-                                ? 'Resend link'
-                                : 'Send link'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={
-                              surveyComplete ||
-                              bulkSending ||
-                              deleteWorking ||
-                              Boolean(deleteConfirmRow) ||
-                              sendingId === row.id
-                            }
-                            onClick={() => setDeleteConfirmRow(row)}
-                            title={
-                              surveyComplete
-                                ? COMPLETED_SURVEY_ACTIONS_TITLE
-                                : 'Remove recipient'
-                            }
-                            aria-label={surveyComplete ? 'Remove unavailable — survey completed' : `Remove ${row.email}`}
+                            —
+                          </span>
+                        ) : (
+                          <div
                             style={{
-                              color: 'var(--danger, #b91c1c)',
-                              padding: '0.4rem 0.5rem',
-                              minWidth: '2.25rem',
-                              justifyContent: 'center',
+                              display: 'inline-flex',
+                              flexDirection: 'row',
+                              flexWrap: 'nowrap',
+                              gap: '0.35rem',
+                              alignItems: 'center',
                             }}
                           >
-                            <Trash2 size={18} strokeWidth={2} aria-hidden />
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              disabled={bulkSending || sendingId === row.id || deleteWorking}
+                              onClick={() => sendInvite(row.id)}
+                              style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                            >
+                              {sendingId === row.id
+                                ? 'Sending…'
+                                : row.lastInvitedAt
+                                  ? 'Resend link'
+                                  : 'Send link'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              disabled={
+                                bulkSending ||
+                                deleteWorking ||
+                                Boolean(deleteConfirmRow) ||
+                                sendingId === row.id
+                              }
+                              onClick={() => setDeleteConfirmRow(row)}
+                              title="Remove recipient"
+                              aria-label={`Remove ${row.email}`}
+                              style={{
+                                color: 'var(--danger, #b91c1c)',
+                                padding: '0.4rem 0.5rem',
+                                minWidth: '2.25rem',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Trash2 size={18} strokeWidth={2} aria-hidden />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
