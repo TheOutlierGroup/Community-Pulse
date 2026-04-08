@@ -20,9 +20,11 @@ export default function InviteUserModal({
 
   return (
     <ModalDialog open={open} title="Invite user" titleId="invite-user-title" onClose={onClose}>
-      <p className="muted" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.35rem', marginBottom: '1rem' }}>
-        <MailPlus size={18} strokeWidth={1.75} aria-hidden />
-        Creates an invite link you can share; they complete signup with a password.
+      <p className="muted invite-user-modal__intro">
+        <MailPlus size={18} strokeWidth={1.75} className="invite-user-modal__intro-icon" aria-hidden />
+        <span>
+          Creates an invite link you can share; they complete signup with a password.
+        </span>
       </p>
       {error ? <p className="error" style={{ marginBottom: '1rem' }}>{error}</p> : null}
       <form onSubmit={onSubmit}>
@@ -37,26 +39,29 @@ export default function InviteUserModal({
             autoComplete="off"
           />
         </div>
-        <div className="field" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 10rem' }}>
-            <label htmlFor="client-invite-first">First name (optional)</label>
-            <input
-              id="client-invite-first"
-              value={inviteFirstName}
-              onChange={(e) => setInviteFirstName(e.target.value)}
-              autoComplete="given-name"
-            />
+        <fieldset className="modal-dialog__fieldset">
+          <legend>Name (optional)</legend>
+          <div className="modal-dialog__name-row">
+            <div className="field">
+              <label htmlFor="client-invite-first">First name</label>
+              <input
+                id="client-invite-first"
+                value={inviteFirstName}
+                onChange={(e) => setInviteFirstName(e.target.value)}
+                autoComplete="given-name"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="client-invite-last">Last name</label>
+              <input
+                id="client-invite-last"
+                value={inviteLastName}
+                onChange={(e) => setInviteLastName(e.target.value)}
+                autoComplete="family-name"
+              />
+            </div>
           </div>
-          <div style={{ flex: '1 1 10rem' }}>
-            <label htmlFor="client-invite-last">Last name (optional)</label>
-            <input
-              id="client-invite-last"
-              value={inviteLastName}
-              onChange={(e) => setInviteLastName(e.target.value)}
-              autoComplete="family-name"
-            />
-          </div>
-        </div>
+        </fieldset>
         <div className="field">
           <label htmlFor="client-invite-role">User type</label>
           <select
