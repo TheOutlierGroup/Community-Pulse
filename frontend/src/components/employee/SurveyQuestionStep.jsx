@@ -17,12 +17,7 @@ export default function SurveyQuestionStep({ title, subtitle, questions, answers
       {questions.map((question) => (
         <div key={question.id} className="theme-row">
           <header>
-            <span className="label">
-              <span className="pulse-prototype-mono" style={{ marginRight: 8 }}>
-                {question.id}
-              </span>
-              {question.text}
-            </span>
+            <span className="label">{question.text}</span>
             <span className="value">{answers[question.id] ? SCALE[answers[question.id] - 1]?.label : 'Unanswered'}</span>
           </header>
           <div
