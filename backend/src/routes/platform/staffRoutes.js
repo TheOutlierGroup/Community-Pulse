@@ -18,7 +18,10 @@ import { isResendConfigured, sendPlatformWelcomeEmail } from '../../services/ema
 const PLATFORM_WELCOME_RESET_MS = 7 * 24 * 60 * 60 * 1000;
 
 function resolvePublicAppBaseUrl() {
-  const raw = process.env.APP_URL || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
+  const raw =
+    process.env.CRM_APP_URL
+    || process.env.APP_URL
+    || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
   return raw ? raw.replace(/\/$/, '') : '';
 }
 
@@ -65,7 +68,7 @@ export function registerPlatformStaffRoutes(router) {
       if (!baseUrl) {
         return res.status(400).json({
           error:
-            'Set APP_URL or FRONTEND_ORIGIN to create a user without an initial password, or provide a password (8+ characters).',
+            'Set CRM_APP_URL (or APP_URL/FRONTEND_ORIGIN fallback) to create a user without an initial password, or provide a password (8+ characters).',
         });
       }
       if (!isResendConfigured()) {

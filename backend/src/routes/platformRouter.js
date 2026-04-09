@@ -7,6 +7,8 @@ import { registerPlatformStaffRoutes } from './platform/staffRoutes.js';
 import platformTaskRoutes from './platform/taskRoutes.js';
 
 const router = Router();
+const APP_SURFACE = String(process.env.APP_SURFACE || 'all').toLowerCase();
+const isPulseSurface = APP_SURFACE === 'pulse';
 
 const platformLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -16,6 +18,21 @@ const platformLimiter = rateLimit({
 });
 
 router.use(requireAuth, requirePlatformAdmin, platformLimiter);
+
+if (isPulseSurface) {
+  router.use((req, res, next) => {
+    const path = req.path;
+    const allowed =
+      /^\/me(\/notifications)?$/.test(path)
+      || /^\/organizations\/[^/]+$/.test(path)
+      || /^\/organizations\/[^/]+\/logo$/.test(path)
+      || /^\/organizations\/[^/]+\/pulse-dashboard$/.test(path)
+      || /^\/organizations\/[^/]+\/pulse-link-invites(?:\/.*)?$/.test(path);
+
+    if (!allowed) return res.status(404).json({ error: 'Not found' });
+    return next();
+  });
+}
 
 registerPlatformMeRoutes(router);
 registerPlatformOrgRoutes(router);

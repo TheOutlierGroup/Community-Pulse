@@ -6,6 +6,7 @@ import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { jsonErrorFromBuffer, sniffImageMime } from '../utils/imageResponseHelpers.js';
 import { ArrowLeft } from 'lucide-react';
+import { IS_PULSE_SURFACE } from '../config/appSurface.js';
 
 export default function PlatformClientLayout() {
   const { orgId } = useParams();
@@ -120,9 +121,13 @@ export default function PlatformClientLayout() {
     return (
       <Layout user={user} onLogout={logout}>
         <p className="error">Client not found.</p>
-        <Link to="/platform/clients" className="btn btn-ghost platform-back-link" style={{ marginTop: '1rem' }}>
+        <Link
+          to={IS_PULSE_SURFACE ? '/' : '/platform/clients'}
+          className="btn btn-ghost platform-back-link"
+          style={{ marginTop: '1rem' }}
+        >
           <ArrowLeft size={18} aria-hidden />
-          Back to clients
+          {IS_PULSE_SURFACE ? 'Back' : 'Back to clients'}
         </Link>
       </Layout>
     );

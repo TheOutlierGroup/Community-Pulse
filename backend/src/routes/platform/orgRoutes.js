@@ -39,6 +39,11 @@ import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
 } from '../../services/pulseInviteImportValidation.js';
+import { createPulseHandoffToken } from '../../security/pulseHandoffToken.js';
+import {
+  CLIENT_SERVICE_PULSE,
+  organizationHasService,
+} from '../../services/clientServices.js';
 
 function parsePagination(query) {
   const rawLimit = Number.parseInt(String(query?.limit ?? ''), 10);
@@ -110,8 +115,22 @@ async function listMergedResponsesForSession(sessionId) {
   return [...userRows, ...mapped];
 }
 
+function firstFrontendOrigin() {
+  return String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
+}
+
+function resolveCrmAppBaseUrl() {
+  const raw = process.env.CRM_APP_URL || process.env.APP_URL || firstFrontendOrigin();
+  return raw ? raw.replace(/\/$/, '') : '';
+}
+
 function resolvePublicAppBaseUrl() {
-  const raw = process.env.APP_URL || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
+  const raw = process.env.PULSE_APP_URL || process.env.APP_URL || firstFrontendOrigin();
+  return raw ? raw.replace(/\/$/, '') : '';
+}
+
+function resolvePulseAppBaseUrl() {
+  const raw = process.env.PULSE_APP_URL || resolvePublicAppBaseUrl();
   return raw ? raw.replace(/\/$/, '') : '';
 }
 
@@ -177,7 +196,7 @@ export function registerPlatformOrgRoutes(router) {
       let outRow = await User.findUserById(row.id);
       let welcomeEmailSent = false;
       if (sendWelcomeEmail) {
-        const baseUrl = resolvePublicAppBaseUrl();
+        const baseUrl = resolveCrmAppBaseUrl();
         if (baseUrl && isResendConfigured()) {
           try {
             const resetToken = await PasswordResetToken.createResetToken(row.id, {
@@ -774,6 +793,29 @@ export function registerPlatformOrgRoutes(router) {
     });
   });
 
+  router.post('/organizations/:id/pulse-handoff-link', async (req, res) => {
+    const org = await assertClientOrganizationPlatform(req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
+      return res.status(403).json({ error: 'Pulse is not enabled for this client' });
+    }
+
+    const pulseBaseUrl = resolvePulseAppBaseUrl();
+    if (!pulseBaseUrl) {
+      return res.status(500).json({ error: 'Set PULSE_APP_URL or APP_URL to issue Pulse links' });
+    }
+
+    const handoff = await createPulseHandoffToken({
+      userId: req.user.id,
+      organizationId: org.id,
+    });
+    const url = `${pulseBaseUrl}/sso/exchange?handoff=${encodeURIComponent(handoff.token)}&orgId=${encodeURIComponent(org.id)}`;
+    res.json({
+      url,
+      expiresAt: handoff.expiresAt,
+    });
+  });
+
   router.get('/organizations/:id/pulse-link-invites', async (req, res) => {
     const org = await assertClientOrganizationPlatform(req.params.id);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
@@ -891,9 +933,9 @@ export function registerPlatformOrgRoutes(router) {
         details: 'This recipient has finished the questionnaire. The link cannot be resent.',
       });
     }
-    const baseUrl = resolvePublicAppBaseUrl();
+    const baseUrl = resolvePulseAppBaseUrl();
     if (!baseUrl) {
-      return res.status(500).json({ error: 'Set APP_URL or FRONTEND_ORIGIN to send invite emails' });
+      return res.status(500).json({ error: 'Set PULSE_APP_URL (or APP_URL/FRONTEND_ORIGIN fallback) to send invite emails' });
     }
     if (!isResendConfigured()) {
       return res.status(503).json({

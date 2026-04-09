@@ -2,8 +2,11 @@ import { Suspense, lazy } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './components/shared/Auth.jsx';
 import { ToastProvider } from './components/shared/ToastProvider.jsx';
+import { IS_PULSE_SURFACE } from './config/appSurface.js';
 
 const Login = lazy(() => import('./pages/Login.jsx'));
+const PulseLanding = lazy(() => import('./pages/PulseLanding.jsx'));
+const PulseSsoExchange = lazy(() => import('./pages/PulseSsoExchange.jsx'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword.jsx'));
 const InviteAccept = lazy(() => import('./pages/InviteAccept.jsx'));
@@ -26,32 +29,35 @@ const ClientHome = lazy(() => import('./pages/ClientHome.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
 
 export default function App() {
+  const publicEntry = IS_PULSE_SURFACE ? <PulseLanding /> : <Login />;
+
   return (
     <ToastProvider>
       <AuthProvider>
         <Suspense fallback={null}>
           <Routes>
-            <Route path="/" element={<Login />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password/:token" element={<ResetPassword />} />
-            <Route path="/invite" element={<InviteAccept />} />
-            <Route path="/invite/:token" element={<InviteAccept />} />
+            <Route path="/" element={publicEntry} />
+            <Route path="/login" element={publicEntry} />
+            {!IS_PULSE_SURFACE && <Route path="/forgot-password" element={<ForgotPassword />} />}
+            {!IS_PULSE_SURFACE && <Route path="/reset-password/:token" element={<ResetPassword />} />}
+            {!IS_PULSE_SURFACE && <Route path="/invite" element={<InviteAccept />} />}
+            {!IS_PULSE_SURFACE && <Route path="/invite/:token" element={<InviteAccept />} />}
+            <Route path="/sso/exchange" element={<PulseSsoExchange />} />
             <Route path="/pulse" element={<EmployeePulse />} />
             <Route path="/pulse/link/:token" element={<PublicPulse />} />
-            <Route path="/platform" element={<PlatformHome />} />
+            {!IS_PULSE_SURFACE && <Route path="/platform" element={<PlatformHome />} />}
             <Route path="/platform/clients/:orgId" element={<PlatformClientLayout />}>
-              <Route index element={<PlatformClientOverview />} />
-              <Route path="users" element={<PlatformClientUsers />} />
-              <Route path="tasks" element={<PlatformClientTasks />} />
+              {!IS_PULSE_SURFACE && <Route index element={<PlatformClientOverview />} />}
+              {!IS_PULSE_SURFACE && <Route path="users" element={<PlatformClientUsers />} />}
+              {!IS_PULSE_SURFACE && <Route path="tasks" element={<PlatformClientTasks />} />}
               <Route path="pulse" element={<PlatformClientPulseShell />}>
                 <Route index element={<PlatformClientPulse />} />
                 <Route path="users" element={<PlatformPulseInviteUsers />} />
               </Route>
-              <Route path="account" element={<PlatformClientAccount />} />
+              {!IS_PULSE_SURFACE && <Route path="account" element={<PlatformClientAccount />} />}
             </Route>
-            <Route path="/platform/clients" element={<PlatformClients />} />
-            <Route path="/platform/users" element={<PlatformUsers />} />
+            {!IS_PULSE_SURFACE && <Route path="/platform/clients" element={<PlatformClients />} />}
+            {!IS_PULSE_SURFACE && <Route path="/platform/users" element={<PlatformUsers />} />}
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/client" element={<ClientHome />} />
             <Route path="/admin" element={<AdminHome />} />

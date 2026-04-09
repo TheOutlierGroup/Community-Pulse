@@ -25,6 +25,13 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const APP_SURFACE = String(process.env.APP_SURFACE || 'all').toLowerCase();
+const isCrmSurface = APP_SURFACE === 'crm';
+const isPulseSurface = APP_SURFACE === 'pulse';
+
+if (!['all', 'crm', 'pulse'].includes(APP_SURFACE)) {
+  throw new Error('APP_SURFACE must be one of: all, crm, pulse');
+}
 
 ensureStorageDirs();
 
@@ -63,6 +70,7 @@ function parseAllowedOrigins(raw) {
 // Opening that blob in a new tab still works; embedded avatars need blob: in img-src.
 app.use(
   helmet({
+    referrerPolicy: { policy: 'no-referrer' },
     contentSecurityPolicy: {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
@@ -101,31 +109,35 @@ app.use(
 );
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'pulse-api' });
+  res.json({ ok: true, service: 'pulse-api', surface: APP_SURFACE });
 });
 
 app.use('/api/auth', authRoutes);
-app.use('/api/pulse', employeeRoutes);
-app.use('/api/pulse-link', pulseLinkRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/analytics', analyticsRoutes);
+if (!isCrmSurface) {
+  app.use('/api/pulse', employeeRoutes);
+  app.use('/api/pulse-link', pulseLinkRoutes);
+  app.use('/api/admin', adminRoutes);
+  app.use('/api/analytics', analyticsRoutes);
+}
 app.use('/api/platform', platformRoutes);
 
-app.get(
-  '/api/exports/:filename',
-  requireAuth,
-  requireAdmin,
-  requireClientOrganization,
-  requireClientPulseService,
-  (req, res) => {
-    const safe = path.basename(req.params.filename);
-    const full = exportFilePath(safe);
-    if (!fs.existsSync(full)) {
-      return res.status(404).json({ error: 'File not found' });
+if (!isCrmSurface) {
+  app.get(
+    '/api/exports/:filename',
+    requireAuth,
+    requireAdmin,
+    requireClientOrganization,
+    requireClientPulseService,
+    (req, res) => {
+      const safe = path.basename(req.params.filename);
+      const full = exportFilePath(safe);
+      if (!fs.existsSync(full)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      res.download(full, safe);
     }
-    res.download(full, safe);
-  }
-);
+  );
+}
 
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 if (fs.existsSync(frontendDist)) {

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   LogIn,
@@ -20,6 +21,8 @@ import {
   hasService,
   userHasService,
 } from '../../utils/clientServices.js';
+import api from '../../services/api.js';
+import { pulseAppBaseUrl } from '../../config/appSurface.js';
 
 function sidebarLinkClass({ isActive }) {
   return `sidebar-nav-link${isActive ? ' sidebar-nav-link--active' : ''}`;
@@ -29,6 +32,8 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const navigate = useNavigate();
   const params = useParams();
   const location = useLocation();
+  const [pulseLaunching, setPulseLaunching] = useState(false);
+  const [pulseLaunchError, setPulseLaunchError] = useState('');
   const platformClientOrgId =
     user?.organizationKind === 'platform' && params.orgId ? params.orgId : null;
   const clientPulseEnabled = userHasService(user, CLIENT_SERVICE_PULSE);
@@ -44,6 +49,38 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
 
   function pulseSectionLinkClass(sectionId) {
     return `sidebar-nav-link${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
+  }
+
+  async function openPulseTabForPlatformClient() {
+    if (!platformClientOrgId || pulseLaunching) return;
+    const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      setPulseLaunchError('Popup blocked. Please allow popups for this site.');
+      return;
+    }
+    setPulseLaunching(true);
+    setPulseLaunchError('');
+    try {
+      const { data } = await api.post(`/api/platform/organizations/${platformClientOrgId}/pulse-handoff-link`);
+      const url = String(data?.url || '');
+      if (!url) throw new Error('Missing URL');
+
+      const configuredPulseBase = pulseAppBaseUrl();
+      if (configuredPulseBase) {
+        const expectedOrigin = new URL(configuredPulseBase).origin;
+        const actualOrigin = new URL(url).origin;
+        if (expectedOrigin !== actualOrigin) {
+          throw new Error('Pulse origin mismatch');
+        }
+      }
+
+      popup.location.replace(url);
+    } catch (_e) {
+      popup.close();
+      setPulseLaunchError('Could not open Pulse right now.');
+    } finally {
+      setPulseLaunching(false);
+    }
   }
 
   if (!user) {
@@ -137,11 +174,17 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     Tasks
                   </NavLink>
                   {platformViewedClientPulseEnabled && (
-                    <NavLink to={`/platform/clients/${platformClientOrgId}/pulse`} className={sidebarLinkClass}>
+                    <button
+                      type="button"
+                      className="sidebar-nav-link sidebar-nav-link--button"
+                      onClick={openPulseTabForPlatformClient}
+                      disabled={pulseLaunching}
+                    >
                       <Activity size={20} strokeWidth={1.75} aria-hidden />
-                      Pulse
-                    </NavLink>
+                      {pulseLaunching ? 'Opening Pulse…' : 'Pulse'}
+                    </button>
                   )}
+                  {pulseLaunchError && <p className="muted">{pulseLaunchError}</p>}
                   <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
                     <CircleUser size={20} strokeWidth={1.75} aria-hidden />
                     Account

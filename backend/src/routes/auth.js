@@ -13,6 +13,7 @@ import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
 import * as Organization from '../models/Organization.js';
 import * as PasswordResetToken from '../models/PasswordResetToken.js';
+import { consumePulseHandoffToken } from '../security/pulseHandoffToken.js';
 import { sendPasswordResetEmail } from '../services/email.js';
 import {
   enabledServicesFromOrganizationSettings,
@@ -288,6 +289,36 @@ router.delete('/me/organization-logo', requireAuth, requireClientAdmin, async (r
 });
 
 router.post(
+  '/pulse-handoff/exchange',
+  authLimiter,
+  requireBodyFields(['token']),
+  async (req, res) => {
+    const consumed = await consumePulseHandoffToken(req.body.token);
+    if (!consumed) {
+      return res.status(401).json({ error: 'Invalid or expired handoff token' });
+    }
+
+    const user = await User.findUserByIdWithOrg(consumed.user_id);
+    if (!user || user.deactivated_at || !user.login_enabled) {
+      return res.status(401).json({ error: 'Account is no longer active' });
+    }
+
+    const token = signToken({
+      sub: user.id,
+      role: user.role,
+      organizationId: user.organization_id,
+      organizationKind: user.organization_kind,
+    });
+
+    res.json({
+      token,
+      user: publicUser(user),
+      targetOrganizationId: consumed.organization_id,
+    });
+  }
+);
+
+router.post(
   '/forgot-password',
   authLimiter,
   requireBodyFields(['email']),
@@ -302,7 +333,7 @@ router.post(
 
     try {
       const token = await PasswordResetToken.createResetToken(user.id);
-      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const baseUrl = process.env.CRM_APP_URL || process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
       const resetUrl = `${baseUrl}/reset-password/${token}`;
       await sendPasswordResetEmail(user.email, resetUrl);
     } catch (err) {
