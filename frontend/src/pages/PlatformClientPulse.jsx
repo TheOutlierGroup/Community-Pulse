@@ -66,73 +66,10 @@ const MANAGER_LOAD_NOTES = {
   Overloaded: 'Risk of burnout. Do not launch without addressing load first.',
 };
 
-const TEAM_SAMPLE_ROWS = [
-  {
-    id: 'finance-operations',
-    team: 'Finance Operations',
-    responses: 24,
-    adoption: 35.1,
-    sponsorship: 31.4,
-    load: 'Sustainable',
-    quadrant: 'Optimal',
-    trend: [31, 33, 34, 35],
-  },
-  {
-    id: 'customer-experience',
-    team: 'Customer Experience',
-    responses: 38,
-    adoption: 30.8,
-    sponsorship: 24.1,
-    load: 'Stretched',
-    quadrant: 'Capable but Wary',
-    trend: [28, 29, 31, 31],
-  },
-  {
-    id: 'technology-data',
-    team: 'Technology & Data',
-    responses: 29,
-    adoption: 27.3,
-    sponsorship: 30.1,
-    load: 'Stretched',
-    quadrant: 'Motivated but Lost',
-    trend: [29, 28, 27, 27],
-  },
-  {
-    id: 'risk-compliance',
-    team: 'Risk & Compliance',
-    responses: 16,
-    adoption: 24.4,
-    sponsorship: 22.7,
-    load: 'Overloaded',
-    quadrant: 'High Risk',
-    trend: [27, 25, 24, 24],
-  },
-  {
-    id: 'marketing-growth',
-    team: 'Marketing & Growth',
-    responses: 21,
-    adoption: 32.2,
-    sponsorship: 28.9,
-    load: 'Stretched',
-    quadrant: 'Optimal',
-    trend: [30, 31, 32, 32],
-  },
-  {
-    id: 'people-culture',
-    team: 'People & Culture',
-    responses: 18,
-    adoption: 28.6,
-    sponsorship: 21.3,
-    load: 'At Capacity',
-    quadrant: 'Capable but Wary',
-    trend: [30, 29, 29, 29],
-  },
-];
-
-function sparkColor(load) {
-  if (load === 'Sustainable') return 'var(--pulse-green)';
-  if (load === 'Overloaded') return 'var(--pulse-red)';
-  if (load === 'At Capacity') return 'var(--pulse-orange)';
+function sparkColor(loadBand) {
+  if (loadBand === 'Sustainable') return 'var(--pulse-green)';
+  if (loadBand === 'Overloaded') return 'var(--pulse-red)';
+  if (loadBand === 'At Capacity') return 'var(--pulse-orange)';
   return 'var(--pulse-amber)';
 }
 
@@ -150,14 +87,21 @@ export default function PlatformClientPulse() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('employee');
+  const [selectedManagerIds, setSelectedManagerIds] = useState([]);
+  const [includeManagerSelf, setIncludeManagerSelf] = useState(false);
 
   const enabledServices = normalizeServices(org.settings);
   const pulseEnabled = enabledServices.includes('pulse');
 
   const loadDashboard = useCallback(() => {
     setLoading(true);
+    const params = {};
+    if (selectedManagerIds.length > 0) {
+      params.managerIds = selectedManagerIds.join(',');
+      params.includeManagerSelf = includeManagerSelf ? 'true' : 'false';
+    }
     api
-      .get(`/api/platform/organizations/${orgId}/pulse-dashboard`)
+      .get(`/api/platform/organizations/${orgId}/pulse-dashboard`, { params })
       .then(({ data }) => {
         setDashboard(data || null);
         setError('');
@@ -167,7 +111,7 @@ export default function PlatformClientPulse() {
         setDashboard(null);
       })
       .finally(() => setLoading(false));
-  }, [orgId]);
+  }, [orgId, selectedManagerIds, includeManagerSelf]);
 
   useEffect(() => {
     if (!pulseEnabled) return;
@@ -190,6 +134,7 @@ export default function PlatformClientPulse() {
   }, [pulseFocusedSection]);
 
   const kpis = dashboard?.kpis || {};
+  const managerOptions = dashboard?.managers || [];
   const trendBars = useMemo(
     () => [...(dashboard?.trend || []).slice(0, 4)].reverse(),
     [dashboard?.trend]
@@ -241,6 +186,7 @@ export default function PlatformClientPulse() {
     highPercent: d.managerHighPercent ?? d.highEnergyPercent,
   }));
   const activeDimensions = activeTab === 'employee' ? employeeDimensionRows : managerDimensionRows;
+  const managerBreakdownRows = dashboard?.byManager || [];
 
   const showSection = (sectionId) => pulseFocusedSection == null || pulseFocusedSection === sectionId;
 
@@ -262,7 +208,51 @@ export default function PlatformClientPulse() {
           <div className="pulse-platform-header__eyebrow">Client administration</div>
           <h1 className="pulse-platform-header__title">{pageTitle}</h1>
         </div>
-        <div className="pulse-platform-header__right">
+        <div className="pulse-platform-header__right" style={{ gap: '0.6rem', alignItems: 'center' }}>
+          <select
+            aria-label="Filter by managers"
+            multiple
+            value={selectedManagerIds}
+            onChange={(e) => {
+              const next = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+              setSelectedManagerIds(next);
+            }}
+            style={{ minWidth: '260px', minHeight: '84px' }}
+          >
+            {managerOptions.map((manager) => (
+              <option key={manager.id} value={manager.id}>
+                {manager.displayName?.trim() || manager.email} ({manager.email})
+              </option>
+            ))}
+          </select>
+          <label
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              fontSize: '0.9rem',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={includeManagerSelf}
+              onChange={(e) => setIncludeManagerSelf(e.target.checked)}
+              disabled={selectedManagerIds.length === 0}
+            />
+            Include managers' own responses
+          </label>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              setSelectedManagerIds([]);
+              setIncludeManagerSelf(false);
+            }}
+            disabled={selectedManagerIds.length === 0 && !includeManagerSelf}
+          >
+            Clear manager filter
+          </button>
           <span className="pulse-platform-header__date">{todayLabel}</span>
           <button type="button" className="btn btn-ghost" onClick={loadDashboard} disabled={loading}>
             {loading ? 'Refreshing…' : 'Refresh'}
@@ -524,12 +514,16 @@ export default function PlatformClientPulse() {
 
           {showSection('team-level-view') && (
           <section className="pulse-prototype-card" id="team-level-view">
-            <div className="pulse-prototype-card__label">Team-Level Breakdown · Showing 6 of 18 teams</div>
+            <div className="pulse-prototype-card__label">
+              Manager-Level Breakdown · {managerBreakdownRows.length} manager
+              {managerBreakdownRows.length === 1 ? '' : 's'}
+            </div>
             <table className="pulse-prototype-rtable">
               <thead>
                 <tr>
-                  <th>Team / Function</th>
-                  <th>Responses</th>
+                  <th>Manager</th>
+                  <th>Direct Reports (Invited)</th>
+                  <th>Direct Reports (Completed)</th>
                   <th>Adoption</th>
                   <th>Sponsorship</th>
                   <th>Manager Load</th>
@@ -538,35 +532,63 @@ export default function PlatformClientPulse() {
                 </tr>
               </thead>
               <tbody>
-                {TEAM_SAMPLE_ROWS.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.team}</td>
-                    <td className="pulse-prototype-mono">{row.responses}</td>
+                {managerBreakdownRows.map((row) => (
+                  <tr key={row.managerId}>
                     <td>
-                      <span className={`pulse-prototype-heat ${heatClass(row.adoption / 8)}`}>{row.adoption.toFixed(1)}</span>
+                      <div style={{ fontWeight: 600 }}>{row.managerName || row.managerEmail || '—'}</div>
+                      <div className="muted pulse-prototype-mono" style={{ fontSize: '0.82rem' }}>
+                        {row.managerEmail || '—'}
+                      </div>
+                    </td>
+                    <td className="pulse-prototype-mono">{row.directReportInvitedCount ?? 0}</td>
+                    <td className="pulse-prototype-mono">{row.directReportCompletedCount ?? 0}</td>
+                    <td>
+                      <span className={`pulse-prototype-heat ${heatClass((row.adoptionScore || 0) / 8)}`}>
+                        {formatScore(row.adoptionScore)}
+                      </span>
                     </td>
                     <td>
-                      <span className={`pulse-prototype-heat ${heatClass(row.sponsorship / 8)}`}>{row.sponsorship.toFixed(1)}</span>
+                      <span className={`pulse-prototype-heat ${heatClass((row.sponsorshipScore || 0) / 8)}`}>
+                        {formatScore(row.sponsorshipScore)}
+                      </span>
                     </td>
-                    <td className={`pulse-prototype-mono pulse-prototype-load-${labelToId(row.load)}`}>{row.load}</td>
+                    <td className={`pulse-prototype-mono pulse-prototype-load-${labelToId(row.managerLoadBand || '')}`}>
+                      {row.managerLoadBand || '—'}
+                    </td>
                     <td>
-                      <span className={`pulse-prototype-qpill ${quadrantPillClass(row.quadrant)}`}>{row.quadrant}</span>
+                      {row.quadrant ? (
+                        <span className={`pulse-prototype-qpill ${quadrantPillClass(row.quadrant)}`}>
+                          {row.quadrant}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td>
                       <div className="pulse-prototype-spark">
-                        {row.trend.map((value, idx) => (
+                        {(row.trend || []).map((item, idx) => {
+                          const value = item?.adoptionScore ?? 0;
+                          return (
                           <span
-                            key={`${row.id}-spark-${idx}`}
+                            key={`${row.managerId}-spark-${idx}`}
                             style={{
                               height: `${Math.max(3, (value / 35) * 18)}px`,
-                              backgroundColor: sparkColor(row.load),
+                              backgroundColor: sparkColor(row.managerLoadBand),
                             }}
                           />
-                        ))}
+                          );
+                        })}
                       </div>
                     </td>
                   </tr>
                 ))}
+                {managerBreakdownRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="muted" style={{ padding: '1rem' }}>
+                      No manager breakdown available yet.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </section>

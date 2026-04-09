@@ -48,6 +48,7 @@ function parseRecipientCsv(text) {
   let colEmail = -1;
   let colName = -1;
   let colRole = -1;
+  let colManagerId = -1;
 
   if (hasHeader) {
     start = 1;
@@ -57,6 +58,8 @@ function parseRecipientCsv(text) {
     colRole = headerLower.indexOf('role');
     if (colRole < 0) colRole = headerLower.indexOf('survey_role');
     if (colRole < 0) colRole = headerLower.indexOf('survey role');
+    colManagerId = headerLower.indexOf('manager_id');
+    if (colManagerId < 0) colManagerId = headerLower.indexOf('manager id');
   }
 
   const out = [];
@@ -65,11 +68,13 @@ function parseRecipientCsv(text) {
     let name = '';
     let email = '';
     let roleRaw;
+    let managerIdRaw;
 
     if (hasHeader) {
       email = colEmail >= 0 ? cells[colEmail] || '' : '';
       name = colName >= 0 ? cells[colName] || '' : '';
       roleRaw = colRole >= 0 ? cells[colRole] : undefined;
+      managerIdRaw = colManagerId >= 0 ? cells[colManagerId] : undefined;
       if (!email) {
         for (const c of cells) {
           if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(c).toLowerCase())) {
@@ -83,10 +88,12 @@ function parseRecipientCsv(text) {
         email = cells[0];
         name = cells[1] || '';
         roleRaw = cells[2];
+        managerIdRaw = cells[3];
       } else {
         name = cells[0];
         email = cells[1] || '';
         roleRaw = cells[2];
+        managerIdRaw = cells[3];
       }
     }
 
@@ -96,6 +103,9 @@ function parseRecipientCsv(text) {
     const rec = { name: String(name || '').trim() || em.split('@')[0], email: em };
     if (roleRaw != null && String(roleRaw).trim() !== '') {
       rec.role = String(roleRaw).trim();
+    }
+    if (managerIdRaw != null && String(managerIdRaw).trim() !== '') {
+      rec.managerId = String(managerIdRaw).trim();
     }
     out.push(rec);
   }
@@ -203,8 +213,20 @@ export default function PlatformPulseInviteUsers() {
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState('staff');
+  const [addManagerInviteId, setAddManagerInviteId] = useState('');
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState('');
+
+  const managerOptions = useMemo(
+    () =>
+      invites
+        .filter((row) => row.surveyRole === 'manager')
+        .map((row) => ({
+          id: row.id,
+          label: `${row.displayName?.trim() || row.email} (${row.email})`,
+        })),
+    [invites]
+  );
 
   const sendableInviteIds = useMemo(
     () => invites.filter((r) => r.surveyStatus !== 'completed').map((r) => r.id),
@@ -243,7 +265,7 @@ export default function PlatformPulseInviteUsers() {
       const text = await file.text();
       const recipients = parseRecipientCsv(text);
       if (recipients.length === 0) {
-        showToast('No rows found. Use a CSV with columns: name, email, and optional role (staff or manager).', {
+        showToast('No rows found. Use a CSV with columns: name, email, role, and manager_id for staff rows.', {
           variant: 'error',
         });
         return;
@@ -269,6 +291,7 @@ export default function PlatformPulseInviteUsers() {
     setAddName('');
     setAddEmail('');
     setAddRole('staff');
+    setAddManagerInviteId('');
   }
 
   async function submitAddRecipient(e) {
@@ -280,18 +303,34 @@ export default function PlatformPulseInviteUsers() {
       setAddError('Enter a valid email address.');
       return;
     }
+    if (addRole === 'staff') {
+      if (managerOptions.length === 0) {
+        setAddError('Add at least one manager first, then add staff under that manager.');
+        return;
+      }
+      if (!addManagerInviteId) {
+        setAddError('Select a manager for this staff recipient.');
+        return;
+      }
+    }
     setAddBusy(true);
     setAddError('');
     try {
       const name = String(addName || '').trim() || email.split('@')[0];
+      const recipient = { name, email, role: addRole };
+      if (addRole === 'staff') recipient.managerInviteId = addManagerInviteId;
       const { data } = await api.post(`/api/platform/organizations/${orgId}/pulse-link-invites/import`, {
-        recipients: [{ name, email, role: addRole }],
+        recipients: [recipient],
       });
       if (data.errorCount > 0) {
         const first = data.errors?.[0];
-        showToast(first?.error === 'invalid_role' ? 'Role must be staff or manager.' : 'Could not add recipient.', {
-          variant: 'error',
-        });
+        let message = 'Could not add recipient.';
+        if (first?.error === 'invalid_role') message = 'Role must be staff or manager.';
+        if (first?.error === 'manager_required') message = 'Staff recipients require a manager selection.';
+        if (first?.error === 'invalid_manager_invite') message = 'Selected manager is not valid for this organization.';
+        if (first?.error === 'manager_not_found') message = 'Manager reference could not be resolved.';
+        if (first?.error === 'self_manager_not_allowed') message = 'A recipient cannot be their own manager.';
+        showToast(message, { variant: 'error' });
         return;
       }
       showToast(`Added ${data.upserted} recipient.`, { variant: 'success' });
@@ -519,11 +558,45 @@ export default function PlatformPulseInviteUsers() {
           </div>
           <div className="field">
             <label htmlFor="pulse-add-role">Role</label>
-            <select id="pulse-add-role" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
+            <select
+              id="pulse-add-role"
+              value={addRole}
+              onChange={(e) => {
+                const nextRole = e.target.value;
+                setAddRole(nextRole);
+                if (nextRole !== 'staff') setAddManagerInviteId('');
+              }}
+            >
               <option value="staff">Staff</option>
               <option value="manager">Manager</option>
             </select>
           </div>
+          {addRole === 'staff' ? (
+            <div className="field">
+              <label htmlFor="pulse-add-manager">Manager</label>
+              <select
+                id="pulse-add-manager"
+                value={addManagerInviteId}
+                onChange={(e) => setAddManagerInviteId(e.target.value)}
+                required
+                disabled={managerOptions.length === 0}
+              >
+                <option value="">
+                  {managerOptions.length === 0 ? 'No managers added yet' : 'Select a manager'}
+                </option>
+                {managerOptions.map((manager) => (
+                  <option key={manager.id} value={manager.id}>
+                    {manager.label}
+                  </option>
+                ))}
+              </select>
+              {managerOptions.length === 0 ? (
+                <p className="muted" style={{ marginTop: '0.4rem' }}>
+                  Add a manager recipient first, then add staff.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="modal-dialog__actions">
             <button type="button" className="btn btn-ghost" onClick={closeAddModal} disabled={addBusy || bulkSending}>
               Cancel
@@ -576,6 +649,7 @@ export default function PlatformPulseInviteUsers() {
                   <th scope="col">Name</th>
                   <th scope="col">Email</th>
                   <th scope="col">Role</th>
+                  <th scope="col">Manager</th>
                   <th scope="col">Link &amp; survey</th>
                   <th scope="col" style={{ minWidth: '12.5rem', whiteSpace: 'nowrap' }}>
                     Actions
@@ -585,7 +659,7 @@ export default function PlatformPulseInviteUsers() {
               <tbody>
                 {invites.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="muted" style={{ padding: '1.25rem' }}>
+                    <td colSpan={6} className="muted" style={{ padding: '1.25rem' }}>
                       No recipients yet. Use Add or Import CSV.
                     </td>
                   </tr>
@@ -597,6 +671,7 @@ export default function PlatformPulseInviteUsers() {
                       <td>{row.displayName || '—'}</td>
                       <td className="pulse-prototype-mono">{row.email}</td>
                       <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
+                      <td>{row.surveyRole === 'staff' ? row.managerName || row.managerEmail || '—' : '—'}</td>
                       <td>
                         <InviteLinkSurveyStatus row={row} />
                       </td>

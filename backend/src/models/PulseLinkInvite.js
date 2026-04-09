@@ -27,6 +27,9 @@ export function publicInviteRow(row) {
     displayName: row.display_name,
     email: row.email,
     surveyRole: row.survey_role || 'staff',
+    managerInviteId: row.manager_invite_id || null,
+    managerName: row.manager_display_name || null,
+    managerEmail: row.manager_email || null,
     lastInvitedAt: row.last_invited_at,
     createdAt: row.created_at,
     surveyStatus,
@@ -40,6 +43,9 @@ export async function listInvitesForOrg(organizationId) {
             pli.display_name,
             pli.email,
             pli.survey_role,
+            pli.manager_invite_id,
+            mgr.display_name AS manager_display_name,
+            mgr.email AS manager_email,
             pli.last_invited_at,
             pli.created_at,
             (SELECT MAX(plr.completed_at)
@@ -74,6 +80,33 @@ export async function listInvitesForOrg(organizationId) {
                  AND plr.step4_data = '{}'::jsonb
              )) AS survey_opened_only
      FROM pulse_link_invites pli
+     LEFT JOIN pulse_link_invites mgr
+       ON mgr.id = pli.manager_invite_id
+      AND mgr.organization_id = pli.organization_id
+     WHERE pli.organization_id = $1
+     ORDER BY lower(pli.email)`,
+    [organizationId]
+  );
+  return rows;
+}
+
+export async function listInviteRowsForOrg(organizationId) {
+  const { rows } = await query(
+    `SELECT pli.id,
+            pli.organization_id,
+            pli.display_name,
+            pli.email,
+            pli.survey_role,
+            pli.manager_invite_id,
+            pli.last_invited_at,
+            pli.created_at,
+            pli.updated_at,
+            mgr.display_name AS manager_display_name,
+            mgr.email AS manager_email
+     FROM pulse_link_invites pli
+     LEFT JOIN pulse_link_invites mgr
+       ON mgr.id = pli.manager_invite_id
+      AND mgr.organization_id = pli.organization_id
      WHERE pli.organization_id = $1
      ORDER BY lower(pli.email)`,
     [organizationId]
@@ -105,22 +138,42 @@ export async function findByTokenHash(tokenHash) {
   return rows[0] || null;
 }
 
-export async function upsertInviteRow({ organizationId, displayName, email, surveyRole = 'staff' }) {
+export async function upsertInviteRow({
+  organizationId,
+  displayName,
+  email,
+  surveyRole = 'staff',
+  managerInviteId = null,
+}) {
   const em = normalizeEmail(email);
   if (!em) return { row: null, error: 'invalid_email' };
   const role = surveyRole === 'manager' ? 'manager' : 'staff';
   const name = String(displayName || '').trim();
+  const managerId = role === 'manager' ? null : managerInviteId || null;
   const { rows } = await query(
-    `INSERT INTO pulse_link_invites (organization_id, display_name, email, survey_role)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO pulse_link_invites (organization_id, display_name, email, survey_role, manager_invite_id)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (organization_id, email) DO UPDATE SET
        display_name = EXCLUDED.display_name,
        survey_role = EXCLUDED.survey_role,
+       manager_invite_id = EXCLUDED.manager_invite_id,
        updated_at = NOW()
      RETURNING *`,
-    [organizationId, name, em, role]
+    [organizationId, name, em, role, managerId]
   );
   return { row: rows[0], error: null };
+}
+
+export async function updateManagerInviteId(inviteId, organizationId, managerInviteId) {
+  const { rows } = await query(
+    `UPDATE pulse_link_invites
+     SET manager_invite_id = $3,
+         updated_at = NOW()
+     WHERE id = $1 AND organization_id = $2
+     RETURNING *`,
+    [inviteId, organizationId, managerInviteId || null]
+  );
+  return rows[0] || null;
 }
 
 /**

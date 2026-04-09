@@ -109,9 +109,18 @@ export async function deleteIncompleteForInvite(inviteId) {
 
 export async function listResponsesForSession(sessionId) {
   const { rows } = await query(
-    `SELECT plr.*, pli.email, pli.display_name, pli.survey_role
+    `SELECT plr.*,
+            pli.email,
+            pli.display_name,
+            pli.survey_role,
+            pli.manager_invite_id,
+            mgr.display_name AS manager_display_name,
+            mgr.email AS manager_email
      FROM pulse_link_responses plr
      JOIN pulse_link_invites pli ON pli.id = plr.invite_id
+     LEFT JOIN pulse_link_invites mgr
+       ON mgr.id = pli.manager_invite_id
+      AND mgr.organization_id = pli.organization_id
      WHERE plr.session_id = $1`,
     [sessionId]
   );

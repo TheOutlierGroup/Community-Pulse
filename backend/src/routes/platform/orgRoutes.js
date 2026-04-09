@@ -30,6 +30,15 @@ import {
   sendAvatarFileOr404,
   sendOrgLogoFileOr404,
 } from './shared.js';
+import {
+  filterRowsForManagerScope,
+  parseManagerIdsFromQuery,
+  parseQueryBool,
+} from '../../services/pulseDashboardScope.js';
+import {
+  normalizeInviteImportRecipients,
+  validateInviteImportRows,
+} from '../../services/pulseInviteImportValidation.js';
 
 function parsePagination(query) {
   const rawLimit = Number.parseInt(String(query?.limit ?? ''), 10);
@@ -79,6 +88,7 @@ async function listMergedResponsesForSession(sessionId) {
   const linkRows = await PulseLinkResponse.listResponsesForSession(sessionId);
   const mapped = linkRows.map((r) => ({
     id: r.id,
+    invite_id: r.invite_id,
     user_id: null,
     session_id: r.session_id,
     current_step: r.current_step,
@@ -91,7 +101,11 @@ async function listMergedResponsesForSession(sessionId) {
     created_at: r.created_at,
     updated_at: r.updated_at,
     email: r.email,
+    display_name: r.display_name,
     role: r.survey_role === 'manager' ? 'admin' : 'employee',
+    manager_invite_id: r.manager_invite_id || null,
+    manager_display_name: r.manager_display_name || null,
+    manager_email: r.manager_email || null,
   }));
   return [...userRows, ...mapped];
 }
@@ -107,16 +121,6 @@ function parseMultipartBool(v) {
   if (v === true || v === 'true' || v === '1') return true;
   if (v === false || v === 'false' || v === '0') return false;
   return false;
-}
-
-function normalizeSurveyRoleFromImport(raw) {
-  const s = String(raw ?? '')
-    .trim()
-    .toLowerCase();
-  if (s === '') return 'staff';
-  if (s === 'manager') return 'manager';
-  if (s === 'staff' || s === 'employee') return 'staff';
-  return null;
 }
 
 export function registerPlatformOrgRoutes(router) {
@@ -436,11 +440,25 @@ export function registerPlatformOrgRoutes(router) {
     const org = await assertClientOrganizationPlatform(req.params.id);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    const [sessions, activeUsersByRole, pulseLinkByRole] = await Promise.all([
+    const [sessions, activeUsersByRole, pulseLinkByRole, inviteRows] = await Promise.all([
       PulseSession.listSessionsForOrg(req.params.id),
       User.countActiveUsersByRoleForOrg(req.params.id),
       PulseLinkInvite.countSentInvitesBySurveyRole(req.params.id),
+      PulseLinkInvite.listInviteRowsForOrg(req.params.id),
     ]);
+    const managerOptions = inviteRows
+      .filter((r) => r.survey_role === 'manager')
+      .map((r) => ({
+        id: r.id,
+        displayName: r.display_name || '',
+        email: r.email,
+      }));
+    const managerIdSet = new Set(managerOptions.map((m) => m.id));
+    const requestedManagerIds = parseManagerIdsFromQuery(req.query);
+    const selectedManagerIds = requestedManagerIds.filter((id) => managerIdSet.has(id));
+    const selectedManagerIdSet = new Set(selectedManagerIds);
+    const managerFilterActive = selectedManagerIds.length > 0;
+    const includeManagerSelf = parseQueryBool(req.query?.includeManagerSelf, false);
 
     const activeSessions = sessions.filter((s) => s.status === 'active');
     const currentSession =
@@ -457,8 +475,13 @@ export function registerPlatformOrgRoutes(router) {
             await Promise.all(sessionsForCurrentRows.map((s) => listMergedResponsesForSession(s.id)))
           ).flat()
         : [];
-    const completedRows = currentRows.filter((r) => r.completed_at);
-    const analytics = aggregateSessionResponses(currentRows);
+    const scopedCurrentRows = filterRowsForManagerScope(
+      currentRows,
+      selectedManagerIdSet,
+      includeManagerSelf
+    );
+    const completedRows = scopedCurrentRows.filter((r) => r.completed_at);
+    const analytics = aggregateSessionResponses(scopedCurrentRows);
 
     const currentScored = completedRows
       .map((r) => responseScoresOutOf40(r))
@@ -476,12 +499,22 @@ export function registerPlatformOrgRoutes(router) {
     const completedEmployeeResponses = completedRows.filter((r) => r.role === 'employee').length;
     const completedManagerResponses = completedRows.filter((r) => r.role === 'admin').length;
 
-    const invitedEmployees = activeUsersByRole.employee || 0;
-    const invitedManagers = activeUsersByRole.admin || 0;
-    const pulseLinkStaff = pulseLinkByRole.staff;
-    const pulseLinkManager = pulseLinkByRole.manager;
+    let invitedEmployees = activeUsersByRole.employee || 0;
+    let invitedManagers = activeUsersByRole.admin || 0;
+    let pulseLinkStaff = pulseLinkByRole.staff;
+    let pulseLinkManager = pulseLinkByRole.manager;
+    if (managerFilterActive) {
+      pulseLinkStaff = inviteRows.filter(
+        (r) => r.survey_role === 'staff' && r.manager_invite_id && selectedManagerIdSet.has(r.manager_invite_id)
+      ).length;
+      pulseLinkManager = includeManagerSelf ? selectedManagerIds.length : 0;
+      invitedEmployees = pulseLinkStaff;
+      invitedManagers = pulseLinkManager;
+    }
     const pulseLinkInvitedCount = pulseLinkStaff + pulseLinkManager;
-    const invitedTotal = invitedEmployees + invitedManagers + pulseLinkInvitedCount;
+    const invitedTotal = managerFilterActive
+      ? pulseLinkInvitedCount
+      : invitedEmployees + invitedManagers + pulseLinkInvitedCount;
     const completedTotal = completedRows.length;
 
     const quadrantBuckets = {
@@ -569,28 +602,110 @@ export function registerPlatformOrgRoutes(router) {
     });
 
     const trendCandidates = sessions.slice(0, 4);
-    const trendRows = await Promise.all(
-      trendCandidates.map(async (session) => {
-        const rows = await listMergedResponsesForSession(session.id);
-        const completed = rows.filter((r) => r.completed_at);
-        const scored = completed
-          .map((r) => responseScoresOutOf40(r))
+    const trendRows = [];
+    const trendScopedRowsBySession = [];
+    for (const session of trendCandidates) {
+      const rows = await listMergedResponsesForSession(session.id);
+      const scoped = filterRowsForManagerScope(rows, selectedManagerIdSet, includeManagerSelf);
+      trendScopedRowsBySession.push({ session, rows: scoped });
+      const completed = scoped.filter((r) => r.completed_at);
+      const scored = completed
+        .map((r) => responseScoresOutOf40(r))
+        .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
+      trendRows.push({
+        sessionId: session.id,
+        sessionName: session.name,
+        adoptionScore:
+          scored.length > 0
+            ? round1(scored.reduce((sum, s) => sum + s.adoption, 0) / scored.length)
+            : null,
+        sponsorshipScore:
+          scored.length > 0
+            ? round1(scored.reduce((sum, s) => sum + s.sponsorship, 0) / scored.length)
+            : null,
+        completedResponses: completed.length,
+      });
+    }
+
+    const managersForBreakdown = managerFilterActive
+      ? managerOptions.filter((m) => selectedManagerIdSet.has(m.id))
+      : managerOptions;
+    const byManager = managersForBreakdown.map((manager) => {
+      const managerCompletedRows = completedRows.filter((row) => {
+        if (row?.manager_invite_id === manager.id) return true;
+        if (!includeManagerSelf) return false;
+        return !row?.user_id && row?.role === 'admin' && row?.invite_id === manager.id;
+      });
+      const managerScored = managerCompletedRows
+        .map((row) => responseScoresOutOf40(row))
+        .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
+      const managerAdoption =
+        managerScored.length > 0
+          ? round1(managerScored.reduce((sum, s) => sum + s.adoption, 0) / managerScored.length)
+          : null;
+      const managerSponsorship =
+        managerScored.length > 0
+          ? round1(managerScored.reduce((sum, s) => sum + s.sponsorship, 0) / managerScored.length)
+          : null;
+      const managerQuadrant =
+        managerAdoption != null && managerSponsorship != null
+          ? quadrantLabel(managerAdoption, managerSponsorship)
+          : null;
+
+      let loadBand = null;
+      const managerSelfRow = completedRows.find(
+        (row) => !row?.user_id && row?.role === 'admin' && row?.invite_id === manager.id
+      );
+      if (managerSelfRow) {
+        const selfScore = responseScoresOutOf40(managerSelfRow);
+        loadBand = selfScore.valid ? selfScore.managerLoadBand || null : null;
+      }
+
+      const trend = trendScopedRowsBySession.map((entry) => {
+        const scopedCompleted = entry.rows.filter(
+          (row) =>
+            row.completed_at &&
+            (row?.manager_invite_id === manager.id ||
+              (includeManagerSelf && !row?.user_id && row?.role === 'admin' && row?.invite_id === manager.id))
+        );
+        const scopedScored = scopedCompleted
+          .map((row) => responseScoresOutOf40(row))
           .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
+        const adoption =
+          scopedScored.length > 0
+            ? round1(scopedScored.reduce((sum, s) => sum + s.adoption, 0) / scopedScored.length)
+            : null;
+        const sponsorship =
+          scopedScored.length > 0
+            ? round1(scopedScored.reduce((sum, s) => sum + s.sponsorship, 0) / scopedScored.length)
+            : null;
         return {
-          sessionId: session.id,
-          sessionName: session.name,
-          adoptionScore:
-            scored.length > 0
-              ? round1(scored.reduce((sum, s) => sum + s.adoption, 0) / scored.length)
-              : null,
-          sponsorshipScore:
-            scored.length > 0
-              ? round1(scored.reduce((sum, s) => sum + s.sponsorship, 0) / scored.length)
-              : null,
-          completedResponses: completed.length,
+          sessionId: entry.session.id,
+          sessionName: entry.session.name,
+          adoptionScore: adoption,
+          sponsorshipScore: sponsorship,
+          completedResponses: scopedCompleted.length,
         };
-      })
-    );
+      });
+
+      return {
+        managerId: manager.id,
+        managerName: manager.displayName || manager.email,
+        managerEmail: manager.email,
+        directReportInvitedCount: inviteRows.filter(
+          (r) => r.survey_role === 'staff' && r.manager_invite_id === manager.id
+        ).length,
+        directReportCompletedCount: completedRows.filter(
+          (row) => row.role === 'employee' && row.manager_invite_id === manager.id
+        ).length,
+        completedResponses: managerCompletedRows.length,
+        adoptionScore: managerAdoption,
+        sponsorshipScore: managerSponsorship,
+        quadrant: managerQuadrant,
+        managerLoadBand: loadBand,
+        trend,
+      };
+    });
 
     const adoptionDelta = trendRows.length >= 2 ? scoreDelta(trendRows[0].adoptionScore, trendRows[1].adoptionScore) : null;
     const sponsorshipDelta = trendRows.length >= 2 ? scoreDelta(trendRows[0].sponsorshipScore, trendRows[1].sponsorshipScore) : null;
@@ -648,6 +763,12 @@ export function registerPlatformOrgRoutes(router) {
       managerLoad,
       dimensions,
       trend: trendRows,
+      managers: managerOptions,
+      managerFilter: {
+        selectedManagerIds,
+        includeManagerSelf,
+      },
+      byManager,
       alerts,
       narrative: analytics.narrative,
     });
@@ -670,30 +791,89 @@ export function registerPlatformOrgRoutes(router) {
     if (recipients.length > 2000) {
       return res.status(400).json({ error: 'Too many rows at once (max 2000)' });
     }
-    let upserted = 0;
-    const errors = [];
-    for (let i = 0; i < recipients.length; i++) {
-      const r = recipients[i] || {};
-      const rawRole = r.role ?? r.surveyRole;
-      const surveyRole = normalizeSurveyRoleFromImport(rawRole);
-      if (rawRole != null && String(rawRole).trim() !== '' && surveyRole === null) {
-        errors.push({ index: i, email: r.email, error: 'invalid_role' });
-        continue;
-      }
-      const { row, error } = await PulseLinkInvite.upsertInviteRow({
+    const existingInvites = await PulseLinkInvite.listInviteRowsForOrg(req.params.id);
+    const invitesById = new Map(existingInvites.map((row) => [row.id, row]));
+    const normalizedRows = normalizeInviteImportRecipients(recipients);
+    const prevalidation = validateInviteImportRows(normalizedRows, invitesById);
+    const errors = [...prevalidation.errors];
+    const invalidIndices = new Set(prevalidation.invalidIndices);
+    const managerRefToRow = prevalidation.managerRefToRow;
+
+    const upsertedRows = [];
+    for (const row of normalizedRows) {
+      if (invalidIndices.has(row.index)) continue;
+      const { row: upsertedRow, error } = await PulseLinkInvite.upsertInviteRow({
         organizationId: req.params.id,
-        displayName: r.name ?? r.displayName ?? '',
-        email: r.email,
-        surveyRole: surveyRole || 'staff',
+        displayName: row.displayName,
+        email: row.email,
+        surveyRole: row.surveyRole,
+        managerInviteId: null,
       });
-      if (error || !row) {
-        errors.push({ index: i, email: r.email, error: error || 'invalid' });
+      if (error || !upsertedRow) {
+        errors.push({ index: row.index, email: row.email, error: error || 'invalid' });
+        invalidIndices.add(row.index);
         continue;
       }
-      upserted += 1;
+      upsertedRows.push({ source: row, invite: upsertedRow });
+      invitesById.set(upsertedRow.id, upsertedRow);
+    }
+
+    const managerRefToInviteId = new Map();
+    for (const item of upsertedRows) {
+      if (item.source.surveyRole === 'manager' && item.source.managerRef) {
+        managerRefToInviteId.set(item.source.managerRef, item.invite.id);
+      }
+    }
+
+    for (const item of upsertedRows) {
+      const { source, invite } = item;
+      if (source.surveyRole !== 'staff') {
+        await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, null);
+        continue;
+      }
+      let resolvedManagerId = null;
+      if (source.managerInviteId) {
+        resolvedManagerId = source.managerInviteId;
+      } else if (source.managerRef) {
+        resolvedManagerId = managerRefToInviteId.get(source.managerRef) || null;
+      }
+      if (!resolvedManagerId) {
+        errors.push({
+          index: source.index,
+          email: source.email,
+          error: 'manager_not_found',
+        });
+        continue;
+      }
+      if (resolvedManagerId === invite.id) {
+        errors.push({
+          index: source.index,
+          email: source.email,
+          error: 'self_manager_not_allowed',
+        });
+        continue;
+      }
+      const resolvedManagerRow = invitesById.get(resolvedManagerId)
+        || (await PulseLinkInvite.getInviteInOrg(resolvedManagerId, req.params.id));
+      if (!resolvedManagerRow || resolvedManagerRow.survey_role !== 'manager') {
+        errors.push({
+          index: source.index,
+          email: source.email,
+          error: 'invalid_manager_invite',
+        });
+        continue;
+      }
+      const updated = await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, resolvedManagerId);
+      if (!updated) {
+        errors.push({
+          index: source.index,
+          email: source.email,
+          error: 'manager_assignment_failed',
+        });
+      }
     }
     res.json({
-      upserted,
+      upserted: upsertedRows.length,
       errorCount: errors.length,
       errors: errors.slice(0, 50),
     });
