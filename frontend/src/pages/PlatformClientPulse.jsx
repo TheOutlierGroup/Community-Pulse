@@ -59,7 +59,7 @@ const QUADRANT_ORDER = [
 ];
 
 const ADOPTION_DIMENSIONS = ['1A', '1B', '1C', '1D'];
-const PULSE_DASHBOARD_RETRY_DELAYS_MS = [300, 900];
+const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 
 const MANAGER_LOAD_NOTES = {
   Sustainable: 'Manager has capacity. Ready to lead change actively.',
@@ -95,6 +95,32 @@ function shouldRetryPulseDashboardRequest(err) {
   return status >= 500;
 }
 
+function parseRetryDelayMs(err, fallbackMs) {
+  const headers = err?.response?.headers || {};
+  const retryAfterRaw = headers['retry-after'];
+  if (retryAfterRaw != null) {
+    const asNumber = Number.parseFloat(String(retryAfterRaw).trim());
+    if (Number.isFinite(asNumber) && asNumber >= 0) {
+      return Math.round(asNumber * 1000);
+    }
+    const asDateMs = Date.parse(String(retryAfterRaw));
+    if (Number.isFinite(asDateMs)) {
+      const delta = Math.max(0, asDateMs - Date.now());
+      if (delta > 0) return delta;
+    }
+  }
+
+  const rateLimitResetRaw = headers['ratelimit-reset'];
+  if (rateLimitResetRaw != null) {
+    const asNumber = Number.parseFloat(String(rateLimitResetRaw).trim());
+    if (Number.isFinite(asNumber) && asNumber >= 0) {
+      return Math.round(asNumber * 1000);
+    }
+  }
+
+  return fallbackMs;
+}
+
 function pulseDashboardErrorText(err, attemptCount = 1) {
   const status = err?.response?.status;
   const apiMessage = typeof err?.response?.data?.error === 'string' ? err.response.data.error.trim() : '';
@@ -103,6 +129,11 @@ function pulseDashboardErrorText(err, attemptCount = 1) {
   }
   if (status === 404) {
     return 'Pulse dashboard is not available for this client yet.';
+  }
+  if (status === 429) {
+    return attemptCount > 1
+      ? 'Pulse dashboard is temporarily rate limited after multiple retries. Please wait a moment and refresh.'
+      : 'Pulse dashboard is temporarily rate limited. Please wait a moment and refresh.';
   }
   if (apiMessage) {
     return attemptCount > 1
@@ -125,7 +156,9 @@ async function fetchPulseDashboardWithRetry(orgId, params) {
       lastError = err;
       const canRetry = attempt < maxAttempts && shouldRetryPulseDashboardRequest(err);
       if (!canRetry) break;
-      await pause(PULSE_DASHBOARD_RETRY_DELAYS_MS[attempt - 1] || 1000);
+      const fallbackDelay = PULSE_DASHBOARD_RETRY_DELAYS_MS[attempt - 1] || 5000;
+      const delayMs = parseRetryDelayMs(err, fallbackDelay);
+      await pause(delayMs);
     }
   }
   const wrappedError = new Error('Pulse dashboard request failed');

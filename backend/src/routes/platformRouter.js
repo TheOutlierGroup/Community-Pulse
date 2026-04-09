@@ -9,12 +9,18 @@ import platformTaskRoutes from './platform/taskRoutes.js';
 const router = Router();
 const APP_SURFACE = String(process.env.APP_SURFACE || 'all').toLowerCase();
 const isPulseSurface = APP_SURFACE === 'pulse';
+const platformRateLimitMax = Number.parseInt(process.env.PLATFORM_RATE_LIMIT_MAX || '300', 10);
 
 const platformLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 120,
+  max: Number.isFinite(platformRateLimitMax) && platformRateLimitMax > 0 ? platformRateLimitMax : 300,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    const userId = req.user?.id;
+    if (userId) return `user:${userId}`;
+    return req.ip || 'unknown';
+  },
 });
 
 router.use(requireAuth, requirePlatformAdmin, platformLimiter);
