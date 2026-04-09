@@ -54,6 +54,14 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
 
   async function openPulseTabForPlatformClient() {
     if (!platformClientOrgId || pulseLaunching) return;
+    const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      setPulseLaunchError('Popup blocked. Please allow popups for this site.');
+      return;
+    }
+    popup.document.title = 'Opening Pulse...';
+    popup.document.body.innerHTML = '<p style="font-family:system-ui;padding:16px;">Opening Pulse...</p>';
+
     setPulseLaunching(true);
     setPulseLaunchError('');
     try {
@@ -70,12 +78,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         }
       }
 
-      const opened = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!opened) {
-        // Browsers may block async popup opens; fallback to same-tab navigation.
-        window.location.assign(url);
-      }
+      popup.location.replace(url);
     } catch (_e) {
+      popup.close();
       setPulseLaunchError('Could not open Pulse right now.');
     } finally {
       setPulseLaunching(false);
@@ -101,7 +106,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
             <>
               {isPlatformPulseRoute ? (
                 <>
-                  <div className="sidebar-nav-link" aria-label="Client name">
+                  <div className="sidebar-nav-label" aria-label="Client name">
                     <Building2 size={20} strokeWidth={1.75} aria-hidden />
                     {pulseClientName || 'Client'}
                   </div>

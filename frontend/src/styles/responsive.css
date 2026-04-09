@@ -452,6 +452,20 @@ a:hover {
   margin-top: 0.35rem;
 }
 
+.sidebar-nav-label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: transparent;
+  cursor: default;
+  user-select: text;
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding-top: 1.25rem;
@@ -4058,6 +4072,64 @@ input[type='range'] {
   gap: 0.6rem;
 }
 
+.pulse-manager-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.6rem;
+  border: 1px solid var(--pulse-border);
+  border-radius: 10px;
+  background: var(--pulse-surface);
+  min-width: 360px;
+}
+
+.pulse-manager-filter__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pulse-manager-filter__label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pulse-text-muted);
+}
+
+.pulse-manager-filter__meta {
+  font-size: 0.72rem;
+  color: var(--pulse-text-muted);
+}
+
+.pulse-manager-filter__select {
+  min-width: 340px;
+  min-height: 104px;
+  max-height: 140px;
+  border: 1px solid var(--pulse-border);
+  border-radius: 8px;
+  padding: 0.4rem;
+  background: var(--pulse-surface);
+  color: var(--pulse-text);
+  font: inherit;
+}
+
+.pulse-manager-filter__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pulse-manager-filter__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  color: var(--pulse-text-soft);
+}
+
 .pulse-platform-header__date {
   font-size: 0.8rem;
   color: var(--muted);
@@ -4830,6 +4902,21 @@ input[type='range'] {
   .pulse-platform-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .pulse-platform-header__right {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .pulse-manager-filter {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pulse-manager-filter__select {
+    min-width: 0;
+    width: 100%;
   }
 }
 

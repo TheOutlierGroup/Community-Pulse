@@ -208,51 +208,55 @@ export default function PlatformClientPulse() {
           <div className="pulse-platform-header__eyebrow">Client administration</div>
           <h1 className="pulse-platform-header__title">{pageTitle}</h1>
         </div>
-        <div className="pulse-platform-header__right" style={{ gap: '0.6rem', alignItems: 'center' }}>
-          <select
-            aria-label="Filter by managers"
-            multiple
-            value={selectedManagerIds}
-            onChange={(e) => {
-              const next = Array.from(e.target.selectedOptions).map((opt) => opt.value);
-              setSelectedManagerIds(next);
-            }}
-            style={{ minWidth: '260px', minHeight: '84px' }}
-          >
-            {managerOptions.map((manager) => (
-              <option key={manager.id} value={manager.id}>
-                {manager.displayName?.trim() || manager.email} ({manager.email})
-              </option>
-            ))}
-          </select>
-          <label
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              fontSize: '0.9rem',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={includeManagerSelf}
-              onChange={(e) => setIncludeManagerSelf(e.target.checked)}
-              disabled={selectedManagerIds.length === 0}
-            />
-            Include managers' own responses
-          </label>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => {
-              setSelectedManagerIds([]);
-              setIncludeManagerSelf(false);
-            }}
-            disabled={selectedManagerIds.length === 0 && !includeManagerSelf}
-          >
-            Clear manager filter
-          </button>
+        <div className="pulse-platform-header__right">
+          <section className="pulse-manager-filter" aria-label="Manager filter">
+            <div className="pulse-manager-filter__top">
+              <span className="pulse-manager-filter__label">Managers</span>
+              <span className="pulse-manager-filter__meta">
+                {selectedManagerIds.length
+                  ? `${selectedManagerIds.length} selected`
+                  : `${managerOptions.length} available`}
+              </span>
+            </div>
+            <select
+              className="pulse-manager-filter__select"
+              aria-label="Filter by managers"
+              multiple
+              value={selectedManagerIds}
+              onChange={(e) => {
+                const next = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                setSelectedManagerIds(next);
+              }}
+            >
+              {managerOptions.map((manager) => (
+                <option key={manager.id} value={manager.id}>
+                  {manager.displayName?.trim() || manager.email} ({manager.email})
+                </option>
+              ))}
+            </select>
+            <div className="pulse-manager-filter__actions">
+              <label className="pulse-manager-filter__toggle">
+                <input
+                  type="checkbox"
+                  checked={includeManagerSelf}
+                  onChange={(e) => setIncludeManagerSelf(e.target.checked)}
+                  disabled={selectedManagerIds.length === 0}
+                />
+                Include managers' own responses
+              </label>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setSelectedManagerIds([]);
+                  setIncludeManagerSelf(false);
+                }}
+                disabled={selectedManagerIds.length === 0 && !includeManagerSelf}
+              >
+                Clear manager filter
+              </button>
+            </div>
+          </section>
           <span className="pulse-platform-header__date">{todayLabel}</span>
           <button type="button" className="btn btn-ghost" onClick={loadDashboard} disabled={loading}>
             {loading ? 'Refreshing…' : 'Refresh'}
