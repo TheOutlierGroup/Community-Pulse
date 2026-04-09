@@ -34,7 +34,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const location = useLocation();
   const [pulseLaunching, setPulseLaunching] = useState(false);
   const [pulseLaunchError, setPulseLaunchError] = useState('');
-  const [pulseLaunchUrl, setPulseLaunchUrl] = useState('');
   const platformClientOrgId =
     user?.organizationKind === 'platform' && params.orgId ? params.orgId : null;
   const clientPulseEnabled = userHasService(user, CLIENT_SERVICE_PULSE);
@@ -47,6 +46,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       ? 'pulse-users'
       : (location.hash || '#organisation-dashboard').replace(/^#/, '')
     : '';
+  const pulseClientName = String(navContext?.clientOrganization?.name || '').trim();
 
   function pulseSectionLinkClass(sectionId) {
     return `sidebar-nav-link${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
@@ -54,10 +54,8 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
 
   async function openPulseTabForPlatformClient() {
     if (!platformClientOrgId || pulseLaunching) return;
-    const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
     setPulseLaunching(true);
     setPulseLaunchError('');
-    setPulseLaunchUrl('');
     try {
       const { data } = await api.post(`/api/platform/organizations/${platformClientOrgId}/pulse-handoff-link`);
       const url = String(data?.url || '');
@@ -72,14 +70,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         }
       }
 
-      if (popup) {
-        popup.location.replace(url);
-      } else {
-        setPulseLaunchUrl(url);
-        setPulseLaunchError('Popup blocked. Use the Open Pulse link below.');
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!opened) {
+        // Browsers may block async popup opens; fallback to same-tab navigation.
+        window.location.assign(url);
       }
     } catch (_e) {
-      if (popup) popup.close();
       setPulseLaunchError('Could not open Pulse right now.');
     } finally {
       setPulseLaunching(false);
@@ -105,10 +101,10 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
             <>
               {isPlatformPulseRoute ? (
                 <>
-                  <NavLink to={`/platform/clients/${platformClientOrgId}`} className={sidebarLinkClass} end>
-                    <ArrowLeft size={20} strokeWidth={1.75} aria-hidden />
-                    Back
-                  </NavLink>
+                  <div className="sidebar-nav-link" aria-label="Client name">
+                    <Building2 size={20} strokeWidth={1.75} aria-hidden />
+                    {pulseClientName || 'Client'}
+                  </div>
                   <div className="sidebar-nav-divider" aria-hidden />
                   <Link
                     to={`/platform/clients/${platformClientOrgId}/pulse#organisation-dashboard`}
@@ -188,17 +184,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     </button>
                   )}
                   {pulseLaunchError && <p className="muted">{pulseLaunchError}</p>}
-                  {pulseLaunchUrl && (
-                    <a
-                      className="sidebar-nav-link"
-                      href={pulseLaunchUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Activity size={20} strokeWidth={1.75} aria-hidden />
-                      Open Pulse
-                    </a>
-                  )}
                   <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
                     <CircleUser size={20} strokeWidth={1.75} aria-hidden />
                     Account
@@ -242,23 +227,25 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
             </NavLink>
           )}
         </nav>
-        <div className="sidebar-footer">
-          <NavLink to="/settings" className={sidebarLinkClass}>
-            <Settings size={20} strokeWidth={1.75} aria-hidden />
-            Settings
-          </NavLink>
-          <button
-            type="button"
-            className="sidebar-nav-link sidebar-nav-link--button sidebar-nav-link--logout"
-            onClick={() => {
-              onLogout();
-              navigate('/');
-            }}
-          >
-            <LogOut size={20} strokeWidth={1.75} aria-hidden />
-            Log out
-          </button>
-        </div>
+        {!isPlatformPulseRoute && (
+          <div className="sidebar-footer">
+            <NavLink to="/settings" className={sidebarLinkClass}>
+              <Settings size={20} strokeWidth={1.75} aria-hidden />
+              Settings
+            </NavLink>
+            <button
+              type="button"
+              className="sidebar-nav-link sidebar-nav-link--button sidebar-nav-link--logout"
+              onClick={() => {
+                onLogout();
+                navigate('/');
+              }}
+            >
+              <LogOut size={20} strokeWidth={1.75} aria-hidden />
+              Log out
+            </button>
+          </div>
+        )}
       </div>
     );
   }
