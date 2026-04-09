@@ -34,6 +34,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const location = useLocation();
   const [pulseLaunching, setPulseLaunching] = useState(false);
   const [pulseLaunchError, setPulseLaunchError] = useState('');
+  const [pulseLaunchUrl, setPulseLaunchUrl] = useState('');
   const platformClientOrgId =
     user?.organizationKind === 'platform' && params.orgId ? params.orgId : null;
   const clientPulseEnabled = userHasService(user, CLIENT_SERVICE_PULSE);
@@ -54,12 +55,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   async function openPulseTabForPlatformClient() {
     if (!platformClientOrgId || pulseLaunching) return;
     const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
-    if (!popup) {
-      setPulseLaunchError('Popup blocked. Please allow popups for this site.');
-      return;
-    }
     setPulseLaunching(true);
     setPulseLaunchError('');
+    setPulseLaunchUrl('');
     try {
       const { data } = await api.post(`/api/platform/organizations/${platformClientOrgId}/pulse-handoff-link`);
       const url = String(data?.url || '');
@@ -74,9 +72,14 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         }
       }
 
-      popup.location.replace(url);
+      if (popup) {
+        popup.location.replace(url);
+      } else {
+        setPulseLaunchUrl(url);
+        setPulseLaunchError('Popup blocked. Use the Open Pulse link below.');
+      }
     } catch (_e) {
-      popup.close();
+      if (popup) popup.close();
       setPulseLaunchError('Could not open Pulse right now.');
     } finally {
       setPulseLaunching(false);
@@ -185,6 +188,17 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     </button>
                   )}
                   {pulseLaunchError && <p className="muted">{pulseLaunchError}</p>}
+                  {pulseLaunchUrl && (
+                    <a
+                      className="sidebar-nav-link"
+                      href={pulseLaunchUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Activity size={20} strokeWidth={1.75} aria-hidden />
+                      Open Pulse
+                    </a>
+                  )}
                   <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
                     <CircleUser size={20} strokeWidth={1.75} aria-hidden />
                     Account

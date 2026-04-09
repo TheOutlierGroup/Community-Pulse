@@ -108,6 +108,12 @@ app.use(
   })
 );
 
+function resolveCrmLoginUrl(req) {
+  const configured = String(process.env.CRM_APP_URL || process.env.APP_URL || '').trim();
+  if (configured) return `${configured.replace(/\/$/, '')}/login`;
+  return `${req.protocol}://${req.get('host')}/login`;
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'pulse-api', surface: APP_SURFACE });
 });
@@ -140,6 +146,40 @@ if (!isCrmSurface) {
 }
 
 const frontendDist = path.join(__dirname, '../../frontend/dist');
+if (isPulseSurface) {
+  app.get(['/', '/login'], (req, res) => {
+    const loginUrl = resolveCrmLoginUrl(req);
+    res
+      .status(200)
+      .type('html')
+      .send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pulse</title>
+    <style>
+      body { font-family: Inter, system-ui, -apple-system, sans-serif; margin: 0; background: #f7f8fb; color: #111827; }
+      .wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+      .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 28px; max-width: 460px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+      h1 { margin: 0 0 8px; font-size: 1.5rem; }
+      p { margin: 0 0 16px; color: #4b5563; line-height: 1.45; }
+      a { display: inline-block; text-decoration: none; background: #2563eb; color: #fff; padding: 10px 16px; border-radius: 8px; font-weight: 600; }
+      a:hover { background: #1d4ed8; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="card">
+        <h1>Pulse</h1>
+        <p>Pulse access is secured. Please log in via the CRM to continue.</p>
+        <a href="${loginUrl}">Log in to CRM</a>
+      </section>
+    </main>
+  </body>
+</html>`);
+  });
+}
 if (fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
   app.get('*', (req, res, next) => {
