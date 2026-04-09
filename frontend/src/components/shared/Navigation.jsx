@@ -54,7 +54,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
 
   async function openPulseTabForPlatformClient() {
     if (!platformClientOrgId || pulseLaunching) return;
-    const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
+    const popup = window.open('', '_blank');
     if (!popup) {
       setPulseLaunchError('Popup blocked. Please allow popups for this site.');
       return;
@@ -78,6 +78,8 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         }
       }
 
+      // Ensure the opened tab does not retain access back to this window.
+      popup.opener = null;
       popup.location.replace(url);
     } catch (_e) {
       popup.close();
