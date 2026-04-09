@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useOutletContext } from 'react-router-dom';
+import { RefreshCw } from 'lucide-react';
 import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
 
@@ -81,14 +82,19 @@ function quadrantPillClass(name) {
 }
 
 export default function PlatformClientPulse() {
-  const { org, orgId } = useOutletContext();
+  const {
+    org,
+    orgId,
+    pulseSelectedManagerIds: selectedManagerIds,
+    setPulseSelectedManagerIds,
+    pulseIncludeManagerSelf: includeManagerSelf,
+    setPulseManagerOptions,
+  } = useOutletContext();
   const location = useLocation();
   const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('employee');
-  const [selectedManagerIds, setSelectedManagerIds] = useState([]);
-  const [includeManagerSelf, setIncludeManagerSelf] = useState(false);
 
   const enabledServices = normalizeServices(org.settings);
   const pulseEnabled = enabledServices.includes('pulse');
@@ -104,6 +110,11 @@ export default function PlatformClientPulse() {
       .get(`/api/platform/organizations/${orgId}/pulse-dashboard`, { params })
       .then(({ data }) => {
         setDashboard(data || null);
+        setPulseManagerOptions(data?.managers || []);
+        if (typeof setPulseSelectedManagerIds === 'function') {
+          const availableIds = new Set((data?.managers || []).map((m) => m.id));
+          setPulseSelectedManagerIds((current) => current.filter((id) => availableIds.has(id)));
+        }
         setError('');
       })
       .catch(() => {
@@ -111,7 +122,13 @@ export default function PlatformClientPulse() {
         setDashboard(null);
       })
       .finally(() => setLoading(false));
-  }, [orgId, selectedManagerIds, includeManagerSelf]);
+  }, [
+    orgId,
+    selectedManagerIds,
+    includeManagerSelf,
+    setPulseManagerOptions,
+    setPulseSelectedManagerIds,
+  ]);
 
   useEffect(() => {
     if (!pulseEnabled) return;
@@ -134,7 +151,6 @@ export default function PlatformClientPulse() {
   }, [pulseFocusedSection]);
 
   const kpis = dashboard?.kpis || {};
-  const managerOptions = dashboard?.managers || [];
   const trendBars = useMemo(
     () => [...(dashboard?.trend || []).slice(0, 4)].reverse(),
     [dashboard?.trend]
@@ -208,58 +224,22 @@ export default function PlatformClientPulse() {
           <div className="pulse-platform-header__eyebrow">Client administration</div>
           <h1 className="pulse-platform-header__title">{pageTitle}</h1>
         </div>
-        <div className="pulse-platform-header__right">
-          <section className="pulse-manager-filter" aria-label="Manager filter">
-            <div className="pulse-manager-filter__top">
-              <span className="pulse-manager-filter__label">Managers</span>
-              <span className="pulse-manager-filter__meta">
-                {selectedManagerIds.length
-                  ? `${selectedManagerIds.length} selected`
-                  : `${managerOptions.length} available`}
-              </span>
-            </div>
-            <select
-              className="pulse-manager-filter__select"
-              aria-label="Filter by managers"
-              multiple
-              value={selectedManagerIds}
-              onChange={(e) => {
-                const next = Array.from(e.target.selectedOptions).map((opt) => opt.value);
-                setSelectedManagerIds(next);
-              }}
-            >
-              {managerOptions.map((manager) => (
-                <option key={manager.id} value={manager.id}>
-                  {manager.displayName?.trim() || manager.email} ({manager.email})
-                </option>
-              ))}
-            </select>
-            <div className="pulse-manager-filter__actions">
-              <label className="pulse-manager-filter__toggle">
-                <input
-                  type="checkbox"
-                  checked={includeManagerSelf}
-                  onChange={(e) => setIncludeManagerSelf(e.target.checked)}
-                  disabled={selectedManagerIds.length === 0}
-                />
-                Include managers' own responses
-              </label>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => {
-                  setSelectedManagerIds([]);
-                  setIncludeManagerSelf(false);
-                }}
-                disabled={selectedManagerIds.length === 0 && !includeManagerSelf}
-              >
-                Clear manager filter
-              </button>
-            </div>
-          </section>
+        <div className="pulse-platform-header__right" style={{ gap: '0.6rem', alignItems: 'center' }}>
           <span className="pulse-platform-header__date">{todayLabel}</span>
-          <button type="button" className="btn btn-ghost" onClick={loadDashboard} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
+          <button
+            type="button"
+            className="btn btn-ghost pulse-refresh-btn"
+            onClick={loadDashboard}
+            disabled={loading}
+            aria-label={loading ? 'Refreshing dashboard' : 'Refresh dashboard'}
+            title={loading ? 'Refreshing dashboard' : 'Refresh dashboard'}
+          >
+            <RefreshCw
+              size={16}
+              strokeWidth={1.85}
+              aria-hidden
+              className={loading ? 'pulse-refresh-btn__icon pulse-refresh-btn__icon--spinning' : 'pulse-refresh-btn__icon'}
+            />
           </button>
         </div>
       </div>

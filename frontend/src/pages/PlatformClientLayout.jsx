@@ -21,6 +21,9 @@ export default function PlatformClientLayout() {
   const [clientLogoUrl, setClientLogoUrl] = useState(null);
   const [logoRev, setLogoRev] = useState(0);
   const logoBlobRef = useRef(null);
+  const [pulseSelectedManagerIds, setPulseSelectedManagerIds] = useState([]);
+  const [pulseIncludeManagerSelf, setPulseIncludeManagerSelf] = useState(false);
+  const [pulseManagerOptions, setPulseManagerOptions] = useState([]);
 
   const refreshOrg = useCallback(async () => {
     const { data } = await api.get(`/api/platform/organizations/${orgId}`);
@@ -53,6 +56,12 @@ export default function PlatformClientLayout() {
       cancelled = true;
     };
   }, [ok, orgId, refreshOrg]);
+
+  useEffect(() => {
+    setPulseSelectedManagerIds([]);
+    setPulseIncludeManagerSelf(false);
+    setPulseManagerOptions([]);
+  }, [orgId]);
 
   useEffect(() => {
     if (!org?.company_logo_filename || !orgId) {
@@ -113,7 +122,22 @@ export default function PlatformClientLayout() {
     };
   }, []);
 
-  const navContext = useMemo(() => ({ clientOrganization: org }), [org]);
+  const navContext = useMemo(
+    () => ({
+      clientOrganization: org,
+      pulseSelectedManagerIds,
+      setPulseSelectedManagerIds,
+      pulseIncludeManagerSelf,
+      setPulseIncludeManagerSelf,
+      pulseManagerOptions,
+    }),
+    [
+      org,
+      pulseSelectedManagerIds,
+      pulseIncludeManagerSelf,
+      pulseManagerOptions,
+    ]
+  );
 
   if (loading || !ok) return null;
 
@@ -143,7 +167,20 @@ export default function PlatformClientLayout() {
 
   return (
     <Layout user={user} onLogout={logout} navContext={navContext}>
-      <Outlet context={{ org, orgId, refreshOrg, clientLogoUrl, bumpClientLogo }} />
+      <Outlet
+        context={{
+          org,
+          orgId,
+          refreshOrg,
+          clientLogoUrl,
+          bumpClientLogo,
+          pulseSelectedManagerIds,
+          setPulseSelectedManagerIds,
+          pulseIncludeManagerSelf,
+          setPulseIncludeManagerSelf,
+          setPulseManagerOptions,
+        }}
+      />
     </Layout>
   );
 }

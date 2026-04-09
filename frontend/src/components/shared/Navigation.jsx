@@ -47,6 +47,15 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       : (location.hash || '#organisation-dashboard').replace(/^#/, '')
     : '';
   const pulseClientName = String(navContext?.clientOrganization?.name || '').trim();
+  const pulseSelectedManagerIds = Array.isArray(navContext?.pulseSelectedManagerIds)
+    ? navContext.pulseSelectedManagerIds
+    : [];
+  const setPulseSelectedManagerIds = navContext?.setPulseSelectedManagerIds;
+  const pulseIncludeManagerSelf = Boolean(navContext?.pulseIncludeManagerSelf);
+  const setPulseIncludeManagerSelf = navContext?.setPulseIncludeManagerSelf;
+  const pulseManagerOptions = Array.isArray(navContext?.pulseManagerOptions)
+    ? navContext.pulseManagerOptions
+    : [];
 
   function pulseSectionLinkClass(sectionId) {
     return `sidebar-nav-link${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
@@ -155,6 +164,61 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <Gauge size={20} strokeWidth={1.75} aria-hidden />
                     Manager Load Report
                   </Link>
+                  <div className="sidebar-nav-divider" aria-hidden />
+                  <section className="sidebar-pulse-filter" aria-label="Manager filter">
+                    <div className="sidebar-pulse-filter__head">
+                      <span className="sidebar-pulse-filter__title">Managers</span>
+                      <span className="sidebar-pulse-filter__meta">
+                        {pulseSelectedManagerIds.length
+                          ? `${pulseSelectedManagerIds.length} selected`
+                          : `${pulseManagerOptions.length} available`}
+                      </span>
+                    </div>
+                    <select
+                      className="sidebar-pulse-filter__select"
+                      aria-label="Filter by managers"
+                      multiple
+                      value={pulseSelectedManagerIds}
+                      onChange={(e) => {
+                        if (typeof setPulseSelectedManagerIds !== 'function') return;
+                        const next = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                        setPulseSelectedManagerIds(next);
+                      }}
+                    >
+                      {pulseManagerOptions.map((manager) => (
+                        <option key={manager.id} value={manager.id}>
+                          {manager.displayName?.trim() || manager.email || 'Unnamed manager'}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="sidebar-pulse-filter__toggle">
+                      <input
+                        type="checkbox"
+                        checked={pulseIncludeManagerSelf}
+                        onChange={(e) => {
+                          if (typeof setPulseIncludeManagerSelf !== 'function') return;
+                          setPulseIncludeManagerSelf(e.target.checked);
+                        }}
+                        disabled={pulseSelectedManagerIds.length === 0}
+                      />
+                      Include manager self
+                    </label>
+                    <button
+                      type="button"
+                      className="sidebar-nav-link sidebar-nav-link--button"
+                      onClick={() => {
+                        if (typeof setPulseSelectedManagerIds === 'function') {
+                          setPulseSelectedManagerIds([]);
+                        }
+                        if (typeof setPulseIncludeManagerSelf === 'function') {
+                          setPulseIncludeManagerSelf(false);
+                        }
+                      }}
+                      disabled={pulseSelectedManagerIds.length === 0 && !pulseIncludeManagerSelf}
+                    >
+                      Clear manager filter
+                    </button>
+                  </section>
                 </>
               ) : (
                 <>
