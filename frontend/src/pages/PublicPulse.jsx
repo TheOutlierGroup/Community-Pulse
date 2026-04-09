@@ -3,21 +3,9 @@ import { useParams } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import Step1WorkFeel from '../components/employee/Step1WorkFeel.jsx';
-import Step2Priorities from '../components/employee/Step2Priorities.jsx';
-import Step3Energy from '../components/employee/Step3Energy.jsx';
-import Step4Context from '../components/employee/Step4Context.jsx';
+import SurveyQuestionStep from '../components/employee/SurveyQuestionStep.jsx';
 import Step5Reflection from '../components/employee/Step5Reflection.jsx';
 import outlierLogo from '../images/outlier-logo.png';
-
-const DEFAULT_ORDER = [
-  'alignment',
-  'ownership',
-  'collaboration',
-  'pace',
-  'support',
-  'customer',
-];
 
 const EXPIRED_OR_INVALID_LINK_RE = /invalid or expired link/i;
 
@@ -28,23 +16,49 @@ function shouldSkipWelcomeIntro(r) {
   if (!r) return true;
   if (r.completedAt) return true;
   if ((r.currentStep || 1) > 1) return true;
-  const ratings = r.step1?.ratings;
-  if (ratings && typeof ratings === 'object' && Object.keys(ratings).length > 0) return true;
+  const answers = {
+    ...(r.step1?.answers || {}),
+    ...(r.step2?.answers || {}),
+    ...(r.step3?.answers || {}),
+    ...(r.step4?.answers || {}),
+  };
+  if (Object.keys(answers).length > 0) return true;
   return false;
+}
+
+function buildStepPayload(questions, answers) {
+  const byStep = [{}, {}, {}, {}];
+  questions.forEach((question, idx) => {
+    const answer = answers[question.id];
+    if (!answer) return;
+    const stepIdx = Math.floor(idx / 4);
+    byStep[stepIdx][question.id] = answer;
+  });
+  return {
+    step1: { answers: byStep[0] },
+    step2: { answers: byStep[1] },
+    step3: { answers: byStep[2] },
+    step4: { answers: byStep[3] },
+  };
+}
+
+function extractAnswers(response) {
+  return {
+    ...(response?.step1?.answers || {}),
+    ...(response?.step2?.answers || {}),
+    ...(response?.step3?.answers || {}),
+    ...(response?.step4?.answers || {}),
+  };
 }
 
 export default function PublicPulse() {
   const { token } = useParams();
   const { logout } = useAuth();
   const linkParams = useMemo(() => ({ params: { token: token || '' } }), [token]);
-  const [themes, setThemes] = useState([]);
+  const [questions, setQuestions] = useState([]);
   const [session, setSession] = useState(null);
   const [step, setStep] = useState(1);
-  const [ratings, setRatings] = useState({});
-  const [order, setOrder] = useState(DEFAULT_ORDER);
-  const [energy, setEnergy] = useState({});
-  const [nps, setNps] = useState(7);
-  const [comment, setComment] = useState('');
+  const [answers, setAnswers] = useState({});
   const [reflection, setReflection] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -60,7 +74,7 @@ export default function PublicPulse() {
         api.get('/api/pulse-link/themes', linkParams),
         api.get('/api/pulse-link/active-session', linkParams),
       ]);
-      setThemes(tRes.data.themes || []);
+      setQuestions(tRes.data.questions || []);
       setSession(sRes.data.session);
       setSurveyAudience(sRes.data.surveyAudience ?? null);
       if (!sRes.data.session) {
@@ -71,11 +85,7 @@ export default function PublicPulse() {
       const rRes = await api.get('/api/pulse-link/response', linkParams);
       const r = rRes.data.response;
       setShowWelcomeIntro(!shouldSkipWelcomeIntro(r));
-      if (r.step1?.ratings) setRatings(r.step1.ratings);
-      if (r.step2?.priorityOrder?.length) setOrder(r.step2.priorityOrder);
-      if (r.step3?.energy) setEnergy(r.step3.energy);
-      if (typeof r.step4?.nps === 'number') setNps(r.step4.nps);
-      if (r.step4?.comment) setComment(r.step4.comment);
+      setAnswers(extractAnswers(r));
       if (r.completedAt) {
         setStep(5);
         if (r.reflection) setReflection(r.reflection);
@@ -93,17 +103,19 @@ export default function PublicPulse() {
 
   async function saveStep(nextStep) {
     if (!session || !token) return;
+    const stepQuestions = questions.slice((step - 1) * 4, step * 4);
+    const missing = stepQuestions.some((question) => !answers[question.id]);
+    if (missing) {
+      setError('Please answer all questions on this page before continuing.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
+      const payload = buildStepPayload(questions, answers);
       await api.put(
         `/api/pulse-link/response/step/${nextStep}`,
-        {
-          step1: { ratings },
-          step2: { priorityOrder: order },
-          step3: { energy },
-          step4: { nps, comment },
-        },
+        payload,
         linkParams
       );
       setStep(nextStep);
@@ -116,17 +128,18 @@ export default function PublicPulse() {
 
   async function complete() {
     if (!token) return;
+    const missing = questions.some((question) => !answers[question.id]);
+    if (missing) {
+      setError('Please answer all 16 questions before submitting.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
+      const payload = buildStepPayload(questions, answers);
       const { data } = await api.post(
         '/api/pulse-link/response/complete',
-        {
-          step1: { ratings },
-          step2: { priorityOrder: order },
-          step3: { energy },
-          step4: { nps, comment },
-        },
+        payload,
         linkParams
       );
       setReflection(data.reflection);
@@ -263,15 +276,14 @@ export default function PublicPulse() {
               </p>
             ) : null}
             {error && <p className="error">{error}</p>}
-            {step === 1 && (
-              <Step1WorkFeel themes={themes} ratings={ratings} onChange={setRatings} />
-            )}
-            {step === 2 && (
-              <Step2Priorities themes={themes} order={order} onReorder={setOrder} />
-            )}
-            {step === 3 && <Step3Energy themes={themes} energy={energy} onChange={setEnergy} />}
-            {step === 4 && (
-              <Step4Context nps={nps} comment={comment} onNps={setNps} onComment={setComment} />
+            {step >= 1 && step <= 4 && (
+              <SurveyQuestionStep
+                title={`${surveyAudience === 'manager' ? 'Manager' : 'Staff'} survey · Section ${step} of 4`}
+                subtitle="Rate each statement using the 1-5 scale."
+                questions={questions.slice((step - 1) * 4, step * 4)}
+                answers={answers}
+                onAnswer={(id, value) => setAnswers((current) => ({ ...current, [id]: value }))}
+              />
             )}
             {step === 5 && <Step5Reflection reflection={reflection} />}
 

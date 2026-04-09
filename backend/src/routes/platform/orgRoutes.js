@@ -18,7 +18,7 @@ import {
   sendPlatformWelcomeEmail,
   sendPulseInviteEmail,
 } from '../../services/email.js';
-import { THEMES } from '../../services/pulseEngine.js';
+import { DIMENSIONS, scoreResponseFromSteps } from '../../services/pulseEngine.js';
 import {
   assertClientOrganizationPlatform,
   assertClientUserInOrg,
@@ -49,21 +49,15 @@ function ratio(numerator, denominator) {
   return numerator / denominator;
 }
 
-function avgThemeScore(valuesByTheme) {
-  const nums = Object.values(valuesByTheme).filter((v) => typeof v === 'number');
-  if (!nums.length) return null;
-  return nums.reduce((a, b) => a + b, 0) / nums.length;
-}
-
 function responseScoresOutOf40(row) {
-  const step1Ratings = row?.step1_data?.ratings || {};
-  const step3Energy = row?.step3_data?.energy || {};
-  const sponsorshipAvg = avgThemeScore(step1Ratings);
-  const adoptionAvg = avgThemeScore(step3Energy);
-  return {
-    adoption: adoptionAvg == null ? null : adoptionAvg * 8,
-    sponsorship: sponsorshipAvg == null ? null : sponsorshipAvg * 8,
-  };
+  const audience = row?.role === 'admin' ? 'manager' : 'staff';
+  return scoreResponseFromSteps(
+    row?.step1_data,
+    row?.step2_data,
+    row?.step3_data,
+    row?.step4_data,
+    audience
+  );
 }
 
 function quadrantLabel(adoption, sponsorship) {
@@ -78,13 +72,6 @@ function quadrantLabel(adoption, sponsorship) {
 function scoreDelta(current, previous) {
   if (current == null || previous == null) return null;
   return round1(current - previous);
-}
-
-function managerLoadBand(loadIndex) {
-  if (loadIndex <= 2) return 'Sustainable';
-  if (loadIndex <= 3) return 'Stretched';
-  if (loadIndex <= 4) return 'At Capacity';
-  return 'Overloaded';
 }
 
 async function listMergedResponsesForSession(sessionId) {
@@ -475,7 +462,7 @@ export function registerPlatformOrgRoutes(router) {
 
     const currentScored = completedRows
       .map((r) => responseScoresOutOf40(r))
-      .filter((s) => s.adoption != null && s.sponsorship != null);
+      .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
 
     const adoptionScore =
       currentScored.length > 0
@@ -504,7 +491,7 @@ export function registerPlatformOrgRoutes(router) {
       'Capable but Wary': 0,
     };
     for (const s of currentScored) {
-      const q = quadrantLabel(s.adoption, s.sponsorship);
+      const q = s.quadrantLabel || quadrantLabel(s.adoption, s.sponsorship);
       quadrantBuckets[q] += 1;
     }
     const quadrants = [
@@ -526,10 +513,9 @@ export function registerPlatformOrgRoutes(router) {
       Overloaded: 0,
     };
     for (const row of managerRows) {
-      const paceFriction = row?.step1_data?.ratings?.pace;
-      const paceEnergy = row?.step3_data?.energy?.pace;
-      const loadIndex = ((6 - (typeof paceFriction === 'number' ? paceFriction : 3)) + (6 - (typeof paceEnergy === 'number' ? paceEnergy : 3))) / 2;
-      managerLoadCounts[managerLoadBand(loadIndex)] += 1;
+      const scored = responseScoresOutOf40(row);
+      if (!scored.valid || !scored.managerLoadBand) continue;
+      managerLoadCounts[scored.managerLoadBand] += 1;
     }
     const managerLoad = {
       total: managerRows.length,
@@ -540,33 +526,45 @@ export function registerPlatformOrgRoutes(router) {
       })),
     };
 
-    const dimensions = THEMES.map((theme) => {
-      let frictionSum = 0;
-      let frictionCount = 0;
-      let energySum = 0;
-      let energyCount = 0;
-      let highEnergyCount = 0;
+    const completedScoredRows = completedRows
+      .map((row) => ({
+        role: row.role,
+        scored: responseScoresOutOf40(row),
+      }))
+      .filter((entry) => entry.scored.valid);
 
-      for (const row of completedRows) {
-        const friction = row?.step1_data?.ratings?.[theme.id];
-        const energy = row?.step3_data?.energy?.[theme.id];
-        if (typeof friction === 'number') {
-          frictionSum += friction;
-          frictionCount += 1;
-        }
-        if (typeof energy === 'number') {
-          energySum += energy;
-          energyCount += 1;
-          if (energy >= 4) highEnergyCount += 1;
-        }
-      }
+    const dimensions = DIMENSIONS.map((dimension) => {
+      const employeeValues = completedScoredRows
+        .filter((entry) => entry.role !== 'admin')
+        .map((entry) => entry.scored.dimensions.find((d) => d.id === dimension.id))
+        .filter(Boolean)
+        .map((d) => d.average);
+
+      const managerValues = completedScoredRows
+        .filter((entry) => entry.role === 'admin')
+        .map((entry) => entry.scored.dimensions.find((d) => d.id === dimension.id))
+        .filter(Boolean)
+        .map((d) => d.average);
+
+      const employeeHighCount = employeeValues.filter((value) => value >= 4).length;
+      const managerHighCount = managerValues.filter((value) => value >= 4).length;
 
       return {
-        id: theme.id,
-        label: theme.label,
-        frictionAvg: frictionCount > 0 ? round1(frictionSum / frictionCount) : null,
-        energyAvg: energyCount > 0 ? round1(energySum / energyCount) : null,
-        highEnergyPercent: energyCount > 0 ? round1((highEnergyCount / energyCount) * 100) : 0,
+        id: dimension.id,
+        label: dimension.employeeLabel,
+        managerLabel: dimension.managerLabel,
+        energyAvg:
+          employeeValues.length > 0
+            ? round1(employeeValues.reduce((sum, value) => sum + value, 0) / employeeValues.length)
+            : null,
+        frictionAvg:
+          managerValues.length > 0
+            ? round1(managerValues.reduce((sum, value) => sum + value, 0) / managerValues.length)
+            : null,
+        highEnergyPercent:
+          employeeValues.length > 0 ? round1((employeeHighCount / employeeValues.length) * 100) : 0,
+        managerHighPercent:
+          managerValues.length > 0 ? round1((managerHighCount / managerValues.length) * 100) : 0,
       };
     });
 
@@ -577,7 +575,7 @@ export function registerPlatformOrgRoutes(router) {
         const completed = rows.filter((r) => r.completed_at);
         const scored = completed
           .map((r) => responseScoresOutOf40(r))
-          .filter((s) => s.adoption != null && s.sponsorship != null);
+          .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
         return {
           sessionId: session.id,
           sessionName: session.name,

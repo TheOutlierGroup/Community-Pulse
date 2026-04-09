@@ -8,7 +8,7 @@ import { hashInviteToken } from '../security/inviteToken.js';
 import {
   computeContributionStyle,
   buildPersonalReflection,
-  THEMES,
+  getQuestionsForAudience,
 } from '../services/pulseEngine.js';
 import { organizationHasService, CLIENT_SERVICE_PULSE } from '../services/clientServices.js';
 
@@ -58,7 +58,9 @@ async function requirePulseLink(req, res, next) {
 }
 
 router.get('/themes', requirePulseLink, (_req, res) => {
-  res.json({ themes: THEMES });
+  const audience = audienceForInvite(_req.pulseLinkInvite);
+  const questions = getQuestionsForAudience(audience);
+  res.json({ questions });
 });
 
 function audienceForInvite(invite) {
@@ -125,7 +127,7 @@ router.get('/response', requirePulseLink, async (req, res) => {
               row.step2_data,
               row.step3_data,
               row.step4_data,
-              computeContributionStyle(row.step1_data, row.step2_data, row.step3_data)
+              computeContributionStyle(row.step1_data, row.step2_data, row.step3_data, row.step4_data, audience)
             )
           : null,
     },
@@ -195,7 +197,13 @@ router.post('/response/complete', requirePulseLink, async (req, res) => {
   const step3 = body.step3 ?? existing?.step3_data ?? {};
   const step4 = body.step4 ?? existing?.step4_data ?? {};
 
-  const { style } = computeContributionStyle(step1, step2, step3);
+  const contribution = computeContributionStyle(step1, step2, step3, step4, audience);
+  if (!contribution?.scored?.valid) {
+    return res.status(400).json({
+      error: 'All 16 questions are required before submission',
+      unanswered: contribution?.scored?.unanswered || [],
+    });
+  }
 
   await PulseLinkResponse.ensureResponseRow(req.pulseLinkInvite.id, session.id);
   const row = await PulseLinkResponse.completeResponse({
@@ -205,10 +213,9 @@ router.post('/response/complete', requirePulseLink, async (req, res) => {
     step2,
     step3,
     step4,
-    contributionStyle: style,
+    contributionStyle: contribution.style,
   });
 
-  const contribution = computeContributionStyle(step1, step2, step3);
   const reflection = buildPersonalReflection(step1, step2, step3, step4, contribution);
   res.json({ response: row, reflection });
 });

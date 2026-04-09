@@ -1,85 +1,74 @@
-import { THEMES } from './pulseEngine.js';
-
-function themeLabel(id) {
-  return THEMES.find((t) => t.id === id)?.label || id;
-}
+import { DIMENSIONS, scoreResponseFromSteps } from './pulseEngine.js';
 
 /**
  * Aggregate employee_responses rows for admin views.
  */
 export function aggregateSessionResponses(rows) {
   const total = rows.length;
-  const completed = rows.filter((r) => r.completed_at).length;
+  const completedRows = rows.filter((r) => r.completed_at);
+  const completed = completedRows.length;
   const participationRate = total > 0 ? completed / total : 0;
 
-  let npsSum = 0;
-  let npsCount = 0;
-  const frictionSum = Object.fromEntries(THEMES.map((t) => [t.id, 0]));
-  const energySum = Object.fromEntries(THEMES.map((t) => [t.id, 0]));
-  const priorityCounts = Object.fromEntries(THEMES.map((t) => [t.id, 0]));
+  const scoredRows = completedRows
+    .map((r) => {
+      const audience = r?.role === 'admin' || r?.survey_role === 'manager' ? 'manager' : 'staff';
+      return scoreResponseFromSteps(r.step1_data, r.step2_data, r.step3_data, r.step4_data, audience);
+    })
+    .filter((result) => result.valid);
+
+  const adoptionAvg =
+    scoredRows.length > 0
+      ? scoredRows.reduce((sum, result) => sum + result.adoption, 0) / scoredRows.length
+      : null;
+  const sponsorshipAvg =
+    scoredRows.length > 0
+      ? scoredRows.reduce((sum, result) => sum + result.sponsorship, 0) / scoredRows.length
+      : null;
+
   const comments = [];
-
-  for (const r of rows) {
-    if (!r.completed_at) continue;
-    const s1 = r.step1_data?.ratings || {};
-    const s2 = r.step2_data?.priorityOrder || [];
-    const s3 = r.step3_data?.energy || {};
-    const s4 = r.step4_data || {};
-
-    if (typeof s4.nps === 'number') {
-      npsSum += s4.nps;
-      npsCount += 1;
-    }
-    if (s4.comment) comments.push(s4.comment);
-
-    for (const t of THEMES) {
-      if (typeof s1[t.id] === 'number') frictionSum[t.id] += s1[t.id];
-      if (typeof s3[t.id] === 'number') energySum[t.id] += s3[t.id];
-    }
-    const top = s2[0];
-    if (top && frictionSum[top] !== undefined) priorityCounts[top] += 1;
+  for (const r of completedRows) {
+    const note = r?.step4_data?.comment;
+    if (typeof note === 'string' && note.trim()) comments.push(note.trim());
   }
 
-  const denom = Math.max(completed, 1);
-  const frictionAverages = THEMES.map((t) => ({
-    id: t.id,
-    label: t.label,
-    avg: frictionSum[t.id] / denom,
-  })).sort((a, b) => a.avg - b.avg);
+  const dimensionAverages = DIMENSIONS.map((dimension) => {
+    const values = scoredRows
+      .map((result) => result.dimensions.find((d) => d.id === dimension.id))
+      .filter(Boolean)
+      .map((d) => d.average);
+    const avg =
+      values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+    return {
+      id: dimension.id,
+      label: dimension.employeeLabel,
+      avg,
+    };
+  }).sort((a, b) => (a.avg ?? 0) - (b.avg ?? 0));
 
-  const energyAverages = THEMES.map((t) => ({
-    id: t.id,
-    label: t.label,
-    avg: energySum[t.id] / denom,
-  })).sort((a, b) => a.avg - b.avg);
-
-  const hotspots = frictionAverages.filter((x) => x.avg <= 2.4).map((x) => x.label);
-  const strengths = frictionAverages.filter((x) => x.avg >= 3.6).map((x) => x.label);
-
-  const heatmap = THEMES.map((t) => ({
-    theme: t.label,
-    friction: frictionSum[t.id] / denom,
-    energy: energySum[t.id] / denom,
-  }));
-
-  const sortedPriority = Object.entries(priorityCounts).sort((a, b) => b[1] - a[1]);
+  const frictionAverages = dimensionAverages;
+  const energyAverages = dimensionAverages;
+  const hotspots = frictionAverages.filter((x) => (x.avg ?? 0) < 2.5).map((x) => x.label);
+  const strengths = frictionAverages.filter((x) => (x.avg ?? 0) >= 4).map((x) => x.label);
+  const heatmap = DIMENSIONS.map((dimension) => {
+    const avg = dimensionAverages.find((entry) => entry.id === dimension.id)?.avg ?? null;
+    return {
+      theme: dimension.employeeLabel,
+      friction: avg,
+      energy: avg,
+    };
+  });
   const tensionPairs = [];
-  if (sortedPriority.length >= 2) {
-    const a = themeLabel(sortedPriority[0][0]);
-    const b = themeLabel(sortedPriority[1][0]);
-    tensionPairs.push(`${a} vs ${b}`);
-  }
 
   const styleMix = {};
-  for (const r of rows) {
-    if (!r.contribution_style) continue;
-    styleMix[r.contribution_style] = (styleMix[r.contribution_style] || 0) + 1;
+  for (const scored of scoredRows) {
+    styleMix[scored.quadrantLabel] = (styleMix[scored.quadrantLabel] || 0) + 1;
   }
 
   const narrative = buildNarrative({
     completed,
     participationRate,
-    avgNps: npsCount ? npsSum / npsCount : 0,
+    adoptionAvg,
+    sponsorshipAvg,
     hotspots,
     strengths,
     tensionPairs,
@@ -89,32 +78,42 @@ export function aggregateSessionResponses(rows) {
     totalResponses: total,
     completed,
     participationRate,
-    avgNps: npsCount ? npsSum / npsCount : null,
+    avgNps: null,
     frictionAverages,
     energyAverages,
     hotspots,
     strengths,
     heatmap,
     tensionPairs,
-    priorityCounts: sortedPriority.map(([id, c]) => ({ id, label: themeLabel(id), count: c })),
+    priorityCounts: [],
     styleMix,
     sampleComments: comments.slice(0, 12),
     narrative,
   };
 }
 
-function buildNarrative({ completed, participationRate, avgNps, hotspots, strengths, tensionPairs }) {
+function buildNarrative({
+  completed,
+  participationRate,
+  adoptionAvg,
+  sponsorshipAvg,
+  hotspots,
+  strengths,
+  tensionPairs,
+}) {
   const parts = [];
   parts.push(
     `Based on ${completed} completed diagnostic${completed === 1 ? '' : 's'}, participation is at ${Math.round(participationRate * 100)}% of invited respondents.`
   );
-  if (avgNps != null && !Number.isNaN(avgNps)) {
-    parts.push(`Average advocacy sits around ${avgNps.toFixed(1)} out of 10 — useful as a headline signal alongside qualitative comments.`);
+  if (adoptionAvg != null && sponsorshipAvg != null) {
+    parts.push(
+      `Average Adoption is ${adoptionAvg.toFixed(1)}/40 and Sponsorship is ${sponsorshipAvg.toFixed(1)}/40.`
+    );
   }
   if (hotspots.length) {
-    parts.push(`Friction clusters most around: ${hotspots.join(', ')}. These are good candidates for targeted leadership attention.`);
+    parts.push(`Lowest dimensions are: ${hotspots.join(', ')}. These are immediate priorities before rollout.`);
   } else {
-    parts.push('No extreme friction cluster yet — validate with managers where day-to-day work still feels uneven.');
+    parts.push('No critical dimension floor detected yet — validate with managers where confidence still looks uneven.');
   }
   if (strengths.length) {
     parts.push(`Protect what is working: ${strengths.join(', ')}.`);

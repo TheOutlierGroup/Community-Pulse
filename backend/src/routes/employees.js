@@ -5,7 +5,7 @@ import * as EmployeeResponse from '../models/EmployeeResponse.js';
 import {
   computeContributionStyle,
   buildPersonalReflection,
-  THEMES,
+  getQuestionsForAudience,
 } from '../services/pulseEngine.js';
 
 const router = Router();
@@ -16,7 +16,8 @@ router.get('/themes', (req, res) => {
   if (req.user.role !== 'employee') {
     return res.status(403).json({ error: 'Employees only' });
   }
-  res.json({ themes: THEMES });
+  const questions = getQuestionsForAudience('staff');
+  res.json({ questions });
 });
 
 router.get('/active-session', async (req, res) => {
@@ -60,7 +61,9 @@ router.get('/response', async (req, res) => {
               computeContributionStyle(
                 row.step1_data,
                 row.step2_data,
-                row.step3_data
+                row.step3_data,
+                row.step4_data,
+                'staff'
               )
             )
           : null,
@@ -130,7 +133,13 @@ router.post('/response/complete', async (req, res) => {
   const step3 = body.step3 ?? existing?.step3_data ?? {};
   const step4 = body.step4 ?? existing?.step4_data ?? {};
 
-  const { style } = computeContributionStyle(step1, step2, step3);
+  const contribution = computeContributionStyle(step1, step2, step3, step4, 'staff');
+  if (!contribution?.scored?.valid) {
+    return res.status(400).json({
+      error: 'All 16 questions are required before submission',
+      unanswered: contribution?.scored?.unanswered || [],
+    });
+  }
 
   await EmployeeResponse.ensureResponseRow(req.user.id, session.id);
   const row = await EmployeeResponse.completeResponse({
@@ -140,10 +149,9 @@ router.post('/response/complete', async (req, res) => {
     step2,
     step3,
     step4,
-    contributionStyle: style,
+    contributionStyle: contribution.style,
   });
 
-  const contribution = computeContributionStyle(step1, step2, step3);
   const reflection = buildPersonalReflection(
     step1,
     step2,

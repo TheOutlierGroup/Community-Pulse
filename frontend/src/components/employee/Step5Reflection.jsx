@@ -2,26 +2,41 @@ export default function Step5Reflection({ reflection }) {
   if (!reflection) {
     return <p className="muted">Complete the steps to see your reflection.</p>;
   }
+  if (reflection.incomplete) {
+    return <p className="error">{reflection.message || 'Please complete all questions first.'}</p>;
+  }
+
+  const isManager = reflection.audience === 'manager';
+
   return (
     <div className="step5-reflection">
-      <p className="step5-thank-you">Thank you for sharing your thoughts.</p>
+      <p className="step5-thank-you">Your survey has been submitted.</p>
       <p className="step5-thank-you-sub muted">
-        You’ve just put something real on the record — that kind of honesty helps everyone.
-      </p>
-      <p className="step5-intro">
-        Here’s a little mirror of what you told us: yours to keep, built from your answers — not a generic
-        scorecard.
+        Scores are calculated instantly from your 16 responses.
       </p>
       <div className="reflection-box">
-        <h2 style={{ marginTop: 0 }}>{reflection.contributionStyle}</h2>
+        <h2 style={{ marginTop: 0 }}>{reflection.quadrant}</h2>
         <p>
-          <strong>What helps you thrive:</strong> {reflection.thrive}
+          <strong>Adoption Readiness:</strong> {reflection.adoptionScore}/40
         </p>
         <p>
-          <strong>Where you may need more support:</strong> {reflection.needsSupport}
+          <strong>Sponsorship Credibility:</strong> {reflection.sponsorshipScore}/40
         </p>
-        <p className="muted">Advocacy signal: {reflection.advocacy}/10</p>
-        <p className="step5-closing">{reflection.closingNote}</p>
+        {isManager ? (
+          <p>
+            <strong>Manager Load:</strong> {reflection.managerLoadScore}/20 ({reflection.managerLoadBand})
+          </p>
+        ) : null}
+        <p className="step5-closing">{reflection.recommendation}</p>
+        {Array.isArray(reflection.dimensions) && reflection.dimensions.length ? (
+          <div style={{ marginTop: 12 }}>
+            {reflection.dimensions.map((dimension) => (
+              <p key={dimension.id} className="muted" style={{ margin: '4px 0' }}>
+                {dimension.id} · {dimension.label}: {dimension.score}/10
+              </p>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

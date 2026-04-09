@@ -57,7 +57,7 @@ const QUADRANT_ORDER = [
   'Capable but Wary',
 ];
 
-const ADOPTION_DIMENSIONS = ['alignment', 'ownership', 'collaboration', 'pace'];
+const ADOPTION_DIMENSIONS = ['1A', '1B', '1C', '1D'];
 
 const MANAGER_LOAD_NOTES = {
   Sustainable: 'Manager has capacity. Ready to lead change actively.',
@@ -235,10 +235,10 @@ export default function PlatformClientPulse() {
   }));
   const managerDimensionRows = dimensions.map((d) => ({
     id: d.id,
-    label: d.label,
+    label: d.managerLabel || d.label,
     family: ADOPTION_DIMENSIONS.includes(d.id) ? 'a' : 's',
     avg: d.frictionAvg,
-    highPercent: d.highEnergyPercent,
+    highPercent: d.managerHighPercent ?? d.highEnergyPercent,
   }));
   const activeDimensions = activeTab === 'employee' ? employeeDimensionRows : managerDimensionRows;
 
