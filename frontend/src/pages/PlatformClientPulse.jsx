@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useOutletContext } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import api from '../services/api.js';
@@ -59,6 +59,7 @@ const QUADRANT_ORDER = [
 ];
 
 const ADOPTION_DIMENSIONS = ['1A', '1B', '1C', '1D'];
+const PULSE_DASHBOARD_RETRY_DELAYS_MS = [300, 900];
 
 const MANAGER_LOAD_NOTES = {
   Sustainable: 'Manager has capacity. Ready to lead change actively.',
@@ -81,6 +82,58 @@ function quadrantPillClass(name) {
   return 'hr';
 }
 
+function pause(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function shouldRetryPulseDashboardRequest(err) {
+  const status = err?.response?.status;
+  if (status == null) return true;
+  if (status === 429) return true;
+  return status >= 500;
+}
+
+function pulseDashboardErrorText(err, attemptCount = 1) {
+  const status = err?.response?.status;
+  const apiMessage = typeof err?.response?.data?.error === 'string' ? err.response.data.error.trim() : '';
+  if (status === 401 || status === 403) {
+    return 'Your session has expired. Please sign in again.';
+  }
+  if (status === 404) {
+    return 'Pulse dashboard is not available for this client yet.';
+  }
+  if (apiMessage) {
+    return attemptCount > 1
+      ? `Could not load Pulse dashboard data after retrying. ${apiMessage}`
+      : `Could not load Pulse dashboard data. ${apiMessage}`;
+  }
+  return attemptCount > 1
+    ? 'Could not load Pulse dashboard data after retrying. Please try again.'
+    : 'Could not load Pulse dashboard data. Please try again.';
+}
+
+async function fetchPulseDashboardWithRetry(orgId, params) {
+  let lastError = null;
+  const maxAttempts = PULSE_DASHBOARD_RETRY_DELAYS_MS.length + 1;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await api.get(`/api/platform/organizations/${orgId}/pulse-dashboard`, { params });
+      return { response, attempts: attempt };
+    } catch (err) {
+      lastError = err;
+      const canRetry = attempt < maxAttempts && shouldRetryPulseDashboardRequest(err);
+      if (!canRetry) break;
+      await pause(PULSE_DASHBOARD_RETRY_DELAYS_MS[attempt - 1] || 1000);
+    }
+  }
+  const wrappedError = new Error('Pulse dashboard request failed');
+  wrappedError.originalError = lastError;
+  wrappedError.retryAttempts = Math.max(1, maxAttempts);
+  throw wrappedError;
+}
+
 export default function PlatformClientPulse() {
   const {
     org,
@@ -95,33 +148,51 @@ export default function PlatformClientPulse() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('employee');
+  const loadRequestIdRef = useRef(0);
 
   const enabledServices = normalizeServices(org.settings);
   const pulseEnabled = enabledServices.includes('pulse');
 
-  const loadDashboard = useCallback(() => {
+  const loadDashboard = useCallback(async () => {
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
     setLoading(true);
+    setError('');
     const params = {};
     if (selectedManagerIds.length > 0) {
       params.managerIds = selectedManagerIds.join(',');
       params.includeManagerSelf = includeManagerSelf ? 'true' : 'false';
     }
-    api
-      .get(`/api/platform/organizations/${orgId}/pulse-dashboard`, { params })
-      .then(({ data }) => {
-        setDashboard(data || null);
-        setPulseManagerOptions(data?.managers || []);
-        if (typeof setPulseSelectedManagerIds === 'function') {
-          const availableIds = new Set((data?.managers || []).map((m) => m.id));
-          setPulseSelectedManagerIds((current) => current.filter((id) => availableIds.has(id)));
-        }
+    try {
+      const { response, attempts } = await fetchPulseDashboardWithRetry(orgId, params);
+      if (requestId !== loadRequestIdRef.current) return;
+      const data = response?.data || null;
+      setDashboard(data);
+      setPulseManagerOptions(data?.managers || []);
+      if (typeof setPulseSelectedManagerIds === 'function') {
+        const availableIds = new Set((data?.managers || []).map((m) => m.id));
+        setPulseSelectedManagerIds((current) => {
+          const list = Array.isArray(current) ? current : [];
+          const filtered = list.filter((id) => availableIds.has(id));
+          const unchanged =
+            filtered.length === list.length && filtered.every((id, idx) => id === list[idx]);
+          return unchanged ? list : filtered;
+        });
+      }
+      if (attempts > 1) {
         setError('');
-      })
-      .catch(() => {
-        setError('Could not load Pulse dashboard data.');
-        setDashboard(null);
-      })
-      .finally(() => setLoading(false));
+      }
+    } catch (failure) {
+      if (requestId !== loadRequestIdRef.current) return;
+      const cause = failure?.originalError || failure;
+      const attempts = Number(failure?.retryAttempts || 1);
+      setError(pulseDashboardErrorText(cause, attempts));
+      // Keep the last successful dashboard visible if we have one.
+    } finally {
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false);
+      }
+    }
   }, [
     orgId,
     selectedManagerIds,

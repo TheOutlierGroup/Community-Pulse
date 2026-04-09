@@ -61,6 +61,17 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     return `sidebar-nav-link${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
   }
 
+  function togglePulseManager(managerId) {
+    if (typeof setPulseSelectedManagerIds !== 'function') return;
+    const id = String(managerId || '').trim();
+    if (!id) return;
+    setPulseSelectedManagerIds((current) => {
+      const list = Array.isArray(current) ? current : [];
+      if (list.includes(id)) return list.filter((value) => value !== id);
+      return [...list, id];
+    });
+  }
+
   async function openPulseTabForPlatformClient() {
     if (!platformClientOrgId || pulseLaunching) return;
     const popup = window.open('', '_blank');
@@ -174,23 +185,28 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                           : `${pulseManagerOptions.length} available`}
                       </span>
                     </div>
-                    <select
-                      className="sidebar-pulse-filter__select"
-                      aria-label="Filter by managers"
-                      multiple
-                      value={pulseSelectedManagerIds}
-                      onChange={(e) => {
-                        if (typeof setPulseSelectedManagerIds !== 'function') return;
-                        const next = Array.from(e.target.selectedOptions).map((opt) => opt.value);
-                        setPulseSelectedManagerIds(next);
-                      }}
-                    >
-                      {pulseManagerOptions.map((manager) => (
-                        <option key={manager.id} value={manager.id}>
-                          {manager.displayName?.trim() || manager.email || 'Unnamed manager'}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="sidebar-pulse-filter__list" role="group" aria-label="Filter by managers">
+                      {pulseManagerOptions.length === 0 ? (
+                        <p className="sidebar-pulse-filter__empty">No managers available yet</p>
+                      ) : (
+                        pulseManagerOptions.map((manager) => {
+                          const managerId = String(manager.id || '').trim();
+                          const selected = pulseSelectedManagerIds.includes(managerId);
+                          return (
+                            <label key={managerId} className="sidebar-pulse-filter__row">
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => togglePulseManager(managerId)}
+                              />
+                              <span className="sidebar-pulse-filter__name">
+                                {manager.displayName?.trim() || manager.email || 'Unnamed manager'}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
                     <label className="sidebar-pulse-filter__toggle">
                       <input
                         type="checkbox"
@@ -201,7 +217,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                         }}
                         disabled={pulseSelectedManagerIds.length === 0}
                       />
-                      Include manager self
+                      Include manager
                     </label>
                     <button
                       type="button"
