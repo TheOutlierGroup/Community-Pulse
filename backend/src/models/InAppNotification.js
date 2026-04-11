@@ -5,13 +5,14 @@ export const NOTIFICATION_TYPES = {
   TASK_ASSIGNED: 'task_assigned',
   WATCHED_COMMENT: 'task_watched_comment',
   WATCHED_UPDATE: 'task_watched_update',
+  PULSE_ALERT: 'pulse_alert',
 };
 
 export async function createNotification({
   userId,
   organizationId,
   type,
-  taskId,
+  taskId = null,
   commentId = null,
   actorUserId = null,
   title,
@@ -37,6 +38,20 @@ export async function createNotification({
     ]
   );
   return rows[0]?.id || null;
+}
+
+export async function hasSentRecentPulseAlert({ organizationId, title, windowMs = 24 * 60 * 60 * 1000 }) {
+  const since = new Date(Date.now() - windowMs);
+  const { rows } = await query(
+    `SELECT 1 FROM in_app_notifications
+     WHERE organization_id = $1
+       AND type = 'pulse_alert'
+       AND title = $2
+       AND created_at >= $3
+     LIMIT 1`,
+    [organizationId, title, since]
+  );
+  return rows.length > 0;
 }
 
 export async function countUnreadForUser(userId) {

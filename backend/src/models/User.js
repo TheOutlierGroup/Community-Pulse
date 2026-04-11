@@ -265,3 +265,13 @@ export async function clearProfileAvatarFilename(userId) {
   await query(`UPDATE users SET profile_avatar_filename = NULL WHERE id = $1`, [userId]);
   return prev;
 }
+
+export async function listPlatformAdminUsers() {
+  const { rows } = await query(
+    `SELECT u.id
+     FROM users u
+     JOIN organizations o ON o.id = u.organization_id
+     WHERE o.kind = 'platform' AND u.role = 'admin' AND u.deactivated_at IS NULL`
+  );
+  return rows;
+}
