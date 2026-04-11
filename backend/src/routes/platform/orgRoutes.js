@@ -18,7 +18,7 @@ import {
   sendPlatformWelcomeEmail,
   sendPulseInviteEmail,
 } from '../../services/email.js';
-import { DIMENSIONS, scoreResponseFromSteps } from '../../services/pulseEngine.js';
+import { classifyQuadrant, DIMENSIONS, READINESS_THRESHOLD, scoreResponseFromSteps } from '../../services/pulseEngine.js';
 import {
   assertClientOrganizationPlatform,
   assertClientUserInOrg,
@@ -35,6 +35,17 @@ import {
   parseManagerIdsFromQuery,
   parseQueryBool,
 } from '../../services/pulseDashboardScope.js';
+import {
+  buildDimensionFloorAlerts,
+  buildSponsorshipDecliningAlert,
+  buildTeamOutlierAlerts,
+  buildThresholdCrossingAlerts,
+  calculateLargestRemainderPercentages,
+  headlineForVerdict,
+  prioritizeAndCapAlerts,
+  verdictForScores,
+} from '../../services/pulseDashboardMetrics.js';
+import { schedulePulseAlertNotifications } from '../../services/pulseAlertNotifications.js';
 import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
@@ -75,12 +86,7 @@ function responseScoresOutOf40(row) {
 }
 
 function quadrantLabel(adoption, sponsorship) {
-  const adoptionHigh = adoption >= 28;
-  const sponsorshipHigh = sponsorship >= 28;
-  if (adoptionHigh && sponsorshipHigh) return 'Optimal';
-  if (adoptionHigh && !sponsorshipHigh) return 'Motivated but Lost';
-  if (!adoptionHigh && sponsorshipHigh) return 'Capable but Wary';
-  return 'High Risk';
+  return classifyQuadrant(adoption, sponsorship).label;
 }
 
 function scoreDelta(current, previous) {
@@ -515,8 +521,10 @@ export function registerPlatformOrgRoutes(router) {
         ? round1(currentScored.reduce((sum, s) => sum + s.sponsorship, 0) / currentScored.length)
         : null;
 
-    const completedEmployeeResponses = completedRows.filter((r) => r.role === 'employee').length;
-    const completedManagerResponses = completedRows.filter((r) => r.role === 'admin').length;
+    const completedEmployeeRows = completedRows.filter((r) => r.role === 'employee');
+    const completedManagerRows = completedRows.filter((r) => r.role === 'admin');
+    const completedEmployeeResponses = completedEmployeeRows.length;
+    const completedManagerResponses = completedManagerRows.length;
 
     let invitedEmployees = activeUsersByRole.employee || 0;
     let invitedManagers = activeUsersByRole.admin || 0;
@@ -546,35 +554,35 @@ export function registerPlatformOrgRoutes(router) {
       const q = s.quadrantLabel || quadrantLabel(s.adoption, s.sponsorship);
       quadrantBuckets[q] += 1;
     }
-    const quadrants = [
-      'Motivated but Lost',
-      'Optimal',
-      'High Risk',
-      'Capable but Wary',
-    ].map((name) => ({
+    const quadrantNames = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
+    const quadrantCounts = quadrantNames.map((name) => quadrantBuckets[name]);
+    const quadrantPercents = calculateLargestRemainderPercentages(quadrantCounts);
+    const quadrants = quadrantNames.map((name, idx) => ({
       name,
       count: quadrantBuckets[name],
-      percent: completedTotal > 0 ? round1((quadrantBuckets[name] / completedTotal) * 100) : 0,
+      percent: quadrantPercents[idx],
     }));
 
-    const managerRows = completedRows.filter((r) => r.role === 'admin');
     const managerLoadCounts = {
       Sustainable: 0,
       Stretched: 0,
       'At Capacity': 0,
       Overloaded: 0,
     };
-    for (const row of managerRows) {
+    for (const row of completedManagerRows) {
       const scored = responseScoresOutOf40(row);
       if (!scored.valid || !scored.managerLoadBand) continue;
       managerLoadCounts[scored.managerLoadBand] += 1;
     }
+    const loadBandNames = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
+    const managerLoadBandCounts = loadBandNames.map((name) => managerLoadCounts[name]);
+    const managerLoadPercents = calculateLargestRemainderPercentages(managerLoadBandCounts);
     const managerLoad = {
-      total: managerRows.length,
-      bands: ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'].map((name) => ({
+      total: completedManagerRows.length,
+      bands: loadBandNames.map((name, idx) => ({
         name,
         count: managerLoadCounts[name],
-        percent: managerRows.length > 0 ? round1((managerLoadCounts[name] / managerRows.length) * 100) : 0,
+        percent: managerLoadPercents[idx],
       })),
     };
 
@@ -620,20 +628,35 @@ export function registerPlatformOrgRoutes(router) {
       };
     });
 
-    const trendCandidates = sessions.slice(0, 4);
-    const trendRows = [];
-    const trendScopedRowsBySession = [];
-    for (const session of trendCandidates) {
-      const rows = await listMergedResponsesForSession(session.id);
-      const scoped = filterRowsForManagerScope(rows, selectedManagerIdSet, includeManagerSelf);
-      trendScopedRowsBySession.push({ session, rows: scoped });
-      const completed = scoped.filter((r) => r.completed_at);
-      const scored = completed
+    // Rolling 7-day buckets. Bucket 0 = most recent 7 days, bucket 3 = 21–28 days ago.
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = new Date();
+    const weekBuckets = Array.from({ length: 4 }, (_, i) => ({
+      weekLabel: `W${4 - i}`,
+      start: new Date(now.getTime() - (i + 1) * WEEK_MS),
+      end: new Date(now.getTime() - i * WEEK_MS),
+    }));
+
+    const allSessionRows = sessions.length > 0
+      ? (await Promise.all(sessions.map((s) => listMergedResponsesForSession(s.id)))).flat()
+      : [];
+    const allScopedRows = filterRowsForManagerScope(allSessionRows, selectedManagerIdSet, includeManagerSelf);
+
+    const trendScopedRowsByBucket = weekBuckets.map((bucket) => ({
+      bucket,
+      rows: allScopedRows.filter((r) => {
+        if (!r.completed_at) return false;
+        const ts = new Date(r.completed_at).getTime();
+        return ts >= bucket.start.getTime() && ts < bucket.end.getTime();
+      }),
+    }));
+
+    const trendRows = trendScopedRowsByBucket.map(({ bucket, rows }) => {
+      const scored = rows
         .map((r) => responseScoresOutOf40(r))
         .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
-      trendRows.push({
-        sessionId: session.id,
-        sessionName: session.name,
+      return {
+        weekLabel: bucket.weekLabel,
         adoptionScore:
           scored.length > 0
             ? round1(scored.reduce((sum, s) => sum + s.adoption, 0) / scored.length)
@@ -642,9 +665,9 @@ export function registerPlatformOrgRoutes(router) {
           scored.length > 0
             ? round1(scored.reduce((sum, s) => sum + s.sponsorship, 0) / scored.length)
             : null,
-        completedResponses: completed.length,
-      });
-    }
+        completedResponses: rows.length,
+      };
+    });
 
     const managersForBreakdown = managerFilterActive
       ? managerOptions.filter((m) => selectedManagerIdSet.has(m.id))
@@ -680,30 +703,28 @@ export function registerPlatformOrgRoutes(router) {
         loadBand = selfScore.valid ? selfScore.managerLoadBand || null : null;
       }
 
-      const trend = trendScopedRowsBySession.map((entry) => {
-        const scopedCompleted = entry.rows.filter(
+      const trend = trendScopedRowsByBucket.map(({ bucket, rows: bucketRows }) => {
+        const managerBucketRows = bucketRows.filter(
           (row) =>
-            row.completed_at &&
-            (row?.manager_invite_id === manager.id ||
-              (includeManagerSelf && !row?.user_id && row?.role === 'admin' && row?.invite_id === manager.id))
+            row?.manager_invite_id === manager.id ||
+            (includeManagerSelf && !row?.user_id && row?.role === 'admin' && row?.invite_id === manager.id)
         );
-        const scopedScored = scopedCompleted
+        const bucketScored = managerBucketRows
           .map((row) => responseScoresOutOf40(row))
           .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
         const adoption =
-          scopedScored.length > 0
-            ? round1(scopedScored.reduce((sum, s) => sum + s.adoption, 0) / scopedScored.length)
+          bucketScored.length > 0
+            ? round1(bucketScored.reduce((sum, s) => sum + s.adoption, 0) / bucketScored.length)
             : null;
         const sponsorship =
-          scopedScored.length > 0
-            ? round1(scopedScored.reduce((sum, s) => sum + s.sponsorship, 0) / scopedScored.length)
+          bucketScored.length > 0
+            ? round1(bucketScored.reduce((sum, s) => sum + s.sponsorship, 0) / bucketScored.length)
             : null;
         return {
-          sessionId: entry.session.id,
-          sessionName: entry.session.name,
+          weekLabel: bucket.weekLabel,
           adoptionScore: adoption,
           sponsorshipScore: sponsorship,
-          completedResponses: scopedCompleted.length,
+          completedResponses: managerBucketRows.length,
         };
       });
 
@@ -726,32 +747,66 @@ export function registerPlatformOrgRoutes(router) {
       };
     });
 
-    const adoptionDelta = trendRows.length >= 2 ? scoreDelta(trendRows[0].adoptionScore, trendRows[1].adoptionScore) : null;
-    const sponsorshipDelta = trendRows.length >= 2 ? scoreDelta(trendRows[0].sponsorshipScore, trendRows[1].sponsorshipScore) : null;
+    const previousWaveAdoptionScore = trendRows.length >= 2 ? trendRows[1].adoptionScore : null;
+    const previousWaveSponsorshipScore = trendRows.length >= 2 ? trendRows[1].sponsorshipScore : null;
+    const adoptionDelta = scoreDelta(adoptionScore, previousWaveAdoptionScore);
+    const sponsorshipDelta = scoreDelta(sponsorshipScore, previousWaveSponsorshipScore);
+    const launchVerdict = verdictForScores(adoptionScore, sponsorshipScore, READINESS_THRESHOLD);
+    const launchHeadline = headlineForVerdict(launchVerdict);
 
-    const alerts = [];
+    const baseAlerts = [];
     const overloadedBand = managerLoad.bands.find((b) => b.name === 'Overloaded');
-    if (overloadedBand && overloadedBand.percent >= 10) {
-      alerts.push({
+    if (overloadedBand && overloadedBand.percent > 10) {
+      baseAlerts.push({
         level: 'critical',
         title: `${overloadedBand.percent}% of managers are overloaded`,
         body: 'Launching with overloaded managers increases burnout risk. Reduce manager load before rollout.',
       });
     }
-    if (sponsorshipScore != null && sponsorshipScore < 28) {
-      alerts.push({
-        level: 'warning',
-        title: 'Sponsorship score is below threshold',
-        body: 'Leadership credibility signals are weaker than required for a confident rollout.',
-      });
-    }
-    if (adoptionScore != null && adoptionScore >= 28) {
-      alerts.push({
+    if (adoptionScore != null && adoptionScore >= READINESS_THRESHOLD && adoptionDelta != null && adoptionDelta > 0) {
+      baseAlerts.push({
         level: 'info',
         title: 'Adoption readiness is above threshold',
         body: 'Org conditions indicate teams can absorb change, pending sponsorship strength.',
       });
     }
+    const sponsorshipDecliningAlerts = buildSponsorshipDecliningAlert({
+      currentSponsorship: sponsorshipScore,
+      previousSponsorship: previousWaveSponsorshipScore,
+    });
+    const dimensionFloorAlerts = buildDimensionFloorAlerts({ dimensions });
+    const teamOutlierAlerts = buildTeamOutlierAlerts({
+      byManager,
+      orgAdoptionScore: adoptionScore,
+      orgSponsorshipScore: sponsorshipScore,
+    });
+    const thresholdCrossingAlerts = buildThresholdCrossingAlerts({
+      currentAdoption: adoptionScore,
+      previousAdoption: previousWaveAdoptionScore,
+      currentSponsorship: sponsorshipScore,
+      previousSponsorship: previousWaveSponsorshipScore,
+      threshold: READINESS_THRESHOLD,
+    });
+    const allAlerts = [
+      ...baseAlerts,
+      ...sponsorshipDecliningAlerts,
+      ...dimensionFloorAlerts,
+      ...teamOutlierAlerts,
+      ...thresholdCrossingAlerts,
+    ];
+    const prioritizedAlerts = prioritizeAndCapAlerts(allAlerts, 5);
+
+    schedulePulseAlertNotifications({
+      clientOrgId: org.id,
+      orgName: org.name,
+      alerts: allAlerts.filter((a) => a.level === 'critical' || a.level === 'warning'),
+    });
+
+    const employeeRowsWithManagerTag = completedEmployeeRows.filter((row) => row.manager_invite_id).length;
+    const managersWithComparableTeamSize = byManager.filter(
+      (row) => (row.directReportCompletedCount || 0) >= 5
+    ).length;
+    const teamSuppressedManagerCount = Math.max(0, byManager.length - managersWithComparableTeamSize);
 
     res.json({
       currentSession: currentSession ? publicPulseSessionRow(currentSession) : null,
@@ -777,6 +832,14 @@ export function registerPlatformOrgRoutes(router) {
         sponsorshipScore,
         adoptionDelta,
         sponsorshipDelta,
+        launchVerdict,
+        launchHeadline,
+      },
+      scoreSemantics: {
+        threshold: READINESS_THRESHOLD,
+        averaging: 'pooled_completed_respondents',
+        period: '7_day_rolling_bucket',
+        deltaReference: 'previous_7_day_bucket',
       },
       quadrants,
       managerLoad,
@@ -787,8 +850,19 @@ export function registerPlatformOrgRoutes(router) {
         selectedManagerIds,
         includeManagerSelf,
       },
+      coverage: {
+        managerDataPresent: completedManagerResponses > 0,
+        managerResponseCoveragePercent: round1(ratio(completedManagerResponses, completedTotal) * 100),
+        employeeManagerAssignmentCoveragePercent: round1(
+          ratio(employeeRowsWithManagerTag, completedEmployeeResponses) * 100
+        ),
+        employeeRowsMissingManagerAssignment: completedEmployeeResponses - employeeRowsWithManagerTag,
+        managersWithComparableTeamSize,
+        teamSuppressedManagerCount,
+      },
       byManager,
-      alerts,
+      alerts: prioritizedAlerts.alerts,
+      alertsOverflowCount: prioritizedAlerts.overflowCount,
       narrative: analytics.narrative,
     });
   });

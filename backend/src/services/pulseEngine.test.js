@@ -50,3 +50,54 @@ test('incomplete response returns unanswered ids', () => {
   assert.equal(scored.valid, false);
   assert.deepEqual(scored.unanswered, ['Q16']);
 });
+
+test('boundary score of exactly 28 is classified HIGH — not below threshold', () => {
+  // Q1-Q8 sum to exactly 28: 4,4,4,4,3,3,3,3 = 28. Sponsorship all 5s = 40.
+  const answers = answersWith('Q', [4, 4, 4, 4, 3, 3, 3, 3, 5, 5, 5, 5, 5, 5, 5, 5]);
+  const scored = computeSurveyScores({ audience: 'staff', answers });
+  assert.equal(scored.adoption, 28);
+  assert.equal(scored.quadrantCode, 'optimal');
+});
+
+test('score of 27 is classified LOW — one point below threshold', () => {
+  // Q1-Q8 sum to 27: 4,4,4,3,3,3,3,3 = 27. Sponsorship all 5s = 40.
+  const answers = answersWith('Q', [4, 4, 4, 3, 3, 3, 3, 3, 5, 5, 5, 5, 5, 5, 5, 5]);
+  const scored = computeSurveyScores({ audience: 'staff', answers });
+  assert.equal(scored.adoption, 27);
+  assert.equal(scored.quadrantCode, 'capable_wary');
+});
+
+test('load questions isolated to 1,1,1,1 give load_score=4 and overloaded band', () => {
+  // Doc §8 item 9 — explicit test case. Other questions mid-range (3) so adoption/sponsorship
+  // are not all-min, isolating the load band calculation.
+  const answers = answersWith('MQ', new Array(16).fill(3));
+  answers.MQ5 = 1;
+  answers.MQ6 = 1;
+  answers.MQ15 = 1;
+  answers.MQ16 = 1;
+  const scored = computeSurveyScores({ audience: 'manager', answers });
+  assert.equal(scored.managerLoad, 4);
+  assert.equal(scored.managerLoadBand, 'Overloaded');
+});
+
+test('load band boundaries are correct for stretched and at_capacity', () => {
+  // stretched: load_score 11–15
+  const answersStretched = answersWith('MQ', new Array(16).fill(3));
+  answersStretched.MQ5 = 3;
+  answersStretched.MQ6 = 3;
+  answersStretched.MQ15 = 3;
+  answersStretched.MQ16 = 3; // load = 12
+  const scoredStretched = computeSurveyScores({ audience: 'manager', answers: answersStretched });
+  assert.equal(scoredStretched.managerLoad, 12);
+  assert.equal(scoredStretched.managerLoadBand, 'Stretched');
+
+  // at_capacity: load_score 6–10
+  const answersAtCap = answersWith('MQ', new Array(16).fill(3));
+  answersAtCap.MQ5 = 2;
+  answersAtCap.MQ6 = 2;
+  answersAtCap.MQ15 = 2;
+  answersAtCap.MQ16 = 2; // load = 8
+  const scoredAtCap = computeSurveyScores({ audience: 'manager', answers: answersAtCap });
+  assert.equal(scoredAtCap.managerLoad, 8);
+  assert.equal(scoredAtCap.managerLoadBand, 'At Capacity');
+});

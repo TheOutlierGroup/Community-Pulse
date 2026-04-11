@@ -37,10 +37,10 @@ function deltaClass(value) {
 
 function heatClass(value) {
   if (value == null || Number.isNaN(value)) return 'h1';
-  if (value >= 4.2) return 'h5';
-  if (value >= 3.4) return 'h4';
-  if (value >= 2.8) return 'h3';
-  if (value >= 2.4) return 'h2';
+  if (value >= 4.0) return 'h5';
+  if (value >= 3.5) return 'h4';
+  if (value >= 3.0) return 'h3';
+  if (value >= 2.5) return 'h2';
   return 'h1';
 }
 
@@ -62,10 +62,10 @@ const ADOPTION_DIMENSIONS = ['1A', '1B', '1C', '1D'];
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 
 const MANAGER_LOAD_NOTES = {
-  Sustainable: 'Manager has capacity. Ready to lead change actively.',
-  Stretched: 'At risk if change is significant. Prioritise toolkit support.',
-  'At Capacity': 'Requires active manager investment and executive air cover.',
-  Overloaded: 'Risk of burnout. Do not launch without addressing load first.',
+  Sustainable: 'Surplus capacity. Can act as active change sponsor.',
+  Stretched: 'Managing, but at risk under additional load.',
+  'At Capacity': 'Change program requires structured support.',
+  Overloaded: 'Risk amplifier. Do not launch.',
 };
 
 function sparkColor(loadBand) {
@@ -255,6 +255,8 @@ export default function PlatformClientPulse() {
   }, [pulseFocusedSection]);
 
   const kpis = dashboard?.kpis || {};
+  const scoreSemantics = dashboard?.scoreSemantics || {};
+  const coverage = dashboard?.coverage || {};
   const trendBars = useMemo(
     () => [...(dashboard?.trend || []).slice(0, 4)].reverse(),
     [dashboard?.trend]
@@ -271,7 +273,7 @@ export default function PlatformClientPulse() {
     );
   }, [dashboard?.managerLoad?.bands]);
 
-  const threshold = 28;
+  const threshold = scoreSemantics.threshold ?? 28;
   const adoptionScore = kpis.adoptionScore ?? null;
   const sponsorshipScore = kpis.sponsorshipScore ?? null;
   const quadrantFocus =
@@ -406,7 +408,12 @@ export default function PlatformClientPulse() {
           {showSection('organisation-scores') && (
           <div className="pulse-prototype-grid pulse-prototype-grid--scores" id="organisation-scores">
             <section className="pulse-prototype-card">
-              <div className="pulse-prototype-card__label">Organisation Scores · All Respondents</div>
+              <div className="pulse-prototype-card__label">
+                Organisation Scores ·
+                {scoreSemantics.averaging === 'pooled_completed_respondents'
+                  ? ' Pooled Completed Respondents'
+                  : ' All Respondents'}
+              </div>
               <div className="pulse-prototype-score-split">
                 <div>
                   <div className="pulse-prototype-score-tag adoption">Adoption Readiness</div>
@@ -443,10 +450,27 @@ export default function PlatformClientPulse() {
                 </div>
               </div>
               <div className="pulse-prototype-note">
-                <div className="pulse-prototype-note__title">Org Quadrant · {quadrantFocus.name}</div>
+                <div className="pulse-prototype-note__title">
+                  <span
+                    className={`pulse-prototype-verdict-badge ${
+                      kpis.launchVerdict === 'cleared'
+                        ? 'pulse-prototype-verdict-badge--cleared'
+                        : kpis.launchVerdict === 'not_cleared'
+                          ? 'pulse-prototype-verdict-badge--not-cleared'
+                          : 'pulse-prototype-verdict-badge--unknown'
+                    }`}
+                  >
+                    {kpis.launchHeadline || 'Launch verdict unavailable'}
+                  </span>
+                  {' · '}
+                  {quadrantFocus.name}
+                </div>
                 <p>
                   {dashboard?.narrative ||
                     'Leadership is trusted and visible, but adoption conditions remain weak. Build capacity before launch.'}
+                </p>
+                <p className="muted" style={{ marginTop: '0.45rem' }}>
+                  Delta baseline: previous 7-day window. Threshold: {scoreSemantics.threshold ?? 28}.
                 </p>
               </div>
             </section>
@@ -470,6 +494,24 @@ export default function PlatformClientPulse() {
                 <span>High Sponsorship &rarr;</span>
               </div>
               <div className="pulse-prototype-axis-up">↑ High Adoption</div>
+              {(() => {
+                const optimalPct = quadrants.find((q) => q.name === 'Optimal')?.percent ?? 0;
+                const nonOptimalPct = 100 - optimalPct;
+                if (optimalPct >= 95) {
+                  return (
+                    <p className="pulse-prototype-readiness-statement pulse-prototype-readiness-statement--positive">
+                      {optimalPct}% of respondents are in a position to absorb and sustain this change without additional intervention.
+                    </p>
+                  );
+                }
+                return (
+                  <p className="pulse-prototype-readiness-statement">
+                    Only {optimalPct}% of respondents are in a position to absorb and sustain this change without
+                    additional intervention. The remaining {nonOptimalPct}% are distributed across three readiness
+                    states — each carrying a distinct failure mode, and none of which offset the others.
+                  </p>
+                );
+              })()}
             </section>
           </div>
           )}
@@ -563,7 +605,7 @@ export default function PlatformClientPulse() {
                     const adoptionHeight = Math.max(6, ((item?.adoptionScore || 0) / trendMax) * 100);
                     const sponsorshipHeight = Math.max(6, ((item?.sponsorshipScore || 0) / trendMax) * 100);
                     return (
-                      <div key={item.sessionId || `${item.sessionName}-${idx}`} className="pulse-prototype-trend-group">
+                      <div key={item.weekLabel || idx} className="pulse-prototype-trend-group">
                         <div className="pulse-prototype-trend-bars">
                           <div className="pulse-prototype-trend-bar adoption" style={{ height: `${adoptionHeight}%` }} />
                           <div className="pulse-prototype-trend-bar sponsorship" style={{ height: `${sponsorshipHeight}%` }} />
@@ -595,6 +637,12 @@ export default function PlatformClientPulse() {
                     </div>
                   ))}
                 </div>
+                {(dashboard?.alertsOverflowCount || 0) > 0 ? (
+                  <p className="muted" style={{ marginTop: '0.6rem' }}>
+                    +{dashboard.alertsOverflowCount} additional alert
+                    {dashboard.alertsOverflowCount === 1 ? '' : 's'} not shown.
+                  </p>
+                ) : null}
               </section>
             </div>
           </div>
@@ -606,6 +654,15 @@ export default function PlatformClientPulse() {
               Manager-Level Breakdown · {managerBreakdownRows.length} manager
               {managerBreakdownRows.length === 1 ? '' : 's'}
             </div>
+            <p className="muted" style={{ marginBottom: '0.6rem' }}>
+              Manager assignment coverage: {formatPercent(coverage.employeeManagerAssignmentCoveragePercent)} ·
+              Missing assignments: {coverage.employeeRowsMissingManagerAssignment ?? 0}
+            </p>
+            <p className="muted" style={{ marginBottom: '0.8rem' }}>
+              Comparable teams (n&gt;=5): {coverage.managersWithComparableTeamSize ?? 0} · Suppressed:
+              {' '}
+              {coverage.teamSuppressedManagerCount ?? 0}
+            </p>
             <table className="pulse-prototype-rtable">
               <thead>
                 <tr>

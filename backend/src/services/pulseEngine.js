@@ -1,3 +1,5 @@
+export const READINESS_THRESHOLD = 28;
+
 const DIMENSIONS = [
   {
     id: '1A',
@@ -44,14 +46,14 @@ const DIMENSIONS = [
   {
     id: '2C',
     employeeLabel: 'Honest Communication',
-    managerLabel: 'Manager Autonomy in Implementation',
+    managerLabel: 'Implementation Autonomy',
     employeeQuestions: ['Q13', 'Q14'],
     managerQuestions: ['MQ13', 'MQ14'],
   },
   {
     id: '2D',
     employeeLabel: 'Psychological Safety',
-    managerLabel: 'Manager Wellbeing in Change',
+    managerLabel: 'Manager Wellbeing',
     employeeQuestions: ['Q15', 'Q16'],
     managerQuestions: ['MQ15', 'MQ16'],
   },
@@ -332,9 +334,9 @@ function scoreBandForManagerLoad(load) {
 
 function recommendationForQuadrant(quadrantCode) {
   if (quadrantCode === 'optimal') return 'Proceed. Conditions are strong.';
-  if (quadrantCode === 'motivated_lost') return 'Org ready, leaders will not carry it. Strengthen sponsorship first.';
-  if (quadrantCode === 'capable_wary') return 'Leaders are credible, org readiness is weak. Build capacity first.';
-  return 'Significant redesign required before launch.';
+  if (quadrantCode === 'motivated_lost') return "Org ready; leaders won't carry it.";
+  if (quadrantCode === 'capable_wary') return 'Leaders credible; org not ready.';
+  return 'Significant redesign required.';
 }
 
 function extractAnswersFromStepPayload(step1, step2, step3, step4) {
@@ -359,9 +361,9 @@ function normalizeLikert(value) {
   return value;
 }
 
-function classifyQuadrant(adoption, sponsorship) {
-  const adoptionHigh = adoption >= 28;
-  const sponsorshipHigh = sponsorship >= 28;
+export function classifyQuadrant(adoption, sponsorship) {
+  const adoptionHigh = adoption >= READINESS_THRESHOLD;
+  const sponsorshipHigh = sponsorship >= READINESS_THRESHOLD;
   if (adoptionHigh && sponsorshipHigh) return { code: 'optimal', label: 'Optimal' };
   if (adoptionHigh && !sponsorshipHigh) return { code: 'motivated_lost', label: 'Motivated but Lost' };
   if (!adoptionHigh && sponsorshipHigh) return { code: 'capable_wary', label: 'Capable but Wary' };
@@ -499,7 +501,7 @@ export function buildActionPlanDraft(aggregates) {
       'Define role-specific actions for staff and managers before next wave.',
     ],
     sixtyDays: [
-      'Track adoption and sponsorship weekly against threshold (28/40).',
+      `Track adoption and sponsorship weekly against threshold (${READINESS_THRESHOLD}/40).`,
       tensionPairs.length
         ? `Address operating tension in ${tensionPairs[0]}.`
         : 'Resolve cross-team blockers affecting sponsorship credibility.',
