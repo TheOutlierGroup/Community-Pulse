@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
+    "retention:sweep": "node src/jobs/retentionSweep.js",
     "perf:platform-tasks": "node scripts/bench-platform-tasks.js",
     "perf:compare": "node scripts/perf-compare.js",
     "migrate": "node src/migrations/run.js",

@@ -1,5 +1,6 @@
 import ModalDialog from '../../components/shared/ModalDialog.jsx';
 import RemoveAccessConfirm from '../../components/shared/RemoveAccessConfirm.jsx';
+import { useEffect, useRef } from 'react';
 
 export default function EditUserModal({
   editUser,
@@ -13,6 +14,13 @@ export default function EditUserModal({
   setEditEmail,
   editRole,
   setEditRole,
+  editAssignmentOptions,
+  editAssignedClientOrgIds,
+  assignmentsLoading,
+  onToggleAssignedClientOrg,
+  onSelectAllAssignedClientOrgs,
+  onClearAssignedClientOrgs,
+  editFocusScopeSignal,
   editAvatarFile,
   setEditAvatarFile,
   editRemoveAvatar,
@@ -24,6 +32,16 @@ export default function EditUserModal({
   onSave,
   onConfirmRemoveAccess,
 }) {
+  const scopeSectionRef = useRef(null);
+
+  useEffect(() => {
+    if (!editUser || !editFocusScopeSignal) return;
+    if (!scopeSectionRef.current) return;
+    scopeSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const firstCheckbox = scopeSectionRef.current.querySelector('input[type="checkbox"]');
+    if (firstCheckbox) firstCheckbox.focus();
+  }, [editUser, editFocusScopeSignal]);
+
   if (!editUser) return null;
 
   return (
@@ -75,6 +93,67 @@ export default function EditUserModal({
               <option value="employee">Member</option>
             </select>
           </div>
+          <div className="field" ref={scopeSectionRef}>
+            <label>Client access scope</label>
+            {editRole === 'admin' ? (
+              <p className="muted platform-user-scope-note">
+                Admin users can access every client organization.
+              </p>
+            ) : assignmentsLoading ? (
+              <p className="muted platform-user-scope-note">Loading assignment options…</p>
+            ) : editAssignmentOptions.length === 0 ? (
+              <p className="muted platform-user-scope-note">
+                No client organizations available yet. This member will not see client workspaces.
+              </p>
+            ) : (
+              <div className="platform-user-scope-controls">
+                <p className="muted platform-user-scope-note" style={{ margin: 0 }}>
+                  {editAssignedClientOrgIds.length} of {editAssignmentOptions.length} clients selected
+                </p>
+                <div className="platform-user-scope-actions">
+                  <button
+                    type="button"
+                    className="platform-scope-link"
+                    onClick={onSelectAllAssignedClientOrgs}
+                    disabled={busy || editAssignedClientOrgIds.length === editAssignmentOptions.length}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    className="platform-scope-link"
+                    onClick={onClearAssignedClientOrgs}
+                    disabled={busy || editAssignedClientOrgIds.length === 0}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
+            {editRole === 'employee' && !assignmentsLoading && editAssignmentOptions.length > 0 ? (
+              <div className="platform-user-scope-list" role="group" aria-label="Client organizations">
+                {editAssignmentOptions.map((org) => {
+                  const checked = editAssignedClientOrgIds.some((id) => String(id) === String(org.id));
+                  return (
+                    <label key={org.id} className="platform-user-scope-item">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => onToggleAssignedClientOrg(org.id)}
+                        disabled={busy}
+                      />
+                      <span>{org.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : null}
+            {editRole === 'employee' && !assignmentsLoading ? (
+              <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                Members can only open assigned client organizations.
+              </p>
+            ) : null}
+          </div>
           <div className="field">
             <label htmlFor="edit-avatar">Profile image</label>
             <input
@@ -108,7 +187,11 @@ export default function EditUserModal({
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={busy}>
+            <button
+              type="submit"
+              className="btn btn-primary modal-dialog__submit"
+              disabled={busy || (editRole === 'employee' && assignmentsLoading)}
+            >
               {busy ? 'Saving…' : 'Save changes'}
             </button>
           </div>

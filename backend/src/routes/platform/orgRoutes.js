@@ -9,9 +9,8 @@ import * as User from '../../models/User.js';
 import * as Invite from '../../models/Invite.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import * as PulseSession from '../../models/PulseSession.js';
-import * as EmployeeResponse from '../../models/EmployeeResponse.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
-import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
+import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import { aggregateSessionResponses } from '../../services/analytics.js';
 import {
   isResendConfigured,
@@ -20,7 +19,7 @@ import {
 } from '../../services/email.js';
 import { classifyQuadrant, DIMENSIONS, READINESS_THRESHOLD, scoreResponseFromSteps } from '../../services/pulseEngine.js';
 import {
-  assertClientOrganizationPlatform,
+  assertClientOrganizationPlatformForUser,
   assertClientUserInOrg,
   handleOrgLogoPlatformUpload,
   handlePlatformUserCreateUpload,
@@ -46,6 +45,7 @@ import {
   verdictForScores,
 } from '../../services/pulseDashboardMetrics.js';
 import { schedulePulseAlertNotifications } from '../../services/pulseAlertNotifications.js';
+import { listSessionResponses } from '../../services/pulseDataContract.js';
 import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
@@ -95,30 +95,8 @@ function scoreDelta(current, previous) {
 }
 
 async function listMergedResponsesForSession(sessionId) {
-  const userRows = await EmployeeResponse.listResponsesForSession(sessionId);
-  const linkRows = await PulseLinkResponse.listResponsesForSession(sessionId);
-  const mapped = linkRows.map((r) => ({
-    id: r.id,
-    invite_id: r.invite_id,
-    user_id: null,
-    session_id: r.session_id,
-    current_step: r.current_step,
-    step1_data: r.step1_data,
-    step2_data: r.step2_data,
-    step3_data: r.step3_data,
-    step4_data: r.step4_data,
-    contribution_style: r.contribution_style,
-    completed_at: r.completed_at,
-    created_at: r.created_at,
-    updated_at: r.updated_at,
-    email: r.email,
-    display_name: r.display_name,
-    role: r.survey_role === 'manager' ? 'admin' : 'employee',
-    manager_invite_id: r.manager_invite_id || null,
-    manager_display_name: r.manager_display_name || null,
-    manager_email: r.manager_email || null,
-  }));
-  return [...userRows, ...mapped];
+  const { rows } = await listSessionResponses(sessionId);
+  return rows;
 }
 
 function firstFrontendOrigin() {
@@ -149,12 +127,25 @@ function parseMultipartBool(v) {
 }
 
 export function registerPlatformOrgRoutes(router) {
+  const requirePlatformAdminRole = (req, res, next) => {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    next();
+  };
+
   router.get('/organizations', async (req, res) => {
-    const rows = await Organization.listOrganizationsByKind('client', parsePagination(req.query));
+    if (req.user?.role === 'admin') {
+      const rows = await Organization.listOrganizationsByKind('client', parsePagination(req.query));
+      return res.json({ organizations: rows });
+    }
+    const assignedOrgIds = await PlatformUserClientAssignment.listAssignedClientOrgIdsForUser(req.user.id);
+    if (!assignedOrgIds.length) return res.json({ organizations: [] });
+    const rows = await Organization.listClientOrganizationsByIds(assignedOrgIds, parsePagination(req.query));
     res.json({ organizations: rows });
   });
 
-  router.post('/organizations', handleOrgLogoPlatformUpload, async (req, res) => {
+  router.post('/organizations', requirePlatformAdminRole, handleOrgLogoPlatformUpload, async (req, res) => {
     const name = req.body.name;
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Name is required' });
@@ -237,7 +228,7 @@ export function registerPlatformOrgRoutes(router) {
     res.status(201).json({ organization: org });
   });
 
-  router.patch('/organizations/:id', async (req, res) => {
+  router.patch('/organizations/:id', requirePlatformAdminRole, async (req, res) => {
     const { name, settings } = req.body;
     if (name === undefined && settings === undefined) {
       return res.status(400).json({ error: 'Nothing to update' });
@@ -268,8 +259,8 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.get('/organizations/:id/users', async (req, res) => {
-    const org = await Organization.getOrganization(req.params.id);
-    if (!org || org.kind !== 'client') {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) {
       return res.status(404).json({ error: 'Organization not found' });
     }
     const role = req.query.role;
@@ -283,7 +274,7 @@ export function registerPlatformOrgRoutes(router) {
   router.patch('/organizations/:id/users/:userId', async (req, res) => {
     const orgId = req.params.id;
     const { userId } = req.params;
-    const target = await assertClientUserInOrg(orgId, userId);
+    const target = await assertClientUserInOrg(orgId, userId, req.user);
     if (!target) return res.status(404).json({ error: 'User not found' });
     const body = req.body || {};
     const patch = {};
@@ -312,7 +303,7 @@ export function registerPlatformOrgRoutes(router) {
   router.get('/organizations/:id/users/:userId/avatar', async (req, res) => {
     const orgId = req.params.id;
     const { userId } = req.params;
-    const target = await assertClientUserInOrg(orgId, userId);
+    const target = await assertClientUserInOrg(orgId, userId, req.user);
     if (!target) return res.status(404).end();
     const name = await User.getProfileAvatarFilename(userId);
     if (!name) return res.status(404).end();
@@ -322,7 +313,7 @@ export function registerPlatformOrgRoutes(router) {
   router.post('/organizations/:id/users/:userId/avatar', handlePlatformUserCreateUpload, async (req, res) => {
     const orgId = req.params.id;
     const { userId } = req.params;
-    const target = await assertClientUserInOrg(orgId, userId);
+    const target = await assertClientUserInOrg(orgId, userId, req.user);
     if (!target) return res.status(404).json({ error: 'User not found' });
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -351,7 +342,7 @@ export function registerPlatformOrgRoutes(router) {
   router.delete('/organizations/:id/users/:userId/avatar', async (req, res) => {
     const orgId = req.params.id;
     const { userId } = req.params;
-    const target = await assertClientUserInOrg(orgId, userId);
+    const target = await assertClientUserInOrg(orgId, userId, req.user);
     if (!target) return res.status(404).json({ error: 'User not found' });
     const prev = await User.clearProfileAvatarFilename(userId);
     if (prev) {
@@ -366,8 +357,8 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.post('/organizations/:id/invites', requireBodyFields(['email']), async (req, res) => {
-    const org = await Organization.getOrganization(req.params.id);
-    if (!org || org.kind !== 'client') {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) {
       return res.status(404).json({ error: 'Organization not found' });
     }
     const invitedRole = req.body.invitedRole === 'admin' ? 'admin' : 'employee';
@@ -403,19 +394,19 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.get('/organizations/:id', async (req, res) => {
-    const org = await assertClientOrganizationPlatform(req.params.id);
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     res.json({ organization: org });
   });
 
   router.get('/organizations/:id/logo', async (req, res) => {
-    const org = await assertClientOrganizationPlatform(req.params.id);
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org || !org.company_logo_filename) return res.status(404).end();
     sendOrgLogoFileOr404(res, org.company_logo_filename);
   });
 
   router.post('/organizations/:id/logo', handleOrgLogoPlatformUpload, async (req, res) => {
-    const org = await assertClientOrganizationPlatform(req.params.id);
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -440,7 +431,7 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.delete('/organizations/:id/logo', async (req, res) => {
-    const org = await assertClientOrganizationPlatform(req.params.id);
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const prev = await Organization.clearCompanyLogoFilename(req.params.id);
     if (prev) {
@@ -455,14 +446,14 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.get('/organizations/:id/pulse-sessions', async (req, res) => {
-    const org = await assertClientOrganizationPlatform(req.params.id);
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const sessions = await PulseSession.listSessionsForOrg(req.params.id);
     res.json({ sessions: sessions.map(publicPulseSessionRow) });
   });
 
   router.get('/organizations/:id/pulse-dashboard', async (req, res) => {
-    const org = await assertClientOrganizationPlatform(req.params.id);
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
     const [sessions, activeUsersByRole, pulseLinkByRole, inviteRows] = await Promise.all([
@@ -868,7 +859,7 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.post('/organizations/:id/pulse-handoff-link', async (req, res) => {
-    const org = await assertClientOrganizationPlatform(req.params.id);
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
       return res.status(403).json({ error: 'Pulse is not enabled for this client' });
@@ -891,14 +882,14 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.get('/organizations/:id/pulse-link-invites', async (req, res) => {
-    const org = await assertClientOrganizationPlatform(req.params.id);
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const rows = await PulseLinkInvite.listInvitesForOrg(req.params.id);
     res.json({ invites: rows.map(PulseLinkInvite.publicInviteRow) });
   });
 
   router.post('/organizations/:id/pulse-link-invites/import', async (req, res) => {
-    const org = await assertClientOrganizationPlatform(req.params.id);
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const recipients = req.body?.recipients;
     if (!Array.isArray(recipients) || recipients.length === 0) {
@@ -997,7 +988,7 @@ export function registerPlatformOrgRoutes(router) {
 
   router.post('/organizations/:id/pulse-link-invites/:inviteId/send', async (req, res) => {
     const orgId = req.params.id;
-    const org = await assertClientOrganizationPlatform(orgId);
+    const org = await assertClientOrganizationPlatformForUser(orgId, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId);
     if (!invite) return res.status(404).json({ error: 'Invite not found' });
@@ -1037,7 +1028,7 @@ export function registerPlatformOrgRoutes(router) {
 
   router.delete('/organizations/:id/pulse-link-invites/:inviteId', async (req, res) => {
     const orgId = req.params.id;
-    const org = await assertClientOrganizationPlatform(orgId);
+    const org = await assertClientOrganizationPlatformForUser(orgId, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId);
     if (!invite) return res.status(404).json({ error: 'Invite not found' });

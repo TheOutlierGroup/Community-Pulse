@@ -8,8 +8,11 @@ import {
 } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
 import * as PulseSession from '../models/PulseSession.js';
-import * as EmployeeResponse from '../models/EmployeeResponse.js';
 import * as Invite from '../models/Invite.js';
+import {
+  listSessionResponses,
+  RESPONSE_MODE_EMPLOYEE_ONLY,
+} from '../services/pulseDataContract.js';
 
 const router = Router();
 
@@ -22,7 +25,14 @@ router.get('/overview', async (req, res) => {
     sessions.find((s) => s.status === 'active');
   let participation = { total: 0, completed: 0 };
   if (activeStaff) {
-    participation = await EmployeeResponse.countParticipationForSession(activeStaff.id);
+    const mode = req.query?.responseMode === RESPONSE_MODE_EMPLOYEE_ONLY
+      ? RESPONSE_MODE_EMPLOYEE_ONLY
+      : undefined;
+    const { rows } = await listSessionResponses(activeStaff.id, { mode });
+    participation = {
+      total: rows.length,
+      completed: rows.filter((row) => row.completed_at).length,
+    };
   }
   res.json({
     sessions,
@@ -61,8 +71,11 @@ router.get('/sessions/:id/responses', async (req, res) => {
     req.user.organizationId
   );
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  const rows = await EmployeeResponse.listResponsesForSession(session.id);
-  res.json({ session, responses: rows });
+  const mode = req.query?.responseMode === RESPONSE_MODE_EMPLOYEE_ONLY
+    ? RESPONSE_MODE_EMPLOYEE_ONLY
+    : undefined;
+  const { rows, responseContract } = await listSessionResponses(session.id, { mode });
+  res.json({ session, responses: rows, responseContract });
 });
 
 router.post('/invites', requireBodyFields(['email']), async (req, res) => {

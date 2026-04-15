@@ -1,10 +1,11 @@
 import PlatformUserAvatar from '../../components/platform/PlatformUserAvatar.jsx';
-import { formatJoinedDate, roleLabel, userDisplayName } from './helpers.js';
+import { formatJoinedDate, roleLabel, scopeLabel, userDisplayName } from './helpers.js';
 
 export default function PlatformUsersTable({
   staff,
   avatarListRev,
   onOpenEdit,
+  onOpenScope,
 }) {
   return (
     <div className="card platform-users-card">
@@ -15,13 +16,14 @@ export default function PlatformUsersTable({
               <th scope="col">Name</th>
               <th scope="col">Email</th>
               <th scope="col">User type</th>
+              <th scope="col">Scope</th>
               <th scope="col">Joined</th>
             </tr>
           </thead>
           <tbody>
             {staff.length === 0 && (
               <tr>
-                <td colSpan={4} className="muted" style={{ padding: '1.5rem' }}>
+                <td colSpan={5} className="muted" style={{ padding: '1.5rem' }}>
                   No users yet. Add one to get started.
                 </td>
               </tr>
@@ -31,9 +33,11 @@ export default function PlatformUsersTable({
                 key={u.id}
                 className="platform-users-table__row platform-users-table__row--clickable"
                 tabIndex={0}
-                role="button"
                 onClick={() => onOpenEdit(u)}
                 onKeyDown={(e) => {
+                  if (e.target instanceof HTMLElement && e.target.closest('button, a, input, select, textarea')) {
+                    return;
+                  }
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     onOpenEdit(u);
@@ -57,6 +61,25 @@ export default function PlatformUsersTable({
                   <span className={`badge badge-${u.role === 'admin' ? 'active' : 'draft'}`}>
                     {roleLabel(u.role)}
                   </span>
+                </td>
+                <td className="muted" style={{ fontSize: '0.9rem' }}>
+                  {u.role === 'employee' ? (
+                    <div className="platform-scope-cell">
+                      <span>{scopeLabel(u)}</span>
+                      <button
+                        type="button"
+                        className="platform-scope-link"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenScope?.(u);
+                        }}
+                      >
+                        Manage scope
+                      </button>
+                    </div>
+                  ) : (
+                    scopeLabel(u)
+                  )}
                 </td>
                 <td className="muted" style={{ fontSize: '0.9rem' }}>
                   {formatJoinedDate(u.createdAt)}

@@ -5,6 +5,7 @@ import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath, ensureStorageDirs, orgLogoFilePath } from '../../config/storage.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
+import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import { normalizeClientServiceIds } from '../../services/clientServices.js';
 
 function platformUploadError(err, fileSizeMessage) {
@@ -80,8 +81,26 @@ export async function assertClientOrganizationPlatform(id) {
   return org;
 }
 
-export async function assertClientUserInOrg(orgId, userId) {
-  const org = await assertClientOrganizationPlatform(orgId);
+export async function canPlatformUserAccessClientOrg(user, clientOrgId) {
+  if (!user || !clientOrgId) return false;
+  const platformOrg = await Organization.getOrganization(user.organizationId);
+  if (!platformOrg || platformOrg.kind !== 'platform') return false;
+  if (user.role === 'admin') return true;
+  return PlatformUserClientAssignment.userHasClientOrgAssignment(user.id, clientOrgId);
+}
+
+export async function assertClientOrganizationPlatformForUser(id, user) {
+  const org = await assertClientOrganizationPlatform(id);
+  if (!org) return null;
+  const allowed = await canPlatformUserAccessClientOrg(user, org.id);
+  if (!allowed) return null;
+  return org;
+}
+
+export async function assertClientUserInOrg(orgId, userId, viewerUser = null) {
+  const org = viewerUser
+    ? await assertClientOrganizationPlatformForUser(orgId, viewerUser)
+    : await assertClientOrganizationPlatform(orgId);
   if (!org) return null;
   const target = await User.findUserById(userId);
   if (!target || target.deactivated_at || String(target.organization_id) !== String(org.id)) {

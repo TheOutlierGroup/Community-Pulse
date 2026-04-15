@@ -6,6 +6,7 @@ import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath } from '../../config/storage.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
+import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import * as Invite from '../../models/Invite.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import {
@@ -35,9 +36,76 @@ function parsePagination(query) {
 }
 
 export function registerPlatformStaffRoutes(router) {
+  const requirePlatformAdminRole = (req, res, next) => {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    next();
+  };
+
+  router.use('/staff', requirePlatformAdminRole);
+  router.use('/users', requirePlatformAdminRole);
+
   router.get('/staff', async (req, res) => {
     const users = await User.listUsersForOrg(req.user.organizationId, parsePagination(req.query));
-    res.json({ users: users.map(publicStaffUser) });
+    const assignmentCounts = await PlatformUserClientAssignment.listAssignmentCountsForUsers(
+      users.map((row) => row.id)
+    );
+    const outUsers = users.map((row) => ({
+      ...publicStaffUser(row),
+      assignmentCount:
+        row.role === 'employee' ? assignmentCounts.get(String(row.id)) || 0 : null,
+    }));
+    res.json({ users: outUsers });
+  });
+
+  router.get('/staff/:userId/client-assignments', async (req, res) => {
+    const target = await User.findUserById(req.params.userId);
+    if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const assignedOrgIds = await PlatformUserClientAssignment.listAssignedClientOrgIdsForUser(target.id);
+    const organizations = await Organization.listClientOrganizationsByIds(assignedOrgIds, {
+      limit: 500,
+      offset: 0,
+    });
+    res.json({
+      userId: target.id,
+      clientOrganizationIds: assignedOrgIds,
+      organizations,
+    });
+  });
+
+  router.put('/staff/:userId/client-assignments', async (req, res) => {
+    const target = await User.findUserById(req.params.userId);
+    if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const clientOrganizationIds = Array.isArray(req.body?.clientOrganizationIds)
+      ? req.body.clientOrganizationIds.map((id) => String(id || '').trim()).filter(Boolean)
+      : null;
+    if (!clientOrganizationIds) {
+      return res.status(400).json({ error: 'clientOrganizationIds must be an array' });
+    }
+    const candidateRows = await Organization.listClientOrganizationsByIds(clientOrganizationIds, {
+      limit: 1000,
+      offset: 0,
+    });
+    const found = new Set(candidateRows.map((row) => String(row.id)));
+    const invalid = clientOrganizationIds.filter((id) => !found.has(String(id)));
+    if (invalid.length) {
+      return res.status(400).json({ error: 'Invalid client organization ids', invalidClientOrganizationIds: invalid });
+    }
+    const savedIds = await PlatformUserClientAssignment.replaceAssignmentsForUser(target.id, clientOrganizationIds);
+    const organizations = await Organization.listClientOrganizationsByIds(savedIds, {
+      limit: 1000,
+      offset: 0,
+    });
+    res.json({
+      userId: target.id,
+      clientOrganizationIds: savedIds,
+      organizations,
+    });
   });
 
   router.get('/users/:userId/avatar', async (req, res) => {

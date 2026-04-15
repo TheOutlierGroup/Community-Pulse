@@ -10,10 +10,22 @@ import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as taskNotificationTriggers from '../../services/taskNotificationTriggers.js';
 import {
   assertClientOrganizationPlatform,
+  assertClientOrganizationPlatformForUser,
   platformAvatarContentType,
 } from './shared.js';
 
 const router = Router();
+
+router.use('/organizations/:id', async (req, res, next) => {
+  try {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    req.clientOrganization = org;
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 const taskImageUpload = multer({
   storage: multer.memoryStorage(),

@@ -28,6 +28,22 @@ export async function listOrganizationsByKind(kind, { limit, offset } = {}) {
   return rows;
 }
 
+export async function listClientOrganizationsByIds(ids, { limit, offset } = {}) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  const cappedLimit =
+    Number.isInteger(limit) && limit > 0 ? Math.min(limit, 1000) : 500;
+  const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
+  const { rows } = await query(
+    `SELECT id, name, kind, settings, created_at, company_logo_filename
+     FROM organizations
+     WHERE kind = 'client' AND id = ANY($1::uuid[])
+     ORDER BY created_at ASC
+     LIMIT $2 OFFSET $3`,
+    [ids, cappedLimit, safeOffset]
+  );
+  return rows;
+}
+
 export async function setCompanyLogoFilename(id, filename) {
   const { rows } = await query(
     `UPDATE organizations SET company_logo_filename = $2 WHERE id = $1 AND kind = 'client' RETURNING *`,

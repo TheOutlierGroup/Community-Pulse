@@ -42,6 +42,14 @@ Node.js (Express), PostgreSQL, React (Vite). This README describes **what the pr
 
 ---
 
+## Compliance Artifacts
+
+- Data footprint and geography checklist: `docs/compliance/crm-data-footprint.md`
+- Validation worksheet responses: `docs/compliance/crm-validation-response-pack.md`
+- Runtime inventory endpoint: `GET /api/platform/compliance/inventory`
+
+---
+
 ## License
 
 Private / your organisation.

@@ -81,13 +81,27 @@ export async function requireClientOrganization(req, res, next) {
 
 export async function requirePlatformAdmin(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin only' });
-    }
     const org = await Organization.getOrganization(req.user.organizationId);
     if (!org || org.kind !== 'platform') {
       return res.status(403).json({ error: 'Platform only' });
     }
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    req.platformOrganization = org;
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function requirePlatformUser(req, res, next) {
+  try {
+    const org = await Organization.getOrganization(req.user.organizationId);
+    if (!org || org.kind !== 'platform') {
+      return res.status(403).json({ error: 'Platform only' });
+    }
+    req.platformOrganization = org;
     next();
   } catch (e) {
     next(e);

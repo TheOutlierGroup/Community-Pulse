@@ -694,7 +694,7 @@ a:hover {
 
 .platform-users-table {
   margin: 0;
-  min-width: 720px;
+  min-width: 860px;
 }
 
 .platform-users-table__name-cell {
@@ -744,6 +744,35 @@ a:hover {
   outline-offset: -2px;
 }
 
+.platform-scope-link {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.platform-scope-link:hover {
+  color: var(--text);
+}
+
+.platform-scope-link:focus-visible {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.platform-scope-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
 .platform-users-table__pw {
   display: flex;
   flex-wrap: wrap;
@@ -766,6 +795,52 @@ a:hover {
   min-height: 40px;
   padding: 0.35rem 0.65rem;
   font-size: 0.85rem;
+}
+
+.platform-user-scope-note {
+  margin: 0.2rem 0 0;
+  line-height: 1.4;
+}
+
+.platform-user-scope-list {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 0.35rem;
+  background: var(--surface2);
+}
+
+.platform-user-scope-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.platform-user-scope-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.platform-user-scope-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.platform-user-scope-item:hover {
+  background: var(--surface);
+}
+
+.platform-user-scope-item input {
+  margin: 0;
 }
 
 .modal-backdrop {

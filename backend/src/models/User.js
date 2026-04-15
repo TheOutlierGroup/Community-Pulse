@@ -96,12 +96,21 @@ export async function createUserWithProfile({
 /** Client org members + all platform-org users (for task assign / @mentions). */
 export async function listAssignableUsersForClientTasks(clientOrgId) {
   const { rows } = await query(
-    `SELECT u.id, u.email, u.role, u.organization_id, u.first_name, u.last_name,
+    `SELECT DISTINCT u.id, u.email, u.role, u.organization_id, u.first_name, u.last_name,
             u.profile_avatar_filename, o.kind AS organization_kind
      FROM users u
      JOIN organizations o ON o.id = u.organization_id
+     LEFT JOIN platform_user_client_assignments a
+       ON a.platform_user_id = u.id
+      AND a.client_org_id = $1
      WHERE u.deactivated_at IS NULL
-       AND (u.organization_id = $1 OR o.kind = 'platform')
+       AND (
+         u.organization_id = $1
+         OR (
+           o.kind = 'platform'
+           AND (u.role = 'admin' OR a.platform_user_id IS NOT NULL)
+         )
+       )
      ORDER BY (CASE WHEN o.kind = 'platform' THEN 0 ELSE 1 END), u.email ASC`,
     [clientOrgId]
   );

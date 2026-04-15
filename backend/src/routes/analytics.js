@@ -6,11 +6,14 @@ import {
   requireClientPulseService,
 } from '../middleware/auth.js';
 import * as PulseSession from '../models/PulseSession.js';
-import * as EmployeeResponse from '../models/EmployeeResponse.js';
 import * as ActionPlan from '../models/ActionPlan.js';
 import { aggregateSessionResponses } from '../services/analytics.js';
 import { buildActionPlanDraft } from '../services/pulseEngine.js';
 import { writeSessionExport } from '../services/exportService.js';
+import {
+  listSessionResponses,
+  RESPONSE_MODE_EMPLOYEE_ONLY,
+} from '../services/pulseDataContract.js';
 
 const router = Router();
 
@@ -22,10 +25,13 @@ router.get('/sessions/:id', async (req, res) => {
     req.user.organizationId
   );
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  const rows = await EmployeeResponse.listResponsesForSession(session.id);
+  const mode = req.query?.responseMode === RESPONSE_MODE_EMPLOYEE_ONLY
+    ? RESPONSE_MODE_EMPLOYEE_ONLY
+    : undefined;
+  const { rows, responseContract } = await listSessionResponses(session.id, { mode });
   const analytics = aggregateSessionResponses(rows);
   const plan = await ActionPlan.getActionPlan(session.id, req.user.organizationId);
-  res.json({ session, analytics, actionPlan: plan });
+  res.json({ session, analytics, actionPlan: plan, responseContract });
 });
 
 router.post('/sessions/:id/action-plan', async (req, res) => {
@@ -34,7 +40,10 @@ router.post('/sessions/:id/action-plan', async (req, res) => {
     req.user.organizationId
   );
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  const rows = await EmployeeResponse.listResponsesForSession(session.id);
+  const mode = req.query?.responseMode === RESPONSE_MODE_EMPLOYEE_ONLY
+    ? RESPONSE_MODE_EMPLOYEE_ONLY
+    : undefined;
+  const { rows, responseContract } = await listSessionResponses(session.id, { mode });
   const analytics = aggregateSessionResponses(rows);
   const draft = buildActionPlanDraft({
     hotspots: analytics.hotspots,
@@ -48,7 +57,7 @@ router.post('/sessions/:id/action-plan', async (req, res) => {
     req.user.organizationId,
     draft
   );
-  res.json({ actionPlan: saved, analyticsSnapshot: analytics });
+  res.json({ actionPlan: saved, analyticsSnapshot: analytics, responseContract });
 });
 
 router.get('/sessions/:id/action-plan', async (req, res) => {
@@ -67,7 +76,10 @@ router.post('/sessions/:id/export', async (req, res) => {
     req.user.organizationId
   );
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  const rows = await EmployeeResponse.listResponsesForSession(session.id);
+  const mode = req.query?.responseMode === RESPONSE_MODE_EMPLOYEE_ONLY
+    ? RESPONSE_MODE_EMPLOYEE_ONLY
+    : undefined;
+  const { rows, responseContract } = await listSessionResponses(session.id, { mode });
   const analytics = aggregateSessionResponses(rows);
   const plan = await ActionPlan.getActionPlan(session.id, req.user.organizationId);
   const { filename } = await writeSessionExport(session.id, {
@@ -77,6 +89,7 @@ router.post('/sessions/:id/export', async (req, res) => {
     actionPlan: plan,
     responses: rows.map((r) => ({
       email: r.email,
+      sourceType: r.source_type || 'employee',
       completedAt: r.completed_at,
       contributionStyle: r.contribution_style,
       step1: r.step1_data,
@@ -85,7 +98,7 @@ router.post('/sessions/:id/export', async (req, res) => {
       step4: r.step4_data,
     })),
   });
-  res.json({ ok: true, filename, downloadPath: `/api/exports/${filename}` });
+  res.json({ ok: true, filename, downloadPath: `/api/exports/${filename}`, responseContract });
 });
 
 export default router;

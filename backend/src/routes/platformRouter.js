@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { requireAuth, requirePlatformAdmin } from '../middleware/auth.js';
+import { requireAuth, requirePlatformUser } from '../middleware/auth.js';
 import { registerPlatformMeRoutes } from './platform/meRoutes.js';
 import { registerPlatformOrgRoutes } from './platform/orgRoutes.js';
 import { registerPlatformStaffRoutes } from './platform/staffRoutes.js';
+import platformComplianceRoutes from './platform/complianceRoutes.js';
 import platformTaskRoutes from './platform/taskRoutes.js';
 
 const router = Router();
@@ -23,7 +24,7 @@ const platformLimiter = rateLimit({
   },
 });
 
-router.use(requireAuth, requirePlatformAdmin, platformLimiter);
+router.use(requireAuth, requirePlatformUser, platformLimiter);
 
 if (isPulseSurface) {
   router.use((req, res, next) => {
@@ -43,6 +44,7 @@ if (isPulseSurface) {
 registerPlatformMeRoutes(router);
 registerPlatformOrgRoutes(router);
 registerPlatformStaffRoutes(router);
+router.use(platformComplianceRoutes);
 router.use(platformTaskRoutes);
 
 export default router;

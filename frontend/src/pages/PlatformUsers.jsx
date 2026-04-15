@@ -34,6 +34,10 @@ export default function PlatformUsers() {
   const [editRole, setEditRole] = useState('admin');
   const [editAvatarFile, setEditAvatarFile] = useState(null);
   const [editRemoveAvatar, setEditRemoveAvatar] = useState(false);
+  const [editAssignmentOptions, setEditAssignmentOptions] = useState([]);
+  const [editAssignedClientOrgIds, setEditAssignedClientOrgIds] = useState([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [editFocusScopeSignal, setEditFocusScopeSignal] = useState(0);
   const [removeAccessStep, setRemoveAccessStep] = useState(0);
 
   const loadStaff = useCallback(async () => {
@@ -66,6 +70,36 @@ export default function PlatformUsers() {
     return () => window.removeEventListener('keydown', onKey);
   }, [modalOpen, editUser]);
 
+  useEffect(() => {
+    if (!editUser) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        setAssignmentsLoading(true);
+        const [assignmentsRes, orgsRes] = await Promise.all([
+          api.get(`/api/platform/staff/${editUser.id}/client-assignments`),
+          api.get('/api/platform/organizations', { params: { limit: 500, offset: 0 } }),
+        ]);
+        if (cancelled) return;
+        const assigned = assignmentsRes.data?.clientOrganizationIds || [];
+        const organizations = orgsRes.data?.organizations || [];
+        setEditAssignedClientOrgIds(assigned);
+        setEditAssignmentOptions(organizations.map((row) => ({ id: row.id, name: row.name })));
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.response?.data?.error || 'Could not load client assignment scope.');
+          setEditAssignedClientOrgIds([]);
+          setEditAssignmentOptions([]);
+        }
+      } finally {
+        if (!cancelled) setAssignmentsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editUser]);
+
   function closeCreateModal() {
     setModalOpen(false);
     setError('');
@@ -77,7 +111,7 @@ export default function PlatformUsers() {
     setFormAvatar(null);
   }
 
-  function openEditModal(u) {
+  function openEditModal(u, options = {}) {
     setModalOpen(false);
     setError('');
     setRemoveAccessStep(0);
@@ -88,6 +122,9 @@ export default function PlatformUsers() {
     setEditRole(u.role === 'employee' ? 'employee' : 'admin');
     setEditAvatarFile(null);
     setEditRemoveAvatar(false);
+    if (options.focusScope) {
+      setEditFocusScopeSignal((n) => n + 1);
+    }
   }
 
   function closeEditModal() {
@@ -95,7 +132,26 @@ export default function PlatformUsers() {
     setError('');
     setEditAvatarFile(null);
     setEditRemoveAvatar(false);
+    setEditAssignmentOptions([]);
+    setEditAssignedClientOrgIds([]);
+    setAssignmentsLoading(false);
     setRemoveAccessStep(0);
+  }
+
+  function toggleAssignedClientOrg(clientOrgId) {
+    setEditAssignedClientOrgIds((prev) => {
+      const exists = prev.some((id) => String(id) === String(clientOrgId));
+      if (exists) return prev.filter((id) => String(id) !== String(clientOrgId));
+      return [...prev, clientOrgId];
+    });
+  }
+
+  function selectAllAssignedClientOrgs() {
+    setEditAssignedClientOrgIds(editAssignmentOptions.map((org) => org.id));
+  }
+
+  function clearAssignedClientOrgs() {
+    setEditAssignedClientOrgIds([]);
   }
 
   async function createUser(e) {
@@ -145,6 +201,9 @@ export default function PlatformUsers() {
         lastName: editLast.trim(),
         email: editEmail.trim(),
         role: editRole,
+      });
+      await api.put(`/api/platform/staff/${editUser.id}/client-assignments`, {
+        clientOrganizationIds: editRole === 'employee' ? editAssignedClientOrgIds : [],
       });
       if (editAvatarFile) {
         const fd = new FormData();
@@ -214,6 +273,7 @@ export default function PlatformUsers() {
         staff={staff}
         avatarListRev={avatarListRev}
         onOpenEdit={openEditModal}
+        onOpenScope={(u) => openEditModal(u, { focusScope: true })}
       />
 
       <CreateUserModal
@@ -247,6 +307,13 @@ export default function PlatformUsers() {
         setEditEmail={setEditEmail}
         editRole={editRole}
         setEditRole={setEditRole}
+        editAssignmentOptions={editAssignmentOptions}
+        editAssignedClientOrgIds={editAssignedClientOrgIds}
+        assignmentsLoading={assignmentsLoading}
+        onToggleAssignedClientOrg={toggleAssignedClientOrg}
+        onSelectAllAssignedClientOrgs={selectAllAssignedClientOrgs}
+        onClearAssignedClientOrgs={clearAssignedClientOrgs}
+        editFocusScopeSignal={editFocusScopeSignal}
         editAvatarFile={editAvatarFile}
         setEditAvatarFile={setEditAvatarFile}
         editRemoveAvatar={editRemoveAvatar}
