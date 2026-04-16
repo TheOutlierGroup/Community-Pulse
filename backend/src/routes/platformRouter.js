@@ -6,6 +6,7 @@ import { registerPlatformOrgRoutes } from './platform/orgRoutes.js';
 import { registerPlatformStaffRoutes } from './platform/staffRoutes.js';
 import platformComplianceRoutes from './platform/complianceRoutes.js';
 import platformTaskRoutes from './platform/taskRoutes.js';
+import { checkPulseSoWhatSummaryHealth } from '../services/pulseSoWhatSummary.js';
 
 const router = Router();
 const APP_SURFACE = String(process.env.APP_SURFACE || 'all').toLowerCase();
@@ -34,7 +35,8 @@ if (isPulseSurface) {
       || /^\/organizations\/[^/]+$/.test(path)
       || /^\/organizations\/[^/]+\/logo$/.test(path)
       || /^\/organizations\/[^/]+\/pulse-dashboard$/.test(path)
-      || /^\/organizations\/[^/]+\/pulse-link-invites(?:\/.*)?$/.test(path);
+      || /^\/organizations\/[^/]+\/pulse-link-invites(?:\/.*)?$/.test(path)
+      || /^\/health\/ai-summary$/.test(path);
 
     if (!allowed) return res.status(404).json({ error: 'Not found' });
     return next();
@@ -44,6 +46,11 @@ if (isPulseSurface) {
 registerPlatformMeRoutes(router);
 registerPlatformOrgRoutes(router);
 registerPlatformStaffRoutes(router);
+router.get('/health/ai-summary', async (req, res) => {
+  const live = String(req.query?.live || '').trim().toLowerCase() !== 'false';
+  const health = await checkPulseSoWhatSummaryHealth({ live });
+  return res.status(health.ok ? 200 : 503).json(health);
+});
 router.use(platformComplianceRoutes);
 router.use(platformTaskRoutes);
 
