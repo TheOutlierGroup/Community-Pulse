@@ -4,6 +4,7 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
+import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { CalendarRange, LayoutDashboard, ListTodo } from 'lucide-react';
 
 const ClientTaskDetailPanel = lazy(() => import('../components/platform/ClientTaskDetailPanel.jsx'));
@@ -110,6 +111,8 @@ export default function PlatformHome() {
       cancelled = true;
     };
   }, [detailOrgId]);
+
+  useDocumentTitle(!loading && ok ? `Dashboard | ${DEFAULT_TAB}` : null);
 
   if (loading || !ok) return null;
 

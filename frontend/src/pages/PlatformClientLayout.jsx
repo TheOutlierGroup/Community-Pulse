@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Outlet, useNavigate, useParams } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
@@ -7,9 +7,11 @@ import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { jsonErrorFromBuffer, sniffImageMime } from '../utils/imageResponseHelpers.js';
 import { ArrowLeft } from 'lucide-react';
 import { IS_PULSE_SURFACE } from '../config/appSurface.js';
+import { DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 
 export default function PlatformClientLayout() {
   const { orgId } = useParams();
+  const location = useLocation();
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   const ok = usePlatformAccess(user, loading, navigate);
@@ -121,6 +123,47 @@ export default function PlatformClientLayout() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!ok || loading || !orgId) return undefined;
+    const previous = document.title;
+    if (notFound) {
+      document.title = `Client not found | ${DEFAULT_TAB}`;
+      return () => {
+        document.title = previous;
+      };
+    }
+    if (orgLoading || !org) {
+      document.title = `Client · Loading… | ${DEFAULT_TAB}`;
+      return () => {
+        document.title = previous;
+      };
+    }
+
+    const base = `/platform/clients/${orgId}`;
+    const path = location.pathname;
+    const tail = path.startsWith(base) ? path.slice(base.length).replace(/^\/+/, '') : '';
+    let section = 'Client';
+    if (!tail) {
+      section = IS_PULSE_SURFACE ? 'Pulse' : 'Overview';
+    } else if (tail === 'users') {
+      section = 'Users';
+    } else if (tail.startsWith('tasks')) {
+      section = 'Tasks';
+    } else if (tail === 'account') {
+      section = 'Account';
+    } else if (tail.startsWith('pulse/users')) {
+      section = 'Pulse · Invites';
+    } else if (tail.startsWith('pulse')) {
+      section = 'Pulse';
+    }
+
+    const client = String(org.name || '').trim() || 'Client';
+    document.title = `${section} | ${client}`;
+    return () => {
+      document.title = previous;
+    };
+  }, [ok, loading, orgId, notFound, orgLoading, org, location.pathname]);
 
   const navContext = useMemo(
     () => ({

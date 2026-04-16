@@ -5,6 +5,7 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
+import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { Plus, Users } from 'lucide-react';
 import PlatformUsersTable from './platformUsers/PlatformUsersTable.jsx';
 import CreateUserModal from './platformUsers/CreateUserModal.jsx';
@@ -239,6 +240,8 @@ export default function PlatformUsers() {
   if (loading || !ok) return null;
 
   const canRemoveAccess = editUser && String(editUser.id) !== String(user?.id);
+
+  useDocumentTitle(!loading && ok ? `Users | ${DEFAULT_TAB}` : null);
 
   return (
     <Layout user={user} onLogout={logout}>

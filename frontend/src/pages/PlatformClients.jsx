@@ -6,6 +6,7 @@ import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
+import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { Building2, Plus, X } from 'lucide-react';
 
 function readCompanyAddress(settings) {
@@ -78,6 +79,8 @@ export default function PlatformClients() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [modalOpen]);
+
+  useDocumentTitle(!loading && ok ? `Clients | ${DEFAULT_TAB}` : null);
 
   function closeCreateModal() {
     setModalOpen(false);

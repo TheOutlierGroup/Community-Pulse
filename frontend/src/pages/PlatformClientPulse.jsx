@@ -177,6 +177,7 @@ export default function PlatformClientPulse() {
     setPulseManagerOptions,
   } = useOutletContext();
   const location = useLocation();
+
   const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -247,6 +248,24 @@ export default function PlatformClientPulse() {
     if (PULSE_SECTION_IDS.includes(rawHash)) return rawHash;
     return null;
   }, [location.hash]);
+
+  const pulseDocumentSectionLabel = useMemo(() => {
+    const s = pulseFocusedSection;
+    if (s === 'organisation-scores') return 'Organisation scores';
+    if (s === 'manager-load-report') return 'Manager load report';
+    if (s === 'employee-breakdown') return 'Employee breakdown';
+    if (s === 'team-level-view') return 'Team-level view';
+    return 'Organisation dashboard';
+  }, [pulseFocusedSection]);
+
+  useEffect(() => {
+    const previous = document.title;
+    const client = String(org?.name ?? '').trim() || 'Client';
+    document.title = `Pulse · ${pulseDocumentSectionLabel} | ${client}`;
+    return () => {
+      document.title = previous;
+    };
+  }, [pulseDocumentSectionLabel, org?.name]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
