@@ -5,6 +5,7 @@ import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath, ensureStorageDirs, orgLogoFilePath } from '../../config/storage.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
+import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import { normalizeClientServiceIds } from '../../services/clientServices.js';
 
@@ -86,7 +87,8 @@ export async function canPlatformUserAccessClientOrg(user, clientOrgId) {
   const platformOrg = await Organization.getOrganization(user.organizationId);
   if (!platformOrg || platformOrg.kind !== 'platform') return false;
   if (user.role === 'admin') return true;
-  return PlatformUserClientAssignment.userHasClientOrgAssignment(user.id, clientOrgId);
+  if (await PlatformUserClientAssignment.userHasClientOrgAssignment(user.id, clientOrgId)) return true;
+  return ClientWorkTask.platformUserHasStakeInClientOrgTasks(user.id, clientOrgId);
 }
 
 export async function assertClientOrganizationPlatformForUser(id, user) {

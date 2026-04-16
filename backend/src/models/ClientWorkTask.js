@@ -260,6 +260,36 @@ export async function countOpenTasksAssignedToUserAcrossClientOrgs(userId) {
   return rows[0]?.c ?? 0;
 }
 
+/** Platform staff: can open client org task APIs when they have real work on a card in that org. */
+export async function platformUserHasStakeInClientOrgTasks(platformUserId, clientOrgId) {
+  const { rows } = await query(
+    `SELECT 1
+     FROM client_work_tasks t
+     WHERE t.organization_id = $1
+       AND (
+         t.assigned_to = $2
+         OR t.created_by = $2
+         OR EXISTS (SELECT 1 FROM client_work_task_tags tt WHERE tt.task_id = t.id AND tt.user_id = $2)
+         OR EXISTS (
+           SELECT 1 FROM client_work_task_watchers w
+           WHERE w.task_id = t.id AND w.organization_id = t.organization_id AND w.user_id = $2
+         )
+         OR EXISTS (
+           SELECT 1 FROM client_work_task_comments c
+           WHERE c.task_id = t.id AND c.organization_id = t.organization_id AND c.author_id = $2
+         )
+         OR EXISTS (
+           SELECT 1 FROM client_work_task_comments c
+           INNER JOIN client_work_task_comment_mentions m ON m.comment_id = c.id
+           WHERE c.task_id = t.id AND c.organization_id = t.organization_id AND m.user_id = $2
+         )
+       )
+     LIMIT 1`,
+    [clientOrgId, platformUserId]
+  );
+  return rows.length > 0;
+}
+
 export async function getTaskListRow(taskId, organizationId) {
   const { rows } = await query(`${LIST_SELECT} WHERE t.organization_id = $1 AND t.id = $2`, [
     organizationId,
