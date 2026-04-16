@@ -11,7 +11,6 @@ import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import * as PulseSession from '../../models/PulseSession.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
-import { aggregateSessionResponses } from '../../services/analytics.js';
 import {
   isResendConfigured,
   sendPlatformWelcomeEmail,
@@ -498,7 +497,6 @@ export function registerPlatformOrgRoutes(router) {
       includeManagerSelf
     );
     const completedRows = scopedCurrentRows.filter((r) => r.completed_at);
-    const analytics = aggregateSessionResponses(scopedCurrentRows);
 
     const currentScored = completedRows
       .map((r) => responseScoresOutOf40(r))
@@ -789,7 +787,8 @@ export function registerPlatformOrgRoutes(router) {
     const prioritizedAlerts = prioritizeAndCapAlerts(allAlerts, 5);
     const optimalQuadrant = quadrants.find((entry) => entry.name === 'Optimal');
     const highRiskQuadrant = quadrants.find((entry) => entry.name === 'High Risk');
-    let soWhat;
+    let soWhat = null;
+    let soWhatStatus = 'ready';
     try {
       soWhat = await generatePulseSoWhatSummary({
         orgName: org.name,
@@ -803,9 +802,7 @@ export function registerPlatformOrgRoutes(router) {
         alertTitles: prioritizedAlerts.alerts.map((alert) => alert.title),
       });
     } catch (error) {
-      return res.status(503).json({
-        error: 'AI summary is required but currently unavailable. Verify OPENAI_API_KEY and OpenAI API connectivity.',
-      });
+      soWhatStatus = 'unavailable';
     }
 
     schedulePulseAlertNotifications({
@@ -877,6 +874,7 @@ export function registerPlatformOrgRoutes(router) {
       alertsOverflowCount: prioritizedAlerts.overflowCount,
       narrative: soWhat,
       soWhat,
+      soWhatStatus,
     });
   });
 

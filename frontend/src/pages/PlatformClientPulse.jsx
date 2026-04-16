@@ -485,9 +485,13 @@ export default function PlatformClientPulse() {
                   {quadrantFocus.name}
                 </div>
                 <p>
-                  {dashboard?.narrative ||
-                    'Leadership is trusted and visible, but adoption conditions remain weak. Build capacity before launch.'}
+                  {dashboard?.narrative || dashboard?.soWhat || 'AI summary currently unavailable for this client.'}
                 </p>
+                {dashboard?.soWhatStatus === 'unavailable' ? (
+                  <p className="muted" style={{ marginTop: '0.45rem' }}>
+                    Check `OPENAI_API_KEY` and OpenAI API connectivity on the backend deployment.
+                  </p>
+                ) : null}
                 <p className="muted" style={{ marginTop: '0.45rem' }}>
                   Delta baseline: previous 7-day window. Threshold: {scoreSemantics.threshold ?? 28}.
                 </p>
