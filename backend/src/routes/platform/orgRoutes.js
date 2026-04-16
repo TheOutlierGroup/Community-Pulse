@@ -46,6 +46,7 @@ import {
 } from '../../services/pulseDashboardMetrics.js';
 import { schedulePulseAlertNotifications } from '../../services/pulseAlertNotifications.js';
 import { listSessionResponses } from '../../services/pulseDataContract.js';
+import { generatePulseSoWhatSummary } from '../../services/pulseSoWhatSummary.js';
 import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
@@ -786,6 +787,26 @@ export function registerPlatformOrgRoutes(router) {
       ...thresholdCrossingAlerts,
     ];
     const prioritizedAlerts = prioritizeAndCapAlerts(allAlerts, 5);
+    const optimalQuadrant = quadrants.find((entry) => entry.name === 'Optimal');
+    const highRiskQuadrant = quadrants.find((entry) => entry.name === 'High Risk');
+    let soWhat;
+    try {
+      soWhat = await generatePulseSoWhatSummary({
+        orgName: org.name,
+        completedTotal,
+        adoptionScore,
+        sponsorshipScore,
+        threshold: READINESS_THRESHOLD,
+        optimalPercent: optimalQuadrant?.percent || 0,
+        highRiskPercent: highRiskQuadrant?.percent || 0,
+        overloadedPercent: overloadedBand?.percent || 0,
+        alertTitles: prioritizedAlerts.alerts.map((alert) => alert.title),
+      });
+    } catch (error) {
+      return res.status(503).json({
+        error: 'AI summary is required but currently unavailable. Verify OPENAI_API_KEY and OpenAI API connectivity.',
+      });
+    }
 
     schedulePulseAlertNotifications({
       clientOrgId: org.id,
@@ -854,7 +875,8 @@ export function registerPlatformOrgRoutes(router) {
       byManager,
       alerts: prioritizedAlerts.alerts,
       alertsOverflowCount: prioritizedAlerts.overflowCount,
-      narrative: analytics.narrative,
+      narrative: soWhat,
+      soWhat,
     });
   });
 
