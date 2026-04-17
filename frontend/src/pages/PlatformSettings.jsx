@@ -17,6 +17,7 @@ export default function PlatformSettings() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [serviceToAdd, setServiceToAdd] = useState('');
 
   useEffect(() => {
     setOrgServices(normalizeServices({ services: user?.enabledServices }));
@@ -28,12 +29,15 @@ export default function PlatformSettings() {
     }
   }, [loading, ok, user, navigate]);
 
-  function onToggleService(serviceId, checked) {
-    setOrgServices((current) =>
-      checked
-        ? Array.from(new Set([...current, serviceId]))
-        : current.filter((id) => id !== serviceId)
-    );
+  function addService(serviceId) {
+    const id = String(serviceId || '').trim().toLowerCase();
+    if (!id) return;
+    setOrgServices((current) => (current.includes(id) ? current : [...current, id]));
+    setServiceToAdd('');
+  }
+
+  function removeService(serviceId) {
+    setOrgServices((current) => current.filter((id) => id !== serviceId));
   }
 
   async function saveOrganizationServices(e) {
@@ -58,6 +62,9 @@ export default function PlatformSettings() {
 
   if (loading || !isPlatformAdmin) return null;
 
+  const selectedServices = CLIENT_SERVICE_OPTIONS.filter((service) => orgServices.includes(service.id));
+  const addableServices = CLIENT_SERVICE_OPTIONS.filter((service) => !orgServices.includes(service.id));
+
   return (
     <Layout user={user} onLogout={logout}>
       <div className="page-header-row">
@@ -71,7 +78,7 @@ export default function PlatformSettings() {
       <div className="card" style={{ marginTop: '1rem' }}>
         <h2 className="settings-section-title">Organization services</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Tick the services your organization is paying for. Only Pulse changes app behavior.
+          Manage the services your organization is paying for. Only Pulse changes app behavior.
         </p>
         {error ? (
           <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
@@ -84,18 +91,60 @@ export default function PlatformSettings() {
           </p>
         ) : null}
         <form onSubmit={saveOrganizationServices}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.45rem 1rem' }}>
-            {CLIENT_SERVICE_OPTIONS.map((service) => (
-              <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <input
-                  type="checkbox"
-                  checked={orgServices.includes(service.id)}
-                  disabled={busy}
-                  onChange={(e) => onToggleService(service.id, e.target.checked)}
-                />
-                <span>{service.label}</span>
-              </label>
-            ))}
+          <div style={{ display: 'grid', gap: '0.65rem' }}>
+            {selectedServices.length ? (
+              selectedServices.map((service) => (
+                <div
+                  key={service.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.75rem',
+                    padding: '0.45rem 0.6rem',
+                    border: '1px solid var(--line)',
+                    borderRadius: '0.5rem',
+                  }}
+                >
+                  <span>{service.label}</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={busy}
+                    onClick={() => removeService(service.id)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>
+                No services added yet.
+              </p>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.9rem', flexWrap: 'wrap' }}>
+            <select
+              value={serviceToAdd}
+              disabled={busy || addableServices.length === 0}
+              onChange={(e) => setServiceToAdd(e.target.value)}
+              style={{ minWidth: '240px' }}
+            >
+              <option value="">{addableServices.length ? 'Select a service to add' : 'All services are added'}</option>
+              {addableServices.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={busy || !serviceToAdd}
+              onClick={() => addService(serviceToAdd)}
+            >
+              Add service
+            </button>
           </div>
           <button type="submit" className="btn btn-ghost" disabled={busy} style={{ marginTop: '0.9rem' }}>
             Save services

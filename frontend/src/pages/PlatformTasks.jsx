@@ -65,8 +65,8 @@ export default function PlatformTasks() {
   useDocumentTitle(
     !loading && ok
       ? isCrossClientMode
-        ? `CRM Tasks · ${viewingAssignee?.email || 'Assignee'} | ${DEFAULT_TAB}`
-        : `CRM Tasks | ${DEFAULT_TAB}`
+        ? `Tasks · ${viewingAssignee?.email || 'Assignee'} | ${DEFAULT_TAB}`
+        : `Tasks | ${DEFAULT_TAB}`
       : null
   );
 
@@ -427,32 +427,34 @@ export default function PlatformTasks() {
       <div className="page-header-row" style={{ marginTop: '0.5rem' }}>
         <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
           <ClipboardList size={28} strokeWidth={1.75} aria-hidden />
-          CRM Tasks
+          Tasks
         </h1>
         {isPlatformAdmin ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '18rem' }}>
-            <label className="visually-hidden" htmlFor="crm-task-assignee-filter">
-              View tasks for
-            </label>
-            <select
-              id="crm-task-assignee-filter"
-              value={selectedUserId}
-              onChange={(e) => {
-                closeTaskDetail();
-                setComposingColumnId(null);
-                setComposerTitle('');
-                setSelectedUserId(String(e.target.value || ''));
-              }}
-            >
-              <option value="" disabled>
-                Select teammate
-              </option>
-              {staffUsers.map((staffUser) => (
-                <option key={staffUser.id} value={staffUser.id}>
-                  {formatStaffLabel(staffUser)}
+            <div className="field" style={{ marginBottom: 0, minWidth: '16rem', flex: 1 }}>
+              <label className="visually-hidden" htmlFor="crm-task-assignee-filter">
+                View tasks for
+              </label>
+              <select
+                id="crm-task-assignee-filter"
+                value={selectedUserId}
+                onChange={(e) => {
+                  closeTaskDetail();
+                  setComposingColumnId(null);
+                  setComposerTitle('');
+                  setSelectedUserId(String(e.target.value || ''));
+                }}
+              >
+                <option value="" disabled>
+                  Select teammate
                 </option>
-              ))}
-            </select>
+                {staffUsers.map((staffUser) => (
+                  <option key={staffUser.id} value={staffUser.id}>
+                    {formatStaffLabel(staffUser)}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               type="button"
               className="btn btn-ghost"

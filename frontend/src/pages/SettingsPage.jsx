@@ -41,6 +41,7 @@ export default function AccountPage() {
   const [orgServicesBusy, setOrgServicesBusy] = useState(false);
   const [orgServicesError, setOrgServicesError] = useState('');
   const [orgServicesMessage, setOrgServicesMessage] = useState('');
+  const [serviceToAdd, setServiceToAdd] = useState('');
 
   useEffect(() => {
     if (!loading && !user) navigate('/');
@@ -215,6 +216,8 @@ export default function AccountPage() {
 
   const displayPreview = [firstName, lastName].filter(Boolean).join(' ').trim() || user.email;
   const canManageOrgServices = user.organizationKind === 'client' && user.role === 'admin';
+  const selectedOrgServices = CLIENT_SERVICE_OPTIONS.filter((service) => orgServices.includes(service.id));
+  const addableOrgServices = CLIENT_SERVICE_OPTIONS.filter((service) => !orgServices.includes(service.id));
 
   async function saveNames(e) {
     e.preventDefault();
@@ -352,12 +355,15 @@ export default function AccountPage() {
     }
   }
 
-  function onToggleOrgService(serviceId, checked) {
-    setOrgServices((current) =>
-      checked
-        ? Array.from(new Set([...current, serviceId]))
-        : current.filter((id) => id !== serviceId)
-    );
+  function addOrgService(serviceId) {
+    const id = String(serviceId || '').trim().toLowerCase();
+    if (!id) return;
+    setOrgServices((current) => (current.includes(id) ? current : [...current, id]));
+    setServiceToAdd('');
+  }
+
+  function removeOrgService(serviceId) {
+    setOrgServices((current) => current.filter((id) => id !== serviceId));
   }
 
   async function saveOrganizationServices(e) {
@@ -437,7 +443,7 @@ export default function AccountPage() {
           <h2 className="settings-section-title">Organization services</h2>
           <p className="muted" style={{ marginTop: 0 }}>
             {canManageOrgServices
-              ? 'Tick the services your client is paying for. Only Pulse changes app behavior.'
+              ? 'Manage the services your client is paying for. Only Pulse changes app behavior.'
               : 'These are the services enabled for your client. Only Pulse changes app behavior.'}
           </p>
           {canManageOrgServices && orgServicesError ? (
@@ -451,19 +457,67 @@ export default function AccountPage() {
             </p>
           ) : null}
           <form onSubmit={saveOrganizationServices}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.45rem 1rem' }}>
-              {CLIENT_SERVICE_OPTIONS.map((service) => (
-                <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={orgServices.includes(service.id)}
-                    disabled={orgServicesBusy || !canManageOrgServices}
-                    onChange={(e) => onToggleOrgService(service.id, e.target.checked)}
-                  />
-                  <span>{service.label}</span>
-                </label>
-              ))}
+            <div style={{ display: 'grid', gap: '0.65rem' }}>
+              {selectedOrgServices.length ? (
+                selectedOrgServices.map((service) => (
+                  <div
+                    key={service.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.75rem',
+                      padding: '0.45rem 0.6rem',
+                      border: '1px solid var(--line)',
+                      borderRadius: '0.5rem',
+                    }}
+                  >
+                    <span>{service.label}</span>
+                    {canManageOrgServices ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={orgServicesBusy}
+                        onClick={() => removeOrgService(service.id)}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                ))
+              ) : (
+                <p className="muted" style={{ margin: 0 }}>
+                  No services added yet.
+                </p>
+              )}
             </div>
+            {canManageOrgServices ? (
+              <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.9rem', flexWrap: 'wrap' }}>
+                <select
+                  value={serviceToAdd}
+                  disabled={orgServicesBusy || addableOrgServices.length === 0}
+                  onChange={(e) => setServiceToAdd(e.target.value)}
+                  style={{ minWidth: '240px' }}
+                >
+                  <option value="">
+                    {addableOrgServices.length ? 'Select a service to add' : 'All services are added'}
+                  </option>
+                  {addableOrgServices.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={orgServicesBusy || !serviceToAdd}
+                  onClick={() => addOrgService(serviceToAdd)}
+                >
+                  Add service
+                </button>
+              </div>
+            ) : null}
             {canManageOrgServices ? (
               <button type="submit" className="btn btn-ghost" disabled={orgServicesBusy} style={{ marginTop: '0.9rem' }}>
                 Save services
