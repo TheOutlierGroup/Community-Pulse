@@ -17,7 +17,7 @@ export default function ProfileCard({
   namesBusy,
 }) {
   return (
-    <div className="card" style={{ maxWidth: 480, marginBottom: '1.25rem' }}>
+    <div className="card account-card">
       <h2 className="settings-section-title">Your profile</h2>
       {avatarLoadError ? (
         <p className="error" style={{ marginBottom: '0.75rem' }}>

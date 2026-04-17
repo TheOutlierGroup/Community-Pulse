@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './components/shared/Auth.jsx';
 import { ToastProvider } from './components/shared/ToastProvider.jsx';
 import { IS_PULSE_SURFACE } from './config/appSurface.js';
@@ -28,7 +28,7 @@ const PlatformClientAccount = lazy(() => import('./pages/PlatformClientAccount.j
 const PlatformUsers = lazy(() => import('./pages/PlatformUsers.jsx'));
 const PlatformSettings = lazy(() => import('./pages/PlatformSettings.jsx'));
 const ClientHome = lazy(() => import('./pages/ClientHome.jsx'));
-const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const AccountPage = lazy(() => import('./pages/SettingsPage.jsx'));
 
 export default function App() {
   const publicEntry = IS_PULSE_SURFACE ? <PulseLanding /> : <Login />;
@@ -62,7 +62,8 @@ export default function App() {
             {!IS_PULSE_SURFACE && <Route path="/platform/clients" element={<PlatformClients />} />}
             {!IS_PULSE_SURFACE && <Route path="/platform/users" element={<PlatformUsers />} />}
             {!IS_PULSE_SURFACE && <Route path="/platform/settings" element={<PlatformSettings />} />}
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/account" element={<AccountPage />} />
+            <Route path="/settings" element={<Navigate to="/account" replace />} />
             <Route path="/client" element={<ClientHome />} />
             <Route path="/admin" element={<AdminHome />} />
             <Route path="/admin/sessions/:id" element={<AdminSession />} />

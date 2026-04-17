@@ -15,21 +15,6 @@ import {
   normalizeServices,
 } from './platformClientUtils.js';
 
-function readCompanyAddress(settings) {
-  if (settings == null) return '';
-  let s = settings;
-  if (typeof s === 'string') {
-    try {
-      s = JSON.parse(s);
-    } catch {
-      return '';
-    }
-  }
-  if (typeof s !== 'object') return '';
-  const v = s.companyAddress;
-  return v == null ? '' : String(v).trim();
-}
-
 function activeServiceLabels(settings) {
   return normalizeServices(settings).map((serviceId) => clientServiceLabel(serviceId));
 }
@@ -190,14 +175,13 @@ export default function PlatformClients() {
                 <th scope="col">Company</th>
                 <th scope="col">Status</th>
                 <th scope="col">Active services</th>
-                <th scope="col">Address</th>
                 <th scope="col">Created</th>
               </tr>
             </thead>
             <tbody>
               {orgs.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="muted" style={{ padding: '1.5rem' }}>
+                  <td colSpan={4} className="muted" style={{ padding: '1.5rem' }}>
                     No client companies yet. Create one to get started.
                   </td>
                 </tr>
@@ -238,12 +222,6 @@ export default function PlatformClients() {
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
                     {activeServiceLabels(o.settings).join(', ') || '—'}
-                  </td>
-                  <td
-                    className="muted platform-clients-table__address"
-                    style={{ fontSize: '0.9rem', maxWidth: '22rem', whiteSpace: 'pre-wrap' }}
-                  >
-                    {readCompanyAddress(o.settings) || '—'}
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
                     {o.created_at

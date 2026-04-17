@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import api from '../services/api.js';
-import { Settings } from 'lucide-react';
+import { CircleUser } from 'lucide-react';
 import { jsonErrorFromBuffer, sniffImageMime } from '../utils/imageResponseHelpers.js';
 import ProfileCard from './settingsPage/ProfileCard.jsx';
 import CompanyLogoCard from './settingsPage/CompanyLogoCard.jsx';
@@ -11,7 +11,7 @@ import PasswordCard from './settingsPage/PasswordCard.jsx';
 import AccountCard from './settingsPage/AccountCard.jsx';
 import { CLIENT_SERVICE_OPTIONS, normalizeServices } from '../utils/clientServices.js';
 
-export default function SettingsPage() {
+export default function AccountPage() {
   const { user, logout, loading, setCurrentUser } = useAuth();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
@@ -381,8 +381,8 @@ export default function SettingsPage() {
   return (
     <Layout user={user} onLogout={logout}>
       <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <Settings size={28} strokeWidth={1.75} aria-hidden />
-        Settings
+        <CircleUser size={28} strokeWidth={1.75} aria-hidden />
+        Account
       </h1>
       <p className="muted" style={{ marginBottom: '1.5rem' }}>
         Update your name, profile photo, and password. Read-only account details are below.
@@ -392,43 +392,46 @@ export default function SettingsPage() {
           {error || message}
         </p>
       )}
-      <ProfileCard
-        user={user}
-        avatarLoadError={avatarLoadError}
-        avatarPreview={avatarPreview}
-        fileInputRef={fileInputRef}
-        onAvatarFile={onAvatarFile}
-        profileBusy={profileBusy}
-        removeAvatar={removeAvatar}
-        saveNames={saveNames}
-        firstName={firstName}
-        setFirstName={setFirstName}
-        lastName={lastName}
-        setLastName={setLastName}
-        displayPreview={displayPreview}
-        namesBusy={namesBusy}
-      />
-      <CompanyLogoCard
-        user={user}
-        companyLogoLoadError={companyLogoLoadError}
-        companyLogoPreview={companyLogoPreview}
-        companyLogoInputRef={companyLogoInputRef}
-        onCompanyLogoFile={onCompanyLogoFile}
-        companyLogoBusy={companyLogoBusy}
-        removeCompanyLogo={removeCompanyLogo}
-      />
-      <PasswordCard
-        passwordMessage={passwordMessage}
-        passwordError={passwordError}
-        changePassword={changePassword}
-        currentPassword={currentPassword}
-        setCurrentPassword={setCurrentPassword}
-        newPassword={newPassword}
-        setNewPassword={setNewPassword}
-        confirmPassword={confirmPassword}
-        setConfirmPassword={setConfirmPassword}
-        passwordBusy={passwordBusy}
-      />
+      <div className="account-cards-grid">
+        <ProfileCard
+          user={user}
+          avatarLoadError={avatarLoadError}
+          avatarPreview={avatarPreview}
+          fileInputRef={fileInputRef}
+          onAvatarFile={onAvatarFile}
+          profileBusy={profileBusy}
+          removeAvatar={removeAvatar}
+          saveNames={saveNames}
+          firstName={firstName}
+          setFirstName={setFirstName}
+          lastName={lastName}
+          setLastName={setLastName}
+          displayPreview={displayPreview}
+          namesBusy={namesBusy}
+        />
+        <PasswordCard
+          passwordMessage={passwordMessage}
+          passwordError={passwordError}
+          changePassword={changePassword}
+          currentPassword={currentPassword}
+          setCurrentPassword={setCurrentPassword}
+          newPassword={newPassword}
+          setNewPassword={setNewPassword}
+          confirmPassword={confirmPassword}
+          setConfirmPassword={setConfirmPassword}
+          passwordBusy={passwordBusy}
+        />
+        <CompanyLogoCard
+          user={user}
+          companyLogoLoadError={companyLogoLoadError}
+          companyLogoPreview={companyLogoPreview}
+          companyLogoInputRef={companyLogoInputRef}
+          onCompanyLogoFile={onCompanyLogoFile}
+          companyLogoBusy={companyLogoBusy}
+          removeCompanyLogo={removeCompanyLogo}
+        />
+        <AccountCard user={user} orgLabel={orgLabel} />
+      </div>
       {user.organizationKind === 'client' ? (
         <div className="card" style={{ marginTop: '1rem' }}>
           <h2 className="settings-section-title">Organization services</h2>
@@ -469,7 +472,6 @@ export default function SettingsPage() {
           </form>
         </div>
       ) : null}
-      <AccountCard user={user} orgLabel={orgLabel} />
     </Layout>
   );
 }

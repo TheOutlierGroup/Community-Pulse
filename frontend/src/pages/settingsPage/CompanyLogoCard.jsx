@@ -12,7 +12,7 @@ export default function CompanyLogoCard({
   if (user.organizationKind !== 'client' || user.role !== 'admin') return null;
 
   return (
-    <div className="card" style={{ maxWidth: 480, marginBottom: '1.25rem' }}>
+    <div className="card account-card">
       <h2 className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <Building2 size={22} strokeWidth={1.75} aria-hidden />
         Company logo

@@ -32,7 +32,7 @@ export default function AdminHome() {
   useEffect(() => {
     if (!loading && !user) navigate('/');
     else if (user?.organizationKind === 'platform') navigate('/platform');
-    else if (user && user.role !== 'admin') navigate(userHasService(user, CLIENT_SERVICE_PULSE) ? '/pulse' : '/settings');
+    else if (user && user.role !== 'admin') navigate(userHasService(user, CLIENT_SERVICE_PULSE) ? '/pulse' : '/account');
     else if (user?.organizationKind !== 'client') navigate('/');
     else if (user && user.role === 'admin' && !userHasService(user, CLIENT_SERVICE_PULSE)) {
       navigate('/client');

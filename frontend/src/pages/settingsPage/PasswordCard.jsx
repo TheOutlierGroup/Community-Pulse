@@ -11,7 +11,7 @@ export default function PasswordCard({
   passwordBusy,
 }) {
   return (
-    <div className="card" style={{ maxWidth: 480, marginBottom: '1.25rem' }}>
+    <div className="card account-card">
       <h2 className="settings-section-title">Password</h2>
       {passwordMessage || passwordError ? (
         <p className={passwordError ? 'error' : 'muted'} style={{ marginBottom: '1rem' }}>

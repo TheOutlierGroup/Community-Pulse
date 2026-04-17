@@ -46,15 +46,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       : (location.hash || '#organisation-dashboard').replace(/^#/, '')
     : '';
   const pulseClientName = String(navContext?.clientOrganization?.name || '').trim();
-  const pulseSelectedManagerIds = Array.isArray(navContext?.pulseSelectedManagerIds)
-    ? navContext.pulseSelectedManagerIds
-    : [];
-  const setPulseSelectedManagerIds = navContext?.setPulseSelectedManagerIds;
-  const pulseIncludeManagerSelf = Boolean(navContext?.pulseIncludeManagerSelf);
-  const setPulseIncludeManagerSelf = navContext?.setPulseIncludeManagerSelf;
-  const pulseManagerOptions = Array.isArray(navContext?.pulseManagerOptions)
-    ? navContext.pulseManagerOptions
-    : [];
   const pulseTimepoint = String(navContext?.pulseTimepoint || 'during');
   const setPulseTimepoint = navContext?.setPulseTimepoint;
   const pulseDuringDate = String(navContext?.pulseDuringDate || '');
@@ -80,17 +71,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
 
   function pulseSectionLinkClass(sectionId) {
     return `sidebar-nav-link${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
-  }
-
-  function togglePulseManager(managerId) {
-    if (typeof setPulseSelectedManagerIds !== 'function') return;
-    const id = String(managerId || '').trim();
-    if (!id) return;
-    setPulseSelectedManagerIds((current) => {
-      const list = Array.isArray(current) ? current : [];
-      if (list.includes(id)) return list.filter((value) => value !== id);
-      return [...list, id];
-    });
   }
 
   function onPulseTimepointSelect(nextValue) {
@@ -239,66 +219,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <Gauge size={20} strokeWidth={1.75} aria-hidden />
                     Manager Load Report
                   </Link>
-                  <div className="sidebar-nav-divider" aria-hidden />
-                  <section className="sidebar-pulse-filter" aria-label="Manager filter">
-                    <div className="sidebar-pulse-filter__head">
-                      <span className="sidebar-pulse-filter__title">Managers</span>
-                      <span className="sidebar-pulse-filter__meta">
-                        {pulseSelectedManagerIds.length
-                          ? `${pulseSelectedManagerIds.length} selected`
-                          : `${pulseManagerOptions.length} available`}
-                      </span>
-                    </div>
-                    <div className="sidebar-pulse-filter__list" role="group" aria-label="Filter by managers">
-                      {pulseManagerOptions.length === 0 ? (
-                        <p className="sidebar-pulse-filter__empty">No managers available yet</p>
-                      ) : (
-                        pulseManagerOptions.map((manager) => {
-                          const managerId = String(manager.id || '').trim();
-                          const selected = pulseSelectedManagerIds.includes(managerId);
-                          return (
-                            <label key={managerId} className="sidebar-pulse-filter__row">
-                              <input
-                                type="checkbox"
-                                checked={selected}
-                                onChange={() => togglePulseManager(managerId)}
-                              />
-                              <span className="sidebar-pulse-filter__name">
-                                {manager.displayName?.trim() || manager.email || 'Unnamed manager'}
-                              </span>
-                            </label>
-                          );
-                        })
-                      )}
-                    </div>
-                    <label className="sidebar-pulse-filter__toggle">
-                      <input
-                        type="checkbox"
-                        checked={pulseIncludeManagerSelf}
-                        onChange={(e) => {
-                          if (typeof setPulseIncludeManagerSelf !== 'function') return;
-                          setPulseIncludeManagerSelf(e.target.checked);
-                        }}
-                        disabled={pulseSelectedManagerIds.length === 0}
-                      />
-                      Include manager
-                    </label>
-                    <button
-                      type="button"
-                      className="sidebar-nav-link sidebar-nav-link--button"
-                      onClick={() => {
-                        if (typeof setPulseSelectedManagerIds === 'function') {
-                          setPulseSelectedManagerIds([]);
-                        }
-                        if (typeof setPulseIncludeManagerSelf === 'function') {
-                          setPulseIncludeManagerSelf(false);
-                        }
-                      }}
-                      disabled={pulseSelectedManagerIds.length === 0 && !pulseIncludeManagerSelf}
-                    >
-                      Clear manager filter
-                    </button>
-                  </section>
                 </>
               ) : (
                 <>
@@ -390,7 +310,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         </nav>
         {!isPlatformPulseRoute && (
           <div className="sidebar-footer">
-            <NavLink to="/settings" className={sidebarLinkClass}>
+            <NavLink to="/account" className={sidebarLinkClass}>
               <CircleUser size={20} strokeWidth={1.75} aria-hidden />
               Account
             </NavLink>
@@ -437,7 +357,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
           My Pulse
         </Link>
       )}
-      <Link to="/settings" className="btn btn-ghost nav-link-btn">
+      <Link to="/account" className="btn btn-ghost nav-link-btn">
         <CircleUser size={18} strokeWidth={2} aria-hidden />
         Account
       </Link>

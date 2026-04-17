@@ -406,6 +406,14 @@ export default function PlatformTasks() {
     return `${orgName} - ${task.title}`;
   }, [isCrossClientMode]);
 
+  const formatStaffLabel = useCallback((staffUser) => {
+    const firstName = String(staffUser?.firstName || '').trim();
+    const lastName = String(staffUser?.lastName || '').trim();
+    const name = [firstName, lastName].filter(Boolean).join(' ').trim();
+    const email = String(staffUser?.email || '').trim();
+    return name && email ? `${name} - ${email}` : email;
+  }, []);
+
   useEffect(() => {
     if (!selectedUserId) return;
     if (staffUsers.some((u) => String(u.id) === selectedUserId)) return;
@@ -421,34 +429,46 @@ export default function PlatformTasks() {
           <ClipboardList size={28} strokeWidth={1.75} aria-hidden />
           CRM Tasks
         </h1>
-      </div>
-      {isPlatformAdmin ? (
-        <div className="field" style={{ maxWidth: '32rem', marginBottom: '0.9rem' }}>
-          <label htmlFor="crm-task-assignee-filter">View tasks for</label>
-          <select
-            id="crm-task-assignee-filter"
-            value={selectedUserId}
-            onChange={(e) => {
-              closeTaskDetail();
-              setComposingColumnId(null);
-              setComposerTitle('');
-              setSelectedUserId(String(e.target.value || ''));
-            }}
-          >
-            <option value="">Main org CRM board</option>
-            {staffUsers.map((staffUser) => (
-              <option key={staffUser.id} value={staffUser.id}>
-                {staffUser.email}
+        {isPlatformAdmin ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '18rem' }}>
+            <label className="visually-hidden" htmlFor="crm-task-assignee-filter">
+              View tasks for
+            </label>
+            <select
+              id="crm-task-assignee-filter"
+              value={selectedUserId}
+              onChange={(e) => {
+                closeTaskDetail();
+                setComposingColumnId(null);
+                setComposerTitle('');
+                setSelectedUserId(String(e.target.value || ''));
+              }}
+            >
+              <option value="" disabled>
+                Select teammate
               </option>
-            ))}
-          </select>
-          <p className="muted" style={{ marginTop: '0.35rem', marginBottom: 0 }}>
-            {isCrossClientMode
-              ? 'Showing this user’s assigned tasks across all client organizations.'
-              : 'Showing tasks created for the main org CRM board.'}
-          </p>
-        </div>
-      ) : null}
+              {staffUsers.map((staffUser) => (
+                <option key={staffUser.id} value={staffUser.id}>
+                  {formatStaffLabel(staffUser)}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                closeTaskDetail();
+                setComposingColumnId(null);
+                setComposerTitle('');
+                setSelectedUserId('');
+              }}
+              disabled={!isCrossClientMode}
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
+      </div>
       {loadingTasks ? <p className="muted">Loading tasks…</p> : null}
 
       <DndContext
