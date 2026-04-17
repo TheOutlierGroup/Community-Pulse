@@ -466,6 +466,71 @@ a:hover {
   user-select: text;
 }
 
+.sidebar-pulse-timepoint {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0 0.5rem 0.55rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+}
+
+.sidebar-pulse-timepoint__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sidebar-pulse-timepoint__title {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.sidebar-pulse-timepoint__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sidebar-pulse-timepoint__add:hover:not(:disabled) {
+  background: var(--surface2);
+}
+
+.sidebar-pulse-timepoint__add:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.sidebar-pulse-timepoint__select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.88rem;
+  padding: 0.42rem 0.52rem;
+}
+
+.sidebar-pulse-timepoint__error {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--danger);
+  line-height: 1.3;
+}
+
 .sidebar-pulse-filter {
   display: flex;
   flex-direction: column;
@@ -4220,6 +4285,20 @@ input[type='range'] {
 
 .pulse-platform-header__title {
   margin: 0;
+}
+
+.pulse-platform-header__timepoint {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.45rem;
+  padding: 0.24rem 0.56rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .pulse-platform-header__right {

@@ -8,11 +8,12 @@ import {
   Building2,
   Activity,
   Users,
-  Settings,
   ArrowLeft,
   ClipboardList,
   CircleUser,
   UserPlus,
+  SlidersHorizontal,
+  Plus,
 } from 'lucide-react';
 import {
   CLIENT_SERVICE_PULSE,
@@ -54,6 +55,28 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const pulseManagerOptions = Array.isArray(navContext?.pulseManagerOptions)
     ? navContext.pulseManagerOptions
     : [];
+  const pulseTimepoint = String(navContext?.pulseTimepoint || 'during');
+  const setPulseTimepoint = navContext?.setPulseTimepoint;
+  const pulseDuringDate = String(navContext?.pulseDuringDate || '');
+  const setPulseDuringDate = navContext?.setPulseDuringDate;
+  const pulseTimepointOptions = Array.isArray(navContext?.pulseTimepointOptions)
+    ? navContext.pulseTimepointOptions
+    : [];
+  const pulseTimepointBusy = Boolean(navContext?.pulseTimepointBusy);
+  const pulseTimepointError = String(navContext?.pulseTimepointError || '');
+  const createPulseDuringTimepoint = navContext?.createPulseDuringTimepoint;
+  const preOption = pulseTimepointOptions.find((row) => row.phase === 'pre');
+  const completedOption = pulseTimepointOptions.find((row) => row.phase === 'completed');
+  const duringOptions = pulseTimepointOptions.filter((row) => row.phase === 'during');
+  const duringValue = pulseDuringDate || duringOptions[0]?.dateKey || '';
+  const timepointSelectValue =
+    pulseTimepoint === 'pre'
+      ? 'pre'
+      : pulseTimepoint === 'completed'
+        ? 'completed'
+        : duringValue
+          ? `during:${duringValue}`
+          : 'during';
 
   function pulseSectionLinkClass(sectionId) {
     return `sidebar-nav-link${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
@@ -68,6 +91,23 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       if (list.includes(id)) return list.filter((value) => value !== id);
       return [...list, id];
     });
+  }
+
+  function onPulseTimepointSelect(nextValue) {
+    if (typeof setPulseTimepoint !== 'function') return;
+    if (nextValue === 'pre') {
+      setPulseTimepoint('pre');
+      if (typeof setPulseDuringDate === 'function') setPulseDuringDate('');
+      return;
+    }
+    if (nextValue === 'completed') {
+      setPulseTimepoint('completed');
+      if (typeof setPulseDuringDate === 'function') setPulseDuringDate('');
+      return;
+    }
+    const dateKey = nextValue.startsWith('during:') ? nextValue.slice('during:'.length) : '';
+    setPulseTimepoint('during');
+    if (typeof setPulseDuringDate === 'function') setPulseDuringDate(dateKey);
   }
 
   async function openPulseTabForPlatformClient() {
@@ -130,6 +170,46 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <Building2 size={20} strokeWidth={1.75} aria-hidden />
                     {pulseClientName || 'Client'}
                   </div>
+                  <section className="sidebar-pulse-timepoint" aria-label="Pulse point in time">
+                    <div className="sidebar-pulse-timepoint__head">
+                      <span className="sidebar-pulse-timepoint__title">Point in time</span>
+                      {pulseTimepoint === 'during' ? (
+                        <button
+                          type="button"
+                          className="sidebar-pulse-timepoint__add"
+                          onClick={() => {
+                            if (typeof createPulseDuringTimepoint === 'function') createPulseDuringTimepoint();
+                          }}
+                          disabled={pulseTimepointBusy}
+                          aria-label="Create new during checkpoint"
+                          title="Create new during checkpoint"
+                        >
+                          <Plus size={14} strokeWidth={2.25} aria-hidden />
+                        </button>
+                      ) : null}
+                    </div>
+                    <select
+                      className="sidebar-pulse-timepoint__select"
+                      value={timepointSelectValue}
+                      onChange={(e) => onPulseTimepointSelect(e.target.value)}
+                      disabled={pulseTimepointBusy}
+                      aria-label="Select pulse point in time"
+                    >
+                      <option value="pre">Pre Project{preOption ? ` · ${preOption.label}` : ''}</option>
+                      {duringOptions.map((option) => (
+                        <option key={option.id} value={`during:${option.dateKey}`}>
+                          During · {option.label}
+                        </option>
+                      ))}
+                      {!duringOptions.length ? <option value="during">During</option> : null}
+                      <option value="completed">
+                        Completed{completedOption ? ` · ${completedOption.label}` : ''}
+                      </option>
+                    </select>
+                    {pulseTimepointError ? (
+                      <p className="sidebar-pulse-timepoint__error">{pulseTimepointError}</p>
+                    ) : null}
+                  </section>
                   <div className="sidebar-nav-divider" aria-hidden />
                   <Link
                     to={`/platform/clients/${platformClientOrgId}/pulse#organisation-dashboard`}
@@ -281,6 +361,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 <Users size={20} strokeWidth={1.75} aria-hidden />
                 Users
               </NavLink>
+              {user.role === 'admin' && (
+                <NavLink to="/platform/settings" className={sidebarLinkClass}>
+                  <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
+                  Settings
+                </NavLink>
+              )}
             </>
           )}
           {user.organizationKind === 'client' && user.role === 'admin' && (
@@ -305,8 +391,8 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         {!isPlatformPulseRoute && (
           <div className="sidebar-footer">
             <NavLink to="/settings" className={sidebarLinkClass}>
-              <Settings size={20} strokeWidth={1.75} aria-hidden />
-              Settings
+              <CircleUser size={20} strokeWidth={1.75} aria-hidden />
+              Account
             </NavLink>
             <button
               type="button"
@@ -352,8 +438,8 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         </Link>
       )}
       <Link to="/settings" className="btn btn-ghost nav-link-btn">
-        <Settings size={18} strokeWidth={2} aria-hidden />
-        Settings
+        <CircleUser size={18} strokeWidth={2} aria-hidden />
+        Account
       </Link>
       <span className="muted nav-email">{user.email}</span>
       <button

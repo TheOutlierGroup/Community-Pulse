@@ -51,6 +51,22 @@ function labelToId(value) {
     .replace(/^-+|-+$/g, '');
 }
 
+function formatPulseTimepointLabel(timepoint, duringDate) {
+  if (timepoint === 'pre') return 'Pre Project';
+  if (timepoint === 'completed') return 'Completed';
+  if (timepoint === 'during') {
+    if (!duringDate) return 'During';
+    const dt = new Date(`${duringDate}T00:00:00.000Z`);
+    if (Number.isNaN(dt.getTime())) return `During · ${duringDate}`;
+    return `During · ${dt.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    })}`;
+  }
+  return 'During';
+}
+
 const QUADRANT_ORDER = [
   'Motivated but Lost',
   'Optimal',
@@ -175,6 +191,8 @@ export default function PlatformClientPulse() {
     setPulseSelectedManagerIds,
     pulseIncludeManagerSelf: includeManagerSelf,
     setPulseManagerOptions,
+    pulseTimepoint,
+    pulseDuringDate,
   } = useOutletContext();
   const location = useLocation();
 
@@ -193,6 +211,12 @@ export default function PlatformClientPulse() {
     setLoading(true);
     setError('');
     const params = {};
+    if (pulseTimepoint === 'pre' || pulseTimepoint === 'during' || pulseTimepoint === 'completed') {
+      params.timepoint = pulseTimepoint;
+    }
+    if (pulseTimepoint === 'during' && pulseDuringDate) {
+      params.duringDate = pulseDuringDate;
+    }
     if (selectedManagerIds.length > 0) {
       params.managerIds = selectedManagerIds.join(',');
       params.includeManagerSelf = includeManagerSelf ? 'true' : 'false';
@@ -231,6 +255,8 @@ export default function PlatformClientPulse() {
     orgId,
     selectedManagerIds,
     includeManagerSelf,
+    pulseTimepoint,
+    pulseDuringDate,
     setPulseManagerOptions,
     setPulseSelectedManagerIds,
   ]);
@@ -341,6 +367,7 @@ export default function PlatformClientPulse() {
           : pulseFocusedSection === 'team-level-view'
             ? 'Team-Level View'
             : 'Organisation Dashboard';
+  const selectedTimepointLabel = formatPulseTimepointLabel(pulseTimepoint, pulseDuringDate);
 
   return (
     <div className="pulse-prototype-page">
@@ -348,6 +375,9 @@ export default function PlatformClientPulse() {
         <div>
           <div className="pulse-platform-header__eyebrow">Client administration</div>
           <h1 className="pulse-platform-header__title">{pageTitle}</h1>
+          <div className="pulse-platform-header__timepoint" aria-label={`Point in time ${selectedTimepointLabel}`}>
+            {selectedTimepointLabel}
+          </div>
         </div>
         <div className="pulse-platform-header__right" style={{ gap: '0.6rem', alignItems: 'center' }}>
           <span className="pulse-platform-header__date">{todayLabel}</span>

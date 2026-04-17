@@ -8,6 +8,12 @@ import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImag
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { Building2, Plus, X } from 'lucide-react';
+import {
+  clientServiceLabel,
+  clientStatusBadgeClass,
+  clientStatusLabel,
+  normalizeServices,
+} from './platformClientUtils.js';
 
 function readCompanyAddress(settings) {
   if (settings == null) return '';
@@ -22,6 +28,10 @@ function readCompanyAddress(settings) {
   if (typeof s !== 'object') return '';
   const v = s.companyAddress;
   return v == null ? '' : String(v).trim();
+}
+
+function activeServiceLabels(settings) {
+  return normalizeServices(settings).map((serviceId) => clientServiceLabel(serviceId));
 }
 
 export default function PlatformClients() {
@@ -178,6 +188,8 @@ export default function PlatformClients() {
             <thead>
               <tr>
                 <th scope="col">Company</th>
+                <th scope="col">Status</th>
+                <th scope="col">Active services</th>
                 <th scope="col">Address</th>
                 <th scope="col">Created</th>
               </tr>
@@ -185,7 +197,7 @@ export default function PlatformClients() {
             <tbody>
               {orgs.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="muted" style={{ padding: '1.5rem' }}>
+                  <td colSpan={5} className="muted" style={{ padding: '1.5rem' }}>
                     No client companies yet. Create one to get started.
                   </td>
                 </tr>
@@ -218,6 +230,14 @@ export default function PlatformClients() {
                       ) : null}
                       <span className="platform-users-table__name">{o.name}</span>
                     </div>
+                  </td>
+                  <td>
+                    <span className={`badge badge-${clientStatusBadgeClass(o.client_status)}`}>
+                      {clientStatusLabel(o.client_status)}
+                    </span>
+                  </td>
+                  <td className="muted" style={{ fontSize: '0.9rem' }}>
+                    {activeServiceLabels(o.settings).join(', ') || '—'}
                   </td>
                   <td
                     className="muted platform-clients-table__address"

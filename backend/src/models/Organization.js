@@ -1,9 +1,14 @@
 import { query } from '../config/database.js';
 
-export async function createOrganization(name, settings = {}, kind = 'client') {
+export async function createOrganization(
+  name,
+  settings = {},
+  kind = 'client',
+  clientStatus = kind === 'client' ? 'lead' : 'active'
+) {
   const { rows } = await query(
-    `INSERT INTO organizations (name, settings, kind) VALUES ($1, $2, $3) RETURNING *`,
-    [name, JSON.stringify(settings), kind]
+    `INSERT INTO organizations (name, settings, kind, client_status) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [name, JSON.stringify(settings), kind, clientStatus]
   );
   return rows[0];
 }
@@ -18,7 +23,7 @@ export async function listOrganizationsByKind(kind, { limit, offset } = {}) {
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 200;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
-    `SELECT id, name, kind, settings, created_at, company_logo_filename
+    `SELECT id, name, kind, settings, created_at, company_logo_filename, client_status
      FROM organizations
      WHERE kind = $1
      ORDER BY created_at ASC
@@ -34,7 +39,7 @@ export async function listClientOrganizationsByIds(ids, { limit, offset } = {}) 
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 1000) : 500;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
-    `SELECT id, name, kind, settings, created_at, company_logo_filename
+    `SELECT id, name, kind, settings, created_at, company_logo_filename, client_status
      FROM organizations
      WHERE kind = 'client' AND id = ANY($1::uuid[])
      ORDER BY created_at ASC
@@ -59,10 +64,11 @@ export async function clearCompanyLogoFilename(id) {
   return prev;
 }
 
-export async function updateOrganizationClient(id, { name, settings } = {}) {
+export async function updateOrganizationClient(id, { name, settings, clientStatus } = {}) {
   const org = await getOrganization(id);
   if (!org || org.kind !== 'client') return null;
   const nextName = name !== undefined ? name : org.name;
+  const nextClientStatus = clientStatus !== undefined ? clientStatus : org.client_status;
   const base =
     org.settings && typeof org.settings === 'object' ? org.settings : {};
   let nextSettings = base;
@@ -70,8 +76,11 @@ export async function updateOrganizationClient(id, { name, settings } = {}) {
     nextSettings = { ...base, ...settings };
   }
   const { rows } = await query(
-    `UPDATE organizations SET name = $2, settings = $3::jsonb WHERE id = $1 AND kind = 'client' RETURNING *`,
-    [id, nextName, JSON.stringify(nextSettings)]
+    `UPDATE organizations
+     SET name = $2, settings = $3::jsonb, client_status = $4
+     WHERE id = $1 AND kind = 'client'
+     RETURNING *`,
+    [id, nextName, JSON.stringify(nextSettings), nextClientStatus]
   );
   return rows[0] || null;
 }

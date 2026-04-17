@@ -6,6 +6,7 @@ import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath } from '../../config/storage.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
+import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import * as Invite from '../../models/Invite.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
@@ -32,6 +33,26 @@ function parsePagination(query) {
   return {
     limit: Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 500) : 200,
     offset: Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0,
+  };
+}
+
+function formatIsoDate(d) {
+  if (d == null) return null;
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  const s = String(d);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function publicStaffAssignedTask(row) {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    title: row.title,
+    status: row.status,
+    dueDate: formatIsoDate(row.due_date),
+    startDate: formatIsoDate(row.start_date),
+    position: 0,
   };
 }
 
@@ -74,6 +95,15 @@ export function registerPlatformStaffRoutes(router) {
       clientOrganizationIds: assignedOrgIds,
       organizations,
     });
+  });
+
+  router.get('/staff/:userId/tasks', async (req, res) => {
+    const target = await User.findUserById(req.params.userId);
+    if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const rows = await ClientWorkTask.listTasksAssignedToUserAcrossClientOrgs(target.id);
+    res.json({ tasks: rows.map(publicStaffAssignedTask) });
   });
 
   router.put('/staff/:userId/client-assignments', async (req, res) => {

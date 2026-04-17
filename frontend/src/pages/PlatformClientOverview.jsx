@@ -3,6 +3,12 @@ import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { ClipboardList, Users } from 'lucide-react';
+import {
+  clientServiceLabel,
+  clientStatusBadgeClass,
+  clientStatusLabel,
+  normalizeServices,
+} from './platformClientUtils.js';
 
 function getLocalWeekRange() {
   const now = new Date();
@@ -79,10 +85,22 @@ export default function PlatformClientOverview() {
   }, [loadDashboard]);
 
   const counts = dash?.taskCountsByStatus;
+  const activeServices = normalizeServices(org?.settings).map((serviceId) => clientServiceLabel(serviceId));
 
   return (
     <>
       <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
+      <div
+        className="card"
+        style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}
+      >
+        <span className={`badge badge-${clientStatusBadgeClass(org.client_status)}`}>
+          {clientStatusLabel(org.client_status)}
+        </span>
+        <span className="muted" style={{ fontSize: '0.9rem' }}>
+          Active services: {activeServices.join(', ') || 'None'}
+        </span>
+      </div>
       {dashError && <p className="error" style={{ marginBottom: '1rem' }}>{dashError}</p>}
       <div className="platform-client-dashboard-grid">
         <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">

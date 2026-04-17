@@ -94,6 +94,40 @@ function scoreDelta(current, previous) {
   return round1(current - previous);
 }
 
+function pulseSessionTimepointKind(session) {
+  const purpose = String(session?.session_purpose || '')
+    .trim()
+    .toLowerCase();
+  if (purpose === 'pre_project') return 'pre';
+  if (purpose === 'completed_project') return 'completed';
+  if (purpose === 'link_invite') return null;
+  return 'during';
+}
+
+function pulseSessionDateKey(session) {
+  const createdAt = session?.created_at;
+  if (!createdAt) return '';
+  const dt = new Date(createdAt);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toISOString().slice(0, 10);
+}
+
+function parsePulseDashboardTimepoint(value) {
+  const v = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (v === 'pre' || v === 'during' || v === 'completed') return v;
+  return null;
+}
+
+function createDuringPulseCheckpointName(now = new Date()) {
+  return `During checkpoint · ${now.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })}`;
+}
+
 async function listMergedResponsesForSession(sessionId) {
   const { rows } = await listSessionResponses(sessionId);
   return rows;
@@ -119,11 +153,20 @@ function resolvePulseAppBaseUrl() {
 }
 
 const CLIENT_FIRST_ADMIN_WELCOME_RESET_MS = 7 * 24 * 60 * 60 * 1000;
+const CLIENT_STATUSES = new Set(['lead', 'active', 'inactive', 'closed']);
 
 function parseMultipartBool(v) {
   if (v === true || v === 'true' || v === '1') return true;
   if (v === false || v === 'false' || v === '0') return false;
   return false;
+}
+
+function normalizeClientStatus(value) {
+  const status = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!CLIENT_STATUSES.has(status)) return null;
+  return status;
 }
 
 export function registerPlatformOrgRoutes(router) {
@@ -229,9 +272,16 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.patch('/organizations/:id', requirePlatformAdminRole, async (req, res) => {
-    const { name, settings } = req.body;
-    if (name === undefined && settings === undefined) {
+    const { name, settings, clientStatus } = req.body;
+    if (name === undefined && settings === undefined && clientStatus === undefined) {
       return res.status(400).json({ error: 'Nothing to update' });
+    }
+    let normalizedClientStatus;
+    if (clientStatus !== undefined) {
+      normalizedClientStatus = normalizeClientStatus(clientStatus);
+      if (!normalizedClientStatus) {
+        return res.status(400).json({ error: 'clientStatus must be one of: lead, active, inactive, closed' });
+      }
     }
     let settingsPatch = settings;
     if (settings !== undefined) {
@@ -253,6 +303,7 @@ export function registerPlatformOrgRoutes(router) {
     const updated = await Organization.updateOrganizationClient(req.params.id, {
       name,
       settings: settingsPatch,
+      clientStatus: normalizedClientStatus,
     });
     if (!updated) return res.status(404).json({ error: 'Organization not found' });
     res.json(updated);
@@ -452,6 +503,25 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ sessions: sessions.map(publicPulseSessionRow) });
   });
 
+  router.post('/organizations/:id/pulse-timepoints/during', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
+      return res.status(403).json({ error: 'Pulse is not enabled for this client' });
+    }
+
+    const name = createDuringPulseCheckpointName(new Date());
+    const [staffSession, managerSession] = await Promise.all([
+      PulseSession.createSession(org.id, name, 'active', 'staff', 'during_project'),
+      PulseSession.createSession(org.id, name, 'active', 'manager', 'during_project'),
+    ]);
+
+    res.status(201).json({
+      checkpointDate: pulseSessionDateKey(staffSession),
+      sessions: [staffSession, managerSession].map(publicPulseSessionRow),
+    });
+  });
+
   router.get('/organizations/:id/pulse-dashboard', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
@@ -476,11 +546,21 @@ export function registerPlatformOrgRoutes(router) {
     const managerFilterActive = selectedManagerIds.length > 0;
     const includeManagerSelf = parseQueryBool(req.query?.includeManagerSelf, false);
 
-    const activeSessions = sessions.filter((s) => s.status === 'active');
+    const requestedTimepoint = parsePulseDashboardTimepoint(req.query?.timepoint);
+    const requestedDuringDate = String(req.query?.duringDate || '').trim();
+    const timepointFiltered = requestedTimepoint
+      ? sessions.filter((s) => pulseSessionTimepointKind(s) === requestedTimepoint)
+      : sessions;
+    const dateFiltered = requestedTimepoint === 'during' && requestedDuringDate
+      ? timepointFiltered.filter((s) => pulseSessionDateKey(s) === requestedDuringDate)
+      : timepointFiltered;
+    const candidateSessions = dateFiltered.length > 0 ? dateFiltered : timepointFiltered;
+
+    const activeSessions = candidateSessions.filter((s) => s.status === 'active');
     const currentSession =
-      sessions.find((s) => s.status === 'active' && s.audience === 'staff') ||
-      sessions.find((s) => s.status === 'active' && s.audience === 'manager') ||
-      sessions[0] ||
+      candidateSessions.find((s) => s.status === 'active' && s.audience === 'staff') ||
+      candidateSessions.find((s) => s.status === 'active' && s.audience === 'manager') ||
+      candidateSessions[0] ||
       null;
 
     const sessionsForCurrentRows =
@@ -627,8 +707,9 @@ export function registerPlatformOrgRoutes(router) {
       end: new Date(now.getTime() - i * WEEK_MS),
     }));
 
-    const allSessionRows = sessions.length > 0
-      ? (await Promise.all(sessions.map((s) => listMergedResponsesForSession(s.id)))).flat()
+    const sessionsForTrend = candidateSessions.length > 0 ? candidateSessions : sessions;
+    const allSessionRows = sessionsForTrend.length > 0
+      ? (await Promise.all(sessionsForTrend.map((s) => listMergedResponsesForSession(s.id)))).flat()
       : [];
     const allScopedRows = filterRowsForManagerScope(allSessionRows, selectedManagerIdSet, includeManagerSelf);
 

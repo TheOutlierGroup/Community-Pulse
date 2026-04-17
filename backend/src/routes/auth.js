@@ -17,6 +17,7 @@ import { consumePulseHandoffToken } from '../security/pulseHandoffToken.js';
 import { sendPasswordResetEmail } from '../services/email.js';
 import {
   enabledServicesFromOrganizationSettings,
+  normalizeClientServiceIds,
 } from '../services/clientServices.js';
 
 const router = Router();
@@ -199,6 +200,34 @@ function requireClientAdmin(req, res, next) {
   }
   next();
 }
+
+router.patch('/me/organization-services', requireAuth, requireClientAdmin, async (req, res) => {
+  const body = req.body || {};
+  if (!Object.prototype.hasOwnProperty.call(body, 'services')) {
+    return res.status(400).json({ error: 'services is required' });
+  }
+  if (!Array.isArray(body.services)) {
+    return res.status(400).json({ error: 'services must be an array' });
+  }
+  const org = await Organization.getOrganization(req.user.organizationId);
+  if (!org || org.kind !== 'client') {
+    return res.status(404).json({ error: 'Organization not found' });
+  }
+  const baseSettings =
+    org.settings && typeof org.settings === 'object' && !Array.isArray(org.settings)
+      ? org.settings
+      : {};
+  const nextSettings = {
+    ...baseSettings,
+    services: normalizeClientServiceIds(body.services),
+  };
+  if (Object.prototype.hasOwnProperty.call(nextSettings, 'pulseEnabled')) {
+    delete nextSettings.pulseEnabled;
+  }
+  await Organization.updateOrganizationClient(org.id, { settings: nextSettings });
+  const full = await User.findUserByIdWithOrg(req.user.id);
+  res.json({ user: publicUser(full) });
+});
 
 const orgLogoClientUpload = multer({
   storage: multer.memoryStorage(),

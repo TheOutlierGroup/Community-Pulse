@@ -9,6 +9,7 @@ import ProfileCard from './settingsPage/ProfileCard.jsx';
 import CompanyLogoCard from './settingsPage/CompanyLogoCard.jsx';
 import PasswordCard from './settingsPage/PasswordCard.jsx';
 import AccountCard from './settingsPage/AccountCard.jsx';
+import { CLIENT_SERVICE_OPTIONS, normalizeServices } from '../utils/clientServices.js';
 
 export default function SettingsPage() {
   const { user, logout, loading, setCurrentUser } = useAuth();
@@ -36,6 +37,10 @@ export default function SettingsPage() {
   const [companyLogoRev, setCompanyLogoRev] = useState(0);
   const [companyLogoLoadError, setCompanyLogoLoadError] = useState('');
   const [companyLogoBusy, setCompanyLogoBusy] = useState(false);
+  const [orgServices, setOrgServices] = useState([]);
+  const [orgServicesBusy, setOrgServicesBusy] = useState(false);
+  const [orgServicesError, setOrgServicesError] = useState('');
+  const [orgServicesMessage, setOrgServicesMessage] = useState('');
 
   useEffect(() => {
     if (!loading && !user) navigate('/');
@@ -46,6 +51,14 @@ export default function SettingsPage() {
     setFirstName(user.firstName ?? '');
     setLastName(user.lastName ?? '');
   }, [user?.id, user?.firstName, user?.lastName]);
+
+  useEffect(() => {
+    if (!user || user.organizationKind !== 'client') {
+      setOrgServices([]);
+      return;
+    }
+    setOrgServices(normalizeServices({ services: user.enabledServices }));
+  }, [user?.organizationKind, user?.enabledServices]);
 
   useEffect(() => {
     if (!user?.hasProfileAvatar) {
@@ -201,6 +214,7 @@ export default function SettingsPage() {
       : user.organizationName || 'Client organization';
 
   const displayPreview = [firstName, lastName].filter(Boolean).join(' ').trim() || user.email;
+  const canManageOrgServices = user.organizationKind === 'client' && user.role === 'admin';
 
   async function saveNames(e) {
     e.preventDefault();
@@ -338,6 +352,32 @@ export default function SettingsPage() {
     }
   }
 
+  function onToggleOrgService(serviceId, checked) {
+    setOrgServices((current) =>
+      checked
+        ? Array.from(new Set([...current, serviceId]))
+        : current.filter((id) => id !== serviceId)
+    );
+  }
+
+  async function saveOrganizationServices(e) {
+    e.preventDefault();
+    setOrgServicesError('');
+    setOrgServicesMessage('');
+    setOrgServicesBusy(true);
+    try {
+      const { data } = await api.patch('/api/auth/me/organization-services', {
+        services: orgServices,
+      });
+      setCurrentUser(data.user);
+      setOrgServicesMessage('Organization services saved.');
+    } catch (err) {
+      setOrgServicesError(err.response?.data?.error || 'Could not save organization services.');
+    } finally {
+      setOrgServicesBusy(false);
+    }
+  }
+
   return (
     <Layout user={user} onLogout={logout}>
       <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -389,6 +429,46 @@ export default function SettingsPage() {
         setConfirmPassword={setConfirmPassword}
         passwordBusy={passwordBusy}
       />
+      {user.organizationKind === 'client' ? (
+        <div className="card" style={{ marginTop: '1rem' }}>
+          <h2 className="settings-section-title">Organization services</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {canManageOrgServices
+              ? 'Tick the services your client is paying for. Only Pulse changes app behavior.'
+              : 'These are the services enabled for your client. Only Pulse changes app behavior.'}
+          </p>
+          {canManageOrgServices && orgServicesError ? (
+            <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+              {orgServicesError}
+            </p>
+          ) : null}
+          {canManageOrgServices && orgServicesMessage ? (
+            <p className="muted" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+              {orgServicesMessage}
+            </p>
+          ) : null}
+          <form onSubmit={saveOrganizationServices}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.45rem 1rem' }}>
+              {CLIENT_SERVICE_OPTIONS.map((service) => (
+                <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={orgServices.includes(service.id)}
+                    disabled={orgServicesBusy || !canManageOrgServices}
+                    onChange={(e) => onToggleOrgService(service.id, e.target.checked)}
+                  />
+                  <span>{service.label}</span>
+                </label>
+              ))}
+            </div>
+            {canManageOrgServices ? (
+              <button type="submit" className="btn btn-ghost" disabled={orgServicesBusy} style={{ marginTop: '0.9rem' }}>
+                Save services
+              </button>
+            ) : null}
+          </form>
+        </div>
+      ) : null}
       <AccountCard user={user} orgLabel={orgLabel} />
     </Layout>
   );

@@ -8,11 +8,31 @@ export async function listSessionsForOrg(organizationId) {
   return rows;
 }
 
-export async function createSession(organizationId, name, status = 'draft', audience = 'staff') {
+function normalizeSessionPurpose(sessionPurpose) {
+  const raw = String(sessionPurpose || 'standard')
+    .trim()
+    .toLowerCase();
+  if (raw === 'link_invite') return 'link_invite';
+  if (raw === 'pre_project') return 'pre_project';
+  if (raw === 'completed_project') return 'completed_project';
+  if (raw === 'during_project') return 'during_project';
+  return 'standard';
+}
+
+export async function createSession(
+  organizationId,
+  name,
+  status = 'draft',
+  audience = 'staff',
+  sessionPurpose = 'standard'
+) {
   const aud = audience === 'manager' ? 'manager' : 'staff';
+  const purpose = normalizeSessionPurpose(sessionPurpose);
   const { rows } = await query(
-    `INSERT INTO pulse_sessions (organization_id, name, status, audience) VALUES ($1, $2, $3, $4) RETURNING *`,
-    [organizationId, name, status, aud]
+    `INSERT INTO pulse_sessions (organization_id, name, status, audience, session_purpose)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [organizationId, name, status, aud, purpose]
   );
   return rows[0];
 }

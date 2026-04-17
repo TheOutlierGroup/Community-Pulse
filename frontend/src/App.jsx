@@ -26,6 +26,7 @@ const PlatformPulseInviteUsers = lazy(() => import('./pages/PlatformPulseInviteU
 const PublicPulse = lazy(() => import('./pages/PublicPulse.jsx'));
 const PlatformClientAccount = lazy(() => import('./pages/PlatformClientAccount.jsx'));
 const PlatformUsers = lazy(() => import('./pages/PlatformUsers.jsx'));
+const PlatformSettings = lazy(() => import('./pages/PlatformSettings.jsx'));
 const ClientHome = lazy(() => import('./pages/ClientHome.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
 
@@ -60,6 +61,7 @@ export default function App() {
             </Route>
             {!IS_PULSE_SURFACE && <Route path="/platform/clients" element={<PlatformClients />} />}
             {!IS_PULSE_SURFACE && <Route path="/platform/users" element={<PlatformUsers />} />}
+            {!IS_PULSE_SURFACE && <Route path="/platform/settings" element={<PlatformSettings />} />}
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/client" element={<ClientHome />} />
             <Route path="/admin" element={<AdminHome />} />
