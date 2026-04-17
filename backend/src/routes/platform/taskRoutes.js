@@ -7,18 +7,29 @@ import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { ensureStorageDirs, taskImageFilePath } from '../../config/storage.js';
 import * as User from '../../models/User.js';
 import * as ClientWorkTask from '../../models/ClientWorkTask.js';
+import * as Organization from '../../models/Organization.js';
 import * as taskNotificationTriggers from '../../services/taskNotificationTriggers.js';
 import {
-  assertClientOrganizationPlatform,
   assertClientOrganizationPlatformForUser,
   platformAvatarContentType,
 } from './shared.js';
 
 const router = Router();
 
+async function assertClientOrganizationPlatform(id) {
+  const org = await Organization.getOrganization(id);
+  if (!org) return null;
+  return org.kind === 'client' || org.kind === 'platform' ? org : null;
+}
+
 router.use('/organizations/:id', async (req, res, next) => {
   try {
-    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    const requestedId = String(req.params.id || '').trim();
+    const ownOrgId = String(req.user?.organizationId || '').trim();
+    const canAccessOwnPlatformOrg = requestedId && ownOrgId && requestedId === ownOrgId;
+    const org = canAccessOwnPlatformOrg
+      ? await assertClientOrganizationPlatform(requestedId)
+      : await assertClientOrganizationPlatformForUser(requestedId, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     req.clientOrganization = org;
     next();

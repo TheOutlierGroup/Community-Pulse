@@ -4,8 +4,6 @@ import {
   LogIn,
   LogOut,
   LayoutDashboard,
-  BarChart3,
-  LineChart,
   Gauge,
   Building2,
   Activity,
@@ -148,20 +146,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     Users
                   </NavLink>
                   <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#organisation-scores`}
-                    className={pulseSectionLinkClass('organisation-scores')}
-                  >
-                    <BarChart3 size={20} strokeWidth={1.75} aria-hidden />
-                    Organisation Scores
-                  </Link>
-                  <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#employee-breakdown`}
-                    className={pulseSectionLinkClass('employee-breakdown')}
-                  >
-                    <LineChart size={20} strokeWidth={1.75} aria-hidden />
-                    Employee Breakdown
-                  </Link>
-                  <Link
                     to={`/platform/clients/${platformClientOrgId}/pulse#team-level-view`}
                     className={pulseSectionLinkClass('team-level-view')}
                   >
@@ -288,6 +272,10 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
               <NavLink to="/platform/clients" className={sidebarLinkClass}>
                 <Building2 size={20} strokeWidth={1.75} aria-hidden />
                 Clients
+              </NavLink>
+              <NavLink to="/platform/tasks" className={sidebarLinkClass}>
+                <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
+                Tasks
               </NavLink>
               <NavLink to="/platform/users" className={sidebarLinkClass}>
                 <Users size={20} strokeWidth={1.75} aria-hidden />

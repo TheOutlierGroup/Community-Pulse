@@ -15,6 +15,7 @@ const AdminHome = lazy(() => import('./pages/AdminHome.jsx'));
 const AdminSession = lazy(() => import('./pages/AdminSession.jsx'));
 const PlatformHome = lazy(() => import('./pages/PlatformHome.jsx'));
 const PlatformClients = lazy(() => import('./pages/PlatformClients.jsx'));
+const PlatformTasks = lazy(() => import('./pages/PlatformTasks.jsx'));
 const PlatformClientLayout = lazy(() => import('./pages/PlatformClientLayout.jsx'));
 const PlatformClientOverview = lazy(() => import('./pages/PlatformClientOverview.jsx'));
 const PlatformClientUsers = lazy(() => import('./pages/PlatformClientUsers.jsx'));
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="/pulse" element={<EmployeePulse />} />
             <Route path="/pulse/link/:token" element={<PublicPulse />} />
             {!IS_PULSE_SURFACE && <Route path="/platform" element={<PlatformHome />} />}
+            {!IS_PULSE_SURFACE && <Route path="/platform/tasks" element={<PlatformTasks />} />}
             <Route path="/platform/clients/:orgId" element={<PlatformClientLayout />}>
               {!IS_PULSE_SURFACE && <Route index element={<PlatformClientOverview />} />}
               {!IS_PULSE_SURFACE && <Route path="users" element={<PlatformClientUsers />} />}
