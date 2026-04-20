@@ -21,7 +21,7 @@ import {
   userHasService,
 } from '../../utils/clientServices.js';
 import api from '../../services/api.js';
-import { pulseAppBaseUrl } from '../../config/appSurface.js';
+import { rhythmEngineAppBaseUrl } from '../../config/appSurface.js';
 
 function sidebarLinkClass({ isActive }) {
   return `sidebar-nav-link${isActive ? ' sidebar-nav-link--active' : ''}`;
@@ -39,9 +39,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const platformViewedClientPulseEnabled = hasService(navContext?.clientOrganization?.settings, CLIENT_SERVICE_PULSE);
   const isPlatformPulseRoute =
     Boolean(platformClientOrgId) &&
-    location.pathname.startsWith(`/platform/clients/${platformClientOrgId}/pulse`);
+    location.pathname.startsWith(`/platform/clients/${platformClientOrgId}/rhythm-engine`);
   const activePulseSection = isPlatformPulseRoute
-    ? location.pathname.endsWith('/pulse/users')
+    ? location.pathname.endsWith('/rhythm-engine/users')
       ? 'pulse-users'
       : (location.hash || '#organisation-dashboard').replace(/^#/, '')
     : '';
@@ -97,22 +97,22 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       setPulseLaunchError('Popup blocked. Please allow popups for this site.');
       return;
     }
-    popup.document.title = 'Opening Pulse...';
-    popup.document.body.innerHTML = '<p style="font-family:system-ui;padding:16px;">Opening Pulse...</p>';
+    popup.document.title = 'Opening Rhythm Engine...';
+    popup.document.body.innerHTML = '<p style="font-family:system-ui;padding:16px;">Opening Rhythm Engine...</p>';
 
     setPulseLaunching(true);
     setPulseLaunchError('');
     try {
-      const { data } = await api.post(`/api/platform/organizations/${platformClientOrgId}/pulse-handoff-link`);
+      const { data } = await api.post(`/api/platform/organizations/${platformClientOrgId}/rhythm-engine-handoff-link`);
       const url = String(data?.url || '');
       if (!url) throw new Error('Missing URL');
 
-      const configuredPulseBase = pulseAppBaseUrl();
+      const configuredPulseBase = rhythmEngineAppBaseUrl();
       if (configuredPulseBase) {
         const expectedOrigin = new URL(configuredPulseBase).origin;
         const actualOrigin = new URL(url).origin;
         if (expectedOrigin !== actualOrigin) {
-          throw new Error('Pulse origin mismatch');
+          throw new Error('Rhythm Engine origin mismatch');
         }
       }
 
@@ -121,7 +121,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       popup.location.replace(url);
     } catch (_e) {
       popup.close();
-      setPulseLaunchError('Could not open Pulse right now.');
+      setPulseLaunchError('Could not open Rhythm Engine right now.');
     } finally {
       setPulseLaunching(false);
     }
@@ -150,7 +150,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <Building2 size={20} strokeWidth={1.75} aria-hidden />
                     {pulseClientName || 'Client'}
                   </div>
-                  <section className="sidebar-pulse-timepoint" aria-label="Pulse point in time">
+                  <section className="sidebar-pulse-timepoint" aria-label="Rhythm Engine point in time">
                     <div className="sidebar-pulse-timepoint__head">
                       <span className="sidebar-pulse-timepoint__title">Point in time</span>
                       {pulseTimepoint === 'during' ? (
@@ -173,7 +173,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       value={timepointSelectValue}
                       onChange={(e) => onPulseTimepointSelect(e.target.value)}
                       disabled={pulseTimepointBusy}
-                      aria-label="Select pulse point in time"
+                      aria-label="Select Rhythm Engine point in time"
                     >
                       <option value="pre">Pre Project{preOption ? ` · ${preOption.label}` : ''}</option>
                       {duringOptions.map((option) => (
@@ -192,28 +192,28 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                   </section>
                   <div className="sidebar-nav-divider" aria-hidden />
                   <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#organisation-dashboard`}
+                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine#organisation-dashboard`}
                     className={pulseSectionLinkClass('organisation-dashboard')}
                   >
                     <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
                     Organisation Dashboard
                   </Link>
                   <NavLink
-                    to={`/platform/clients/${platformClientOrgId}/pulse/users`}
+                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine/users`}
                     className={pulseSectionLinkClass('pulse-users')}
                   >
                     <UserPlus size={20} strokeWidth={1.75} aria-hidden />
                     Users
                   </NavLink>
                   <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#team-level-view`}
+                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine#team-level-view`}
                     className={pulseSectionLinkClass('team-level-view')}
                   >
                     <Users size={20} strokeWidth={1.75} aria-hidden />
                     Team-Level View
                   </Link>
                   <Link
-                    to={`/platform/clients/${platformClientOrgId}/pulse#manager-load-report`}
+                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine#manager-load-report`}
                     className={pulseSectionLinkClass('manager-load-report')}
                   >
                     <Gauge size={20} strokeWidth={1.75} aria-hidden />
@@ -251,7 +251,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       disabled={pulseLaunching}
                     >
                       <Activity size={20} strokeWidth={1.75} aria-hidden />
-                      {pulseLaunching ? 'Opening Pulse…' : 'Pulse'}
+                      {pulseLaunching ? 'Opening Rhythm Engine…' : 'Rhythm Engine'}
                     </button>
                   )}
                   {pulseLaunchError && <p className="muted">{pulseLaunchError}</p>}
@@ -302,9 +302,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
             </>
           )}
           {user.organizationKind === 'client' && user.role === 'employee' && clientPulseEnabled && (
-            <NavLink to="/pulse" className={sidebarLinkClass}>
+            <NavLink to="/rhythm-engine" className={sidebarLinkClass}>
               <Activity size={20} strokeWidth={1.75} aria-hidden />
-              My Pulse
+              My Rhythm Engine
             </NavLink>
           )}
         </nav>
@@ -352,9 +352,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         </Link>
       )}
       {user.organizationKind === 'client' && user.role === 'employee' && clientPulseEnabled && (
-        <Link to="/pulse" className="btn btn-ghost nav-link-btn">
+        <Link to="/rhythm-engine" className="btn btn-ghost nav-link-btn">
           <Activity size={18} strokeWidth={2} aria-hidden />
-          My Pulse
+          My Rhythm Engine
         </Link>
       )}
       <Link to="/account" className="btn btn-ghost nav-link-btn">

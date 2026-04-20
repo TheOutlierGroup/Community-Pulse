@@ -98,7 +98,7 @@ export default function AdminSession() {
       <p>
         <Link to="/admin" className="back-link">
           <ArrowLeft size={18} strokeWidth={2} aria-hidden />
-          Back to Pulse admin
+          Back to Rhythm Engine admin
         </Link>
       </p>
       <h1>{data?.session?.name || 'Session'}</h1>

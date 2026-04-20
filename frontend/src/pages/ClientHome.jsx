@@ -32,18 +32,18 @@ export default function ClientHome() {
         <div className="card" style={{ maxWidth: 480 }}>
           <h2 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Activity size={22} strokeWidth={1.75} aria-hidden />
-            Pulse
+            Rhythm Engine
           </h2>
           <p className="muted">Run diagnostics, invite employees, and review session analytics.</p>
           <Link to="/admin" className="btn btn-primary" style={{ marginTop: '1rem', display: 'inline-flex' }}>
-            Open Pulse admin
+            Open Rhythm Engine admin
           </Link>
         </div>
       ) : (
         <div className="card" style={{ maxWidth: 480 }}>
           <h2 style={{ marginTop: 0 }}>No active services</h2>
           <p className="muted" style={{ marginBottom: 0 }}>
-            Pulse is not enabled for this client.
+            Rhythm Engine is not enabled for this client.
           </p>
         </div>
       )}

@@ -71,8 +71,8 @@ export default function PublicPulse() {
     setError('');
     try {
       const [tRes, sRes] = await Promise.all([
-        api.get('/api/pulse-link/themes', linkParams),
-        api.get('/api/pulse-link/active-session', linkParams),
+        api.get('/api/rhythm-engine-link/themes', linkParams),
+        api.get('/api/rhythm-engine-link/active-session', linkParams),
       ]);
       setQuestions(tRes.data.questions || []);
       setSession(sRes.data.session);
@@ -82,7 +82,7 @@ export default function PublicPulse() {
         return;
       }
 
-      const rRes = await api.get('/api/pulse-link/response', linkParams);
+      const rRes = await api.get('/api/rhythm-engine-link/response', linkParams);
       const r = rRes.data.response;
       setShowWelcomeIntro(!shouldSkipWelcomeIntro(r));
       setAnswers(extractAnswers(r));
@@ -93,7 +93,7 @@ export default function PublicPulse() {
         setStep(Math.min(Math.max(r.currentStep || 1, 1), 4));
       }
     } catch (e) {
-      setError(e.response?.data?.error || 'Could not load Pulse.');
+      setError(e.response?.data?.error || 'Could not load Rhythm Engine.');
     }
   }, [token, linkParams]);
 
@@ -114,7 +114,7 @@ export default function PublicPulse() {
     try {
       const payload = buildStepPayload(questions, answers);
       await api.put(
-        `/api/pulse-link/response/step/${nextStep}`,
+        `/api/rhythm-engine-link/response/step/${nextStep}`,
         payload,
         linkParams
       );
@@ -138,7 +138,7 @@ export default function PublicPulse() {
     try {
       const payload = buildStepPayload(questions, answers);
       const { data } = await api.post(
-        '/api/pulse-link/response/complete',
+        '/api/rhythm-engine-link/response/complete',
         payload,
         linkParams
       );
@@ -155,7 +155,7 @@ export default function PublicPulse() {
     setIntroStartBusy(true);
     setError('');
     try {
-      await api.post('/api/pulse-link/survey-started', {}, linkParams);
+      await api.post('/api/rhythm-engine-link/survey-started', {}, linkParams);
       setShowWelcomeIntro(false);
     } catch (e) {
       setError(e.response?.data?.error || 'Could not continue.');
@@ -232,7 +232,7 @@ export default function PublicPulse() {
                 margin: '0 0 0.5rem',
               }}
             >
-              Pulse questionnaire
+              Rhythm Engine questionnaire
             </p>
             <h1 style={{ margin: '0 0 1rem' }}>Welcome</h1>
             <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1rem' }}>
@@ -241,7 +241,7 @@ export default function PublicPulse() {
             </p>
             {session.sessionPurpose !== 'link_invite' && session.name ? (
               <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1rem' }}>
-                This pulse: <strong>{session.name}</strong>
+                This Rhythm Engine wave: <strong>{session.name}</strong>
               </p>
             ) : null}
             <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1.5rem' }}>
@@ -272,7 +272,7 @@ export default function PublicPulse() {
             </div>
             {session.sessionPurpose !== 'link_invite' ? (
               <p className="muted" style={{ marginBottom: '1.25rem' }}>
-                Pulse wave: <strong>{session.name}</strong>
+                Rhythm Engine wave: <strong>{session.name}</strong>
               </p>
             ) : null}
             {error && <p className="error">{error}</p>}

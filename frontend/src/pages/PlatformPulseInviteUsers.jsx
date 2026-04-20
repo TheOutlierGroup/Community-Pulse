@@ -240,7 +240,7 @@ export default function PlatformPulseInviteUsers() {
     }
     setError('');
     try {
-      const { data } = await api.get(`/api/platform/organizations/${orgId}/pulse-link-invites`);
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`);
       setInvites(data.invites || []);
     } catch (e) {
       setError(e.response?.data?.error || 'Could not load invite list.');
@@ -270,7 +270,7 @@ export default function PlatformPulseInviteUsers() {
         });
         return;
       }
-      const { data } = await api.post(`/api/platform/organizations/${orgId}/pulse-link-invites/import`, {
+      const { data } = await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`, {
         recipients,
       });
       showToast(`Imported ${data.upserted} row(s).`, { variant: 'success' });
@@ -319,7 +319,7 @@ export default function PlatformPulseInviteUsers() {
       const name = String(addName || '').trim() || email.split('@')[0];
       const recipient = { name, email, role: addRole };
       if (addRole === 'staff') recipient.managerInviteId = addManagerInviteId;
-      const { data } = await api.post(`/api/platform/organizations/${orgId}/pulse-link-invites/import`, {
+      const { data } = await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`, {
         recipients: [recipient],
       });
       if (data.errorCount > 0) {
@@ -346,7 +346,7 @@ export default function PlatformPulseInviteUsers() {
   async function sendInvite(id) {
     setSendingId(id);
     try {
-      await api.post(`/api/platform/organizations/${orgId}/pulse-link-invites/${id}/send`);
+      await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${id}/send`);
       showToast('Invite sent.', { variant: 'success' });
       await load();
     } catch (err) {
@@ -363,7 +363,7 @@ export default function PlatformPulseInviteUsers() {
     const snapshot = sendableInviteIds;
     if (snapshot.length === 0) return;
     const ok = window.confirm(
-      `Send Pulse links to ${snapshot.length} recipient${snapshot.length === 1 ? '' : 's'} who have not completed the survey?\n\nEach person receives an email. Sends run one at a time with a short pause between each to avoid hitting email API rate limits, so a long list may take a few minutes.`
+      `Send Rhythm Engine links to ${snapshot.length} recipient${snapshot.length === 1 ? '' : 's'} who have not completed the survey?\n\nEach person receives an email. Sends run one at a time with a short pause between each to avoid hitting email API rate limits, so a long list may take a few minutes.`
     );
     if (!ok) return;
 
@@ -377,7 +377,7 @@ export default function PlatformPulseInviteUsers() {
       for (let i = 0; i < snapshot.length; i += 1) {
         setBulkProgress({ current: i + 1, total });
         try {
-          await api.post(`/api/platform/organizations/${orgId}/pulse-link-invites/${snapshot[i]}/send`);
+          await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${snapshot[i]}/send`);
           success += 1;
         } catch (e) {
           failed += 1;
@@ -421,7 +421,7 @@ export default function PlatformPulseInviteUsers() {
     }
     setDeleteWorking(true);
     try {
-      await api.delete(`/api/platform/organizations/${orgId}/pulse-link-invites/${deleteConfirmRow.id}`);
+      await api.delete(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${deleteConfirmRow.id}`);
       showToast('Recipient removed.', { variant: 'success' });
       setDeleteConfirmRow(null);
       await load();
@@ -439,7 +439,7 @@ export default function PlatformPulseInviteUsers() {
       <div className="pulse-platform-header">
         <div>
           <div className="pulse-platform-header__eyebrow">Client administration</div>
-          <h1 className="pulse-platform-header__title">Pulse link recipients</h1>
+          <h1 className="pulse-platform-header__title">Rhythm Engine link recipients</h1>
         </div>
         <div className="pulse-platform-header__right" style={{ flexWrap: 'wrap' }}>
           <label
@@ -479,7 +479,7 @@ export default function PlatformPulseInviteUsers() {
         {deleteConfirmRow ? (
           <div style={{ padding: '0 0 0.25rem' }}>
             <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.55 }}>
-              They will be removed from this client’s Pulse link list and won’t receive new links from here.
+              They will be removed from this client’s Rhythm Engine link list and won’t receive new links from here.
             </p>
             <div
               style={{

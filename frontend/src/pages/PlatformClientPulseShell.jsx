@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useOutletContext } from 'react-router-dom';
 import { normalizeServices } from './platformClientUtils.js';
 import api from '../services/api.js';
-import { IS_CRM_SURFACE, pulseAppBaseUrl } from '../config/appSurface.js';
+import { IS_CRM_SURFACE, rhythmEngineAppBaseUrl } from '../config/appSurface.js';
 
 export default function PlatformClientPulseShell() {
   const ctx = useOutletContext();
@@ -20,11 +20,11 @@ export default function PlatformClientPulseShell() {
 
   useEffect(() => {
     if (!org || !pulseEnabled || !IS_CRM_SURFACE || handoffFailed) return;
-    if (!pulseAppBaseUrl()) return;
+    if (!rhythmEngineAppBaseUrl()) return;
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await api.post(`/api/platform/organizations/${orgId}/pulse-handoff-link`);
+        const { data } = await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-handoff-link`);
         if (cancelled) return;
         if (data?.url) {
           window.location.replace(data.url);

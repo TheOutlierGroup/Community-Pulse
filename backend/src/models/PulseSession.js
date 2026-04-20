@@ -127,7 +127,7 @@ export async function resolveSessionForPulseLink(organizationId, audience = 'sta
     }
   }
   if (!linkSess) {
-    throw new Error('Could not resolve Pulse session for link');
+    throw new Error('Could not resolve Rhythm Engine session for link');
   }
   if (linkSess.status !== 'active') {
     const updated = await updateSessionStatus(linkSess.id, organizationId, 'active');

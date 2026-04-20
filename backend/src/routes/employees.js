@@ -37,7 +37,7 @@ router.get('/response', async (req, res) => {
   }
   const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId, 'staff');
   if (!session) {
-    return res.status(404).json({ error: 'No active Pulse session' });
+    return res.status(404).json({ error: 'No active Rhythm Engine session' });
   }
   await EmployeeResponse.ensureResponseRow(req.user.id, session.id);
   const row = await EmployeeResponse.getResponse(req.user.id, session.id);
@@ -81,7 +81,7 @@ router.put('/response/step/:step', async (req, res) => {
   }
   const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId, 'staff');
   if (!session) {
-    return res.status(404).json({ error: 'No active Pulse session' });
+    return res.status(404).json({ error: 'No active Rhythm Engine session' });
   }
 
   const body = req.body || {};
@@ -123,7 +123,7 @@ router.post('/response/complete', async (req, res) => {
   }
   const session = await PulseSession.getActiveSessionForOrg(req.user.organizationId, 'staff');
   if (!session) {
-    return res.status(404).json({ error: 'No active Pulse session' });
+    return res.status(404).json({ error: 'No active Rhythm Engine session' });
   }
 
   const body = req.body || {};

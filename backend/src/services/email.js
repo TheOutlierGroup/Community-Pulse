@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** Same CID in HTML and attachment so clients don't need to fetch a public URL. */
 const OUTLIER_LOGO_CONTENT_ID = 'outlier-logo';
 
-const DEFAULT_FROM = 'Employee Pulse <noreply@employeepulse.app>';
+const DEFAULT_FROM = 'Rhythm Engine <noreply@employeepulse.app>';
 
 /** Resend `from`: RESEND_FROM_EMAIL (+ optional RESEND_FROM_NAME), else legacy EMAIL_FROM, else default. */
 export function getResendFromAddress() {
@@ -148,7 +148,7 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
   const greetingHtml = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
   const orgPlain = organizationName ? String(organizationName).trim() : 'your organization';
   const orgLabelHtml = escapeHtml(orgPlain);
-  const subjectPlain = `Pulse questionnaire — ${orgPlain.replace(/[\r\n]+/g, ' ').slice(0, 200)}`;
+  const subjectPlain = `Rhythm Engine questionnaire — ${orgPlain.replace(/[\r\n]+/g, ' ').slice(0, 200)}`;
   const safePulseUrl = String(pulseUrl || '');
   const { logoBlock, attachments } = buildOutlierEmailLogoParts();
   const { error } = await resend.emails.send({
@@ -159,19 +159,19 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
         ${logoBlock}
-        <h2 style="margin: 0 0 1rem;">Your Pulse link</h2>
+        <h2 style="margin: 0 0 1rem;">Your Rhythm Engine link</h2>
         <p style="color: #555; line-height: 1.6;">
           ${greetingHtml}
         </p>
         <p style="color: #555; line-height: 1.6;">
-          You have been invited to complete a short Pulse questionnaire for <strong>${orgLabelHtml}</strong>.
+          You have been invited to complete a short Rhythm Engine questionnaire for <strong>${orgLabelHtml}</strong>.
           Use your personal link below. You do not need to sign in.
         </p>
         <a href="${escapeHtmlAttr(safePulseUrl)}"
            style="display: inline-block; margin: 1.5rem 0; padding: 0.75rem 1.5rem;
                   background: #ffcc80; color: #1c1917; font-weight: 600;
                   text-decoration: none; border-radius: 8px;">
-          Open Pulse
+          Open Rhythm Engine
         </a>
         <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
           If the button does not work, copy and paste this URL into your browser:<br />
@@ -182,14 +182,14 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
   });
 
   if (error) {
-    console.error('Resend pulse invite error:', error);
+    console.error('Resend Rhythm Engine invite error:', error);
     const detail =
       error && typeof error.message === 'string'
         ? error.message
         : typeof error === 'string'
           ? error
           : JSON.stringify(error);
-    throw new Error(detail || 'Failed to send Pulse invite email');
+    throw new Error(detail || 'Failed to send Rhythm Engine invite email');
   }
 }
 

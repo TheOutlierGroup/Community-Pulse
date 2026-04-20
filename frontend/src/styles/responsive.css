@@ -1383,7 +1383,7 @@ a:hover {
   font-weight: 600;
 }
 
-/* Pulse step */
+/* Rhythm Engine step */
 .pulse-intro {
   font-size: 1.05rem;
   margin-bottom: 1.5rem;
@@ -1849,7 +1849,7 @@ input[type='range'] {
   box-sizing: border-box;
   overflow-x: auto;
   padding-bottom: 0.5rem;
-  min-height: 320px;
+  height: max(320px, calc(100dvh - 12rem));
 }
 
 .task-board__column {
@@ -1861,7 +1861,7 @@ input[type='range'] {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
-  max-height: min(70vh, 720px);
+  height: 100%;
   overflow: hidden;
 }
 
@@ -3108,6 +3108,45 @@ input[type='range'] {
   overflow-x: auto;
 }
 
+.task-card-modal__mention-menu {
+  position: absolute;
+  z-index: 1200;
+  min-width: 240px;
+  max-width: 360px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid rgba(9, 30, 66, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(9, 30, 66, 0.18);
+  padding: 0.25rem;
+}
+
+.task-card-modal__mention-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  color: #172b4d;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.task-card-modal__mention-item:hover,
+.task-card-modal__mention-item--active {
+  background: rgba(12, 102, 228, 0.12);
+}
+
+.task-card-modal__mention-empty {
+  padding: 0.45rem 0.5rem;
+  color: #6b778c;
+  font-size: 0.8rem;
+}
+
 .task-card-modal__rte-save {
   margin-top: 0.55rem;
   padding: 0.45rem 0.95rem;
@@ -4172,7 +4211,7 @@ input[type='range'] {
   margin-bottom: 0.75rem;
 }
 
-/* Pulse prototype dashboard */
+/* Rhythm Engine prototype dashboard */
 .pulse-prototype-page {
   --pulse-bg: transparent;
   --pulse-surface: var(--surface);

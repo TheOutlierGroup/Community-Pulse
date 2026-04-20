@@ -39,7 +39,7 @@ test('requireClientPulseService returns 403 when pulse is disabled', async () =>
   const app = testAppForOrganization({ kind: 'client', settings: { services: [] } });
   const out = await runRequest(app);
   assert.equal(out.status, 403);
-  assert.equal(out.body.error, 'Pulse is not enabled for this client');
+  assert.equal(out.body.error, 'Rhythm Engine is not enabled for this client');
 });
 
 test('requireClientPulseService returns 200 when pulse is enabled', async () => {
@@ -63,6 +63,6 @@ test('requireClientPulseService denies when explicit services omit pulse', async
   });
   const out = await runRequest(app);
   assert.equal(out.status, 403);
-  assert.equal(out.body.error, 'Pulse is not enabled for this client');
+  assert.equal(out.body.error, 'Rhythm Engine is not enabled for this client');
 });
 

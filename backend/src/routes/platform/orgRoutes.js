@@ -507,7 +507,7 @@ export function registerPlatformOrgRoutes(router) {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
-      return res.status(403).json({ error: 'Pulse is not enabled for this client' });
+      return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
     }
 
     const name = createDuringPulseCheckpointName(new Date());
@@ -963,12 +963,12 @@ export function registerPlatformOrgRoutes(router) {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
-      return res.status(403).json({ error: 'Pulse is not enabled for this client' });
+      return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
     }
 
     const pulseBaseUrl = resolvePulseAppBaseUrl();
     if (!pulseBaseUrl) {
-      return res.status(500).json({ error: 'Set PULSE_APP_URL or APP_URL to issue Pulse links' });
+      return res.status(500).json({ error: 'Set PULSE_APP_URL or APP_URL to issue Rhythm Engine links' });
     }
 
     const handoff = await createPulseHandoffToken({
@@ -1111,11 +1111,11 @@ export function registerPlatformOrgRoutes(router) {
     }
     const rotated = await PulseLinkInvite.rotateTokenAndMarkSent(invite.id, orgId);
     if (!rotated) return res.status(500).json({ error: 'Could not prepare invite link' });
-    const linkUrl = `${baseUrl}/pulse/link/${rotated.rawToken}`;
+    const linkUrl = `${baseUrl}/rhythm-engine/link/${rotated.rawToken}`;
     try {
       await sendPulseInviteEmail(invite.email, invite.display_name, linkUrl, org.name);
     } catch (e) {
-      console.error('Pulse link invite send failed:', e);
+      console.error('Rhythm Engine link invite send failed:', e);
       const details = String(e?.message || '').slice(0, 500);
       return res.status(500).json({
         error: 'Could not send email',

@@ -6,7 +6,7 @@ import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { jsonErrorFromBuffer, sniffImageMime } from '../utils/imageResponseHelpers.js';
 import { ArrowLeft } from 'lucide-react';
-import { IS_PULSE_SURFACE } from '../config/appSurface.js';
+import { IS_RHYTHM_ENGINE_SURFACE } from '../config/appSurface.js';
 import { DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 
 function pulseTimepointFromSession(sessionPurpose) {
@@ -102,7 +102,7 @@ export default function PlatformClientLayout() {
 
   const loadPulseTimepoints = useCallback(async () => {
     if (!orgId) return [];
-    const { data } = await api.get(`/api/platform/organizations/${orgId}/pulse-sessions`);
+    const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-sessions`);
     const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
     const grouped = new Map();
     sessions.forEach((session) => {
@@ -147,7 +147,7 @@ export default function PlatformClientLayout() {
     setPulseTimepointBusy(true);
     setPulseTimepointError('');
     try {
-      const { data } = await api.post(`/api/platform/organizations/${orgId}/pulse-timepoints/during`);
+      const { data } = await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-timepoints/during`);
       const createdDate = String(data?.checkpointDate || '').trim();
       const options = await loadPulseTimepoints();
       const match = options.find((row) => row.phase === 'during' && row.dateKey === createdDate);
@@ -175,7 +175,7 @@ export default function PlatformClientLayout() {
       } catch (e) {
         if (!cancelled) {
           setPulseTimepointOptions([]);
-          setPulseTimepointError(e?.response?.data?.error || 'Could not load pulse timepoints.');
+          setPulseTimepointError(e?.response?.data?.error || 'Could not load Rhythm Engine timepoints.');
         }
       }
     })();
@@ -264,17 +264,17 @@ export default function PlatformClientLayout() {
     const tail = path.startsWith(base) ? path.slice(base.length).replace(/^\/+/, '') : '';
     let section = 'Client';
     if (!tail) {
-      section = IS_PULSE_SURFACE ? 'Pulse' : 'Overview';
+      section = IS_RHYTHM_ENGINE_SURFACE ? 'Rhythm Engine' : 'Overview';
     } else if (tail === 'users') {
       section = 'Users';
     } else if (tail.startsWith('tasks')) {
       section = 'Tasks';
     } else if (tail === 'account') {
       section = 'Account';
-    } else if (tail.startsWith('pulse/users')) {
-      section = 'Pulse · Invites';
-    } else if (tail.startsWith('pulse')) {
-      section = 'Pulse';
+    } else if (tail.startsWith('rhythm-engine/users')) {
+      section = 'Rhythm Engine · Invites';
+    } else if (tail.startsWith('rhythm-engine')) {
+      section = 'Rhythm Engine';
     }
 
     const client = String(org.name || '').trim() || 'Client';
@@ -322,12 +322,12 @@ export default function PlatformClientLayout() {
       <Layout user={user} onLogout={logout}>
         <p className="error">Client not found.</p>
         <Link
-          to={IS_PULSE_SURFACE ? '/' : '/platform/clients'}
+          to={IS_RHYTHM_ENGINE_SURFACE ? '/' : '/platform/clients'}
           className="btn btn-ghost platform-back-link"
           style={{ marginTop: '1rem' }}
         >
           <ArrowLeft size={18} aria-hidden />
-          {IS_PULSE_SURFACE ? 'Back' : 'Back to clients'}
+          {IS_RHYTHM_ENGINE_SURFACE ? 'Back' : 'Back to clients'}
         </Link>
       </Layout>
     );

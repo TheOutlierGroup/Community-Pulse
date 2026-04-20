@@ -2,6 +2,7 @@ const rawSurface = String(import.meta.env.VITE_APP_SURFACE || 'crm').toLowerCase
 
 export const APP_SURFACE = rawSurface === 'pulse' ? 'pulse' : rawSurface === 'all' ? 'all' : 'crm';
 export const IS_PULSE_SURFACE = APP_SURFACE === 'pulse';
+export const IS_RHYTHM_ENGINE_SURFACE = IS_PULSE_SURFACE;
 export const IS_CRM_SURFACE = APP_SURFACE === 'crm';
 
 function normalizeBaseUrl(value) {
@@ -19,3 +20,5 @@ export function crmLoginUrl() {
 export function pulseAppBaseUrl() {
   return normalizeBaseUrl(import.meta.env.VITE_PULSE_APP_URL);
 }
+
+export const rhythmEngineAppBaseUrl = pulseAppBaseUrl;

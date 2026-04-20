@@ -26,6 +26,17 @@ const platformLimiter = rateLimit({
 });
 
 router.use(requireAuth, requirePlatformUser, platformLimiter);
+router.use((req, _res, next) => {
+  if (req.url.includes('rhythm-engine')) {
+    req.url = req.url
+      .replaceAll('rhythm-engine-link-invites', 'pulse-link-invites')
+      .replaceAll('rhythm-engine-timepoints', 'pulse-timepoints')
+      .replaceAll('rhythm-engine-sessions', 'pulse-sessions')
+      .replaceAll('rhythm-engine-dashboard', 'pulse-dashboard')
+      .replaceAll('rhythm-engine-handoff-link', 'pulse-handoff-link');
+  }
+  next();
+});
 
 if (isPulseSurface) {
   router.use((req, res, next) => {

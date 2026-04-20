@@ -47,7 +47,7 @@ async function requirePulseLink(req, res, next) {
       return res.status(403).json({ error: 'Invalid organization' });
     }
     if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
-      return res.status(403).json({ error: 'Pulse is not available' });
+      return res.status(403).json({ error: 'Rhythm Engine is not available' });
     }
     req.pulseLinkInvite = invite;
     req.pulseLinkOrganization = org;

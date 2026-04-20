@@ -119,7 +119,7 @@ export function buildRequireClientPulseService({
       }
       req.clientOrganization = org;
       if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
-        return res.status(403).json({ error: 'Pulse is not enabled for this client' });
+        return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
       }
       next();
     } catch (e) {

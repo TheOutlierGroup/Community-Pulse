@@ -21,7 +21,7 @@ export default function Dashboard({ overview }) {
       </div>
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Sessions</h2>
-        {!sessions?.length && <p className="muted">Create your first Pulse session.</p>}
+        {!sessions?.length && <p className="muted">Create your first Rhythm Engine session.</p>}
         {sessions?.length > 0 && (
           <table className="admin-table">
             <thead>

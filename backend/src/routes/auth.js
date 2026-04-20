@@ -318,7 +318,7 @@ router.delete('/me/organization-logo', requireAuth, requireClientAdmin, async (r
 });
 
 router.post(
-  '/pulse-handoff/exchange',
+  ['/pulse-handoff/exchange', '/rhythm-engine-handoff/exchange'],
   authLimiter,
   requireBodyFields(['token']),
   async (req, res) => {

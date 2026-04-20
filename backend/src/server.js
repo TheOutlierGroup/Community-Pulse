@@ -121,7 +121,9 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRoutes);
 if (!isCrmSurface) {
   app.use('/api/pulse', employeeRoutes);
+  app.use('/api/rhythm-engine', employeeRoutes);
   app.use('/api/pulse-link', pulseLinkRoutes);
+  app.use('/api/rhythm-engine-link', pulseLinkRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/analytics', analyticsRoutes);
 }
@@ -157,7 +159,7 @@ if (isPulseSurface) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pulse</title>
+    <title>Rhythm Engine</title>
     <style>
       body { font-family: Inter, system-ui, -apple-system, sans-serif; margin: 0; background: #f7f8fb; color: #111827; }
       .wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
@@ -171,8 +173,8 @@ if (isPulseSurface) {
   <body>
     <main class="wrap">
       <section class="card">
-        <h1>Pulse</h1>
-        <p>Pulse access is secured. Please log in via the CRM to continue.</p>
+        <h1>Rhythm Engine</h1>
+        <p>Rhythm Engine access is secured. Please log in via the CRM to continue.</p>
         <a href="${loginUrl}">Log in to CRM</a>
       </section>
     </main>
@@ -194,5 +196,5 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Pulse API listening on ${PORT}`);
+  console.log(`Rhythm Engine API listening on ${PORT}`);
 });

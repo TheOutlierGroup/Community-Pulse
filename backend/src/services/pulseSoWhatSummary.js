@@ -80,7 +80,7 @@ function buildPrompt(snapshot) {
 function openAiAuthKey() {
   const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
   if (!apiKey) {
-    const error = new Error('OPENAI_API_KEY is required for Pulse dashboard summaries');
+    const error = new Error('OPENAI_API_KEY is required for Rhythm Engine dashboard summaries');
     error.code = 'OPENAI_KEY_MISSING';
     throw error;
   }
@@ -189,7 +189,7 @@ export async function generatePulseSoWhatSummary(snapshot) {
     });
     return text;
   } catch (error) {
-    console.error('Pulse so-what summary generation failed:', error?.message || error);
+    console.error('Rhythm Engine so-what summary generation failed:', error?.message || error);
     const wrapped = new Error('AI summary unavailable');
     wrapped.code = error?.code || 'OPENAI_SUMMARY_UNAVAILABLE';
     wrapped.cause = error;

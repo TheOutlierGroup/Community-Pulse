@@ -1,7 +1,8 @@
-import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import Mention from '@tiptap/extension-mention';
 import DOMPurify from 'dompurify';
 import {
   Bold,
@@ -59,8 +60,154 @@ function ToolbarDivider() {
   return <span className="task-card-modal__rte-divider" aria-hidden />;
 }
 
-const TaskCommentRichEditor = forwardRef(function TaskCommentRichEditor({ disabled, fileInputRef, onEmptyChange }, ref) {
+function mentionUserLabel(user) {
+  const first = String(user?.firstName || '').trim();
+  const last = String(user?.lastName || '').trim();
+  const fullName = [first, last].filter(Boolean).join(' ').trim();
+  const email = String(user?.email || '').trim();
+  if (fullName && email) return `${fullName} · ${email}`;
+  return email || fullName || 'Unknown user';
+}
+
+function createMentionSuggestion(userOptions) {
+  function filteredUsers(query) {
+    const q = String(query || '').trim().toLowerCase();
+    const source = Array.isArray(userOptions) ? userOptions : [];
+    if (!q) return source.slice(0, 8);
+    return source
+      .filter((u) => {
+        const email = String(u?.email || '').toLowerCase();
+        const first = String(u?.firstName || '').toLowerCase();
+        const last = String(u?.lastName || '').toLowerCase();
+        const full = `${first} ${last}`.trim();
+        return email.includes(q) || first.includes(q) || last.includes(q) || full.includes(q);
+      })
+      .slice(0, 8);
+  }
+
+  return {
+    char: '@',
+    items: ({ query }) => filteredUsers(query),
+    command: ({ editor, range, props }) => {
+      const email = String(props?.email || '').trim();
+      if (!email) return;
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(range, `@${email} `)
+        .run();
+    },
+    render: () => {
+      let root = null;
+      let selectedIndex = 0;
+      let currentProps = null;
+
+      function cleanup() {
+        if (root && root.parentNode) root.parentNode.removeChild(root);
+        root = null;
+      }
+
+      function pickIndex(nextIndex, count) {
+        if (!count) return 0;
+        if (nextIndex < 0) return count - 1;
+        if (nextIndex >= count) return 0;
+        return nextIndex;
+      }
+
+      function selectCurrent() {
+        const items = currentProps?.items || [];
+        const item = items[selectedIndex];
+        if (item) currentProps?.command(item);
+      }
+
+      function renderMenu() {
+        if (!root || !currentProps?.clientRect) return;
+        const items = currentProps.items || [];
+        if (!items.length) {
+          root.innerHTML = '<div class="task-card-modal__mention-empty">No matching users</div>';
+        } else {
+          root.innerHTML = items
+            .map((user, idx) => {
+              const active = idx === selectedIndex ? ' task-card-modal__mention-item--active' : '';
+              const label = mentionUserLabel(user);
+              const email = String(user?.email || '');
+              return `<button type="button" class="task-card-modal__mention-item${active}" data-mention-index="${idx}" title="${label}">${label || email}</button>`;
+            })
+            .join('');
+        }
+        const rect = currentProps.clientRect();
+        if (!rect) return;
+        root.style.left = `${Math.round(rect.left + window.scrollX)}px`;
+        root.style.top = `${Math.round(rect.bottom + window.scrollY + 6)}px`;
+      }
+
+      function onClick(e) {
+        const target = e.target.closest('[data-mention-index]');
+        if (!target || !currentProps) return;
+        const idx = Number.parseInt(String(target.getAttribute('data-mention-index') || ''), 10);
+        if (Number.isNaN(idx)) return;
+        selectedIndex = idx;
+        selectCurrent();
+      }
+
+      return {
+        onStart: (props) => {
+          currentProps = props;
+          selectedIndex = 0;
+          root = document.createElement('div');
+          root.className = 'task-card-modal__mention-menu';
+          root.addEventListener('mousedown', (e) => e.preventDefault());
+          root.addEventListener('click', onClick);
+          document.body.appendChild(root);
+          renderMenu();
+        },
+        onUpdate: (props) => {
+          currentProps = props;
+          const count = props.items?.length || 0;
+          selectedIndex = pickIndex(selectedIndex, count);
+          renderMenu();
+        },
+        onKeyDown: (props) => {
+          const items = props.items || [];
+          if (props.event.key === 'Escape') {
+            cleanup();
+            return true;
+          }
+          if (props.event.key === 'ArrowDown') {
+            selectedIndex = pickIndex(selectedIndex + 1, items.length);
+            renderMenu();
+            return true;
+          }
+          if (props.event.key === 'ArrowUp') {
+            selectedIndex = pickIndex(selectedIndex - 1, items.length);
+            renderMenu();
+            return true;
+          }
+          if (props.event.key === 'Enter') {
+            selectCurrent();
+            return true;
+          }
+          return false;
+        },
+        onExit: () => {
+          cleanup();
+          currentProps = null;
+          selectedIndex = 0;
+        },
+      };
+    },
+  };
+}
+
+const TaskCommentRichEditor = forwardRef(function TaskCommentRichEditor(
+  { disabled, fileInputRef, onEmptyChange, mentionUsers = [] },
+  ref
+) {
   const [, bump] = useState(0);
+  const mentionSuggestion = useMemo(
+    () => createMentionSuggestion(mentionUsers),
+    [mentionUsers]
+  );
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -77,12 +224,26 @@ const TaskCommentRichEditor = forwardRef(function TaskCommentRichEditor({ disabl
       Placeholder.configure({
         placeholder: 'Write a comment…',
       }),
+      Mention.configure({
+        HTMLAttributes: {
+          class: 'task-card-modal__mention-token',
+        },
+        suggestion: mentionSuggestion,
+      }),
     ],
     content: '',
     editable: !disabled,
+    editorProps: {
+      attributes: {
+        spellcheck: 'true',
+        autocorrect: 'on',
+        autocapitalize: 'sentences',
+        lang: 'en',
+      },
+    },
     shouldRerenderOnTransaction: true,
     onUpdate: () => bump((n) => n + 1),
-  });
+  }, [disabled, mentionSuggestion]);
 
   useImperativeHandle(
     ref,
@@ -270,7 +431,7 @@ const TaskCommentRichEditor = forwardRef(function TaskCommentRichEditor({ disabl
           </button>
           <span
             className="task-card-modal__rte-tool task-card-modal__rte-tool--help"
-            title="Use the toolbar for headings, bold, lists, links, and code. @email in text still tags people when you save."
+            title="Use the toolbar for headings, bold, lists, links, and code. Type @ to mention a teammate; right-click underlined words for spellcheck suggestions."
             role="note"
           >
             <HelpCircle size={17} strokeWidth={1.75} aria-hidden />

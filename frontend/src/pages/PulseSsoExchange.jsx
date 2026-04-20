@@ -25,7 +25,7 @@ export default function PulseSsoExchange() {
         return;
       }
       try {
-        const { data } = await api.post('/api/auth/pulse-handoff/exchange', {
+        const { data } = await api.post('/api/auth/rhythm-engine-handoff/exchange', {
           token: handoffToken,
         });
         if (cancelled) return;
@@ -33,7 +33,7 @@ export default function PulseSsoExchange() {
 
         const targetOrgId = data.targetOrganizationId || queryOrgId;
         if (data.user?.organizationKind === 'platform' && targetOrgId) {
-          navigate(`/platform/clients/${targetOrgId}/pulse`, { replace: true });
+          navigate(`/platform/clients/${targetOrgId}/rhythm-engine`, { replace: true });
           return;
         }
         navigate(getPostLoginPath(data.user), { replace: true });

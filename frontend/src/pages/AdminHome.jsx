@@ -11,7 +11,7 @@ export default function AdminHome() {
   const navigate = useNavigate();
   const location = useLocation();
   const [overview, setOverview] = useState(null);
-  const [name, setName] = useState('Q1 Pulse');
+  const [name, setName] = useState('Q1 Rhythm Engine');
   const [sessionAudience, setSessionAudience] = useState('staff');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteFirstName, setInviteFirstName] = useState('');
@@ -32,7 +32,9 @@ export default function AdminHome() {
   useEffect(() => {
     if (!loading && !user) navigate('/');
     else if (user?.organizationKind === 'platform') navigate('/platform');
-    else if (user && user.role !== 'admin') navigate(userHasService(user, CLIENT_SERVICE_PULSE) ? '/pulse' : '/account');
+    else if (user && user.role !== 'admin') {
+      navigate(userHasService(user, CLIENT_SERVICE_PULSE) ? '/rhythm-engine' : '/account');
+    }
     else if (user?.organizationKind !== 'client') navigate('/');
     else if (user && user.role === 'admin' && !userHasService(user, CLIENT_SERVICE_PULSE)) {
       navigate('/client');
@@ -56,7 +58,7 @@ export default function AdminHome() {
     setError('');
     try {
       await api.post('/api/admin/sessions', { name, status: 'draft', audience: sessionAudience });
-      setName('Q1 Pulse');
+      setName('Q1 Rhythm Engine');
       setSessionAudience('staff');
       await load();
     } catch (err) {

@@ -8,7 +8,7 @@ export const CLIENT_SERVICE_OG_SKATE_COMMUNITY_ENGAGEMENT = 'og-skate-community-
 export const CLIENT_SERVICE_OG_SKATE_OTHER = 'og-skate-other';
 
 export const CLIENT_SERVICE_OPTIONS = [
-  { id: CLIENT_SERVICE_PULSE, label: 'Pulse' },
+  { id: CLIENT_SERVICE_PULSE, label: 'Rhythm Engine' },
   { id: CLIENT_SERVICE_HUMAN_AI, label: 'Human AI' },
   { id: CLIENT_SERVICE_ADOPTION_ACCELERATOR, label: 'Adoption Accelerator' },
   { id: CLIENT_SERVICE_PROJECT_RESOURCES, label: 'Project Resources' },

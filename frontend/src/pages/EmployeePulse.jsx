@@ -47,14 +47,14 @@ export default function EmployeePulse() {
     setError('');
     try {
       const [tRes, sRes] = await Promise.all([
-        api.get('/api/pulse/themes'),
-        api.get('/api/pulse/active-session'),
+        api.get('/api/rhythm-engine/themes'),
+        api.get('/api/rhythm-engine/active-session'),
       ]);
       setQuestions(tRes.data.questions || []);
       setSession(sRes.data.session);
       if (!sRes.data.session) return;
 
-      const rRes = await api.get('/api/pulse/response');
+      const rRes = await api.get('/api/rhythm-engine/response');
       const r = rRes.data.response;
       setAnswers(extractAnswers(r));
       if (r.completedAt) {
@@ -64,7 +64,7 @@ export default function EmployeePulse() {
         setStep(Math.min(Math.max(r.currentStep || 1, 1), 4));
       }
     } catch (e) {
-      setError(e.response?.data?.error || 'Could not load Pulse.');
+      setError(e.response?.data?.error || 'Could not load Rhythm Engine.');
     }
   }, []);
 
@@ -93,7 +93,7 @@ export default function EmployeePulse() {
     setError('');
     try {
       const payload = buildStepPayload(questions, answers);
-      await api.put(`/api/pulse/response/step/${nextStep}`, {
+      await api.put(`/api/rhythm-engine/response/step/${nextStep}`, {
         ...payload,
       });
       setStep(nextStep);
@@ -114,7 +114,7 @@ export default function EmployeePulse() {
     setError('');
     try {
       const payload = buildStepPayload(questions, answers);
-      const { data } = await api.post('/api/pulse/response/complete', {
+      const { data } = await api.post('/api/rhythm-engine/response/complete', {
         ...payload,
       });
       setReflection(data.reflection);
@@ -144,7 +144,7 @@ export default function EmployeePulse() {
             <span key={s} className={`step-dot ${step === s ? 'active' : ''}`} title={`Step ${s}`} />
           ))}
         </div>
-        <h1>Your Pulse</h1>
+        <h1>Your Rhythm Engine</h1>
         {!session && (
           <p className="muted">
             There is no active diagnostic right now. Check back when your admin opens a session.

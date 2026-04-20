@@ -443,8 +443,8 @@ export default function AccountPage() {
           <h2 className="settings-section-title">Organization services</h2>
           <p className="muted" style={{ marginTop: 0 }}>
             {canManageOrgServices
-              ? 'Manage the services your client is paying for. Only Pulse changes app behavior.'
-              : 'These are the services enabled for your client. Only Pulse changes app behavior.'}
+              ? 'Manage the services your client is paying for. Only Rhythm Engine changes app behavior.'
+              : 'These are the services enabled for your client. Only Rhythm Engine changes app behavior.'}
           </p>
           {canManageOrgServices && orgServicesError ? (
             <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>

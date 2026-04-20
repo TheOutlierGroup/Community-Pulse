@@ -78,7 +78,7 @@ export default function PlatformSettings() {
       <div className="card" style={{ marginTop: '1rem' }}>
         <h2 className="settings-section-title">Organization services</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Manage the services your organization is paying for. Only Pulse changes app behavior.
+          Manage the services your organization is paying for. Only Rhythm Engine changes app behavior.
         </p>
         {error ? (
           <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>

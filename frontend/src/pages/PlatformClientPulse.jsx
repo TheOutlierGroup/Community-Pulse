@@ -144,21 +144,21 @@ function pulseDashboardErrorText(err, attemptCount = 1) {
     return 'Your session has expired. Please sign in again.';
   }
   if (status === 404) {
-    return 'Pulse dashboard is not available for this client yet.';
+    return 'Rhythm Engine dashboard is not available for this client yet.';
   }
   if (status === 429) {
     return attemptCount > 1
-      ? 'Pulse dashboard is temporarily rate limited after multiple retries. Please wait a moment and refresh.'
-      : 'Pulse dashboard is temporarily rate limited. Please wait a moment and refresh.';
+      ? 'Rhythm Engine dashboard is temporarily rate limited after multiple retries. Please wait a moment and refresh.'
+      : 'Rhythm Engine dashboard is temporarily rate limited. Please wait a moment and refresh.';
   }
   if (apiMessage) {
     return attemptCount > 1
-      ? `Could not load Pulse dashboard data after retrying. ${apiMessage}`
-      : `Could not load Pulse dashboard data. ${apiMessage}`;
+      ? `Could not load Rhythm Engine dashboard data after retrying. ${apiMessage}`
+      : `Could not load Rhythm Engine dashboard data. ${apiMessage}`;
   }
   return attemptCount > 1
-    ? 'Could not load Pulse dashboard data after retrying. Please try again.'
-    : 'Could not load Pulse dashboard data. Please try again.';
+    ? 'Could not load Rhythm Engine dashboard data after retrying. Please try again.'
+    : 'Could not load Rhythm Engine dashboard data. Please try again.';
 }
 
 async function fetchPulseDashboardWithRetry(orgId, params) {
@@ -166,7 +166,7 @@ async function fetchPulseDashboardWithRetry(orgId, params) {
   const maxAttempts = PULSE_DASHBOARD_RETRY_DELAYS_MS.length + 1;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const response = await api.get(`/api/platform/organizations/${orgId}/pulse-dashboard`, { params });
+      const response = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params });
       return { response, attempts: attempt };
     } catch (err) {
       lastError = err;
@@ -177,7 +177,7 @@ async function fetchPulseDashboardWithRetry(orgId, params) {
       await pause(delayMs);
     }
   }
-  const wrappedError = new Error('Pulse dashboard request failed');
+  const wrappedError = new Error('Rhythm Engine dashboard request failed');
   wrappedError.originalError = lastError;
   wrappedError.retryAttempts = Math.max(1, maxAttempts);
   throw wrappedError;
@@ -287,7 +287,7 @@ export default function PlatformClientPulse() {
   useEffect(() => {
     const previous = document.title;
     const client = String(org?.name ?? '').trim() || 'Client';
-    document.title = `Pulse · ${pulseDocumentSectionLabel} | ${client}`;
+    document.title = `Rhythm Engine · ${pulseDocumentSectionLabel} | ${client}`;
     return () => {
       document.title = previous;
     };
@@ -400,7 +400,7 @@ export default function PlatformClientPulse() {
       </div>
 
       {error && <p className="error">{error}</p>}
-      {!error && loading && <p className="muted">Loading Pulse dashboard…</p>}
+      {!error && loading && <p className="muted">Loading Rhythm Engine dashboard…</p>}
 
       <div className="pulse-prototype-content">
 

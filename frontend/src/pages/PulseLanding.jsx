@@ -28,9 +28,9 @@ export default function PulseLanding() {
   return (
     <Layout user={null} onLogout={logout} hideHeader>
       <div className="card login-card" style={{ maxWidth: 540 }}>
-        <h1>Pulse</h1>
+        <h1>Rhythm Engine</h1>
         <p className="muted">
-          Pulse data is protected. Please sign in via the CRM to continue.
+          Rhythm Engine data is protected. Please sign in via the CRM to continue.
         </p>
         <div className="btn-row">
           <a className="btn btn-primary" href={crmLoginUrl()}>
