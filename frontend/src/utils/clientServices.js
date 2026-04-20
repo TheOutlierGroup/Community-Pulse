@@ -18,23 +18,72 @@ export const CLIENT_SERVICE_OPTIONS = [
   { id: CLIENT_SERVICE_OG_SKATE_OTHER, label: 'OG Skate - Other' },
 ];
 
-const KNOWN_CLIENT_SERVICES = new Set(CLIENT_SERVICE_OPTIONS.map((service) => service.id));
+function normalizeServiceId(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function titleCaseFromId(id) {
+  return String(id || '')
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
 
 export function normalizeSettings(raw) {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
   return {};
 }
 
-export function normalizeServices(rawSettings) {
+export function normalizeServiceCatalog(rawCatalog, { fallbackToDefaults = true } = {}) {
+  const source = Array.isArray(rawCatalog) ? rawCatalog : [];
+  const fallback = CLIENT_SERVICE_OPTIONS.map((service) => ({
+    id: service.id,
+    name: service.label,
+  }));
+  const input = source.length ? source : fallbackToDefaults ? fallback : [];
+  const usedIds = new Set();
+  const out = [];
+
+  for (const service of input) {
+    const isObject = service && typeof service === 'object' && !Array.isArray(service);
+    const rawId = isObject ? service.id : '';
+    const rawName = isObject ? (service.name ?? service.label) : service;
+    const baseId = normalizeServiceId(rawId || rawName);
+    const name = String(rawName || '').trim() || titleCaseFromId(baseId);
+    if (!baseId || !name) continue;
+    let nextId = baseId;
+    let dedupeIndex = 2;
+    while (usedIds.has(nextId)) {
+      nextId = `${baseId}-${dedupeIndex}`;
+      dedupeIndex += 1;
+    }
+    usedIds.add(nextId);
+    out.push({ id: nextId, name });
+  }
+
+  if (out.length > 0) return out;
+  return fallbackToDefaults ? fallback : [];
+}
+
+export function normalizeServices(rawSettings, allowedServiceIds = null) {
   const settings = normalizeSettings(rawSettings);
   const hasExplicitServices = Array.isArray(settings.services);
   const services = hasExplicitServices ? settings.services : [];
+  const allowed =
+    allowedServiceIds instanceof Set
+      ? allowedServiceIds
+      : Array.isArray(allowedServiceIds)
+        ? new Set(allowedServiceIds.map((id) => normalizeServiceId(id)).filter(Boolean))
+        : null;
   const out = [];
   for (const service of services) {
-    const id = String(service || '')
-      .trim()
-      .toLowerCase();
-    if (!id || !KNOWN_CLIENT_SERVICES.has(id) || out.includes(id)) continue;
+    const id = normalizeServiceId(service);
+    if (!id || (allowed && !allowed.has(id)) || out.includes(id)) continue;
     out.push(id);
   }
 
@@ -46,18 +95,22 @@ export function normalizeServices(rawSettings) {
 }
 
 export function hasService(rawSettings, serviceId) {
-  const id = String(serviceId || '')
-    .trim()
-    .toLowerCase();
+  const id = normalizeServiceId(serviceId);
   if (!id) return false;
   return normalizeServices(rawSettings).includes(id);
 }
 
 export function userHasService(user, serviceId) {
-  const id = String(serviceId || '')
-    .trim()
-    .toLowerCase();
+  const id = normalizeServiceId(serviceId);
   if (!id) return false;
-  const enabled = Array.isArray(user?.enabledServices) ? user.enabledServices : [];
-  return enabled.includes(id);
+  return normalizeServices({ services: user?.enabledServices }).includes(id);
+}
+
+export function clientServiceNameById(serviceId, serviceCatalog = null) {
+  const id = normalizeServiceId(serviceId);
+  if (!id) return '';
+  const catalog = normalizeServiceCatalog(serviceCatalog);
+  const known = catalog.find((service) => service.id === id);
+  if (known) return known.name;
+  return titleCaseFromId(id);
 }

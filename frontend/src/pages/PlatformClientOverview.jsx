@@ -63,6 +63,7 @@ export default function PlatformClientOverview() {
   const [dash, setDash] = useState(null);
   const [dashError, setDashError] = useState('');
   const [dashLoading, setDashLoading] = useState(true);
+  const [serviceCatalog, setServiceCatalog] = useState([]);
 
   const loadDashboard = useCallback(async () => {
     setDashLoading(true);
@@ -84,8 +85,25 @@ export default function PlatformClientOverview() {
     loadDashboard();
   }, [loadDashboard]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get('/api/platform/service-catalog');
+        if (!cancelled) setServiceCatalog(data.services || []);
+      } catch {
+        if (!cancelled) setServiceCatalog([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const counts = dash?.taskCountsByStatus;
-  const activeServices = normalizeServices(org?.settings).map((serviceId) => clientServiceLabel(serviceId));
+  const activeServices = normalizeServices(org?.settings).map((serviceId) =>
+    clientServiceLabel(serviceId, serviceCatalog)
+  );
 
   return (
     <>

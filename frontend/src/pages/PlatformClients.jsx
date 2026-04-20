@@ -15,8 +15,8 @@ import {
   normalizeServices,
 } from './platformClientUtils.js';
 
-function activeServiceLabels(settings) {
-  return normalizeServices(settings).map((serviceId) => clientServiceLabel(serviceId));
+function activeServiceLabels(settings, serviceCatalog) {
+  return normalizeServices(settings).map((serviceId) => clientServiceLabel(serviceId, serviceCatalog));
 }
 
 export default function PlatformClients() {
@@ -25,6 +25,7 @@ export default function PlatformClients() {
   const navigate = useNavigate();
   const ok = usePlatformAccess(user, loading, navigate);
   const [orgs, setOrgs] = useState([]);
+  const [serviceCatalog, setServiceCatalog] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -48,12 +49,19 @@ export default function PlatformClients() {
     (async () => {
       try {
         setError('');
-        await loadOrgs();
+        const { data: orgsData } = await api.get('/api/platform/organizations');
+        setOrgs(orgsData.organizations || []);
+        try {
+          const { data: servicesData } = await api.get('/api/platform/service-catalog');
+          setServiceCatalog(servicesData.services || []);
+        } catch {
+          setServiceCatalog([]);
+        }
       } catch (e) {
         setError(e.response?.data?.error || 'Failed to load companies.');
       }
     })();
-  }, [ok, loadOrgs]);
+  }, [ok]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -221,7 +229,7 @@ export default function PlatformClients() {
                     </span>
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
-                    {activeServiceLabels(o.settings).join(', ') || '—'}
+                    {activeServiceLabels(o.settings, serviceCatalog).join(', ') || '—'}
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
                     {o.created_at

@@ -59,9 +59,9 @@ export function publicStaffUser(row) {
   };
 }
 
-export function normalizeServiceIds(rawServices) {
+export function normalizeServiceIds(rawServices, allowedServiceIds = null) {
   if (!Array.isArray(rawServices)) return null;
-  return normalizeClientServiceIds(rawServices);
+  return normalizeClientServiceIds(rawServices, allowedServiceIds);
 }
 
 export function platformAvatarContentType(filename) {

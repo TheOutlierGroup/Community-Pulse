@@ -16,6 +16,7 @@ import * as PasswordResetToken from '../models/PasswordResetToken.js';
 import { consumePulseHandoffToken } from '../security/pulseHandoffToken.js';
 import { sendPasswordResetEmail } from '../services/email.js';
 import {
+  clientServiceCatalogFromPlatformSettings,
   enabledServicesFromOrganizationSettings,
   normalizeClientServiceIds,
 } from '../services/clientServices.js';
@@ -201,6 +202,15 @@ function requireClientAdmin(req, res, next) {
   next();
 }
 
+router.get('/me/organization-service-catalog', requireAuth, async (req, res) => {
+  if (req.user?.organizationKind !== 'client') {
+    return res.status(403).json({ error: 'Client users only' });
+  }
+  const platformOrg = await Organization.getFirstOrganizationByKind('platform');
+  const services = clientServiceCatalogFromPlatformSettings(platformOrg?.settings);
+  return res.json({ services });
+});
+
 router.patch('/me/organization-services', requireAuth, requireClientAdmin, async (req, res) => {
   const body = req.body || {};
   if (!Object.prototype.hasOwnProperty.call(body, 'services')) {
@@ -219,7 +229,12 @@ router.patch('/me/organization-services', requireAuth, requireClientAdmin, async
       : {};
   const nextSettings = {
     ...baseSettings,
-    services: normalizeClientServiceIds(body.services),
+    services: normalizeClientServiceIds(
+      body.services,
+      clientServiceCatalogFromPlatformSettings(
+        (await Organization.getFirstOrganizationByKind('platform'))?.settings
+      ).map((service) => service.id)
+    ),
   };
   if (Object.prototype.hasOwnProperty.call(nextSettings, 'pulseEnabled')) {
     delete nextSettings.pulseEnabled;

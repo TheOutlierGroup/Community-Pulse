@@ -6,22 +6,40 @@ import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import api from '../services/api.js';
-import { CLIENT_SERVICE_OPTIONS, normalizeServices } from '../utils/clientServices.js';
+import { normalizeServiceCatalog } from '../utils/clientServices.js';
 
 export default function PlatformSettings() {
-  const { user, logout, loading, setCurrentUser } = useAuth();
+  const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   const ok = usePlatformAccess(user, loading, navigate);
   const isPlatformAdmin = ok && user?.role === 'admin';
-  const [orgServices, setOrgServices] = useState([]);
+  const [serviceCatalog, setServiceCatalog] = useState([]);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [serviceToAdd, setServiceToAdd] = useState('');
 
   useEffect(() => {
-    setOrgServices(normalizeServices({ services: user?.enabledServices }));
-  }, [user?.enabledServices]);
+    if (!isPlatformAdmin) return;
+    (async () => {
+      setLoadingCatalog(true);
+      setError('');
+      try {
+        const { data } = await api.get('/api/platform/service-catalog');
+        const normalized = normalizeServiceCatalog(data.services, { fallbackToDefaults: false }).map((service) => ({
+          key: service.id,
+          id: service.id,
+          name: service.name,
+        }));
+        setServiceCatalog(normalized);
+      } catch (err) {
+        setError(err.response?.data?.error || 'Could not load service catalog.');
+      } finally {
+        setLoadingCatalog(false);
+      }
+    })();
+  }, [isPlatformAdmin]);
 
   useEffect(() => {
     if (!loading && ok && user?.role !== 'admin') {
@@ -29,30 +47,68 @@ export default function PlatformSettings() {
     }
   }, [loading, ok, user, navigate]);
 
-  function addService(serviceId) {
-    const id = String(serviceId || '').trim().toLowerCase();
-    if (!id) return;
-    setOrgServices((current) => (current.includes(id) ? current : [...current, id]));
-    setServiceToAdd('');
+  function updateServiceName(key, name) {
+    setServiceCatalog((current) =>
+      current.map((service) =>
+        service.key === key
+          ? {
+              ...service,
+              name,
+            }
+          : service
+      )
+    );
   }
 
-  function removeService(serviceId) {
-    setOrgServices((current) => current.filter((id) => id !== serviceId));
+  function addServiceRow() {
+    const trimmed = newServiceName.trim();
+    if (!trimmed) return;
+    setServiceCatalog((current) => [
+      ...current,
+      {
+        key: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: '',
+        name: trimmed,
+      },
+    ]);
+    setNewServiceName('');
   }
 
-  async function saveOrganizationServices(e) {
+  function removeServiceRow(key, name) {
+    const label = String(name || '').trim() || 'this service';
+    if (!window.confirm(`Delete "${label}" from the service catalog?`)) return;
+    setServiceCatalog((current) => current.filter((service) => service.key !== key));
+  }
+
+  async function saveServiceCatalog(e) {
     e.preventDefault();
+    const nextServices = serviceCatalog
+      .map((service) => ({
+        id: String(service.id || '').trim(),
+        name: String(service.name || '').trim(),
+      }))
+      .filter((service) => service.name);
+    if (nextServices.length !== serviceCatalog.length) {
+      setError('Each service needs a name before saving.');
+      setMessage('');
+      return;
+    }
     setBusy(true);
     setMessage('');
     setError('');
     try {
-      const { data } = await api.patch('/api/auth/me/organization-services', {
-        services: orgServices,
+      const { data } = await api.patch('/api/platform/service-catalog', {
+        services: nextServices,
       });
-      setCurrentUser(data.user);
-      setMessage('Organization services saved.');
+      const normalized = normalizeServiceCatalog(data.services, { fallbackToDefaults: false }).map((service) => ({
+        key: service.id,
+        id: service.id,
+        name: service.name,
+      }));
+      setServiceCatalog(normalized);
+      setMessage('Service catalog saved.');
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not save organization services.');
+      setError(err.response?.data?.error || 'Could not save service catalog.');
     } finally {
       setBusy(false);
     }
@@ -61,9 +117,6 @@ export default function PlatformSettings() {
   useDocumentTitle(!loading && isPlatformAdmin ? `Settings | ${DEFAULT_TAB}` : null);
 
   if (loading || !isPlatformAdmin) return null;
-
-  const selectedServices = CLIENT_SERVICE_OPTIONS.filter((service) => orgServices.includes(service.id));
-  const addableServices = CLIENT_SERVICE_OPTIONS.filter((service) => !orgServices.includes(service.id));
 
   return (
     <Layout user={user} onLogout={logout}>
@@ -76,9 +129,9 @@ export default function PlatformSettings() {
         </div>
       </div>
       <div className="card" style={{ marginTop: '1rem' }}>
-        <h2 className="settings-section-title">Organization services</h2>
+        <h2 className="settings-section-title">Service catalog</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Manage the services your organization is paying for. Only Rhythm Engine changes app behavior.
+          Define the services available in client settings. Deleting a service asks for confirmation.
         </p>
         {error ? (
           <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
@@ -90,63 +143,68 @@ export default function PlatformSettings() {
             {message}
           </p>
         ) : null}
-        <form onSubmit={saveOrganizationServices}>
-          <div style={{ display: 'grid', gap: '0.65rem' }}>
-            {selectedServices.length ? (
-              selectedServices.map((service) => (
-                <div
-                  key={service.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    padding: '0.45rem 0.6rem',
-                    border: '1px solid var(--line)',
-                    borderRadius: '0.5rem',
-                  }}
-                >
-                  <span>{service.label}</span>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={busy}
-                    onClick={() => removeService(service.id)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))
-            ) : (
-              <p className="muted" style={{ margin: 0 }}>
-                No services added yet.
-              </p>
-            )}
+        <form onSubmit={saveServiceCatalog}>
+          <div className="table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th scope="col">Service name</th>
+                  <th scope="col" style={{ width: '1%' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingCatalog ? (
+                  <tr>
+                    <td colSpan={2} className="muted" style={{ padding: '1rem' }}>
+                      Loading services...
+                    </td>
+                  </tr>
+                ) : serviceCatalog.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className="muted" style={{ padding: '1rem' }}>
+                      No services yet. Add your first service below.
+                    </td>
+                  </tr>
+                ) : (
+                  serviceCatalog.map((service) => (
+                    <tr key={service.key}>
+                      <td>
+                        <input
+                          value={service.name}
+                          onChange={(e) => updateServiceName(service.key, e.target.value)}
+                          disabled={busy}
+                          aria-label="Service name"
+                        />
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={busy}
+                          onClick={() => removeServiceRow(service.key, service.name)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
           <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.9rem', flexWrap: 'wrap' }}>
-            <select
-              value={serviceToAdd}
-              disabled={busy || addableServices.length === 0}
-              onChange={(e) => setServiceToAdd(e.target.value)}
-              style={{ minWidth: '240px' }}
-            >
-              <option value="">{addableServices.length ? 'Select a service to add' : 'All services are added'}</option>
-              {addableServices.map((service) => (
-                <option key={service.id} value={service.id}>
-                  {service.label}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={busy || !serviceToAdd}
-              onClick={() => addService(serviceToAdd)}
-            >
+            <input
+              value={newServiceName}
+              onChange={(e) => setNewServiceName(e.target.value)}
+              placeholder="Add a new service name"
+              disabled={busy}
+              style={{ minWidth: '260px' }}
+            />
+            <button type="button" className="btn btn-ghost" disabled={busy || !newServiceName.trim()} onClick={addServiceRow}>
               Add service
             </button>
           </div>
-          <button type="submit" className="btn btn-ghost" disabled={busy} style={{ marginTop: '0.9rem' }}>
+          <button type="submit" className="btn btn-ghost" disabled={busy || loadingCatalog} style={{ marginTop: '0.9rem' }}>
             Save services
           </button>
         </form>

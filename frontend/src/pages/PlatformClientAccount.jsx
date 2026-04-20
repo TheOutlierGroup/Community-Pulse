@@ -6,6 +6,7 @@ import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { Building2, Sparkles } from 'lucide-react';
 import {
   CLIENT_STATUS_OPTIONS,
+  normalizeServices,
   normalizeClientStatus,
 } from './platformClientUtils.js';
 
@@ -31,6 +32,8 @@ export default function PlatformClientAccount() {
   const [editName, setEditName] = useState(org.name);
   const [clientStatus, setClientStatus] = useState(() => normalizeClientStatus(org.client_status));
   const [address, setAddress] = useState(() => readCompanyAddress(org.settings));
+  const [serviceCatalog, setServiceCatalog] = useState([]);
+  const [selectedServices, setSelectedServices] = useState(() => normalizeServices(org.settings));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,7 +41,23 @@ export default function PlatformClientAccount() {
     setEditName(org.name);
     setClientStatus(normalizeClientStatus(org.client_status));
     setAddress(readCompanyAddress(org.settings));
+    setSelectedServices(normalizeServices(org.settings));
   }, [org.name, org.client_status, org.settings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get('/api/platform/service-catalog');
+        if (!cancelled) setServiceCatalog(Array.isArray(data.services) ? data.services : []);
+      } catch {
+        if (!cancelled) setServiceCatalog([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function saveOrgName(e) {
     e.preventDefault();
@@ -72,6 +91,23 @@ export default function PlatformClientAccount() {
     }
   }
 
+  async function saveServices(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api.patch(`/api/platform/organizations/${orgId}`, {
+        settings: { services: selectedServices },
+      });
+      await refreshOrg();
+      showToast('Services saved.', { variant: 'success' });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not save services.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveClientStatus(e) {
     e.preventDefault();
     setBusy(true);
@@ -87,6 +123,16 @@ export default function PlatformClientAccount() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function toggleService(serviceId) {
+    const id = String(serviceId || '').trim().toLowerCase();
+    if (!id) return;
+    setSelectedServices((current) =>
+      current.includes(id)
+        ? current.filter((service) => service !== id)
+        : [...current, id]
+    );
   }
 
   async function onCompanyLogoFile(e) {
@@ -174,6 +220,35 @@ export default function PlatformClientAccount() {
             </div>
             <button type="submit" className="btn btn-ghost" disabled={busy}>
               Save status
+            </button>
+          </form>
+
+          <form onSubmit={saveServices} style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+            <h2 className="platform-client-dashboard__h2">Services</h2>
+            <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+              Select the services enabled for this client.
+            </p>
+            <div style={{ display: 'grid', gap: '0.45rem' }}>
+              {serviceCatalog.length === 0 ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  No services have been defined in platform settings yet.
+                </p>
+              ) : (
+                serviceCatalog.map((service) => (
+                  <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedServices.includes(service.id)}
+                      onChange={() => toggleService(service.id)}
+                      disabled={busy}
+                    />
+                    <span>{service.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+            <button type="submit" className="btn btn-ghost" disabled={busy} style={{ marginTop: '0.9rem' }}>
+              Save services
             </button>
           </form>
 

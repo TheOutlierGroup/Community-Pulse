@@ -18,6 +18,14 @@ export async function getOrganization(id) {
   return rows[0] || null;
 }
 
+export async function getFirstOrganizationByKind(kind) {
+  const { rows } = await query(
+    `SELECT * FROM organizations WHERE kind = $1 ORDER BY created_at ASC LIMIT 1`,
+    [kind]
+  );
+  return rows[0] || null;
+}
+
 export async function listOrganizationsByKind(kind, { limit, offset } = {}) {
   const cappedLimit =
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 200;
@@ -81,6 +89,23 @@ export async function updateOrganizationClient(id, { name, settings, clientStatu
      WHERE id = $1 AND kind = 'client'
      RETURNING *`,
     [id, nextName, JSON.stringify(nextSettings), nextClientStatus]
+  );
+  return rows[0] || null;
+}
+
+export async function updateOrganizationSettings(id, settings) {
+  const org = await getOrganization(id);
+  if (!org) return null;
+  const base =
+    org.settings && typeof org.settings === 'object' && !Array.isArray(org.settings)
+      ? org.settings
+      : {};
+  const patch =
+    settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {};
+  const nextSettings = { ...base, ...patch };
+  const { rows } = await query(
+    `UPDATE organizations SET settings = $2::jsonb WHERE id = $1 RETURNING *`,
+    [id, JSON.stringify(nextSettings)]
   );
   return rows[0] || null;
 }

@@ -9,7 +9,7 @@ import ProfileCard from './settingsPage/ProfileCard.jsx';
 import CompanyLogoCard from './settingsPage/CompanyLogoCard.jsx';
 import PasswordCard from './settingsPage/PasswordCard.jsx';
 import AccountCard from './settingsPage/AccountCard.jsx';
-import { CLIENT_SERVICE_OPTIONS, normalizeServices } from '../utils/clientServices.js';
+import { normalizeServices } from '../utils/clientServices.js';
 
 export default function AccountPage() {
   const { user, logout, loading, setCurrentUser } = useAuth();
@@ -37,11 +37,11 @@ export default function AccountPage() {
   const [companyLogoRev, setCompanyLogoRev] = useState(0);
   const [companyLogoLoadError, setCompanyLogoLoadError] = useState('');
   const [companyLogoBusy, setCompanyLogoBusy] = useState(false);
+  const [serviceCatalog, setServiceCatalog] = useState([]);
   const [orgServices, setOrgServices] = useState([]);
   const [orgServicesBusy, setOrgServicesBusy] = useState(false);
   const [orgServicesError, setOrgServicesError] = useState('');
   const [orgServicesMessage, setOrgServicesMessage] = useState('');
-  const [serviceToAdd, setServiceToAdd] = useState('');
 
   useEffect(() => {
     if (!loading && !user) navigate('/');
@@ -56,10 +56,35 @@ export default function AccountPage() {
   useEffect(() => {
     if (!user || user.organizationKind !== 'client') {
       setOrgServices([]);
+      setServiceCatalog([]);
       return;
     }
     setOrgServices(normalizeServices({ services: user.enabledServices }));
   }, [user?.organizationKind, user?.enabledServices]);
+
+  useEffect(() => {
+    if (!user || user.organizationKind !== 'client') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get('/api/auth/me/organization-service-catalog');
+        if (!cancelled) {
+          setServiceCatalog(Array.isArray(data.services) ? data.services : []);
+        }
+      } catch {
+        if (!cancelled) setServiceCatalog([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.organizationKind]);
+
+  useEffect(() => {
+    if (serviceCatalog.length === 0) return;
+    const allowed = new Set(serviceCatalog.map((service) => service.id));
+    setOrgServices((current) => normalizeServices({ services: current }, allowed));
+  }, [serviceCatalog]);
 
   useEffect(() => {
     if (!user?.hasProfileAvatar) {
@@ -216,8 +241,7 @@ export default function AccountPage() {
 
   const displayPreview = [firstName, lastName].filter(Boolean).join(' ').trim() || user.email;
   const canManageOrgServices = user.organizationKind === 'client' && user.role === 'admin';
-  const selectedOrgServices = CLIENT_SERVICE_OPTIONS.filter((service) => orgServices.includes(service.id));
-  const addableOrgServices = CLIENT_SERVICE_OPTIONS.filter((service) => !orgServices.includes(service.id));
+  const selectedOrgServices = serviceCatalog.filter((service) => orgServices.includes(service.id));
 
   async function saveNames(e) {
     e.preventDefault();
@@ -355,15 +379,14 @@ export default function AccountPage() {
     }
   }
 
-  function addOrgService(serviceId) {
+  function toggleOrgService(serviceId) {
     const id = String(serviceId || '').trim().toLowerCase();
     if (!id) return;
-    setOrgServices((current) => (current.includes(id) ? current : [...current, id]));
-    setServiceToAdd('');
-  }
-
-  function removeOrgService(serviceId) {
-    setOrgServices((current) => current.filter((id) => id !== serviceId));
+    setOrgServices((current) =>
+      current.includes(id)
+        ? current.filter((service) => service !== id)
+        : [...current, id]
+    );
   }
 
   async function saveOrganizationServices(e) {
@@ -458,32 +481,27 @@ export default function AccountPage() {
           ) : null}
           <form onSubmit={saveOrganizationServices}>
             <div style={{ display: 'grid', gap: '0.65rem' }}>
-              {selectedOrgServices.length ? (
+              {serviceCatalog.length === 0 ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  No services are defined yet in platform settings.
+                </p>
+              ) : canManageOrgServices ? (
+                serviceCatalog.map((service) => (
+                  <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={orgServices.includes(service.id)}
+                      onChange={() => toggleOrgService(service.id)}
+                      disabled={orgServicesBusy}
+                    />
+                    <span>{service.name}</span>
+                  </label>
+                ))
+              ) : selectedOrgServices.length ? (
                 selectedOrgServices.map((service) => (
-                  <div
-                    key={service.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '0.75rem',
-                      padding: '0.45rem 0.6rem',
-                      border: '1px solid var(--line)',
-                      borderRadius: '0.5rem',
-                    }}
-                  >
-                    <span>{service.label}</span>
-                    {canManageOrgServices ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={orgServicesBusy}
-                        onClick={() => removeOrgService(service.id)}
-                      >
-                        Remove
-                      </button>
-                    ) : null}
-                  </div>
+                  <p key={service.id} className="muted" style={{ margin: 0 }}>
+                    {service.name}
+                  </p>
                 ))
               ) : (
                 <p className="muted" style={{ margin: 0 }}>
@@ -491,33 +509,6 @@ export default function AccountPage() {
                 </p>
               )}
             </div>
-            {canManageOrgServices ? (
-              <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.9rem', flexWrap: 'wrap' }}>
-                <select
-                  value={serviceToAdd}
-                  disabled={orgServicesBusy || addableOrgServices.length === 0}
-                  onChange={(e) => setServiceToAdd(e.target.value)}
-                  style={{ minWidth: '240px' }}
-                >
-                  <option value="">
-                    {addableOrgServices.length ? 'Select a service to add' : 'All services are added'}
-                  </option>
-                  {addableOrgServices.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={orgServicesBusy || !serviceToAdd}
-                  onClick={() => addOrgService(serviceToAdd)}
-                >
-                  Add service
-                </button>
-              </div>
-            ) : null}
             {canManageOrgServices ? (
               <button type="submit" className="btn btn-ghost" disabled={orgServicesBusy} style={{ marginTop: '0.9rem' }}>
                 Save services

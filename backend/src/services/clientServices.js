@@ -18,7 +18,56 @@ export const CLIENT_SERVICE_OPTIONS = [
   { id: CLIENT_SERVICE_OG_SKATE_OTHER, label: 'OG Skate - Other' },
 ];
 
-const KNOWN_CLIENT_SERVICES = new Set(CLIENT_SERVICE_OPTIONS.map((service) => service.id));
+function normalizeServiceId(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function normalizeServiceName(value) {
+  return String(value || '').trim();
+}
+
+function titleCaseFromId(id) {
+  return String(id || '')
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+export function normalizeClientServiceCatalog(rawCatalog, { fallbackToDefaults = true } = {}) {
+  const source = Array.isArray(rawCatalog) ? rawCatalog : [];
+  const fallback = CLIENT_SERVICE_OPTIONS.map((service) => ({
+    id: service.id,
+    name: service.label,
+  }));
+  const input = source.length ? source : fallbackToDefaults ? fallback : [];
+  const usedIds = new Set();
+  const out = [];
+
+  for (const service of input) {
+    const fromObj = service && typeof service === 'object' && !Array.isArray(service);
+    const rawId = fromObj ? service.id : '';
+    const rawName = fromObj ? (service.name ?? service.label) : service;
+    const baseId = normalizeServiceId(rawId || rawName);
+    const name = normalizeServiceName(rawName) || titleCaseFromId(baseId);
+    if (!baseId || !name) continue;
+    let nextId = baseId;
+    let dedupeIndex = 2;
+    while (usedIds.has(nextId)) {
+      nextId = `${baseId}-${dedupeIndex}`;
+      dedupeIndex += 1;
+    }
+    usedIds.add(nextId);
+    out.push({ id: nextId, name });
+  }
+
+  if (out.length > 0) return out;
+  return fallbackToDefaults ? fallback : [];
+}
 
 export function normalizeOrganizationSettings(raw) {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -33,14 +82,26 @@ export function normalizeOrganizationSettings(raw) {
   return {};
 }
 
-export function normalizeClientServiceIds(rawServices) {
+export function clientServiceCatalogFromPlatformSettings(rawPlatformSettings) {
+  const settings = normalizeOrganizationSettings(rawPlatformSettings);
+  const hasExplicitCatalog = Array.isArray(settings.serviceCatalog);
+  return normalizeClientServiceCatalog(settings.serviceCatalog, {
+    fallbackToDefaults: !hasExplicitCatalog,
+  });
+}
+
+export function normalizeClientServiceIds(rawServices, allowedServiceIds = null) {
   if (!Array.isArray(rawServices)) return [];
+  const allowed =
+    allowedServiceIds instanceof Set
+      ? allowedServiceIds
+      : Array.isArray(allowedServiceIds)
+        ? new Set(allowedServiceIds.map((id) => normalizeServiceId(id)).filter(Boolean))
+        : null;
   const out = [];
   for (const service of rawServices) {
-    const id = String(service || '')
-      .trim()
-      .toLowerCase();
-    if (!id || !KNOWN_CLIENT_SERVICES.has(id) || out.includes(id)) continue;
+    const id = normalizeServiceId(service);
+    if (!id || (allowed && !allowed.has(id)) || out.includes(id)) continue;
     out.push(id);
   }
   return out;

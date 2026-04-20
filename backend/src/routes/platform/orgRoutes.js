@@ -53,6 +53,8 @@ import {
 import { createPulseHandoffToken } from '../../security/pulseHandoffToken.js';
 import {
   CLIENT_SERVICE_PULSE,
+  clientServiceCatalogFromPlatformSettings,
+  normalizeClientServiceCatalog,
   organizationHasService,
 } from '../../services/clientServices.js';
 
@@ -188,6 +190,34 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ organizations: rows });
   });
 
+  router.get('/service-catalog', requirePlatformAdminRole, async (req, res) => {
+    const platformOrg = await Organization.getOrganization(req.user.organizationId);
+    if (!platformOrg || platformOrg.kind !== 'platform') {
+      return res.status(404).json({ error: 'Platform organization not found' });
+    }
+    return res.json({
+      services: clientServiceCatalogFromPlatformSettings(platformOrg.settings),
+    });
+  });
+
+  router.patch('/service-catalog', requirePlatformAdminRole, async (req, res) => {
+    const body = req.body || {};
+    if (!Object.prototype.hasOwnProperty.call(body, 'services')) {
+      return res.status(400).json({ error: 'services is required' });
+    }
+    if (!Array.isArray(body.services)) {
+      return res.status(400).json({ error: 'services must be an array' });
+    }
+    const nextCatalog = normalizeClientServiceCatalog(body.services, { fallbackToDefaults: false });
+    const updated = await Organization.updateOrganizationSettings(req.user.organizationId, {
+      serviceCatalog: nextCatalog,
+    });
+    if (!updated || updated.kind !== 'platform') {
+      return res.status(404).json({ error: 'Platform organization not found' });
+    }
+    return res.json({ services: nextCatalog });
+  });
+
   router.post('/organizations', requirePlatformAdminRole, handleOrgLogoPlatformUpload, async (req, res) => {
     const name = req.body.name;
     if (!name || !String(name).trim()) {
@@ -290,7 +320,10 @@ export function registerPlatformOrgRoutes(router) {
       }
       settingsPatch = { ...settings };
       if (Object.prototype.hasOwnProperty.call(settingsPatch, 'services')) {
-        const normalized = normalizeServiceIds(settingsPatch.services);
+        const platformOrg = await Organization.getOrganization(req.user.organizationId);
+        const catalog = clientServiceCatalogFromPlatformSettings(platformOrg?.settings);
+        const allowedServiceIds = new Set(catalog.map((service) => service.id));
+        const normalized = normalizeServiceIds(settingsPatch.services, allowedServiceIds);
         if (normalized == null) {
           return res.status(400).json({ error: 'settings.services must be an array' });
         }

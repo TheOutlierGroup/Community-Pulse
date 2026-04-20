@@ -3,6 +3,7 @@ import { CLIENT_SERVICE_OPTIONS } from '../utils/clientServices.js';
 export {
   CLIENT_SERVICE_PULSE,
   CLIENT_SERVICE_OPTIONS,
+  normalizeServiceCatalog,
   normalizeSettings,
   normalizeServices,
   hasService,
@@ -50,14 +51,24 @@ export function clientStatusBadgeClass(value) {
   return 'draft';
 }
 
-export function clientServiceLabel(serviceId) {
+export function clientServiceLabel(serviceId, serviceCatalog = null) {
+  const catalog = Array.isArray(serviceCatalog) && serviceCatalog.length > 0
+    ? serviceCatalog.map((service) => ({
+        id: service.id,
+        label: service.label ?? service.name,
+      }))
+    : CLIENT_SERVICE_OPTIONS;
   const id = String(serviceId || '')
     .trim()
     .toLowerCase();
   if (!id) return '';
-  const known = CLIENT_SERVICE_OPTIONS.find((service) => service.id === id);
+  const known = catalog.find((service) => service.id === id);
   if (known) return known.label;
-  return id.toUpperCase();
+  return id
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 export function sessionStatusLabel(s) {

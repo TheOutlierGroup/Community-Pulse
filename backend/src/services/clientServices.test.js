@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CLIENT_SERVICE_PULSE,
+  clientServiceCatalogFromPlatformSettings,
   enabledServicesFromOrganizationSettings,
+  normalizeClientServiceCatalog,
   normalizeClientServiceIds,
   normalizeOrganizationSettings,
   organizationHasService,
@@ -17,10 +19,10 @@ test('normalizeOrganizationSettings handles object, json string, and invalid inp
   assert.deepEqual(normalizeOrganizationSettings(null), {});
 });
 
-test('normalizeClientServiceIds keeps only known unique ids', () => {
+test('normalizeClientServiceIds keeps normalized unique ids', () => {
   assert.deepEqual(
     normalizeClientServiceIds(['pulse', 'PULSE', 'unknown', '', ' pulse ']),
-    ['pulse']
+    ['pulse', 'unknown']
   );
   assert.deepEqual(normalizeClientServiceIds('pulse'), []);
 });
@@ -30,7 +32,7 @@ test('enabledServicesFromOrganizationSettings honors services array', () => {
     services: ['pulse', 'other', 'pulse'],
     pulseEnabled: false,
   });
-  assert.deepEqual(enabled, [CLIENT_SERVICE_PULSE]);
+  assert.deepEqual(enabled, [CLIENT_SERVICE_PULSE, 'other']);
 });
 
 test('enabledServicesFromOrganizationSettings falls back to legacy pulseEnabled', () => {
@@ -55,5 +57,27 @@ test('organizationHasService checks normalized service list', () => {
     organizationHasService({ services: [], pulseEnabled: true }, 'pulse'),
     false
   );
+});
+
+test('normalizeClientServiceCatalog assigns ids and dedupes', () => {
+  assert.deepEqual(
+    normalizeClientServiceCatalog([
+      { name: 'Managed AI' },
+      { id: 'managed-ai', name: 'Managed AI Duplicate' },
+      { id: 'Pulse', name: 'Rhythm Engine' },
+    ], { fallbackToDefaults: false }),
+    [
+      { id: 'managed-ai', name: 'Managed AI' },
+      { id: 'managed-ai-2', name: 'Managed AI Duplicate' },
+      { id: 'pulse', name: 'Rhythm Engine' },
+    ]
+  );
+});
+
+test('clientServiceCatalogFromPlatformSettings falls back to defaults', () => {
+  const fromEmpty = clientServiceCatalogFromPlatformSettings({});
+  assert.equal(Array.isArray(fromEmpty), true);
+  assert.equal(fromEmpty.length > 0, true);
+  assert.deepEqual(clientServiceCatalogFromPlatformSettings({ serviceCatalog: [] }), []);
 });
 
