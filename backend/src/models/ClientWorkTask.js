@@ -744,7 +744,7 @@ export async function listCommentMentions(commentIds) {
 
 export async function listCommentImagesForTask(taskId, organizationId) {
   const { rows } = await query(
-    `SELECT ci.id, ci.comment_id, ci.stored_filename, ci.created_at
+    `SELECT ci.id, ci.comment_id, ci.stored_filename, ci.created_at, c.author_id AS comment_author_id
      FROM client_work_task_comment_images ci
      JOIN client_work_task_comments c ON c.id = ci.comment_id
      WHERE c.task_id = $1 AND ci.organization_id = $2

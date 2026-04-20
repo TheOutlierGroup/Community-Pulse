@@ -519,7 +519,7 @@ export default function PlatformClientPulse() {
                 </p>
                 {dashboard?.soWhatStatus === 'unavailable' ? (
                   <p className="muted" style={{ marginTop: '0.45rem' }}>
-                    Check `OPENAI_API_KEY` and OpenAI API connectivity on the backend deployment.
+                    Check `ANTHROPIC_API_KEY` and Claude API connectivity on the backend deployment.
                   </p>
                 ) : null}
                 <p className="muted" style={{ marginTop: '0.45rem' }}>

@@ -1,5 +1,8 @@
-const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
-const DEFAULT_OPENAI_MODEL = process.env.OPENAI_SUMMARY_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
+const DEFAULT_CLAUDE_MODEL =
+  process.env.CLAUDE_SUMMARY_MODEL ||
+  process.env.ANTHROPIC_MODEL ||
+  'claude-3-5-sonnet-latest';
 
 function readPositiveIntEnv(name, fallback) {
   const parsed = Number.parseInt(process.env[name] || '', 10);
@@ -8,15 +11,15 @@ function readPositiveIntEnv(name, fallback) {
 }
 
 function summaryTimeoutMs() {
-  return readPositiveIntEnv('OPENAI_SUMMARY_TIMEOUT_MS', 2500);
+  return readPositiveIntEnv('CLAUDE_SUMMARY_TIMEOUT_MS', 2500);
 }
 
 function summaryMaxRetries() {
-  return readPositiveIntEnv('OPENAI_SUMMARY_MAX_RETRIES', 2);
+  return readPositiveIntEnv('CLAUDE_SUMMARY_MAX_RETRIES', 2);
 }
 
 function summaryRetryBaseDelayMs() {
-  return readPositiveIntEnv('OPENAI_SUMMARY_RETRY_BASE_DELAY_MS', 250);
+  return readPositiveIntEnv('CLAUDE_SUMMARY_RETRY_BASE_DELAY_MS', 250);
 }
 
 function sleep(ms) {
@@ -30,18 +33,17 @@ function clampPercent(value) {
 
 function extractResponseText(payload) {
   if (!payload || typeof payload !== 'object') return '';
-  if (typeof payload.output_text === 'string' && payload.output_text.trim()) {
-    return payload.output_text.trim();
-  }
-
-  const output = Array.isArray(payload.output) ? payload.output : [];
-  for (const item of output) {
-    const content = Array.isArray(item?.content) ? item.content : [];
-    for (const block of content) {
-      if (typeof block?.text === 'string' && block.text.trim()) {
-        return block.text.trim();
-      }
+  const content = Array.isArray(payload.content) ? payload.content : [];
+  for (const block of content) {
+    if (block?.type === 'text' && typeof block?.text === 'string' && block.text.trim()) {
+      return block.text.trim();
     }
+    if (typeof block?.text === 'string' && block.text.trim()) {
+      return block.text.trim();
+    }
+  }
+  if (typeof payload.completion === 'string' && payload.completion.trim()) {
+    return payload.completion.trim();
   }
   return '';
 }
@@ -77,11 +79,11 @@ function buildPrompt(snapshot) {
   ].join('\n');
 }
 
-function openAiAuthKey() {
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+function claudeAuthKey() {
+  const apiKey = String(process.env.ANTHROPIC_API_KEY || '').trim();
   if (!apiKey) {
-    const error = new Error('OPENAI_API_KEY is required for Rhythm Engine dashboard summaries');
-    error.code = 'OPENAI_KEY_MISSING';
+    const error = new Error('ANTHROPIC_API_KEY is required for Rhythm Engine dashboard summaries');
+    error.code = 'CLAUDE_KEY_MISSING';
     throw error;
   }
   return apiKey;
@@ -93,7 +95,7 @@ function isRetryableStatus(status) {
 
 function isRetryableError(error) {
   const code = String(error?.code || '').toUpperCase();
-  if (code === 'ABORT_ERR' || code === 'OPENAI_REQUEST_ABORTED' || code === 'OPENAI_NETWORK_ERROR') {
+  if (code === 'ABORT_ERR' || code === 'CLAUDE_REQUEST_ABORTED' || code === 'CLAUDE_NETWORK_ERROR') {
     return true;
   }
   const status = Number(error?.status);
@@ -101,27 +103,14 @@ function isRetryableError(error) {
   return false;
 }
 
-async function requestOpenAiText({ prompt, maxOutputTokens = 120, temperature = 0.3 }) {
-  const apiKey = openAiAuthKey();
+async function requestClaudeText({ prompt, maxOutputTokens = 120, temperature = 0.3 }) {
+  const apiKey = claudeAuthKey();
   const body = {
-    model: DEFAULT_OPENAI_MODEL,
-    input: [
-      {
-        role: 'system',
-        content: [
-          {
-            type: 'input_text',
-            text: 'You summarize operational analytics for executives with high precision and brevity.',
-          },
-        ],
-      },
-      {
-        role: 'user',
-        content: [{ type: 'input_text', text: prompt }],
-      },
-    ],
+    model: DEFAULT_CLAUDE_MODEL,
+    system: 'You summarize operational analytics for executives with high precision and brevity.',
+    messages: [{ role: 'user', content: prompt }],
     temperature,
-    max_output_tokens: maxOutputTokens,
+    max_tokens: maxOutputTokens,
   };
   const maxRetries = summaryMaxRetries();
   const maxAttempts = maxRetries + 1;
@@ -132,10 +121,11 @@ async function requestOpenAiText({ prompt, maxOutputTokens = 120, temperature = 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(OPENAI_RESPONSES_URL, {
+      const response = await fetch(ANTHROPIC_MESSAGES_URL, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
@@ -143,27 +133,27 @@ async function requestOpenAiText({ prompt, maxOutputTokens = 120, temperature = 
       });
 
       if (!response.ok) {
-        const error = new Error(`OpenAI summary request failed (${response.status})`);
-        error.code = 'OPENAI_REQUEST_FAILED';
+        const error = new Error(`Claude summary request failed (${response.status})`);
+        error.code = 'CLAUDE_REQUEST_FAILED';
         error.status = response.status;
         throw error;
       }
       const payload = await response.json();
       const text = normalizeSummary(extractResponseText(payload));
       if (!text) {
-        const error = new Error('OpenAI summary response was empty');
-        error.code = 'OPENAI_EMPTY_RESPONSE';
+        const error = new Error('Claude summary response was empty');
+        error.code = 'CLAUDE_EMPTY_RESPONSE';
         throw error;
       }
       return { text, attempts: attempt };
     } catch (error) {
       let normalized = error;
       if (error?.name === 'AbortError') {
-        normalized = new Error('OpenAI summary request timed out');
-        normalized.code = 'OPENAI_REQUEST_ABORTED';
+        normalized = new Error('Claude summary request timed out');
+        normalized.code = 'CLAUDE_REQUEST_ABORTED';
       } else if (String(error?.code || '').toUpperCase() === 'TYPEERROR') {
-        normalized = new Error('OpenAI network request failed');
-        normalized.code = 'OPENAI_NETWORK_ERROR';
+        normalized = new Error('Claude network request failed');
+        normalized.code = 'CLAUDE_NETWORK_ERROR';
       }
 
       const canRetry = attempt < maxAttempts && isRetryableError(normalized);
@@ -175,14 +165,14 @@ async function requestOpenAiText({ prompt, maxOutputTokens = 120, temperature = 
     }
   }
 
-  const exhausted = new Error('OpenAI summary retries exhausted');
-  exhausted.code = 'OPENAI_RETRIES_EXHAUSTED';
+  const exhausted = new Error('Claude summary retries exhausted');
+  exhausted.code = 'CLAUDE_RETRIES_EXHAUSTED';
   throw exhausted;
 }
 
 export async function generatePulseSoWhatSummary(snapshot) {
   try {
-    const { text } = await requestOpenAiText({
+    const { text } = await requestClaudeText({
       prompt: buildPrompt(snapshot),
       maxOutputTokens: 120,
       temperature: 0.3,
@@ -191,24 +181,24 @@ export async function generatePulseSoWhatSummary(snapshot) {
   } catch (error) {
     console.error('Rhythm Engine so-what summary generation failed:', error?.message || error);
     const wrapped = new Error('AI summary unavailable');
-    wrapped.code = error?.code || 'OPENAI_SUMMARY_UNAVAILABLE';
+    wrapped.code = error?.code || 'CLAUDE_SUMMARY_UNAVAILABLE';
     wrapped.cause = error;
     throw wrapped;
   }
 }
 
 export async function checkPulseSoWhatSummaryHealth({ live = true } = {}) {
-  const model = DEFAULT_OPENAI_MODEL;
+  const model = DEFAULT_CLAUDE_MODEL;
   const retries = summaryMaxRetries();
   const timeoutMs = summaryTimeoutMs();
-  const apiKeyPresent = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
+  const apiKeyPresent = Boolean(String(process.env.ANTHROPIC_API_KEY || '').trim());
 
   if (!apiKeyPresent) {
     return {
       ok: false,
       mode: live ? 'live' : 'config',
-      code: 'OPENAI_KEY_MISSING',
-      message: 'OPENAI_API_KEY is not configured',
+      code: 'CLAUDE_KEY_MISSING',
+      message: 'ANTHROPIC_API_KEY is not configured',
       model,
       retries,
       timeoutMs,
@@ -228,7 +218,7 @@ export async function checkPulseSoWhatSummaryHealth({ live = true } = {}) {
 
   const startedAt = Date.now();
   try {
-    const { attempts } = await requestOpenAiText({
+    const { attempts } = await requestClaudeText({
       prompt: 'Reply with exactly: OK',
       maxOutputTokens: 16,
       temperature: 0,
@@ -247,7 +237,7 @@ export async function checkPulseSoWhatSummaryHealth({ live = true } = {}) {
     return {
       ok: false,
       mode: 'live',
-      code: error?.code || 'OPENAI_PROBE_FAILED',
+      code: error?.code || 'CLAUDE_PROBE_FAILED',
       message: error?.message || 'AI summary probe failed',
       model,
       retries,

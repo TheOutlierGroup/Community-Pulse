@@ -243,6 +243,11 @@ async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
       id: im.id,
       createdAt: im.created_at,
       isImage: isImageAttachmentFilename(im.stored_filename),
+      canDelete: Boolean(
+        viewerUserId &&
+        im.comment_author_id &&
+        String(im.comment_author_id) === String(viewerUserId)
+      ),
     });
   }
   const publicComments = comments.map((c) => ({
@@ -277,6 +282,11 @@ async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
       sortOrder: i.sort_order,
       createdAt: i.created_at,
       isImage: isImageAttachmentFilename(i.stored_filename),
+      canDelete: Boolean(
+        viewerUserId &&
+        i.created_by &&
+        String(i.created_by) === String(viewerUserId)
+      ),
     })),
     comments: publicComments,
     checklistItems,
@@ -604,6 +614,15 @@ router.get('/organizations/:id/tasks/:taskId/images/:imageId/file', async (req, 
 router.delete('/organizations/:id/tasks/:taskId/images/:imageId', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const row = await ClientWorkTask.getTaskImageForOrg(
+    req.params.imageId,
+    req.params.taskId,
+    req.params.id
+  );
+  if (!row) return res.status(404).json({ error: 'Image not found' });
+  if (!row.created_by || String(row.created_by) !== String(req.user.id)) {
+    return res.status(403).json({ error: 'Only the uploader can remove this attachment' });
+  }
   const prev = await ClientWorkTask.deleteTaskImage(
     req.params.imageId,
     req.params.taskId,
@@ -721,6 +740,15 @@ router.get(
 router.delete('/organizations/:id/tasks/:taskId/comments/:commentId/images/:imageId', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const comment = await ClientWorkTask.getCommentForOrg(
+    req.params.commentId,
+    req.params.taskId,
+    req.params.id
+  );
+  if (!comment) return res.status(404).json({ error: 'Comment not found' });
+  if (!comment.author_id || String(comment.author_id) !== String(req.user.id)) {
+    return res.status(403).json({ error: 'Only the comment author can remove this attachment' });
+  }
   const prev = await ClientWorkTask.deleteCommentImage(
     req.params.imageId,
     req.params.commentId,

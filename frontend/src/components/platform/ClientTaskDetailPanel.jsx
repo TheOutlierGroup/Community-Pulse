@@ -149,6 +149,7 @@ export default function ClientTaskDetailPanel({
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [watchBusy, setWatchBusy] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
 
   const listRef = useRef(null);
   const moreRef = useRef(null);
@@ -179,11 +180,16 @@ export default function ClientTaskDetailPanel({
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (imagePreview) {
+        setImagePreview(null);
+        return;
+      }
+      onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, imagePreview]);
 
   useClickOutside(listRef, listOpen, () => setListOpen(false));
   useClickOutside(moreRef, moreOpen, () => setMoreOpen(false));
@@ -344,6 +350,10 @@ export default function ClientTaskDetailPanel({
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not remove image.', { variant: 'error' });
     }
+  }
+
+  function openImagePreview(path, label) {
+    setImagePreview({ path, label: label || 'Attachment preview' });
   }
 
   async function confirmDeleteTask() {
@@ -925,7 +935,14 @@ export default function ClientTaskDetailPanel({
                       {(task.images || []).map((im) => (
                         <div key={im.id} className="task-card-modal__image-tile">
                           {im.isImage !== false ? (
-                            <AuthenticatedBlobImage path={taskImagePath(orgId, taskId, im.id)} alt="" className="task-card-modal__image-img" />
+                            <button
+                              type="button"
+                              className="task-card-modal__image-open-btn"
+                              onClick={() => openImagePreview(taskImagePath(orgId, taskId, im.id), 'Task attachment')}
+                              aria-label="Open attachment image"
+                            >
+                              <AuthenticatedBlobImage path={taskImagePath(orgId, taskId, im.id)} alt="" className="task-card-modal__image-img" />
+                            </button>
                           ) : (
                             <a
                               href={taskImagePath(orgId, taskId, im.id)}
@@ -936,14 +953,16 @@ export default function ClientTaskDetailPanel({
                               <FileText size={16} strokeWidth={1.75} aria-hidden /> {attachmentLabel(im.isImage)}
                             </a>
                           )}
-                          <button
-                            type="button"
-                            className="task-card-modal__image-remove"
-                            onClick={() => removeTaskImage(im.id)}
-                            aria-label="Remove image"
-                          >
-                            <Trash2 size={16} aria-hidden />
-                          </button>
+                          {im.canDelete ? (
+                            <button
+                              type="button"
+                              className="task-card-modal__image-remove"
+                              onClick={() => removeTaskImage(im.id)}
+                              aria-label="Remove image"
+                            >
+                              <Trash2 size={16} aria-hidden />
+                            </button>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -1022,11 +1041,23 @@ export default function ClientTaskDetailPanel({
                               {c.images.map((im) => (
                                 <div key={im.id} className="task-card-modal__image-tile">
                                   {im.isImage !== false ? (
-                                    <AuthenticatedBlobImage
-                                      path={commentImagePath(orgId, taskId, c.id, im.id)}
-                                      alt=""
-                                      className="task-card-modal__image-img"
-                                    />
+                                    <button
+                                      type="button"
+                                      className="task-card-modal__image-open-btn"
+                                      onClick={() =>
+                                        openImagePreview(
+                                          commentImagePath(orgId, taskId, c.id, im.id),
+                                          'Comment attachment'
+                                        )
+                                      }
+                                      aria-label="Open comment attachment image"
+                                    >
+                                      <AuthenticatedBlobImage
+                                        path={commentImagePath(orgId, taskId, c.id, im.id)}
+                                        alt=""
+                                        className="task-card-modal__image-img"
+                                      />
+                                    </button>
                                   ) : (
                                     <a
                                       href={commentImagePath(orgId, taskId, c.id, im.id)}
@@ -1037,14 +1068,16 @@ export default function ClientTaskDetailPanel({
                                       <FileText size={16} strokeWidth={1.75} aria-hidden /> {attachmentLabel(im.isImage)}
                                     </a>
                                   )}
-                                  <button
-                                    type="button"
-                                    className="task-card-modal__image-remove"
-                                    onClick={() => removeCommentImage(c.id, im.id)}
-                                    aria-label="Remove image"
-                                  >
-                                    <Trash2 size={16} aria-hidden />
-                                  </button>
+                                  {im.canDelete ? (
+                                    <button
+                                      type="button"
+                                      className="task-card-modal__image-remove"
+                                      onClick={() => removeCommentImage(c.id, im.id)}
+                                      aria-label="Remove image"
+                                    >
+                                      <Trash2 size={16} aria-hidden />
+                                    </button>
+                                  ) : null}
                                 </div>
                               ))}
                             </div>
@@ -1059,6 +1092,35 @@ export default function ClientTaskDetailPanel({
           )}
         </div>
       </div>
+      {imagePreview ? (
+        <div
+          className="task-card-modal__image-preview-backdrop"
+          role="presentation"
+          onClick={() => setImagePreview(null)}
+        >
+          <div
+            className="task-card-modal__image-preview"
+            role="dialog"
+            aria-modal="true"
+            aria-label={imagePreview.label}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="task-card-modal__icon-btn task-card-modal__image-preview-close"
+              onClick={() => setImagePreview(null)}
+              aria-label="Close preview"
+            >
+              <X size={20} strokeWidth={2} aria-hidden />
+            </button>
+            <AuthenticatedBlobImage
+              path={imagePreview.path}
+              alt={imagePreview.label}
+              className="task-card-modal__image-preview-img"
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
