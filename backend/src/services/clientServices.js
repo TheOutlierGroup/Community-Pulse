@@ -18,6 +18,11 @@ export const CLIENT_SERVICE_OPTIONS = [
   { id: CLIENT_SERVICE_OG_SKATE_OTHER, label: 'OG Skate - Other' },
 ];
 
+const REQUIRED_CLIENT_SERVICE = {
+  id: CLIENT_SERVICE_PULSE,
+  name: 'Rhythm Engine',
+};
+
 function normalizeServiceId(value) {
   return String(value || '')
     .trim()
@@ -65,8 +70,9 @@ export function normalizeClientServiceCatalog(rawCatalog, { fallbackToDefaults =
     out.push({ id: nextId, name });
   }
 
-  if (out.length > 0) return out;
-  return fallbackToDefaults ? fallback : [];
+  const seeded = out.length > 0 ? out : fallbackToDefaults ? fallback : [];
+  const withoutRequired = seeded.filter((service) => service.id !== REQUIRED_CLIENT_SERVICE.id);
+  return [REQUIRED_CLIENT_SERVICE, ...withoutRequired];
 }
 
 export function normalizeOrganizationSettings(raw) {

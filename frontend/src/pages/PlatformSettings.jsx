@@ -6,7 +6,7 @@ import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import api from '../services/api.js';
-import { normalizeServiceCatalog } from '../utils/clientServices.js';
+import { CLIENT_SERVICE_PULSE, normalizeServiceCatalog } from '../utils/clientServices.js';
 
 export default function PlatformSettings() {
   const { user, logout, loading } = useAuth();
@@ -53,7 +53,7 @@ export default function PlatformSettings() {
         service.key === key
           ? {
               ...service,
-              name,
+              name: service.id === CLIENT_SERVICE_PULSE ? 'Rhythm Engine' : name,
             }
           : service
       )
@@ -85,7 +85,10 @@ export default function PlatformSettings() {
     const nextServices = serviceCatalog
       .map((service) => ({
         id: String(service.id || '').trim(),
-        name: String(service.name || '').trim(),
+        name:
+          service.id === CLIENT_SERVICE_PULSE
+            ? 'Rhythm Engine'
+            : String(service.name || '').trim(),
       }))
       .filter((service) => service.name);
     if (nextServices.length !== serviceCatalog.length) {
@@ -130,9 +133,6 @@ export default function PlatformSettings() {
       </div>
       <div className="card" style={{ marginTop: '1rem' }}>
         <h2 className="settings-section-title">Service catalog</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Define the services available in client settings. Deleting a service asks for confirmation.
-        </p>
         {error ? (
           <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
             {error}
@@ -144,8 +144,8 @@ export default function PlatformSettings() {
           </p>
         ) : null}
         <form onSubmit={saveServiceCatalog}>
-          <div className="table-wrap">
-            <table className="admin-table">
+          <div className="table-wrap service-catalog-table-wrap">
+            <table className="admin-table service-catalog-table">
               <thead>
                 <tr>
                   <th scope="col">Service name</th>
@@ -169,22 +169,34 @@ export default function PlatformSettings() {
                   serviceCatalog.map((service) => (
                     <tr key={service.key}>
                       <td>
+                        <div className="service-catalog-name-cell">
                         <input
+                          className="service-catalog-input"
                           value={service.name}
                           onChange={(e) => updateServiceName(service.key, e.target.value)}
-                          disabled={busy}
+                          disabled={busy || service.id === CLIENT_SERVICE_PULSE}
                           aria-label="Service name"
                         />
+                          {service.id === CLIENT_SERVICE_PULSE ? (
+                            <span className="badge badge-active">Required</span>
+                          ) : null}
+                        </div>
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          disabled={busy}
-                          onClick={() => removeServiceRow(service.key, service.name)}
-                        >
-                          Remove
-                        </button>
+                        {service.id === CLIENT_SERVICE_PULSE ? (
+                          <span className="muted" style={{ fontSize: '0.85rem' }}>
+                            Locked
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-ghost service-catalog-remove-btn"
+                            disabled={busy}
+                            onClick={() => removeServiceRow(service.key, service.name)}
+                          >
+                            Remove
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -192,15 +204,20 @@ export default function PlatformSettings() {
               </tbody>
             </table>
           </div>
-          <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.9rem', flexWrap: 'wrap' }}>
+          <div className="service-catalog-add-row" style={{ marginTop: '0.9rem' }}>
             <input
+              className="service-catalog-input"
               value={newServiceName}
               onChange={(e) => setNewServiceName(e.target.value)}
               placeholder="Add a new service name"
               disabled={busy}
-              style={{ minWidth: '260px' }}
             />
-            <button type="button" className="btn btn-ghost" disabled={busy || !newServiceName.trim()} onClick={addServiceRow}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={busy || !newServiceName.trim()}
+              onClick={addServiceRow}
+            >
               Add service
             </button>
           </div>
