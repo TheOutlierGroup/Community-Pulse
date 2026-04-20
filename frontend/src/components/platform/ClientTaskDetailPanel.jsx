@@ -11,6 +11,7 @@ import {
   Circle,
   Clock,
   Eye,
+  FileText,
   Image as ImageIcon,
   MessageSquare,
   MoreHorizontal,
@@ -40,6 +41,10 @@ function taskImagePath(orgId, taskId, imageId) {
 
 function commentImagePath(orgId, taskId, commentId, imageId) {
   return `/api/platform/organizations/${orgId}/tasks/${taskId}/comments/${commentId}/images/${imageId}/file`;
+}
+
+function attachmentLabel(isImage) {
+  return isImage ? 'Image attachment' : 'Document attachment';
 }
 
 function formatActivityTime(iso) {
@@ -275,7 +280,7 @@ export default function ClientTaskDetailPanel({
       await api.post(`/api/platform/organizations/${orgId}/tasks/${taskId}/images`, fd);
       const { data } = await api.get(`/api/platform/organizations/${orgId}/tasks/${taskId}`);
       syncTask(data.task);
-      showToast('Image added.', { variant: 'success' });
+      showToast('Attachment added.', { variant: 'success' });
     } catch (err) {
       showToast(err.response?.data?.error || 'Upload failed.', { variant: 'error' });
     }
@@ -581,7 +586,7 @@ export default function ClientTaskDetailPanel({
           <input
             ref={taskImageInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
+            accept="image/jpeg,image/png,image/gif,image/webp,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             className="task-card-modal__hidden-file"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -919,7 +924,18 @@ export default function ClientTaskDetailPanel({
                     <div className="task-card-modal__image-grid">
                       {(task.images || []).map((im) => (
                         <div key={im.id} className="task-card-modal__image-tile">
-                          <AuthenticatedBlobImage path={taskImagePath(orgId, taskId, im.id)} alt="" className="task-card-modal__image-img" />
+                          {im.isImage !== false ? (
+                            <AuthenticatedBlobImage path={taskImagePath(orgId, taskId, im.id)} alt="" className="task-card-modal__image-img" />
+                          ) : (
+                            <a
+                              href={taskImagePath(orgId, taskId, im.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="task-card-modal__file-hint"
+                            >
+                              <FileText size={16} strokeWidth={1.75} aria-hidden /> {attachmentLabel(im.isImage)}
+                            </a>
+                          )}
                           <button
                             type="button"
                             className="task-card-modal__image-remove"
@@ -954,13 +970,13 @@ export default function ClientTaskDetailPanel({
                     ref={commentFileInputRef}
                     id="task-card-comment-files"
                     type="file"
-                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    accept="image/jpeg,image/png,image/gif,image/webp,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     multiple
                     className="visually-hidden"
                     onChange={(e) => setCommentFiles([...(e.target.files || [])])}
                   />
                   {commentFiles.length > 0 ? (
-                    <p className="muted task-card-modal__file-hint">{commentFiles.length} image(s) will attach when you save.</p>
+                    <p className="muted task-card-modal__file-hint">{commentFiles.length} file(s) will attach when you save.</p>
                   ) : null}
                   <button type="submit" className="task-card-modal__rte-save" disabled={saving || commentEditorEmpty}>
                     {saving ? 'Saving…' : 'Save'}
@@ -1004,11 +1020,22 @@ export default function ClientTaskDetailPanel({
                             <div className="task-card-modal__image-grid task-card-modal__image-grid--sm">
                               {c.images.map((im) => (
                                 <div key={im.id} className="task-card-modal__image-tile">
-                                  <AuthenticatedBlobImage
-                                    path={commentImagePath(orgId, taskId, c.id, im.id)}
-                                    alt=""
-                                    className="task-card-modal__image-img"
-                                  />
+                                  {im.isImage !== false ? (
+                                    <AuthenticatedBlobImage
+                                      path={commentImagePath(orgId, taskId, c.id, im.id)}
+                                      alt=""
+                                      className="task-card-modal__image-img"
+                                    />
+                                  ) : (
+                                    <a
+                                      href={commentImagePath(orgId, taskId, c.id, im.id)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="task-card-modal__file-hint"
+                                    >
+                                      <FileText size={16} strokeWidth={1.75} aria-hidden /> {attachmentLabel(im.isImage)}
+                                    </a>
+                                  )}
                                   <button
                                     type="button"
                                     className="task-card-modal__image-remove"

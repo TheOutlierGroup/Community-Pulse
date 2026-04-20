@@ -3,18 +3,53 @@ import path from 'path';
 import { Router } from 'express';
 import multer from 'multer';
 import { requireBodyFields } from '../../middleware/validation.js';
-import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { ensureStorageDirs, taskImageFilePath } from '../../config/storage.js';
 import * as User from '../../models/User.js';
 import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as Organization from '../../models/Organization.js';
 import * as taskNotificationTriggers from '../../services/taskNotificationTriggers.js';
-import {
-  assertClientOrganizationPlatformForUser,
-  platformAvatarContentType,
-} from './shared.js';
+import { assertClientOrganizationPlatformForUser } from './shared.js';
 
 const router = Router();
+
+const TASK_ATTACHMENT_MIME_TO_EXT = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+};
+
+const TASK_ATTACHMENT_ALLOWED_EXT = new Set(Object.values(TASK_ATTACHMENT_MIME_TO_EXT));
+
+function extensionForTaskAttachmentUpload(file) {
+  const ext = path.extname(String(file?.originalname || '')).toLowerCase();
+  if (TASK_ATTACHMENT_ALLOWED_EXT.has(ext)) return ext;
+  const mime = String(file?.mimetype || '').toLowerCase();
+  return TASK_ATTACHMENT_MIME_TO_EXT[mime] || null;
+}
+
+function taskAttachmentContentType(filename) {
+  const ext = path.extname(String(filename || '')).toLowerCase();
+  const map = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
+function isImageAttachmentFilename(filename) {
+  const contentType = taskAttachmentContentType(filename);
+  return contentType.startsWith('image/');
+}
 
 async function assertClientOrganizationPlatform(id) {
   const org = await Organization.getOrganization(id);
@@ -42,8 +77,8 @@ const taskImageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (extensionForUpload(file)) cb(null, true);
-    else cb(new Error('Only JPEG, PNG, GIF, or WebP are allowed'));
+    if (extensionForTaskAttachmentUpload(file)) cb(null, true);
+    else cb(new Error('Only JPEG, PNG, GIF, WebP, PDF, DOC, or DOCX files are allowed'));
   },
 }).single('image');
 
@@ -203,6 +238,7 @@ async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
     imagesByComment[im.comment_id].push({
       id: im.id,
       createdAt: im.created_at,
+      isImage: isImageAttachmentFilename(im.stored_filename),
     });
   }
   const publicComments = comments.map((c) => ({
@@ -236,6 +272,7 @@ async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
       id: i.id,
       sortOrder: i.sort_order,
       createdAt: i.created_at,
+      isImage: isImageAttachmentFilename(i.stored_filename),
     })),
     comments: publicComments,
     checklistItems,
@@ -494,7 +531,7 @@ router.post(
     taskImageUpload(req, res, (err) => {
       if (err) {
         const msg =
-          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 5MB or smaller' : err.message;
+          err.code === 'LIMIT_FILE_SIZE' ? 'File must be 5MB or smaller' : err.message;
         return res.status(400).json({ error: msg || 'Upload failed' });
       }
       next();
@@ -504,13 +541,13 @@ router.post(
     const org = await assertClientOrganizationPlatform(req.params.id);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const ext = extensionForUpload(req.file);
+    const ext = extensionForTaskAttachmentUpload(req.file);
     const base = ClientWorkTask.newTaskImageFilename(req.params.taskId, ext || '.png');
     try {
       await fs.promises.writeFile(taskImageFilePath(base), req.file.buffer);
     } catch (e) {
       console.error(e);
-      return res.status(500).json({ error: 'Could not save image' });
+      return res.status(500).json({ error: 'Could not save file' });
     }
     const img = await ClientWorkTask.addTaskImage(
       req.params.taskId,
@@ -531,6 +568,7 @@ router.post(
         id: img.id,
         sortOrder: img.sort_order,
         createdAt: img.created_at,
+        isImage: isImageAttachmentFilename(img.stored_filename),
       },
     });
   }
@@ -554,7 +592,7 @@ router.get('/organizations/:id/tasks/:taskId/images/:imageId/file', async (req, 
     return res.status(403).end();
   }
   if (!fs.existsSync(full)) return res.status(404).end();
-  res.setHeader('Content-Type', platformAvatarContentType(safeName));
+  res.setHeader('Content-Type', taskAttachmentContentType(safeName));
   res.setHeader('Cache-Control', 'private, no-cache');
   res.sendFile(full);
 });
@@ -612,7 +650,7 @@ router.post(
     taskImageUpload(req, res, (err) => {
       if (err) {
         const msg =
-          err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 5MB or smaller' : err.message;
+          err.code === 'LIMIT_FILE_SIZE' ? 'File must be 5MB or smaller' : err.message;
         return res.status(400).json({ error: msg || 'Upload failed' });
       }
       next();
@@ -622,13 +660,13 @@ router.post(
     const org = await assertClientOrganizationPlatform(req.params.id);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const ext = extensionForUpload(req.file);
+    const ext = extensionForTaskAttachmentUpload(req.file);
     const base = ClientWorkTask.newCommentImageFilename(req.params.commentId, ext || '.png');
     try {
       await fs.promises.writeFile(taskImageFilePath(base), req.file.buffer);
     } catch (e) {
       console.error(e);
-      return res.status(500).json({ error: 'Could not save image' });
+      return res.status(500).json({ error: 'Could not save file' });
     }
     const img = await ClientWorkTask.addCommentImage(
       req.params.commentId,
@@ -670,7 +708,7 @@ router.get(
       return res.status(403).end();
     }
     if (!fs.existsSync(full)) return res.status(404).end();
-    res.setHeader('Content-Type', platformAvatarContentType(safeName));
+    res.setHeader('Content-Type', taskAttachmentContentType(safeName));
     res.setHeader('Cache-Control', 'private, no-cache');
     res.sendFile(full);
   }

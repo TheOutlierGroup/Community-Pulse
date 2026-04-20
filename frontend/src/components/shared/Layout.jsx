@@ -1,7 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
 import Navigation from './Navigation.jsx';
 import PlatformNotificationBell from './PlatformNotificationBell.jsx';
-import { getPostLoginPath } from '../../utils/postLogin.js';
+import { sidebarBrandTargetForRoute } from './layoutRouteTarget.js';
 import outlierLogo from '../../images/outlier-logo.png';
 
 export default function Layout({ children, user, onLogout, hideHeader = false, navContext = null }) {
@@ -17,14 +17,11 @@ export default function Layout({ children, user, onLogout, hideHeader = false, n
   }
 
   if (user) {
-    const platformClientOrgId =
-      user.organizationKind === 'platform' && params.orgId ? params.orgId : null;
-    const isPlatformPulseRoute =
-      Boolean(platformClientOrgId) &&
-      location.pathname.startsWith(`/platform/clients/${platformClientOrgId}/pulse`);
-    const sidebarBrandTarget = isPlatformPulseRoute
-      ? `/platform/clients/${platformClientOrgId}`
-      : getPostLoginPath(user);
+    const sidebarBrandTarget = sidebarBrandTargetForRoute({
+      user,
+      pathname: location.pathname,
+      orgId: params.orgId,
+    });
 
     return (
       <div className="app-shell app-shell--with-sidebar">
