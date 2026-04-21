@@ -52,8 +52,8 @@ function labelToId(value) {
 }
 
 function formatPulseTimepointLabel(timepoint, duringDate) {
-  if (timepoint === 'pre') return 'Pre Project';
-  if (timepoint === 'completed') return 'Completed';
+  if (timepoint === 'pre') return 'Pre';
+  if (timepoint === 'completed') return 'Post';
   if (timepoint === 'during') {
     if (!duringDate) return 'During';
     const dt = new Date(`${duringDate}T00:00:00.000Z`);

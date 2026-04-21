@@ -13,6 +13,7 @@ import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import {
   isResendConfigured,
+  getPulseInviteDefaultTemplate,
   sendPlatformWelcomeEmail,
   sendPulseInviteEmail,
 } from '../../services/email.js';
@@ -156,6 +157,28 @@ function resolvePulseAppBaseUrl() {
 
 const CLIENT_FIRST_ADMIN_WELCOME_RESET_MS = 7 * 24 * 60 * 60 * 1000;
 const CLIENT_STATUSES = new Set(['lead', 'active', 'inactive', 'closed']);
+const PULSE_INVITE_TEMPLATE_AUDIENCES = new Set(['staff', 'manager']);
+
+function pulseInviteTemplateFromSettings(settings, audience, organizationName) {
+  const role = audience === 'manager' ? 'manager' : 'staff';
+  const fallback = getPulseInviteDefaultTemplate(role, organizationName);
+  const templates = settings?.pulseInviteEmailTemplates;
+  const raw = templates && typeof templates === 'object' ? templates[role] : null;
+  if (!raw || typeof raw !== 'object') return fallback;
+  const subject = typeof raw.subject === 'string' ? raw.subject.trim() : '';
+  const bodyHtml = typeof raw.bodyHtml === 'string' ? raw.bodyHtml.trim() : '';
+  return {
+    subject: subject || fallback.subject,
+    bodyHtml: bodyHtml || fallback.bodyHtml,
+  };
+}
+
+function pulseInviteTemplatesPayload(org) {
+  return {
+    staff: pulseInviteTemplateFromSettings(org?.settings, 'staff', org?.name),
+    manager: pulseInviteTemplateFromSettings(org?.settings, 'manager', org?.name),
+  };
+}
 
 function parseMultipartBool(v) {
   if (v === true || v === 'true' || v === '1') return true;
@@ -1110,6 +1133,54 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ invites: rows.map(PulseLinkInvite.publicInviteRow) });
   });
 
+  router.get('/organizations/:id/pulse-link-invites/templates', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    res.json({
+      templates: pulseInviteTemplatesPayload(org),
+      placeholders: ['{{name}}', '{{link}}'],
+    });
+  });
+
+  router.put('/organizations/:id/pulse-link-invites/templates', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const audience = String(req.body?.audience || '')
+      .trim()
+      .toLowerCase();
+    if (!PULSE_INVITE_TEMPLATE_AUDIENCES.has(audience)) {
+      return res.status(400).json({ error: 'audience must be staff or manager' });
+    }
+    const subject = String(req.body?.subject || '').trim();
+    if (!subject) return res.status(400).json({ error: 'subject is required' });
+    if (subject.length > 200) return res.status(400).json({ error: 'subject must be 200 characters or less' });
+
+    const bodyHtml = String(req.body?.bodyHtml || '').trim();
+    if (!bodyHtml) return res.status(400).json({ error: 'bodyHtml is required' });
+    if (bodyHtml.length > 20000) return res.status(400).json({ error: 'bodyHtml is too long (max 20000 chars)' });
+
+    const existingTemplates =
+      org.settings?.pulseInviteEmailTemplates && typeof org.settings.pulseInviteEmailTemplates === 'object'
+        ? org.settings.pulseInviteEmailTemplates
+        : {};
+    const updated = await Organization.updateOrganizationSettings(org.id, {
+      pulseInviteEmailTemplates: {
+        ...existingTemplates,
+        [audience]: {
+          subject,
+          bodyHtml,
+          updatedAt: new Date().toISOString(),
+          updatedByUserId: req.user.id,
+        },
+      },
+    });
+    if (!updated) return res.status(404).json({ error: 'Organization not found' });
+    res.json({
+      templates: pulseInviteTemplatesPayload(updated),
+      placeholders: ['{{name}}', '{{link}}'],
+    });
+  });
+
   router.post('/organizations/:id/pulse-link-invites/import', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
@@ -1233,8 +1304,14 @@ export function registerPlatformOrgRoutes(router) {
     const rotated = await PulseLinkInvite.rotateTokenAndMarkSent(invite.id, orgId);
     if (!rotated) return res.status(500).json({ error: 'Could not prepare invite link' });
     const linkUrl = `${baseUrl}/rhythm-engine/link/${rotated.rawToken}`;
+    const audience = invite.survey_role === 'manager' ? 'manager' : 'staff';
+    const template = pulseInviteTemplateFromSettings(org.settings, audience, org.name);
     try {
-      await sendPulseInviteEmail(invite.email, invite.display_name, linkUrl, org.name);
+      await sendPulseInviteEmail(invite.email, invite.display_name, linkUrl, org.name, {
+        audience,
+        subjectTemplate: template.subject,
+        bodyTemplateHtml: template.bodyHtml,
+      });
     } catch (e) {
       console.error('Rhythm Engine link invite send failed:', e);
       const details = String(e?.message || '').slice(0, 500);

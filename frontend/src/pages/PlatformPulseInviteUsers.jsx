@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { EditorContent, useEditor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
-import { Mail, Trash2, Upload, UserPlus } from 'lucide-react';
+import { Bold, Italic, Link2, List, ListOrdered, Mail, Trash2, Upload, UserPlus } from 'lucide-react';
 
 /** Minimum gap between each send request to stay under typical email API rate limits (e.g. Resend ~2 rps). */
 const BULK_SEND_INTERVAL_MS = 700;
@@ -125,6 +128,137 @@ function formatSentAt(iso) {
   }
 }
 
+function stripHtmlToText(html) {
+  return String(html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function defaultTemplateForAudience(audience) {
+  if (audience === 'manager') {
+    return {
+      subject: 'Rhythm Engine manager questionnaire — {{name}}',
+      bodyHtml:
+        '<p>Hi {{name}},</p><p>You have been invited to complete the manager Rhythm Engine questionnaire.</p><p><a href="{{link}}">Open Rhythm Engine</a></p>',
+    };
+  }
+  return {
+    subject: 'Rhythm Engine questionnaire — {{name}}',
+    bodyHtml:
+      '<p>Hi {{name}},</p><p>You have been invited to complete a short Rhythm Engine questionnaire.</p><p><a href="{{link}}">Open Rhythm Engine</a></p>',
+  };
+}
+
+function EmailTemplateRichEditor({ value, onChange, disabled }) {
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit.configure({
+          heading: false,
+          codeBlock: false,
+          blockquote: false,
+          horizontalRule: false,
+        }),
+        Placeholder.configure({
+          placeholder: 'Write email body. Use {{name}} and {{link}} placeholders.',
+        }),
+      ],
+      content: value || '<p></p>',
+      editable: !disabled,
+      onUpdate: ({ editor: nextEditor }) => {
+        onChange(nextEditor.getHTML());
+      },
+    },
+    [disabled]
+  );
+
+  useEffect(() => {
+    if (!editor) return;
+    const next = value || '<p></p>';
+    if (next !== editor.getHTML()) {
+      editor.commands.setContent(next, false);
+    }
+  }, [editor, value]);
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(!disabled);
+  }, [editor, disabled]);
+
+  if (!editor) {
+    return <div className="task-card-modal__rte task-card-modal__rte--loading muted">Loading editor…</div>;
+  }
+
+  function setLink() {
+    const previous = editor.getAttributes('link').href;
+    const url = window.prompt('Link URL', previous || 'https://');
+    if (url === null) return;
+    const trimmed = url.trim();
+    if (!trimmed) {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      return;
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: trimmed }).run();
+  }
+
+  return (
+    <div className={`task-card-modal__rte${disabled ? ' task-card-modal__rte--disabled' : ''}`}>
+      <div className="task-card-modal__rte-toolbar" role="toolbar" aria-label="Email template formatting">
+        <div className="task-card-modal__rte-toolbar-group">
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('bold') ? ' is-active' : ''}`}
+            onClick={() => editor.chain().focus().toggleBold().run()}
+            disabled={disabled}
+            aria-label="Bold"
+          >
+            <Bold size={16} strokeWidth={2} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('italic') ? ' is-active' : ''}`}
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+            disabled={disabled}
+            aria-label="Italic"
+          >
+            <Italic size={16} strokeWidth={2} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('bulletList') ? ' is-active' : ''}`}
+            onClick={() => editor.chain().focus().toggleBulletList().run()}
+            disabled={disabled}
+            aria-label="Bullet list"
+          >
+            <List size={16} strokeWidth={2} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('orderedList') ? ' is-active' : ''}`}
+            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+            disabled={disabled}
+            aria-label="Numbered list"
+          >
+            <ListOrdered size={16} strokeWidth={2} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('link') ? ' is-active' : ''}`}
+            onClick={setLink}
+            disabled={disabled}
+            aria-label="Insert link"
+          >
+            <Link2 size={16} strokeWidth={2} aria-hidden />
+          </button>
+        </div>
+      </div>
+      <EditorContent editor={editor} className="task-card-modal__rte-content" />
+    </div>
+  );
+}
+
 function InviteLinkSurveyStatus({ row }) {
   if (!row.lastInvitedAt) {
     return <span className="badge badge-draft">Link not sent</span>;
@@ -216,6 +350,16 @@ export default function PlatformPulseInviteUsers() {
   const [addManagerInviteId, setAddManagerInviteId] = useState('');
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState('');
+  const [templateModalAudience, setTemplateModalAudience] = useState(null);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateError, setTemplateError] = useState('');
+  const [emailTemplates, setEmailTemplates] = useState({
+    staff: defaultTemplateForAudience('staff'),
+    manager: defaultTemplateForAudience('manager'),
+  });
+  const [editingTemplateSubject, setEditingTemplateSubject] = useState('');
+  const [editingTemplateBodyHtml, setEditingTemplateBodyHtml] = useState('<p></p>');
 
   const managerOptions = useMemo(
     () =>
@@ -252,9 +396,35 @@ export default function PlatformPulseInviteUsers() {
     }
   }, [orgId]);
 
+  const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    try {
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates`);
+      const templates = data?.templates || {};
+      setEmailTemplates({
+        staff: {
+          ...defaultTemplateForAudience('staff'),
+          ...(templates.staff || {}),
+        },
+        manager: {
+          ...defaultTemplateForAudience('manager'),
+          ...(templates.manager || {}),
+        },
+      });
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not load email templates.', { variant: 'error' });
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [orgId, showToast]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
 
   async function onFile(e) {
     const file = e.target.files?.[0];
@@ -340,6 +510,69 @@ export default function PlatformPulseInviteUsers() {
       setAddError(err.response?.data?.error || 'Could not add recipient.');
     } finally {
       setAddBusy(false);
+    }
+  }
+
+  function openTemplateModal(audience) {
+    const role = audience === 'manager' ? 'manager' : 'staff';
+    const template = emailTemplates[role] || defaultTemplateForAudience(role);
+    setTemplateModalAudience(role);
+    setTemplateError('');
+    setEditingTemplateSubject(String(template.subject || ''));
+    setEditingTemplateBodyHtml(String(template.bodyHtml || '<p></p>'));
+  }
+
+  function closeTemplateModal() {
+    if (templateSaving) return;
+    setTemplateModalAudience(null);
+    setTemplateError('');
+  }
+
+  async function saveEmailTemplate(e) {
+    e.preventDefault();
+    if (!templateModalAudience) return;
+    const subject = String(editingTemplateSubject || '').trim();
+    if (!subject) {
+      setTemplateError('Subject is required.');
+      return;
+    }
+    if (subject.length > 200) {
+      setTemplateError('Subject must be 200 characters or less.');
+      return;
+    }
+    const bodyHtml = String(editingTemplateBodyHtml || '').trim();
+    if (!stripHtmlToText(bodyHtml)) {
+      setTemplateError('Body is required.');
+      return;
+    }
+
+    setTemplateSaving(true);
+    setTemplateError('');
+    try {
+      const { data } = await api.put(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates`, {
+        audience: templateModalAudience,
+        subject,
+        bodyHtml,
+      });
+      const templates = data?.templates || {};
+      setEmailTemplates({
+        staff: {
+          ...defaultTemplateForAudience('staff'),
+          ...(templates.staff || {}),
+        },
+        manager: {
+          ...defaultTemplateForAudience('manager'),
+          ...(templates.manager || {}),
+        },
+      });
+      showToast(`${templateModalAudience === 'manager' ? 'Manager' : 'Staff'} email template saved.`, {
+        variant: 'success',
+      });
+      setTemplateModalAudience(null);
+    } catch (err) {
+      setTemplateError(err.response?.data?.error || 'Could not save email template.');
+    } finally {
+      setTemplateSaving(false);
     }
   }
 
@@ -469,6 +702,50 @@ export default function PlatformPulseInviteUsers() {
       </div>
 
       {error && <p className="error">{error}</p>}
+
+      <ModalDialog
+        open={Boolean(templateModalAudience)}
+        title={templateModalAudience === 'manager' ? 'Manager email template' : 'Staff email template'}
+        titleId="pulse-email-template-title"
+        onClose={closeTemplateModal}
+      >
+        {templateModalAudience ? (
+          <form onSubmit={saveEmailTemplate} style={{ padding: '0 0 0.25rem' }}>
+            {templateError ? <p className="error" style={{ marginBottom: '1rem' }}>{templateError}</p> : null}
+            <div className="field">
+              <label htmlFor="pulse-template-subject">Subject</label>
+              <input
+                id="pulse-template-subject"
+                value={editingTemplateSubject}
+                onChange={(e) => setEditingTemplateSubject(e.target.value)}
+                placeholder="Email subject"
+                maxLength={200}
+                disabled={templateSaving}
+                required
+              />
+            </div>
+            <div className="field">
+              <label>Body</label>
+              <EmailTemplateRichEditor
+                value={editingTemplateBodyHtml}
+                onChange={setEditingTemplateBodyHtml}
+                disabled={templateSaving}
+              />
+              <p className="muted" style={{ marginTop: '0.45rem' }}>
+                Use placeholders: <code>{'{{name}}'}</code> and <code>{'{{link}}'}</code>.
+              </p>
+            </div>
+            <div className="modal-dialog__actions">
+              <button type="button" className="btn btn-ghost" onClick={closeTemplateModal} disabled={templateSaving}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={templateSaving}>
+                {templateSaving ? 'Saving…' : 'Save template'}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </ModalDialog>
 
       <ModalDialog
         open={Boolean(deleteConfirmRow)}
@@ -624,20 +901,40 @@ export default function PlatformPulseInviteUsers() {
           }}
         >
           <span>Recipients</span>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={
-              loading || invites.length === 0 || sendableInviteIds.length === 0 || bulkSending || busyImport
-            }
-            onClick={bulkSendAll}
-            style={{ fontSize: '0.9rem' }}
-          >
-            <Mail size={18} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
-            {bulkSending && bulkProgress
-              ? `Sending ${bulkProgress.current}/${bulkProgress.total}…`
-              : 'Send all'}
-          </button>
+          <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.45rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={templatesLoading || templateSaving || bulkSending}
+              onClick={() => openTemplateModal('staff')}
+              style={{ fontSize: '0.9rem' }}
+            >
+              Staff Email template
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={templatesLoading || templateSaving || bulkSending}
+              onClick={() => openTemplateModal('manager')}
+              style={{ fontSize: '0.9rem' }}
+            >
+              Manager email template
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={
+                loading || invites.length === 0 || sendableInviteIds.length === 0 || bulkSending || busyImport
+              }
+              onClick={bulkSendAll}
+              style={{ fontSize: '0.9rem' }}
+            >
+              <Mail size={18} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+              {bulkSending && bulkProgress
+                ? `Sending ${bulkProgress.current}/${bulkProgress.total}…`
+                : 'Send all'}
+            </button>
+          </div>
         </div>
         {loading ? (
           <p className="muted">Loading…</p>

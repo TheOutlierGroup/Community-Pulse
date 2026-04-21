@@ -58,6 +58,58 @@ function escapeHtmlAttr(text) {
     .replace(/</g, '&lt;');
 }
 
+function applyTemplatePlaceholders(template, replacements, { escapeValues = false } = {}) {
+  let out = String(template || '');
+  const map = replacements && typeof replacements === 'object' ? replacements : {};
+  for (const [key, value] of Object.entries(map)) {
+    const tokenPattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
+    const renderedValue = escapeValues ? escapeHtml(value) : String(value);
+    out = out.replace(tokenPattern, renderedValue);
+  }
+  return out;
+}
+
+export function getPulseInviteDefaultTemplate(audience, organizationName) {
+  const role = audience === 'manager' ? 'manager' : 'staff';
+  const orgPlain = organizationName ? String(organizationName).trim() : 'your organization';
+  const subject =
+    role === 'manager'
+      ? `Rhythm Engine manager questionnaire — ${orgPlain}`
+      : `Rhythm Engine questionnaire — ${orgPlain}`;
+  const bodyHtml =
+    role === 'manager'
+      ? `
+        <p style="color: #555; line-height: 1.6;">Hi {{name}},</p>
+        <p style="color: #555; line-height: 1.6;">
+          You have been invited to complete the manager Rhythm Engine questionnaire for <strong>${escapeHtml(orgPlain)}</strong>.
+          Use your personal link below. You do not need to sign in.
+        </p>
+        <p style="margin: 1.2rem 0;">
+          <a href="{{link}}"
+             style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">
+            Open Rhythm Engine
+          </a>
+        </p>
+      `
+      : `
+        <p style="color: #555; line-height: 1.6;">Hi {{name}},</p>
+        <p style="color: #555; line-height: 1.6;">
+          You have been invited to complete a short Rhythm Engine questionnaire for <strong>${escapeHtml(orgPlain)}</strong>.
+          Use your personal link below. You do not need to sign in.
+        </p>
+        <p style="margin: 1.2rem 0;">
+          <a href="{{link}}"
+             style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">
+            Open Rhythm Engine
+          </a>
+        </p>
+      `;
+  return {
+    subject,
+    bodyHtml: bodyHtml.trim(),
+  };
+}
+
 /** Public HTTPS URL fallback when the logo file is not on disk (e.g. minimal backend-only deploy). */
 function resolvePulseEmailLogoUrl() {
   const custom = String(process.env.PULSE_EMAIL_LOGO_URL || '').trim();
@@ -142,14 +194,42 @@ export async function sendPasswordResetEmail(to, resetUrl) {
   }
 }
 
-export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizationName) {
+export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizationName, options = {}) {
   const resend = requireResend();
   const name = String(displayName || '').trim();
-  const greetingHtml = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
   const orgPlain = organizationName ? String(organizationName).trim() : 'your organization';
-  const orgLabelHtml = escapeHtml(orgPlain);
-  const subjectPlain = `Rhythm Engine questionnaire — ${orgPlain.replace(/[\r\n]+/g, ' ').slice(0, 200)}`;
+  const audience = options?.audience === 'manager' ? 'manager' : 'staff';
   const safePulseUrl = String(pulseUrl || '');
+  const defaultTemplate = getPulseInviteDefaultTemplate(audience, orgPlain);
+  const subjectTemplate =
+    typeof options?.subjectTemplate === 'string' && options.subjectTemplate.trim()
+      ? options.subjectTemplate
+      : defaultTemplate.subject;
+  const bodyTemplateHtml =
+    typeof options?.bodyTemplateHtml === 'string' && options.bodyTemplateHtml.trim()
+      ? options.bodyTemplateHtml
+      : defaultTemplate.bodyHtml;
+  const subjectPlain = applyTemplatePlaceholders(
+    subjectTemplate,
+    {
+      name: name || 'there',
+      link: safePulseUrl,
+    },
+    { escapeValues: false }
+  )
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200) || defaultTemplate.subject;
+  const renderedBodyHtml = applyTemplatePlaceholders(
+    bodyTemplateHtml,
+    {
+      name: name || 'there',
+      link: safePulseUrl,
+    },
+    { escapeValues: true }
+  );
   const { logoBlock, attachments } = buildOutlierEmailLogoParts();
   const { error } = await resend.emails.send({
     from: getResendFromAddress(),
@@ -159,20 +239,7 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
         ${logoBlock}
-        <h2 style="margin: 0 0 1rem;">Your Rhythm Engine link</h2>
-        <p style="color: #555; line-height: 1.6;">
-          ${greetingHtml}
-        </p>
-        <p style="color: #555; line-height: 1.6;">
-          You have been invited to complete a short Rhythm Engine questionnaire for <strong>${orgLabelHtml}</strong>.
-          Use your personal link below. You do not need to sign in.
-        </p>
-        <a href="${escapeHtmlAttr(safePulseUrl)}"
-           style="display: inline-block; margin: 1.5rem 0; padding: 0.75rem 1.5rem;
-                  background: #ffcc80; color: #1c1917; font-weight: 600;
-                  text-decoration: none; border-radius: 8px;">
-          Open Rhythm Engine
-        </a>
+        ${renderedBodyHtml}
         <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
           If the button does not work, copy and paste this URL into your browser:<br />
           <span style="word-break: break-all;">${escapeHtml(safePulseUrl)}</span>

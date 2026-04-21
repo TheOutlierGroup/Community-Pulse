@@ -175,7 +175,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       disabled={pulseTimepointBusy}
                       aria-label="Select Rhythm Engine point in time"
                     >
-                      <option value="pre">Pre Project{preOption ? ` · ${preOption.label}` : ''}</option>
+                      <option value="pre">Pre{preOption ? ` · ${preOption.label}` : ''}</option>
                       {duringOptions.map((option) => (
                         <option key={option.id} value={`during:${option.dateKey}`}>
                           During · {option.label}
@@ -183,7 +183,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       ))}
                       {!duringOptions.length ? <option value="during">During</option> : null}
                       <option value="completed">
-                        Completed{completedOption ? ` · ${completedOption.label}` : ''}
+                        Post{completedOption ? ` · ${completedOption.label}` : ''}
                       </option>
                     </select>
                     {pulseTimepointError ? (
