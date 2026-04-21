@@ -882,8 +882,8 @@ a:hover {
 
 .modal-dialog--pulse-template {
   max-width: min(980px, 97vw);
-  min-height: min(78vh, 860px);
-  max-height: min(95vh, 1020px);
+  min-height: min(70vh, 760px);
+  max-height: min(88vh, 860px);
   display: flex;
   flex-direction: column;
 }
