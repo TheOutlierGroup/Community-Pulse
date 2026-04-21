@@ -5,24 +5,48 @@ import { useToast } from '../components/shared/ToastProvider.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { Building2, Sparkles } from 'lucide-react';
 import {
+  CLIENT_SERVICE_OTHER,
+  CLIENT_SERVICE_PULSE,
   CLIENT_STATUS_OPTIONS,
   normalizeServices,
   normalizeClientStatus,
 } from './platformClientUtils.js';
 
-function readCompanyAddress(settings) {
-  if (settings == null) return '';
+function readClientSettings(settings) {
+  if (settings == null) return null;
   let s = settings;
   if (typeof s === 'string') {
     try {
       s = JSON.parse(s);
     } catch {
-      return '';
+      return null;
     }
   }
-  if (typeof s !== 'object') return '';
-  const v = s.companyAddress;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+  return s;
+}
+
+function readCompanyAddress(settings) {
+  const parsed = readClientSettings(settings);
+  if (!parsed) return '';
+  const v = parsed.companyAddress;
   return v == null ? '' : String(v);
+}
+
+function readGroupLevels(settings) {
+  const parsed = readClientSettings(settings);
+  if (!parsed) return '';
+  const asNumber = Number.parseInt(String(parsed.groupLevels ?? ''), 10);
+  if (!Number.isInteger(asNumber) || asNumber < 1 || asNumber > 5) return '';
+  return String(asNumber);
+}
+
+function readGroupLevelLabels(settings) {
+  const parsed = readClientSettings(settings);
+  if (!parsed || !Array.isArray(parsed.groupLevelLabels)) return [];
+  return parsed.groupLevelLabels
+    .slice(0, 5)
+    .map((label) => String(label ?? ''));
 }
 
 export default function PlatformClientAccount() {
@@ -34,6 +58,9 @@ export default function PlatformClientAccount() {
   const [address, setAddress] = useState(() => readCompanyAddress(org.settings));
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [selectedServices, setSelectedServices] = useState(() => normalizeServices(org.settings));
+  const [groupLevels, setGroupLevels] = useState(() => readGroupLevels(org.settings));
+  const [groupLevelLabels, setGroupLevelLabels] = useState(() => readGroupLevelLabels(org.settings));
+  const [otherServiceDisplayValue, setOtherServiceDisplayValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -42,7 +69,23 @@ export default function PlatformClientAccount() {
     setClientStatus(normalizeClientStatus(org.client_status));
     setAddress(readCompanyAddress(org.settings));
     setSelectedServices(normalizeServices(org.settings));
+    setGroupLevels(readGroupLevels(org.settings));
+    setGroupLevelLabels(readGroupLevelLabels(org.settings));
+    setOtherServiceDisplayValue('');
   }, [org.name, org.client_status, org.settings]);
+
+  useEffect(() => {
+    const count = Number.parseInt(groupLevels, 10);
+    if (!Number.isInteger(count) || count < 1 || count > 5) {
+      setGroupLevelLabels([]);
+      return;
+    }
+    setGroupLevelLabels((current) => {
+      const next = current.slice(0, count);
+      while (next.length < count) next.push('');
+      return next;
+    });
+  }, [groupLevels]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,11 +136,30 @@ export default function PlatformClientAccount() {
 
   async function saveServices(e) {
     e.preventDefault();
+    const pulseEnabled = selectedServices.includes(CLIENT_SERVICE_PULSE);
+    const parsedGroupLevels = pulseEnabled ? Number.parseInt(groupLevels, 10) : null;
+    if (pulseEnabled && !Number.isInteger(parsedGroupLevels)) {
+      setError('Select how many group levels this client has.');
+      return;
+    }
+    const normalizedGroupLevelLabels = pulseEnabled
+      ? groupLevelLabels
+          .slice(0, parsedGroupLevels)
+          .map((label) => String(label || '').trim())
+      : [];
+    if (pulseEnabled && normalizedGroupLevelLabels.some((label) => !label)) {
+      setError('Provide a name for each group level.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       await api.patch(`/api/platform/organizations/${orgId}`, {
-        settings: { services: selectedServices },
+        settings: {
+          services: selectedServices,
+          groupLevels: pulseEnabled ? parsedGroupLevels : null,
+          groupLevelLabels: pulseEnabled ? normalizedGroupLevelLabels : null,
+        },
       });
       await refreshOrg();
       showToast('Services saved.', { variant: 'success' });
@@ -128,11 +190,13 @@ export default function PlatformClientAccount() {
   function toggleService(serviceId) {
     const id = String(serviceId || '').trim().toLowerCase();
     if (!id) return;
-    setSelectedServices((current) =>
-      current.includes(id)
-        ? current.filter((service) => service !== id)
-        : [...current, id]
-    );
+    setSelectedServices((current) => {
+      if (current.includes(id)) {
+        if (id === CLIENT_SERVICE_OTHER) setOtherServiceDisplayValue('');
+        return current.filter((service) => service !== id);
+      }
+      return [...current, id];
+    });
   }
 
   async function onCompanyLogoFile(e) {
@@ -247,6 +311,65 @@ export default function PlatformClientAccount() {
                 ))
               )}
             </div>
+            {selectedServices.includes(CLIENT_SERVICE_OTHER) ? (
+              <div className="field" style={{ marginTop: '0.9rem' }}>
+                <label htmlFor="acct-service-other">Other service name (one-off display only)</label>
+                <input
+                  id="acct-service-other"
+                  value={otherServiceDisplayValue}
+                  onChange={(e) => setOtherServiceDisplayValue(e.target.value)}
+                  placeholder="Type the one-off service for this client"
+                  disabled={busy}
+                />
+                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem', marginBottom: 0 }}>
+                  This value is for display only and is not saved.
+                </p>
+              </div>
+            ) : null}
+            {selectedServices.includes(CLIENT_SERVICE_PULSE) ? (
+              <div className="field" style={{ marginTop: '0.9rem' }}>
+                <label htmlFor="acct-group-levels">How many group levels does this client have?</label>
+                <select
+                  id="acct-group-levels"
+                  value={groupLevels}
+                  onChange={(e) => setGroupLevels(e.target.value)}
+                  disabled={busy}
+                  required
+                >
+                  <option value="">Select group levels</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </select>
+              </div>
+            ) : null}
+            {selectedServices.includes(CLIENT_SERVICE_PULSE) && Number.parseInt(groupLevels, 10) > 0 ? (
+              <div style={{ marginTop: '0.9rem', display: 'grid', gap: '0.55rem' }}>
+                {Array.from({ length: Number.parseInt(groupLevels, 10) }, (_, index) => (
+                  <div className="field" key={`group-level-label-${index + 1}`} style={{ margin: 0 }}>
+                    <label htmlFor={`acct-group-level-label-${index + 1}`}>
+                      Group level {index + 1} label
+                    </label>
+                    <input
+                      id={`acct-group-level-label-${index + 1}`}
+                      value={groupLevelLabels[index] ?? ''}
+                      onChange={(e) =>
+                        setGroupLevelLabels((current) => {
+                          const next = [...current];
+                          next[index] = e.target.value;
+                          return next;
+                        })
+                      }
+                      placeholder={`e.g. Level ${index + 1}`}
+                      disabled={busy}
+                      required
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <button type="submit" className="btn btn-ghost" disabled={busy} style={{ marginTop: '0.9rem' }}>
               Save services
             </button>

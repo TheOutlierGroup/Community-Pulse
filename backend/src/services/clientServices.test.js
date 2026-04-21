@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
   clientServiceCatalogFromPlatformSettings,
   enabledServicesFromOrganizationSettings,
@@ -32,7 +33,7 @@ test('enabledServicesFromOrganizationSettings honors services array', () => {
     services: ['pulse', 'other', 'pulse'],
     pulseEnabled: false,
   });
-  assert.deepEqual(enabled, [CLIENT_SERVICE_PULSE, 'other']);
+  assert.deepEqual(enabled, [CLIENT_SERVICE_PULSE, CLIENT_SERVICE_OTHER]);
 });
 
 test('enabledServicesFromOrganizationSettings falls back to legacy pulseEnabled', () => {
@@ -68,6 +69,7 @@ test('normalizeClientServiceCatalog assigns ids and dedupes', () => {
     ], { fallbackToDefaults: false }),
     [
       { id: 'pulse', name: 'Rhythm Engine' },
+      { id: 'other', name: 'Other' },
       { id: 'managed-ai', name: 'Managed AI' },
       { id: 'managed-ai-2', name: 'Managed AI Duplicate' },
     ]
@@ -80,6 +82,7 @@ test('clientServiceCatalogFromPlatformSettings falls back to defaults', () => {
   assert.equal(fromEmpty.length > 0, true);
   assert.deepEqual(clientServiceCatalogFromPlatformSettings({ serviceCatalog: [] }), [
     { id: 'pulse', name: 'Rhythm Engine' },
+    { id: 'other', name: 'Other' },
   ]);
 });
 

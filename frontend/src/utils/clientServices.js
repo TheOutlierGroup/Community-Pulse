@@ -1,4 +1,5 @@
 export const CLIENT_SERVICE_PULSE = 'pulse';
+export const CLIENT_SERVICE_OTHER = 'other';
 export const CLIENT_SERVICE_HUMAN_AI = 'human-ai';
 export const CLIENT_SERVICE_ADOPTION_ACCELERATOR = 'adoption-accelerator';
 export const CLIENT_SERVICE_PROJECT_RESOURCES = 'project-resources';
@@ -9,6 +10,7 @@ export const CLIENT_SERVICE_OG_SKATE_OTHER = 'og-skate-other';
 
 export const CLIENT_SERVICE_OPTIONS = [
   { id: CLIENT_SERVICE_PULSE, label: 'Rhythm Engine' },
+  { id: CLIENT_SERVICE_OTHER, label: 'Other' },
   { id: CLIENT_SERVICE_HUMAN_AI, label: 'Human AI' },
   { id: CLIENT_SERVICE_ADOPTION_ACCELERATOR, label: 'Adoption Accelerator' },
   { id: CLIENT_SERVICE_PROJECT_RESOURCES, label: 'Project Resources' },
@@ -18,10 +20,16 @@ export const CLIENT_SERVICE_OPTIONS = [
   { id: CLIENT_SERVICE_OG_SKATE_OTHER, label: 'OG Skate - Other' },
 ];
 
-const REQUIRED_CLIENT_SERVICE = {
-  id: CLIENT_SERVICE_PULSE,
-  name: 'Rhythm Engine',
-};
+const LOCKED_CLIENT_SERVICES = [
+  {
+    id: CLIENT_SERVICE_PULSE,
+    name: 'Rhythm Engine',
+  },
+  {
+    id: CLIENT_SERVICE_OTHER,
+    name: 'Other',
+  },
+];
 
 function normalizeServiceId(value) {
   return String(value || '')
@@ -72,8 +80,9 @@ export function normalizeServiceCatalog(rawCatalog, { fallbackToDefaults = true 
   }
 
   const seeded = out.length > 0 ? out : fallbackToDefaults ? fallback : [];
-  const withoutRequired = seeded.filter((service) => service.id !== REQUIRED_CLIENT_SERVICE.id);
-  return [REQUIRED_CLIENT_SERVICE, ...withoutRequired];
+  const lockedServiceIds = new Set(LOCKED_CLIENT_SERVICES.map((service) => service.id));
+  const withoutLocked = seeded.filter((service) => !lockedServiceIds.has(service.id));
+  return [...LOCKED_CLIENT_SERVICES, ...withoutLocked];
 }
 
 export function normalizeServices(rawSettings, allowedServiceIds = null) {

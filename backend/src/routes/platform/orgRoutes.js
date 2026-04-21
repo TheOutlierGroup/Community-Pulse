@@ -319,6 +319,39 @@ export function registerPlatformOrgRoutes(router) {
         return res.status(400).json({ error: 'settings must be an object' });
       }
       settingsPatch = { ...settings };
+      if (Object.prototype.hasOwnProperty.call(settingsPatch, 'groupLevels')) {
+        if (settingsPatch.groupLevels == null || settingsPatch.groupLevels === '') {
+          settingsPatch.groupLevels = null;
+        } else {
+          const parsed = Number.parseInt(String(settingsPatch.groupLevels), 10);
+          if (!Number.isInteger(parsed) || parsed < 1 || parsed > 5) {
+            return res.status(400).json({ error: 'settings.groupLevels must be an integer from 1 to 5' });
+          }
+          settingsPatch.groupLevels = parsed;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(settingsPatch, 'groupLevelLabels')) {
+        if (settingsPatch.groupLevelLabels == null || settingsPatch.groupLevelLabels === '') {
+          settingsPatch.groupLevelLabels = null;
+        } else if (!Array.isArray(settingsPatch.groupLevelLabels)) {
+          return res.status(400).json({ error: 'settings.groupLevelLabels must be an array' });
+        } else {
+          const labels = settingsPatch.groupLevelLabels
+            .slice(0, 5)
+            .map((label) => String(label ?? '').trim());
+          if (labels.length === 0 || labels.some((label) => !label)) {
+            return res.status(400).json({ error: 'settings.groupLevelLabels must contain 1-5 non-empty labels' });
+          }
+          settingsPatch.groupLevelLabels = labels;
+        }
+      }
+      if (
+        settingsPatch.groupLevels != null &&
+        Array.isArray(settingsPatch.groupLevelLabels) &&
+        settingsPatch.groupLevelLabels.length !== settingsPatch.groupLevels
+      ) {
+        return res.status(400).json({ error: 'settings.groupLevelLabels length must match settings.groupLevels' });
+      }
       if (Object.prototype.hasOwnProperty.call(settingsPatch, 'services')) {
         const platformOrg = await Organization.getOrganization(req.user.organizationId);
         const catalog = clientServiceCatalogFromPlatformSettings(platformOrg?.settings);

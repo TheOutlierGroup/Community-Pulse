@@ -6,7 +6,13 @@ import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import api from '../services/api.js';
-import { CLIENT_SERVICE_PULSE, normalizeServiceCatalog } from '../utils/clientServices.js';
+import {
+  CLIENT_SERVICE_OTHER,
+  CLIENT_SERVICE_PULSE,
+  normalizeServiceCatalog,
+} from '../utils/clientServices.js';
+
+const LOCKED_SERVICE_IDS = new Set([CLIENT_SERVICE_PULSE, CLIENT_SERVICE_OTHER]);
 
 export default function PlatformSettings() {
   const { user, logout, loading } = useAuth();
@@ -53,7 +59,12 @@ export default function PlatformSettings() {
         service.key === key
           ? {
               ...service,
-              name: service.id === CLIENT_SERVICE_PULSE ? 'Rhythm Engine' : name,
+              name:
+                service.id === CLIENT_SERVICE_PULSE
+                  ? 'Rhythm Engine'
+                  : service.id === CLIENT_SERVICE_OTHER
+                    ? 'Other'
+                    : name,
             }
           : service
       )
@@ -88,7 +99,9 @@ export default function PlatformSettings() {
         name:
           service.id === CLIENT_SERVICE_PULSE
             ? 'Rhythm Engine'
-            : String(service.name || '').trim(),
+            : service.id === CLIENT_SERVICE_OTHER
+              ? 'Other'
+              : String(service.name || '').trim(),
       }))
       .filter((service) => service.name);
     if (nextServices.length !== serviceCatalog.length) {
@@ -174,16 +187,18 @@ export default function PlatformSettings() {
                           className="service-catalog-input"
                           value={service.name}
                           onChange={(e) => updateServiceName(service.key, e.target.value)}
-                          disabled={busy || service.id === CLIENT_SERVICE_PULSE}
+                          disabled={busy || LOCKED_SERVICE_IDS.has(service.id)}
                           aria-label="Service name"
                         />
                           {service.id === CLIENT_SERVICE_PULSE ? (
                             <span className="badge badge-active">Required</span>
+                          ) : service.id === CLIENT_SERVICE_OTHER ? (
+                            <span className="badge badge-active">Locked</span>
                           ) : null}
                         </div>
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        {service.id === CLIENT_SERVICE_PULSE ? (
+                        {LOCKED_SERVICE_IDS.has(service.id) ? (
                           <span className="muted" style={{ fontSize: '0.85rem' }}>
                             Locked
                           </span>

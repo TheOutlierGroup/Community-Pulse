@@ -1,6 +1,7 @@
 import { CLIENT_SERVICE_OPTIONS } from '../utils/clientServices.js';
 
 export {
+  CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
   CLIENT_SERVICE_OPTIONS,
   normalizeServiceCatalog,
