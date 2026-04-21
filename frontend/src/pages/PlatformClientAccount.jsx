@@ -234,6 +234,47 @@ export default function PlatformClientAccount() {
     }
   }
 
+  async function downloadUserImportTemplate() {
+    const pulseEnabled = selectedServices.includes(CLIENT_SERVICE_PULSE);
+    const parsedGroupLevels = pulseEnabled ? Number.parseInt(groupLevels, 10) : null;
+    if (!pulseEnabled || !Number.isInteger(parsedGroupLevels)) {
+      setError('Select how many group levels this client has before downloading the template.');
+      return;
+    }
+    const normalizedGroupLevelLabels = groupLevelLabels
+      .slice(0, parsedGroupLevels)
+      .map((label) => String(label || '').trim());
+    if (normalizedGroupLevelLabels.some((label) => !label)) {
+      setError('Provide a name for each group level before downloading the template.');
+      return;
+    }
+    setError('');
+    try {
+      const response = await api.post(
+        `/api/platform/organizations/${orgId}/user-import-template`,
+        {
+          groupLevels: parsedGroupLevels,
+          groupLevelLabels: normalizedGroupLevelLabels,
+        },
+        { responseType: 'blob' }
+      );
+      const fallbackName = `client-${orgId}-user-import-template.csv`;
+      const disposition = String(response.headers?.['content-disposition'] || '');
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || fallbackName;
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
+      const anchor = document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not download template.');
+    }
+  }
+
   return (
     <>
       <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
@@ -313,17 +354,13 @@ export default function PlatformClientAccount() {
             </div>
             {selectedServices.includes(CLIENT_SERVICE_OTHER) ? (
               <div className="field" style={{ marginTop: '0.9rem' }}>
-                <label htmlFor="acct-service-other">Other service name (one-off display only)</label>
+                <label htmlFor="acct-service-other">Other service name</label>
                 <input
                   id="acct-service-other"
                   value={otherServiceDisplayValue}
                   onChange={(e) => setOtherServiceDisplayValue(e.target.value)}
-                  placeholder="Type the one-off service for this client"
                   disabled={busy}
                 />
-                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem', marginBottom: 0 }}>
-                  This value is for display only and is not saved.
-                </p>
               </div>
             ) : null}
             {selectedServices.includes(CLIENT_SERVICE_PULSE) ? (
@@ -373,6 +410,17 @@ export default function PlatformClientAccount() {
             <button type="submit" className="btn btn-ghost" disabled={busy} style={{ marginTop: '0.9rem' }}>
               Save services
             </button>
+            {selectedServices.includes(CLIENT_SERVICE_PULSE) ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busy}
+                style={{ marginTop: '0.65rem', marginLeft: '0.5rem' }}
+                onClick={downloadUserImportTemplate}
+              >
+                Download CSV template
+              </button>
+            ) : null}
           </form>
 
           <form onSubmit={saveAddress} style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>

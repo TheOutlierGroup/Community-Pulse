@@ -171,6 +171,29 @@ function normalizeClientStatus(value) {
   return status;
 }
 
+function csvEscape(value) {
+  const source = String(value ?? '');
+  if (!/[",\n]/.test(source)) return source;
+  return `"${source.replace(/"/g, '""')}"`;
+}
+
+function buildClientUserImportTemplateCsv(groupLevelLabels) {
+  const fixedHeaders = [
+    'employee preferred first name',
+    'email address',
+    'employent type (FT/PT/Casual)',
+    'Manager Name',
+    'birth year',
+    'Length of Service',
+    'Primary Work Location',
+  ];
+  const dynamicHeaders = (Array.isArray(groupLevelLabels) ? groupLevelLabels : [])
+    .map((label) => String(label ?? '').trim())
+    .filter(Boolean);
+  const headerLine = [...fixedHeaders, ...dynamicHeaders].map(csvEscape).join(',');
+  return `${headerLine}\n`;
+}
+
 export function registerPlatformOrgRoutes(router) {
   const requirePlatformAdminRole = (req, res, next) => {
     if (req.user?.role !== 'admin') {
@@ -520,6 +543,38 @@ export function registerPlatformOrgRoutes(router) {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org || !org.company_logo_filename) return res.status(404).end();
     sendOrgLogoFileOr404(res, org.company_logo_filename);
+  });
+
+  router.post('/organizations/:id/user-import-template', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const body = req.body || {};
+    if (!Array.isArray(body.groupLevelLabels)) {
+      return res.status(400).json({ error: 'groupLevelLabels must be an array' });
+    }
+    const labels = body.groupLevelLabels
+      .slice(0, 5)
+      .map((label) => String(label ?? '').trim());
+    if (labels.length === 0 || labels.some((label) => !label)) {
+      return res.status(400).json({ error: 'groupLevelLabels must contain 1-5 non-empty labels' });
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'groupLevels')) {
+      const parsed = Number.parseInt(String(body.groupLevels), 10);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 5) {
+        return res.status(400).json({ error: 'groupLevels must be an integer from 1 to 5' });
+      }
+      if (parsed !== labels.length) {
+        return res.status(400).json({ error: 'groupLevelLabels length must match groupLevels' });
+      }
+    }
+    const csv = buildClientUserImportTemplateCsv(labels);
+    const safeOrgId = String(req.params.id || '').replace(/[^a-zA-Z0-9-]/g, '');
+    const filename = `client-${safeOrgId || 'org'}-user-import-template.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(csv);
   });
 
   router.post('/organizations/:id/logo', handleOrgLogoPlatformUpload, async (req, res) => {
