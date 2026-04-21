@@ -3,15 +3,7 @@ import { useLocation, useOutletContext } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
-
-const PULSE_SECTION_IDS = [
-  'organisation-dashboard',
-  'organisation-scores',
-  'sponsorship-analysis',
-  'employee-breakdown',
-  'score-breakdown',
-  'team-level-view',
-];
+import { resolvePulseFocusedSection } from './pulseNavigationRules.js';
 
 function formatScore(value) {
   if (value == null || Number.isNaN(value)) return '—';
@@ -193,6 +185,7 @@ export default function PlatformClientPulse() {
     setPulseManagerOptions,
     pulseTimepoint,
     pulseDuringDate,
+    trendAnalysisVisible,
   } = useOutletContext();
   const location = useLocation();
 
@@ -267,18 +260,13 @@ export default function PlatformClientPulse() {
   }, [orgId, pulseEnabled, loadDashboard]);
 
   const pulseFocusedSection = useMemo(() => {
-    const rawHash = location.hash.replace(/^#/, '').trim();
-    const fullOverview = !rawHash || rawHash === 'organisation-dashboard';
-    if (fullOverview) return null;
-    if (rawHash === 'score-breakdown') return 'employee-breakdown';
-    if (rawHash === 'manager-load-report') return 'sponsorship-analysis';
-    if (PULSE_SECTION_IDS.includes(rawHash)) return rawHash;
-    return null;
-  }, [location.hash]);
+    return resolvePulseFocusedSection(location.hash, trendAnalysisVisible);
+  }, [location.hash, trendAnalysisVisible]);
 
   const pulseDocumentSectionLabel = useMemo(() => {
     const s = pulseFocusedSection;
     if (s === 'organisation-scores') return 'Organisation scores';
+    if (s === 'trend-analysis') return 'Trend analysis';
     if (s === 'sponsorship-analysis') return 'Sponsorship analysis';
     if (s === 'employee-breakdown') return 'Employee breakdown';
     if (s === 'team-level-view') return 'Team-level view';
@@ -356,6 +344,8 @@ export default function PlatformClientPulse() {
   const pageTitle =
     pulseFocusedSection === 'organisation-scores'
       ? 'Organisation Scores'
+      : pulseFocusedSection === 'trend-analysis'
+        ? 'Trend Analysis'
       : pulseFocusedSection === 'sponsorship-analysis'
         ? 'Sponsorship Analysis'
         : pulseFocusedSection === 'employee-breakdown'
@@ -564,6 +554,45 @@ export default function PlatformClientPulse() {
             </section>
           </div>
           )}
+
+          {showSection('trend-analysis') && trendAnalysisVisible ? (
+          <section className="pulse-prototype-card" id="trend-analysis">
+            <div className="pulse-prototype-card__label">Trend Analysis · Rolling 4 Waves</div>
+            <div className="pulse-prototype-trend-chart">
+              <div className="pulse-prototype-trend-threshold">
+                <span>{threshold} (threshold)</span>
+              </div>
+              {trendBars.map((item, idx) => {
+                const adoptionHeight = Math.max(6, ((item?.adoptionScore || 0) / trendMax) * 100);
+                const sponsorshipHeight = Math.max(6, ((item?.sponsorshipScore || 0) / trendMax) * 100);
+                return (
+                  <div key={item.weekLabel || idx} className="pulse-prototype-trend-group">
+                    <div className="pulse-prototype-trend-bars">
+                      <div className="pulse-prototype-trend-bar adoption" style={{ height: `${adoptionHeight}%` }} />
+                      <div className="pulse-prototype-trend-bar sponsorship" style={{ height: `${sponsorshipHeight}%` }} />
+                    </div>
+                    <div className="pulse-prototype-trend-label">W{idx + 1}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="pulse-prototype-legend">
+              <div className="pulse-prototype-legend-item">
+                <span className="pulse-prototype-legend-dot adoption" />
+                Adoption
+              </div>
+              <div className="pulse-prototype-legend-item">
+                <span className="pulse-prototype-legend-dot sponsorship" />
+                Sponsorship
+              </div>
+            </div>
+            {!trendBars.length ? (
+              <p className="muted" style={{ marginTop: '0.65rem' }}>
+                Trend data will appear after enough completed responses are available.
+              </p>
+            ) : null}
+          </section>
+          ) : null}
 
           {showSection('sponsorship-analysis') && sponsorshipView ? (
           <section className="pulse-sa" id="sponsorship-analysis">
@@ -824,38 +853,6 @@ export default function PlatformClientPulse() {
             </section>
 
             <div className="pulse-prototype-side-stack">
-              <section className="pulse-prototype-card">
-                <div className="pulse-prototype-card__label">Score Trend · Rolling 4 Waves</div>
-                <div className="pulse-prototype-trend-chart">
-                  <div className="pulse-prototype-trend-threshold">
-                    <span>{threshold} (threshold)</span>
-                  </div>
-                  {trendBars.map((item, idx) => {
-                    const adoptionHeight = Math.max(6, ((item?.adoptionScore || 0) / trendMax) * 100);
-                    const sponsorshipHeight = Math.max(6, ((item?.sponsorshipScore || 0) / trendMax) * 100);
-                    return (
-                      <div key={item.weekLabel || idx} className="pulse-prototype-trend-group">
-                        <div className="pulse-prototype-trend-bars">
-                          <div className="pulse-prototype-trend-bar adoption" style={{ height: `${adoptionHeight}%` }} />
-                          <div className="pulse-prototype-trend-bar sponsorship" style={{ height: `${sponsorshipHeight}%` }} />
-                        </div>
-                        <div className="pulse-prototype-trend-label">W{idx + 1}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="pulse-prototype-legend">
-                  <div className="pulse-prototype-legend-item">
-                    <span className="pulse-prototype-legend-dot adoption" />
-                    Adoption
-                  </div>
-                  <div className="pulse-prototype-legend-item">
-                    <span className="pulse-prototype-legend-dot sponsorship" />
-                    Sponsorship
-                  </div>
-                </div>
-              </section>
-
               <section className="pulse-prototype-card">
                 <div className="pulse-prototype-card__label">System Alerts</div>
                 <div className="pulse-prototype-alerts">

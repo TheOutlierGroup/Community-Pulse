@@ -8,6 +8,7 @@ import { jsonErrorFromBuffer, sniffImageMime } from '../utils/imageResponseHelpe
 import { ArrowLeft } from 'lucide-react';
 import { IS_RHYTHM_ENGINE_SURFACE } from '../config/appSurface.js';
 import { DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
+import { trendAnalysisVisibleFromOptions } from './pulseNavigationRules.js';
 
 function pulseTimepointFromSession(sessionPurpose) {
   const normalized = String(sessionPurpose || '').trim().toLowerCase();
@@ -57,6 +58,10 @@ export default function PlatformClientLayout() {
   const [pulseTimepointOptions, setPulseTimepointOptions] = useState([]);
   const [pulseTimepointBusy, setPulseTimepointBusy] = useState(false);
   const [pulseTimepointError, setPulseTimepointError] = useState('');
+  const trendAnalysisVisible = useMemo(
+    () => trendAnalysisVisibleFromOptions(pulseTimepointOptions),
+    [pulseTimepointOptions]
+  );
 
   const refreshOrg = useCallback(async () => {
     const { data } = await api.get(`/api/platform/organizations/${orgId}`);
@@ -300,6 +305,7 @@ export default function PlatformClientLayout() {
       pulseTimepointBusy,
       pulseTimepointError,
       createPulseDuringTimepoint,
+      trendAnalysisVisible,
     }),
     [
       org,
@@ -312,6 +318,7 @@ export default function PlatformClientLayout() {
       pulseTimepointBusy,
       pulseTimepointError,
       createPulseDuringTimepoint,
+      trendAnalysisVisible,
     ]
   );
 
@@ -357,6 +364,7 @@ export default function PlatformClientLayout() {
           setPulseManagerOptions,
           pulseTimepoint,
           pulseDuringDate,
+          trendAnalysisVisible,
         }}
       />
     </Layout>

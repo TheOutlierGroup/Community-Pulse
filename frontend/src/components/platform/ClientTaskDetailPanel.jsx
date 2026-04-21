@@ -846,8 +846,6 @@ export default function ClientTaskDetailPanel({
     <div
       className="modal-backdrop task-card-modal__backdrop"
       role="presentation"
-      onClick={onClose}
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div
         className="modal-dialog modal-dialog--task-card card task-card-modal-shell"
@@ -1458,7 +1456,6 @@ export default function ClientTaskDetailPanel({
         <div
           className="task-card-modal__image-preview-backdrop"
           role="presentation"
-          onClick={() => setAttachmentPreview(null)}
         >
           <div
             className="task-card-modal__image-preview"

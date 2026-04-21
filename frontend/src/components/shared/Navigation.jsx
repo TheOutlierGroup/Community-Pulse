@@ -56,6 +56,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const pulseTimepointBusy = Boolean(navContext?.pulseTimepointBusy);
   const pulseTimepointError = String(navContext?.pulseTimepointError || '');
   const createPulseDuringTimepoint = navContext?.createPulseDuringTimepoint;
+  const trendAnalysisVisible = Boolean(navContext?.trendAnalysisVisible);
   const preOption = pulseTimepointOptions.find((row) => row.phase === 'pre');
   const completedOption = pulseTimepointOptions.find((row) => row.phase === 'completed');
   const duringOptions = pulseTimepointOptions.filter((row) => row.phase === 'during');
@@ -212,6 +213,15 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <Users size={20} strokeWidth={1.75} aria-hidden />
                     Team-Level View
                   </Link>
+                  {trendAnalysisVisible ? (
+                    <Link
+                      to={`/platform/clients/${platformClientOrgId}/rhythm-engine#trend-analysis`}
+                      className={pulseSectionLinkClass('trend-analysis')}
+                    >
+                      <Activity size={20} strokeWidth={1.75} aria-hidden />
+                      Trend Analysis
+                    </Link>
+                  ) : null}
                   <Link
                     to={`/platform/clients/${platformClientOrgId}/rhythm-engine#sponsorship-analysis`}
                     className={pulseSectionLinkClass('sponsorship-analysis')}
