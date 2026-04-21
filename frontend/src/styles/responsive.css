@@ -1943,7 +1943,7 @@ input[type='range'] {
   box-sizing: border-box;
   overflow-x: auto;
   padding-bottom: 0.5rem;
-  height: max(320px, calc(100dvh - 12rem));
+  height: max(320px, calc(100dvh - 14rem));
 }
 
 .task-board__column {
