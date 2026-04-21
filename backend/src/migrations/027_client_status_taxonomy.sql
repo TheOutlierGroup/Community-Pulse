@@ -13,6 +13,25 @@ SET client_status = CASE client_status
 END
 WHERE kind = 'client'
   AND client_status IN ('lead', 'active', 'inactive', 'closed');
+
+UPDATE organizations
+SET client_status = 'prospect-new'
+WHERE kind = 'client'
+  AND client_status NOT IN (
+    'client-current',
+    'client-previous',
+    'prospect-warm',
+    'prospect-cold',
+    'prospect-lost',
+    'prospect-new',
+    'prospect-active-campaign',
+    'do-not-call-contact-blocked'
+  );
+
+UPDATE organizations
+SET client_status = 'active'
+WHERE kind = 'platform'
+  AND client_status <> 'active';
 ALTER TABLE organizations
   ADD CONSTRAINT organizations_client_status_check
   CHECK (
