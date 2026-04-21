@@ -68,6 +68,13 @@ const STATUS_LABEL = {
 };
 
 const STATUS_ORDER = ['todo', 'working', 'review', 'completed'];
+const ACTIVITY_CREATED = 'created';
+const ACTIVITY_STATUS_CHANGED = 'status_changed';
+const ACTIVITY_ASSIGNEE_CHANGED = 'assignee_changed';
+const ACTIVITY_START_DATE_CHANGED = 'start_date_changed';
+const ACTIVITY_DUE_DATE_CHANGED = 'due_date_changed';
+const ACTIVITY_CHECKLIST_ITEM_ADDED = 'checklist_item_added';
+const ACTIVITY_CHECKLIST_ITEM_REMOVED = 'checklist_item_removed';
 
 const MAX_LABELS_PER_CARD = 25;
 
@@ -466,20 +473,94 @@ export default function ClientTaskDetailPanel({
 
   const activityItems = useMemo(() => {
     if (!task) return [];
-    const createdBy = userLabel(task.createdBy);
-    const listName = STATUS_LABEL[task.status] || task.status;
-    const items = [
-      {
-        kind: 'system',
-        key: `sys-${task.id}`,
-        text: `${createdBy || 'Someone'} added this card to ${listName}`,
-        at: task.createdAt,
-      },
-    ];
+    const items = [];
+    for (const activity of task.activities || []) {
+      const actor = userLabel(activity.actor);
+      if (activity.type === ACTIVITY_CREATED) {
+        items.push({
+          kind: 'system',
+          key: `act-${activity.id}`,
+          text: `${actor || 'Someone'} created this card`,
+          at: activity.createdAt,
+        });
+        continue;
+      }
+      if (activity.type === ACTIVITY_STATUS_CHANGED) {
+        const fromStatus = STATUS_LABEL[activity.payload?.fromStatus] || activity.payload?.fromStatus;
+        const toStatus = STATUS_LABEL[activity.payload?.toStatus] || activity.payload?.toStatus;
+        if (fromStatus && toStatus && fromStatus !== toStatus) {
+          items.push({
+            kind: 'system',
+            key: `act-${activity.id}`,
+            text: `${actor || 'Someone'} moved this card from ${fromStatus} to ${toStatus}`,
+            at: activity.createdAt,
+          });
+        }
+        continue;
+      }
+      if (activity.type === ACTIVITY_ASSIGNEE_CHANGED) {
+        const fromAssignee = activity.payload?.fromAssignee || 'Unassigned';
+        const toAssignee = activity.payload?.toAssignee || 'Unassigned';
+        if (fromAssignee !== toAssignee) {
+          items.push({
+            kind: 'system',
+            key: `act-${activity.id}`,
+            text: `${actor || 'Someone'} changed assignee from ${fromAssignee} to ${toAssignee}`,
+            at: activity.createdAt,
+          });
+        }
+        continue;
+      }
+      if (activity.type === ACTIVITY_START_DATE_CHANGED) {
+        const fromDate = activity.payload?.fromDate || 'No start date';
+        const toDate = activity.payload?.toDate || 'No start date';
+        if (fromDate !== toDate) {
+          items.push({
+            kind: 'system',
+            key: `act-${activity.id}`,
+            text: `${actor || 'Someone'} changed start date from ${fromDate} to ${toDate}`,
+            at: activity.createdAt,
+          });
+        }
+        continue;
+      }
+      if (activity.type === ACTIVITY_DUE_DATE_CHANGED) {
+        const fromDate = activity.payload?.fromDate || 'No due date';
+        const toDate = activity.payload?.toDate || 'No due date';
+        if (fromDate !== toDate) {
+          items.push({
+            kind: 'system',
+            key: `act-${activity.id}`,
+            text: `${actor || 'Someone'} changed due date from ${fromDate} to ${toDate}`,
+            at: activity.createdAt,
+          });
+        }
+        continue;
+      }
+      if (activity.type === ACTIVITY_CHECKLIST_ITEM_ADDED) {
+        const text = String(activity.payload?.text || '').trim();
+        items.push({
+          kind: 'system',
+          key: `act-${activity.id}`,
+          text: `${actor || 'Someone'} added checklist item${text ? `: ${text}` : ''}`,
+          at: activity.createdAt,
+        });
+        continue;
+      }
+      if (activity.type === ACTIVITY_CHECKLIST_ITEM_REMOVED) {
+        const text = String(activity.payload?.text || '').trim();
+        items.push({
+          kind: 'system',
+          key: `act-${activity.id}`,
+          text: `${actor || 'Someone'} removed checklist item${text ? `: ${text}` : ''}`,
+          at: activity.createdAt,
+        });
+      }
+    }
     for (const c of task.comments || []) {
       items.push({ kind: 'comment', key: `c-${c.id}`, comment: c, at: c.createdAt });
     }
-    items.sort((a, b) => new Date(a.at) - new Date(b.at));
+    items.sort((a, b) => new Date(b.at) - new Date(a.at));
     return items;
   }, [task]);
 

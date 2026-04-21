@@ -164,6 +164,33 @@ function publicClientTask(row) {
   };
 }
 
+function publicTaskActivity(row) {
+  let payload = row.payload;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      payload = {};
+    }
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) payload = {};
+  return {
+    id: row.id,
+    type: row.activity_type,
+    payload,
+    createdAt: row.created_at,
+    actor: row.actor_id
+      ? {
+          id: row.actor_id,
+          email: row.actor_email,
+          firstName: row.actor_first_name ?? '',
+          lastName: row.actor_last_name ?? '',
+          organizationKind: row.actor_org_kind,
+        }
+      : null,
+  };
+}
+
 function publicDashboardDueTask(row) {
   return {
     id: row.id,
@@ -180,6 +207,14 @@ function publicDashboardDueTask(row) {
           }
         : null,
   };
+}
+
+function assigneeLabelFromTaskRow(row) {
+  if (!row?.assignee_id) return null;
+  const first = String(row.assignee_first_name || '').trim();
+  const last = String(row.assignee_last_name || '').trim();
+  const full = [first, last].filter(Boolean).join(' ').trim();
+  return full || String(row.assignee_email || '').trim() || null;
 }
 
 async function assertAssignableUserIds(clientOrgId, userIds) {
@@ -214,7 +249,7 @@ async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
   const row = await ClientWorkTask.getTaskListRow(taskId, orgId);
   if (!row) return null;
   const base = publicClientTask(row);
-  const [watching, imgs, comments, cImages, checklistRows] = await Promise.all([
+  const [watching, imgs, comments, cImages, checklistRows, activityRows] = await Promise.all([
     viewerUserId
       ? ClientWorkTask.isUserWatchingTask(taskId, orgId, viewerUserId)
       : Promise.resolve(false),
@@ -222,6 +257,7 @@ async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
     ClientWorkTask.listCommentsForTask(taskId, orgId),
     ClientWorkTask.listCommentImagesForTask(taskId, orgId),
     ClientWorkTask.listChecklistItemsForTask(taskId, orgId),
+    ClientWorkTask.listTaskActivityForTask(taskId, orgId),
   ]);
   const cids = comments.map((c) => c.id);
   const mentions = await ClientWorkTask.listCommentMentions(cids);
@@ -290,6 +326,7 @@ async function buildTaskDetail(orgId, taskId, viewerUserId = null) {
     })),
     comments: publicComments,
     checklistItems,
+    activities: activityRows.map(publicTaskActivity),
   };
 }
 
@@ -388,7 +425,7 @@ router.patch('/organizations/:id/tasks/reorder', async (req, res) => {
   if (!Array.isArray(tasks)) {
     return res.status(400).json({ error: 'tasks must be an array' });
   }
-  const ok = await ClientWorkTask.reorderTasksForOrg(req.params.id, tasks);
+  const ok = await ClientWorkTask.reorderTasksForOrg(req.params.id, tasks, req.user.id);
   if (!ok) return res.status(400).json({ error: 'Invalid reorder payload' });
   const rows = await ClientWorkTask.listTasksForClientOrg(req.params.id, { limit: 500, offset: 0 });
   res.json({ tasks: rows.map(publicClientTask) });
@@ -460,9 +497,52 @@ router.patch('/organizations/:id/tasks/:taskId', async (req, res) => {
   }
   const beforeRow = await ClientWorkTask.getTaskListRow(req.params.taskId, req.params.id);
   if (!beforeRow) return res.status(404).json({ error: 'Task not found' });
-  const row = await ClientWorkTask.updateTaskForOrg(req.params.taskId, req.params.id, patch);
+  const row = await ClientWorkTask.updateTaskForOrg(req.params.taskId, req.params.id, patch, req.user.id);
   if (!row) return res.status(404).json({ error: 'Task not found' });
   const afterRow = await ClientWorkTask.getTaskListRow(req.params.taskId, req.params.id);
+
+  const beforeAssignee = assigneeLabelFromTaskRow(beforeRow);
+  const afterAssignee = assigneeLabelFromTaskRow(afterRow);
+  if (beforeAssignee !== afterAssignee) {
+    await ClientWorkTask.createTaskActivity(
+      req.params.taskId,
+      req.params.id,
+      req.user.id,
+      ClientWorkTask.TASK_ACTIVITY_ASSIGNEE_CHANGED,
+      {
+        fromAssignee: beforeAssignee,
+        toAssignee: afterAssignee,
+      }
+    );
+  }
+  const beforeStartDate = formatIsoDate(beforeRow.start_date);
+  const afterStartDate = formatIsoDate(afterRow.start_date);
+  if (beforeStartDate !== afterStartDate) {
+    await ClientWorkTask.createTaskActivity(
+      req.params.taskId,
+      req.params.id,
+      req.user.id,
+      ClientWorkTask.TASK_ACTIVITY_START_DATE_CHANGED,
+      {
+        fromDate: beforeStartDate,
+        toDate: afterStartDate,
+      }
+    );
+  }
+  const beforeDueDate = formatIsoDate(beforeRow.due_date);
+  const afterDueDate = formatIsoDate(afterRow.due_date);
+  if (beforeDueDate !== afterDueDate) {
+    await ClientWorkTask.createTaskActivity(
+      req.params.taskId,
+      req.params.id,
+      req.user.id,
+      ClientWorkTask.TASK_ACTIVITY_DUE_DATE_CHANGED,
+      {
+        fromDate: beforeDueDate,
+        toDate: afterDueDate,
+      }
+    );
+  }
 
   const oldA = beforeRow.assignee_id != null ? String(beforeRow.assignee_id) : null;
   const newA = afterRow.assignee_id != null ? String(afterRow.assignee_id) : null;
@@ -501,6 +581,13 @@ router.post('/organizations/:id/tasks/:taskId/checklist-items', async (req, res)
   const text = (req.body || {}).text;
   const row = await ClientWorkTask.addChecklistItem(req.params.taskId, req.params.id, text);
   if (!row) return res.status(400).json({ error: 'Checklist item text is required' });
+  await ClientWorkTask.createTaskActivity(
+    req.params.taskId,
+    req.params.id,
+    req.user.id,
+    ClientWorkTask.TASK_ACTIVITY_CHECKLIST_ITEM_ADDED,
+    { text: row.body }
+  );
   const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
   res.status(201).json({ task: detail });
 });
@@ -533,8 +620,19 @@ router.delete('/organizations/:id/tasks/:taskId/checklist-items/:itemId', async 
   if (!org) return res.status(404).json({ error: 'Organization not found' });
   const task = await ClientWorkTask.getTaskForOrg(req.params.taskId, req.params.id);
   if (!task) return res.status(404).json({ error: 'Task not found' });
-  const ok = await ClientWorkTask.deleteChecklistItemForOrg(req.params.itemId, req.params.taskId, req.params.id);
-  if (!ok) return res.status(404).json({ error: 'Checklist item not found' });
+  const deleted = await ClientWorkTask.deleteChecklistItemForOrg(
+    req.params.itemId,
+    req.params.taskId,
+    req.params.id
+  );
+  if (!deleted) return res.status(404).json({ error: 'Checklist item not found' });
+  await ClientWorkTask.createTaskActivity(
+    req.params.taskId,
+    req.params.id,
+    req.user.id,
+    ClientWorkTask.TASK_ACTIVITY_CHECKLIST_ITEM_REMOVED,
+    { text: deleted.body }
+  );
   const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
   res.json({ task: detail });
 });

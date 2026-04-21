@@ -423,26 +423,6 @@ export default function PlatformClientAccount() {
             ) : null}
           </form>
 
-          <form onSubmit={saveAddress} style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
-            <h2 className="platform-client-dashboard__h2">Address</h2>
-            <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
-              Business or mailing address for your records.
-            </p>
-            <div className="field">
-              <label htmlFor="acct-address">Street, city, region, postcode, country</label>
-              <textarea
-                id="acct-address"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                rows={4}
-                className="platform-textarea"
-                placeholder="e.g. 123 Example St&#10;Sydney NSW 2000&#10;Australia"
-              />
-            </div>
-            <button type="submit" className="btn btn-ghost" disabled={busy}>
-              Save address
-            </button>
-          </form>
         </div>
 
         <div className="card platform-client-dashboard__card">
@@ -489,6 +469,27 @@ export default function PlatformClientAccount() {
           <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.75rem', marginBottom: 0 }}>
             JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
           </p>
+
+          <form onSubmit={saveAddress} style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+            <h2 className="platform-client-dashboard__h2">Address</h2>
+            <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+              Business or mailing address for your records.
+            </p>
+            <div className="field">
+              <label htmlFor="acct-address">Street, city, region, postcode, country</label>
+              <textarea
+                id="acct-address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                rows={4}
+                className="platform-textarea"
+                placeholder="e.g. 123 Example St&#10;Sydney NSW 2000&#10;Australia"
+              />
+            </div>
+            <button type="submit" className="btn btn-ghost" disabled={busy}>
+              Save address
+            </button>
+          </form>
 
           <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
             <h2 className="platform-client-dashboard__h2">Workspace metadata</h2>

@@ -8,6 +8,13 @@ const MAX_TAGGED_USERS = 50;
 const MAX_MENTION_USERS = 20;
 
 export const TASK_BOARD_STATUSES = ['todo', 'working', 'review', 'completed'];
+export const TASK_ACTIVITY_CREATED = 'created';
+export const TASK_ACTIVITY_STATUS_CHANGED = 'status_changed';
+export const TASK_ACTIVITY_ASSIGNEE_CHANGED = 'assignee_changed';
+export const TASK_ACTIVITY_START_DATE_CHANGED = 'start_date_changed';
+export const TASK_ACTIVITY_DUE_DATE_CHANGED = 'due_date_changed';
+export const TASK_ACTIVITY_CHECKLIST_ITEM_ADDED = 'checklist_item_added';
+export const TASK_ACTIVITY_CHECKLIST_ITEM_REMOVED = 'checklist_item_removed';
 
 function normalizeTaskStatus(s) {
   return TASK_BOARD_STATUSES.includes(s) ? s : 'todo';
@@ -27,6 +34,21 @@ function trimBody(v) {
 function trimCommentBody(v) {
   if (v == null) return '';
   return String(v).trim().slice(0, COMMENT_BODY_MAX);
+}
+
+export async function createTaskActivity(
+  taskId,
+  organizationId,
+  actorUserId,
+  activityType,
+  payload = {}
+) {
+  await query(
+    `INSERT INTO client_work_task_activity
+       (task_id, organization_id, actor_id, activity_type, payload)
+     VALUES ($1, $2, $3, $4, $5::jsonb)`,
+    [taskId, organizationId, actorUserId || null, activityType, JSON.stringify(payload || {})]
+  );
 }
 
 /** null = clear, undefined = skip, string YYYY-MM-DD = set, invalid = bad */
@@ -342,6 +364,12 @@ export async function createTask(
     );
     const id = rows[0]?.id;
     if (!id) throw new Error('no id');
+    await client.query(
+      `INSERT INTO client_work_task_activity
+         (task_id, organization_id, actor_id, activity_type, payload)
+       VALUES ($1, $2, $3, $4, $5::jsonb)`,
+      [id, organizationId, createdByUserId || null, TASK_ACTIVITY_CREATED, JSON.stringify({})]
+    );
     if (taggedUserIds?.length) {
       await replaceTaskTagsInClient(client, id, taggedUserIds);
     }
@@ -509,12 +537,13 @@ export async function updateChecklistItemForOrg(itemId, taskId, organizationId, 
 }
 
 export async function deleteChecklistItemForOrg(itemId, taskId, organizationId) {
-  const { rowCount } = await query(
+  const { rows } = await query(
     `DELETE FROM client_work_task_checklist_items
-     WHERE id = $1 AND task_id = $2 AND organization_id = $3`,
+     WHERE id = $1 AND task_id = $2 AND organization_id = $3
+     RETURNING id, body, done, sort_order, created_at`,
     [itemId, taskId, organizationId]
   );
-  return rowCount > 0;
+  return rows[0] || null;
 }
 
 export async function getTaskForOrg(taskId, organizationId) {
@@ -525,7 +554,7 @@ export async function getTaskForOrg(taskId, organizationId) {
   return rows[0] || null;
 }
 
-export async function updateTaskForOrg(taskId, organizationId, patch) {
+export async function updateTaskForOrg(taskId, organizationId, patch, actorUserId = null) {
   const existing = await getTaskForOrg(taskId, organizationId);
   if (!existing) return null;
   const parts = [];
@@ -597,6 +626,26 @@ export async function updateTaskForOrg(taskId, organizationId, patch) {
     );
     if (!rows.length) return null;
   }
+  if ('status' in patch) {
+    const toStatus = normalizeTaskStatus(patch.status);
+    if (toStatus !== existing.status) {
+      await query(
+        `INSERT INTO client_work_task_activity
+           (task_id, organization_id, actor_id, activity_type, payload)
+         VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        [
+          taskId,
+          organizationId,
+          actorUserId || null,
+          TASK_ACTIVITY_STATUS_CHANGED,
+          JSON.stringify({
+            fromStatus: existing.status,
+            toStatus,
+          }),
+        ]
+      );
+    }
+  }
   if ('taggedUserIds' in patch) {
     const ok = await replaceTaskTags(taskId, organizationId, patch.taggedUserIds);
     if (!ok) return null;
@@ -616,7 +665,7 @@ export async function deleteTaskForOrg(taskId, organizationId) {
   return rowCount > 0;
 }
 
-export async function reorderTasksForOrg(organizationId, updates) {
+export async function reorderTasksForOrg(organizationId, updates, actorUserId = null) {
   if (!Array.isArray(updates) || updates.length === 0) return false;
   const { rows: existingRows } = await query(
     `SELECT id FROM client_work_tasks WHERE organization_id = $1`,
@@ -628,6 +677,14 @@ export async function reorderTasksForOrg(organizationId, updates) {
   const statuses = [];
   const positions = [];
   const ids = [];
+  const existingStatusByTaskId = new Map();
+  for (const row of await query(
+    `SELECT id, status FROM client_work_tasks WHERE organization_id = $1`,
+    [organizationId]
+  ).then((result) => result.rows)) {
+    existingStatusByTaskId.set(String(row.id), row.status);
+  }
+  const statusTransitions = [];
   for (const u of updates) {
     const id = String(u.id);
     if (!idSet.has(id) || seen.has(id)) return false;
@@ -638,6 +695,14 @@ export async function reorderTasksForOrg(organizationId, updates) {
     statuses.push(u.status);
     positions.push(p);
     ids.push(id);
+    const fromStatus = existingStatusByTaskId.get(id);
+    if (fromStatus && fromStatus !== u.status) {
+      statusTransitions.push({
+        taskId: id,
+        fromStatus,
+        toStatus: u.status,
+      });
+    }
   }
   const client = await pool.connect();
   try {
@@ -657,6 +722,25 @@ export async function reorderTasksForOrg(organizationId, updates) {
       [ids, statuses, positions, organizationId]
     );
     if (rowCount !== updates.length) throw new Error('reorder');
+    if (statusTransitions.length > 0) {
+      for (const transition of statusTransitions) {
+        await client.query(
+          `INSERT INTO client_work_task_activity
+             (task_id, organization_id, actor_id, activity_type, payload)
+           VALUES ($1, $2, $3, $4, $5::jsonb)`,
+          [
+            transition.taskId,
+            organizationId,
+            actorUserId || null,
+            TASK_ACTIVITY_STATUS_CHANGED,
+            JSON.stringify({
+              fromStatus: transition.fromStatus,
+              toStatus: transition.toStatus,
+            }),
+          ]
+        );
+      }
+    }
     await client.query('COMMIT');
     return true;
   } catch {
@@ -665,6 +749,21 @@ export async function reorderTasksForOrg(organizationId, updates) {
   } finally {
     client.release();
   }
+}
+
+export async function listTaskActivityForTask(taskId, organizationId) {
+  const { rows } = await query(
+    `SELECT a.id, a.task_id, a.organization_id, a.actor_id, a.activity_type, a.payload, a.created_at,
+            u.email AS actor_email, u.first_name AS actor_first_name, u.last_name AS actor_last_name,
+            ou.kind AS actor_org_kind
+     FROM client_work_task_activity a
+     LEFT JOIN users u ON u.id = a.actor_id
+     LEFT JOIN organizations ou ON ou.id = u.organization_id
+     WHERE a.task_id = $1 AND a.organization_id = $2
+     ORDER BY a.created_at DESC`,
+    [taskId, organizationId]
+  );
+  return rows;
 }
 
 export async function listTaskImages(taskId, organizationId) {
