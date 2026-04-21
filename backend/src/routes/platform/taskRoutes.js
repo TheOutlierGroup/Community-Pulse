@@ -1,5 +1,7 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+import { spawn } from 'child_process';
 import { Router } from 'express';
 import multer from 'multer';
 import { requireBodyFields } from '../../middleware/validation.js';
@@ -53,6 +55,79 @@ function taskAttachmentContentType(filename) {
 function isImageAttachmentFilename(filename) {
   const contentType = taskAttachmentContentType(filename);
   return contentType.startsWith('image/');
+}
+
+async function runOfficePdfConversion(inputPath, outputDir) {
+  const args = ['--headless', '--convert-to', 'pdf:writer_pdf_Export', '--outdir', outputDir, inputPath];
+  const candidates = ['soffice', 'libreoffice', '/Applications/LibreOffice.app/Contents/MacOS/soffice'];
+  let lastFailure = null;
+  for (const bin of candidates) {
+    try {
+      await new Promise((resolve, reject) => {
+        const child = spawn(bin, args, { stdio: 'ignore' });
+        child.on('error', reject);
+        child.on('close', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`converter exited with code ${code}`));
+        });
+      });
+      return;
+    } catch (err) {
+      const isMissingBinary = err && (err.code === 'ENOENT' || err.code === 'ENOTDIR');
+      if (isMissingBinary) {
+        lastFailure = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  const unavailable = new Error('office converter unavailable');
+  unavailable.code = 'PREVIEW_CONVERSION_UNAVAILABLE';
+  unavailable.cause = lastFailure;
+  throw unavailable;
+}
+
+async function convertDocAttachmentToPdfBuffer(fullPath, safeName) {
+  const ext = path.extname(safeName).toLowerCase();
+  if (ext !== '.doc') {
+    const unsupported = new Error('conversion unsupported');
+    unsupported.code = 'PREVIEW_CONVERSION_UNSUPPORTED';
+    throw unsupported;
+  }
+
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'task-attachment-preview-'));
+  const inputFile = path.join(tmpDir, `source${ext}`);
+  const outputFile = path.join(tmpDir, 'source.pdf');
+  try {
+    await fs.promises.copyFile(fullPath, inputFile);
+    await runOfficePdfConversion(inputFile, tmpDir);
+    return await fs.promises.readFile(outputFile);
+  } finally {
+    await fs.promises.rm(tmpDir, { recursive: true, force: true });
+  }
+}
+
+async function maybeSendConvertedPreview(req, res, fullPath, safeName) {
+  const wantsPdfPreview = String(req.query?.preview || '').toLowerCase() === 'pdf';
+  if (!wantsPdfPreview) return false;
+  try {
+    const pdfBuffer = await convertDocAttachmentToPdfBuffer(fullPath, safeName);
+    const baseName = path.parse(safeName).name || 'attachment';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${baseName}.pdf"`);
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.send(pdfBuffer);
+    return true;
+  } catch (err) {
+    if (err?.code === 'PREVIEW_CONVERSION_UNSUPPORTED') return false;
+    if (err?.code === 'PREVIEW_CONVERSION_UNAVAILABLE') {
+      res.status(501).json({ error: 'Preview conversion not available on this server' });
+      return true;
+    }
+    console.error(err);
+    res.status(422).json({ error: 'Could not convert attachment for preview' });
+    return true;
+  }
 }
 
 async function assertClientOrganizationPlatform(id) {
@@ -704,6 +779,7 @@ router.get('/organizations/:id/tasks/:taskId/images/:imageId/file', async (req, 
     return res.status(403).end();
   }
   if (!fs.existsSync(full)) return res.status(404).end();
+  if (await maybeSendConvertedPreview(req, res, full, safeName)) return;
   res.setHeader('Content-Type', taskAttachmentContentType(safeName));
   res.setHeader('Cache-Control', 'private, no-cache');
   res.sendFile(full);
@@ -829,6 +905,7 @@ router.get(
       return res.status(403).end();
     }
     if (!fs.existsSync(full)) return res.status(404).end();
+    if (await maybeSendConvertedPreview(req, res, full, safeName)) return;
     res.setHeader('Content-Type', taskAttachmentContentType(safeName));
     res.setHeader('Cache-Control', 'private, no-cache');
     res.sendFile(full);

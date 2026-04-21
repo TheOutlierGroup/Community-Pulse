@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import api from '../../services/api.js';
 import { useToast } from '../shared/ToastProvider.jsx';
 import AuthenticatedBlobImage from './AuthenticatedBlobImage.jsx';
@@ -21,23 +22,87 @@ import {
   X,
 } from 'lucide-react';
 
+function parseAttachmentFilename(headers) {
+  const disposition = String(headers?.['content-disposition'] || '');
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].replace(/^["']|["']$/g, ''));
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const basicMatch = disposition.match(/filename="?([^"]+)"?/i);
+  return basicMatch?.[1] || '';
+}
+
+function prettyAttachmentType(mimeType) {
+  if (!mimeType) return 'file';
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType === 'application/pdf') return 'PDF document';
+  if (mimeType === 'application/msword') return 'Word document';
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'Word document';
+  if (mimeType === 'application/vnd.ms-excel') return 'Excel spreadsheet';
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'Excel spreadsheet';
+  return mimeType;
+}
+
+function canPreviewAsOfficeDocument(mimeType) {
+  return mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
+function canPreviewAsSpreadsheet(mimeType) {
+  return (
+    mimeType === 'application/vnd.ms-excel' ||
+    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+}
+
+function isLegacyWordDocument(mimeType) {
+  return mimeType === 'application/msword';
+}
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function AuthenticatedAttachmentViewer({ path, label }) {
   const [src, setSrc] = useState(null);
+  const [blob, setBlob] = useState(null);
   const [mimeType, setMimeType] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [inlineHtml, setInlineHtml] = useState('');
+  const [inlineError, setInlineError] = useState('');
+  const [legacyDocStatus, setLegacyDocStatus] = useState('idle');
   const [error, setError] = useState('');
   const urlRef = useRef(null);
 
   useEffect(() => {
     if (!path) {
       setSrc(null);
+      setBlob(null);
       setMimeType('');
+      setFileName('');
+      setInlineHtml('');
+      setInlineError('');
+      setLegacyDocStatus('idle');
       setError('');
       return;
     }
     let cancelled = false;
     setError('');
     setSrc(null);
+    setBlob(null);
     setMimeType('');
+    setFileName('');
+    setInlineHtml('');
+    setInlineError('');
+    setLegacyDocStatus('idle');
 
     api
       .get(path, { responseType: 'blob' })
@@ -52,6 +117,8 @@ function AuthenticatedAttachmentViewer({ path, label }) {
         if (urlRef.current) URL.revokeObjectURL(urlRef.current);
         urlRef.current = objectUrl;
         setMimeType(contentType);
+        setFileName(parseAttachmentFilename(res.headers));
+        setBlob(res.data);
         setSrc(objectUrl);
       })
       .catch(() => {
@@ -67,18 +134,163 @@ function AuthenticatedAttachmentViewer({ path, label }) {
     };
   }, [path]);
 
+  useEffect(() => {
+    if (!src || !path || !isLegacyWordDocument(mimeType)) return undefined;
+    let cancelled = false;
+    setLegacyDocStatus('loading');
+
+    api
+      .get(`${path}?preview=pdf`, { responseType: 'blob' })
+      .then((res) => {
+        if (cancelled || res.status !== 200 || !(res.data instanceof Blob)) return;
+        const contentType = String(res.headers?.['content-type'] || res.data.type || '').toLowerCase();
+        if (contentType !== 'application/pdf') {
+          if (!cancelled) setLegacyDocStatus('failed');
+          return;
+        }
+        const objectUrl = URL.createObjectURL(res.data);
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+        urlRef.current = objectUrl;
+        setMimeType('application/pdf');
+        setBlob(res.data);
+        setLegacyDocStatus('ready');
+        setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setLegacyDocStatus('failed');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mimeType, path, src]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!blob || !mimeType) {
+      setInlineHtml('');
+      setInlineError('');
+      return;
+    }
+
+    if (canPreviewAsOfficeDocument(mimeType)) {
+      setInlineHtml('');
+      setInlineError('');
+      (async () => {
+        try {
+          const { convertToHtml } = await import('mammoth');
+          const arrayBuffer = await blob.arrayBuffer();
+          const result = await convertToHtml({ arrayBuffer });
+          if (cancelled) return;
+          const safeHtml = DOMPurify.sanitize(result.value || '');
+          setInlineHtml(safeHtml);
+        } catch {
+          if (!cancelled) setInlineError('Could not render this Word document in-app.');
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (canPreviewAsSpreadsheet(mimeType)) {
+      setInlineHtml('');
+      setInlineError('');
+      (async () => {
+        try {
+          const XLSX = await import('xlsx');
+          const arrayBuffer = await blob.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const sheetNames = workbook.SheetNames.slice(0, 3);
+          const html = sheetNames
+            .map((sheetName, idx) => {
+              const sheet = workbook.Sheets[sheetName];
+              const tableHtml = XLSX.utils.sheet_to_html(sheet, { id: `attachment-sheet-${idx + 1}` });
+              return `
+                <section class="task-card-modal__doc-sheet">
+                  <h3>${escapeHtml(sheetName)}</h3>
+                  ${tableHtml}
+                </section>
+              `;
+            })
+            .join('');
+          if (cancelled) return;
+          const safeHtml = DOMPurify.sanitize(html);
+          setInlineHtml(safeHtml);
+        } catch {
+          if (!cancelled) setInlineError('Could not render this spreadsheet in-app.');
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setInlineHtml('');
+    setInlineError('');
+    return () => {
+      cancelled = true;
+    };
+  }, [blob, mimeType]);
+
   if (error) return <p className="error">{error}</p>;
   if (!src) return <p className="muted">Loading attachment…</p>;
   if (mimeType.startsWith('image/')) {
     return <img src={src} alt={label} className="task-card-modal__image-preview-img" />;
   }
+  if (mimeType === 'application/pdf') {
+    return (
+      <div className="task-card-modal__attachment-preview-wrap">
+        <iframe title={label} src={src} className="task-card-modal__attachment-preview-frame" />
+        <a href={src} download={fileName || undefined} className="task-card-modal__file-hint task-card-modal__file-hint--preview-download">
+          <FileText size={16} strokeWidth={1.75} aria-hidden /> Download PDF
+        </a>
+      </div>
+    );
+  }
+  if (isLegacyWordDocument(mimeType) && legacyDocStatus === 'loading') {
+    return (
+      <div className="task-card-modal__attachment-preview-wrap">
+        <p className="muted">Preparing Word preview…</p>
+        <a href={src} download={fileName || undefined} className="task-card-modal__file-hint task-card-modal__file-hint--preview-download">
+          <FileText size={16} strokeWidth={1.75} aria-hidden /> Download attachment
+        </a>
+      </div>
+    );
+  }
+  if (canPreviewAsOfficeDocument(mimeType) || canPreviewAsSpreadsheet(mimeType)) {
+    return (
+      <div className="task-card-modal__attachment-preview-wrap">
+        {inlineError ? (
+          <p className="muted">{inlineError}</p>
+        ) : inlineHtml ? (
+          <div className="task-card-modal__doc-preview" dangerouslySetInnerHTML={{ __html: inlineHtml }} />
+        ) : (
+          <p className="muted">Preparing preview…</p>
+        )}
+        <a href={src} download={fileName || undefined} className="task-card-modal__file-hint task-card-modal__file-hint--preview-download">
+          <FileText size={16} strokeWidth={1.75} aria-hidden /> Download attachment
+        </a>
+      </div>
+    );
+  }
   return (
-    <div style={{ width: '100%' }}>
-      <iframe title={label} src={src} className="task-card-modal__image-preview-img" />
-      <p className="muted" style={{ marginTop: '0.6rem', marginBottom: 0, fontSize: '0.85rem' }}>
-        If your browser cannot preview this file, use download.
+    <div className="task-card-modal__attachment-fallback" role="status">
+      <div className="task-card-modal__attachment-fallback-icon" aria-hidden>
+        <FileText size={28} strokeWidth={1.6} />
+      </div>
+      <p className="task-card-modal__attachment-fallback-title">
+        {prettyAttachmentType(mimeType)} preview is not available in-app yet
       </p>
-      <a href={src} download className="task-card-modal__file-hint" style={{ display: 'inline-flex', marginTop: '0.45rem' }}>
+      <p className="muted task-card-modal__attachment-fallback-copy">
+        Use download to open it in the native app on your device.
+      </p>
+      <a href={src} download={fileName || undefined} className="task-card-modal__file-hint task-card-modal__file-hint--preview-download">
         <FileText size={16} strokeWidth={1.75} aria-hidden /> Download attachment
       </a>
     </div>

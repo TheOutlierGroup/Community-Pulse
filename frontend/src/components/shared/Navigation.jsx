@@ -213,11 +213,11 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     Team-Level View
                   </Link>
                   <Link
-                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine#manager-load-report`}
-                    className={pulseSectionLinkClass('manager-load-report')}
+                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine#sponsorship-analysis`}
+                    className={pulseSectionLinkClass('sponsorship-analysis')}
                   >
                     <Gauge size={20} strokeWidth={1.75} aria-hidden />
-                    Manager Load Report
+                    Sponsorship Analysis
                   </Link>
                 </>
               ) : (
