@@ -16,8 +16,6 @@ export default function ModalDialog({
     <div
       className="modal-backdrop"
       role="presentation"
-      onClick={onClose}
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div
         className={className}

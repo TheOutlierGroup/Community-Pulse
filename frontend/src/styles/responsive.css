@@ -880,6 +880,12 @@ a:hover {
   max-width: 560px;
 }
 
+.modal-dialog--pulse-template {
+  max-width: min(980px, 97vw);
+  min-height: min(78vh, 860px);
+  max-height: min(95vh, 1020px);
+}
+
 .modal-dialog--add-task,
 .modal-dialog--task-form {
   max-width: min(760px, 96vw);
@@ -3106,6 +3112,12 @@ input[type='range'] {
   line-height: 1.5;
   color: #172b4d;
   outline: none;
+}
+
+.pulse-template-editor .task-card-modal__rte-content .tiptap,
+.pulse-template-editor .task-card-modal__rte-content .ProseMirror {
+  min-height: 16rem;
+  max-height: 52vh;
 }
 
 .task-card-modal__rte-content .tiptap p,

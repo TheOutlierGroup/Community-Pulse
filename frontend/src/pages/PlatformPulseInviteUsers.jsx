@@ -708,6 +708,7 @@ export default function PlatformPulseInviteUsers() {
         title={templateModalAudience === 'manager' ? 'Manager email template' : 'Staff email template'}
         titleId="pulse-email-template-title"
         onClose={closeTemplateModal}
+        dialogClassName="modal-dialog--pulse-template"
       >
         {templateModalAudience ? (
           <form onSubmit={saveEmailTemplate} style={{ padding: '0 0 0.25rem' }}>
@@ -726,11 +727,13 @@ export default function PlatformPulseInviteUsers() {
             </div>
             <div className="field">
               <label>Body</label>
-              <EmailTemplateRichEditor
-                value={editingTemplateBodyHtml}
-                onChange={setEditingTemplateBodyHtml}
-                disabled={templateSaving}
-              />
+              <div className="pulse-template-editor">
+                <EmailTemplateRichEditor
+                  value={editingTemplateBodyHtml}
+                  onChange={setEditingTemplateBodyHtml}
+                  disabled={templateSaving}
+                />
+              </div>
               <p className="muted" style={{ marginTop: '0.45rem' }}>
                 Use placeholders: <code>{'{{name}}'}</code> and <code>{'{{link}}'}</code>.
               </p>
