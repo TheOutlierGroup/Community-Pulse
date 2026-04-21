@@ -7,7 +7,10 @@ import { Building2, Sparkles } from 'lucide-react';
 import {
   CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
-  CLIENT_STATUS_OPTIONS,
+  CLIENT_STATUS_PARENT_OPTIONS,
+  clientStatusParent,
+  clientStatusSubOptions,
+  composeClientStatus,
   normalizeServices,
   normalizeClientStatus,
 } from './platformClientUtils.js';
@@ -53,8 +56,13 @@ export default function PlatformClientAccount() {
   const { org, orgId, refreshOrg, clientLogoUrl, bumpClientLogo } = useOutletContext();
   const { showToast } = useToast();
   const logoInputRef = useRef(null);
+  const initialStatus = normalizeClientStatus(org.client_status);
+  const initialStatusParent = clientStatusParent(initialStatus);
   const [editName, setEditName] = useState(org.name);
-  const [clientStatus, setClientStatus] = useState(() => normalizeClientStatus(org.client_status));
+  const [clientStatusParentId, setClientStatusParentId] = useState(initialStatusParent);
+  const [clientStatusSubId, setClientStatusSubId] = useState(() =>
+    composeClientStatus(initialStatusParent, initialStatus)
+  );
   const [address, setAddress] = useState(() => readCompanyAddress(org.settings));
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [selectedServices, setSelectedServices] = useState(() => normalizeServices(org.settings));
@@ -63,10 +71,15 @@ export default function PlatformClientAccount() {
   const [otherServiceDisplayValue, setOtherServiceDisplayValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const clientStatusSubStatusOptions = clientStatusSubOptions(clientStatusParentId);
+  const showClientSubStatus = clientStatusSubStatusOptions.length > 1;
 
   useEffect(() => {
+    const normalizedStatus = normalizeClientStatus(org.client_status);
+    const nextParentId = clientStatusParent(normalizedStatus);
     setEditName(org.name);
-    setClientStatus(normalizeClientStatus(org.client_status));
+    setClientStatusParentId(nextParentId);
+    setClientStatusSubId(composeClientStatus(nextParentId, normalizedStatus));
     setAddress(readCompanyAddress(org.settings));
     setSelectedServices(normalizeServices(org.settings));
     setGroupLevels(readGroupLevels(org.settings));
@@ -172,11 +185,12 @@ export default function PlatformClientAccount() {
 
   async function saveClientStatus(e) {
     e.preventDefault();
+    const nextStatus = composeClientStatus(clientStatusParentId, clientStatusSubId);
     setBusy(true);
     setError('');
     try {
       await api.patch(`/api/platform/organizations/${orgId}`, {
-        clientStatus: clientStatus,
+        clientStatus: nextStatus,
       });
       await refreshOrg();
       showToast('Client status saved.', { variant: 'success' });
@@ -309,20 +323,42 @@ export default function PlatformClientAccount() {
             style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}
           >
             <div className="field">
-              <label htmlFor="acct-client-status">Client status</label>
+              <label htmlFor="acct-client-status-parent">Client status</label>
               <select
-                id="acct-client-status"
-                value={clientStatus}
-                onChange={(e) => setClientStatus(normalizeClientStatus(e.target.value))}
+                id="acct-client-status-parent"
+                value={clientStatusParentId}
+                onChange={(e) => {
+                  const nextParentId = e.target.value;
+                  const nextOptions = clientStatusSubOptions(nextParentId);
+                  setClientStatusParentId(nextParentId);
+                  setClientStatusSubId(nextOptions[0]?.id || '');
+                }}
                 disabled={busy}
               >
-                {CLIENT_STATUS_OPTIONS.map((option) => (
+                {CLIENT_STATUS_PARENT_OPTIONS.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
                 ))}
               </select>
             </div>
+            {showClientSubStatus ? (
+              <div className="field">
+                <label htmlFor="acct-client-status-sub">Sub status</label>
+                <select
+                  id="acct-client-status-sub"
+                  value={composeClientStatus(clientStatusParentId, clientStatusSubId)}
+                  onChange={(e) => setClientStatusSubId(normalizeClientStatus(e.target.value))}
+                  disabled={busy}
+                >
+                  {clientStatusSubStatusOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <button type="submit" className="btn btn-ghost" disabled={busy}>
               Save status
             </button>

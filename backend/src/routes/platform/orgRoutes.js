@@ -156,7 +156,22 @@ function resolvePulseAppBaseUrl() {
 }
 
 const CLIENT_FIRST_ADMIN_WELCOME_RESET_MS = 7 * 24 * 60 * 60 * 1000;
-const CLIENT_STATUSES = new Set(['lead', 'active', 'inactive', 'closed']);
+const CLIENT_STATUSES = new Set([
+  'client-current',
+  'client-previous',
+  'prospect-warm',
+  'prospect-cold',
+  'prospect-lost',
+  'prospect-new',
+  'prospect-active-campaign',
+  'do-not-call-contact-blocked',
+]);
+const CLIENT_STATUS_LEGACY_MAP = new Map([
+  ['lead', 'prospect-new'],
+  ['active', 'client-current'],
+  ['inactive', 'client-previous'],
+  ['closed', 'do-not-call-contact-blocked'],
+]);
 const PULSE_INVITE_TEMPLATE_AUDIENCES = new Set(['staff', 'manager']);
 
 function pulseInviteTemplateFromSettings(settings, audience, organizationName) {
@@ -187,9 +202,10 @@ function parseMultipartBool(v) {
 }
 
 function normalizeClientStatus(value) {
-  const status = String(value || '')
+  const raw = String(value || '')
     .trim()
     .toLowerCase();
+  const status = CLIENT_STATUS_LEGACY_MAP.get(raw) || raw;
   if (!CLIENT_STATUSES.has(status)) return null;
   return status;
 }
@@ -356,7 +372,10 @@ export function registerPlatformOrgRoutes(router) {
     if (clientStatus !== undefined) {
       normalizedClientStatus = normalizeClientStatus(clientStatus);
       if (!normalizedClientStatus) {
-        return res.status(400).json({ error: 'clientStatus must be one of: lead, active, inactive, closed' });
+        return res.status(400).json({
+          error:
+            'clientStatus must be one of: client-current, client-previous, prospect-warm, prospect-cold, prospect-lost, prospect-new, prospect-active-campaign, do-not-call-contact-blocked',
+        });
       }
     }
     let settingsPatch = settings;

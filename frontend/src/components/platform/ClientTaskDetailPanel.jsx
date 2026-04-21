@@ -21,6 +21,70 @@ import {
   X,
 } from 'lucide-react';
 
+function AuthenticatedAttachmentViewer({ path, label }) {
+  const [src, setSrc] = useState(null);
+  const [mimeType, setMimeType] = useState('');
+  const [error, setError] = useState('');
+  const urlRef = useRef(null);
+
+  useEffect(() => {
+    if (!path) {
+      setSrc(null);
+      setMimeType('');
+      setError('');
+      return;
+    }
+    let cancelled = false;
+    setError('');
+    setSrc(null);
+    setMimeType('');
+
+    api
+      .get(path, { responseType: 'blob' })
+      .then((res) => {
+        if (cancelled || res.status !== 200 || !(res.data instanceof Blob)) return;
+        const contentType = String(res.headers?.['content-type'] || res.data.type || '').toLowerCase();
+        const objectUrl = URL.createObjectURL(res.data);
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+        urlRef.current = objectUrl;
+        setMimeType(contentType);
+        setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load this attachment.');
+      });
+
+    return () => {
+      cancelled = true;
+      if (urlRef.current) {
+        URL.revokeObjectURL(urlRef.current);
+        urlRef.current = null;
+      }
+    };
+  }, [path]);
+
+  if (error) return <p className="error">{error}</p>;
+  if (!src) return <p className="muted">Loading attachment…</p>;
+  if (mimeType.startsWith('image/')) {
+    return <img src={src} alt={label} className="task-card-modal__image-preview-img" />;
+  }
+  return (
+    <div style={{ width: '100%' }}>
+      <iframe title={label} src={src} className="task-card-modal__image-preview-img" />
+      <p className="muted" style={{ marginTop: '0.6rem', marginBottom: 0, fontSize: '0.85rem' }}>
+        If your browser cannot preview this file, use download.
+      </p>
+      <a href={src} download className="task-card-modal__file-hint" style={{ display: 'inline-flex', marginTop: '0.45rem' }}>
+        <FileText size={16} strokeWidth={1.75} aria-hidden /> Download attachment
+      </a>
+    </div>
+  );
+}
+
 function userLabel(u) {
   if (!u) return '';
   const n = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
@@ -156,7 +220,7 @@ export default function ClientTaskDetailPanel({
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [watchBusy, setWatchBusy] = useState(false);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [attachmentPreview, setAttachmentPreview] = useState(null);
 
   const listRef = useRef(null);
   const moreRef = useRef(null);
@@ -188,15 +252,15 @@ export default function ClientTaskDetailPanel({
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (imagePreview) {
-        setImagePreview(null);
+      if (attachmentPreview) {
+        setAttachmentPreview(null);
         return;
       }
       onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, imagePreview]);
+  }, [onClose, attachmentPreview]);
 
   useClickOutside(listRef, listOpen, () => setListOpen(false));
   useClickOutside(moreRef, moreOpen, () => setMoreOpen(false));
@@ -359,8 +423,8 @@ export default function ClientTaskDetailPanel({
     }
   }
 
-  function openImagePreview(path, label) {
-    setImagePreview({ path, label: label || 'Attachment preview' });
+  function openAttachmentPreview(path, label) {
+    setAttachmentPreview({ path, label: label || 'Attachment preview' });
   }
 
   async function confirmDeleteTask() {
@@ -1019,20 +1083,20 @@ export default function ClientTaskDetailPanel({
                             <button
                               type="button"
                               className="task-card-modal__image-open-btn"
-                              onClick={() => openImagePreview(taskImagePath(orgId, taskId, im.id), 'Task attachment')}
+                              onClick={() => openAttachmentPreview(taskImagePath(orgId, taskId, im.id), 'Task attachment')}
                               aria-label="Open attachment image"
                             >
                               <AuthenticatedBlobImage path={taskImagePath(orgId, taskId, im.id)} alt="" className="task-card-modal__image-img" />
                             </button>
                           ) : (
-                            <a
-                              href={taskImagePath(orgId, taskId, im.id)}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              type="button"
                               className="task-card-modal__file-hint"
+                              onClick={() => openAttachmentPreview(taskImagePath(orgId, taskId, im.id), 'Task attachment')}
+                              style={{ border: 0, background: 'none', padding: 0, textAlign: 'left', cursor: 'pointer' }}
                             >
                               <FileText size={16} strokeWidth={1.75} aria-hidden /> {attachmentLabel(im.isImage)}
-                            </a>
+                            </button>
                           )}
                           {im.canDelete ? (
                             <button
@@ -1126,7 +1190,7 @@ export default function ClientTaskDetailPanel({
                                       type="button"
                                       className="task-card-modal__image-open-btn"
                                       onClick={() =>
-                                        openImagePreview(
+                                        openAttachmentPreview(
                                           commentImagePath(orgId, taskId, c.id, im.id),
                                           'Comment attachment'
                                         )
@@ -1140,14 +1204,19 @@ export default function ClientTaskDetailPanel({
                                       />
                                     </button>
                                   ) : (
-                                    <a
-                                      href={commentImagePath(orgId, taskId, c.id, im.id)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <button
+                                      type="button"
                                       className="task-card-modal__file-hint"
+                                      onClick={() =>
+                                        openAttachmentPreview(
+                                          commentImagePath(orgId, taskId, c.id, im.id),
+                                          'Comment attachment'
+                                        )
+                                      }
+                                      style={{ border: 0, background: 'none', padding: 0, textAlign: 'left', cursor: 'pointer' }}
                                     >
                                       <FileText size={16} strokeWidth={1.75} aria-hidden /> {attachmentLabel(im.isImage)}
-                                    </a>
+                                    </button>
                                   )}
                                   {im.canDelete ? (
                                     <button
@@ -1173,32 +1242,28 @@ export default function ClientTaskDetailPanel({
           )}
         </div>
       </div>
-      {imagePreview ? (
+      {attachmentPreview ? (
         <div
           className="task-card-modal__image-preview-backdrop"
           role="presentation"
-          onClick={() => setImagePreview(null)}
+          onClick={() => setAttachmentPreview(null)}
         >
           <div
             className="task-card-modal__image-preview"
             role="dialog"
             aria-modal="true"
-            aria-label={imagePreview.label}
+            aria-label={attachmentPreview.label}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               className="task-card-modal__icon-btn task-card-modal__image-preview-close"
-              onClick={() => setImagePreview(null)}
+              onClick={() => setAttachmentPreview(null)}
               aria-label="Close preview"
             >
               <X size={20} strokeWidth={2} aria-hidden />
             </button>
-            <AuthenticatedBlobImage
-              path={imagePreview.path}
-              alt={imagePreview.label}
-              className="task-card-modal__image-preview-img"
-            />
+            <AuthenticatedAttachmentViewer path={attachmentPreview.path} label={attachmentPreview.label} />
           </div>
         </div>
       ) : null}

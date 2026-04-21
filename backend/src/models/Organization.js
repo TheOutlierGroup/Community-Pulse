@@ -4,7 +4,7 @@ export async function createOrganization(
   name,
   settings = {},
   kind = 'client',
-  clientStatus = kind === 'client' ? 'lead' : 'active'
+  clientStatus = kind === 'client' ? 'prospect-new' : 'active'
 ) {
   const { rows } = await query(
     `INSERT INTO organizations (name, settings, kind, client_status) VALUES ($1, $2, $3, $4) RETURNING *`,
