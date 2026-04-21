@@ -16,6 +16,7 @@ import {
   Plus,
   Type,
 } from 'lucide-react';
+import { mentionUserHandle } from '../../utils/taskMentions.js';
 
 const PURIFY_COMMENT = {
   ALLOWED_TAGS: [
@@ -89,12 +90,12 @@ function createMentionSuggestion(userOptions) {
     char: '@',
     items: ({ query }) => filteredUsers(query),
     command: ({ editor, range, props }) => {
-      const email = String(props?.email || '').trim();
-      if (!email) return;
+      const handle = String(mentionUserHandle(props) || '').trim();
+      if (!handle) return;
       editor
         .chain()
         .focus()
-        .insertContentAt(range, `@${email} `)
+        .insertContentAt(range, `@${handle} `)
         .run();
     },
     render: () => {

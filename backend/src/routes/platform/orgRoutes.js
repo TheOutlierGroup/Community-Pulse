@@ -17,7 +17,16 @@ import {
   sendPlatformWelcomeEmail,
   sendPulseInviteEmail,
 } from '../../services/email.js';
-import { classifyQuadrant, DIMENSIONS, READINESS_THRESHOLD, scoreResponseFromSteps } from '../../services/pulseEngine.js';
+import {
+  classifyQuadrant,
+  classifySponsorshipChainState,
+  DIMENSIONS,
+  READINESS_THRESHOLD,
+  scoreBandForSponsorshipLoad,
+  scoreResponseFromSteps,
+  SPONSORSHIP_LOAD_BAND_DEFAULTS,
+  SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD,
+} from '../../services/pulseEngine.js';
 import {
   assertClientOrganizationPlatformForUser,
   assertClientUserInOrg,
@@ -36,6 +45,7 @@ import {
 } from '../../services/pulseDashboardScope.js';
 import {
   buildDimensionFloorAlerts,
+  buildSponsorshipSectionSignals,
   buildSponsorshipDecliningAlert,
   buildTeamOutlierAlerts,
   buildThresholdCrossingAlerts,
@@ -95,6 +105,63 @@ function quadrantLabel(adoption, sponsorship) {
 function scoreDelta(current, previous) {
   if (current == null || previous == null) return null;
   return round1(current - previous);
+}
+
+function sponsorshipConfigFromOrgSettings(settings) {
+  const source =
+    settings?.sponsorshipAnalysisConfig && typeof settings.sponsorshipAnalysisConfig === 'object'
+      ? settings.sponsorshipAnalysisConfig
+      : {};
+  const receivedThreshold = Number(source.receivedThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD);
+  const capacityThreshold = Number(source.capacityThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD);
+  const boundaries =
+    source.loadBandBoundaries && typeof source.loadBandBoundaries === 'object'
+      ? source.loadBandBoundaries
+      : {};
+  const loadBandBoundaries = {
+    sustainableMin: Number(boundaries.sustainableMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.sustainableMin),
+    stretchedMin: Number(boundaries.stretchedMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.stretchedMin),
+    atCapacityMin: Number(boundaries.atCapacityMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.atCapacityMin),
+  };
+  const teamTableDisplayLimit = Number(source.teamTableDisplayLimit ?? 5);
+  const aiSignalsEnabled = source.aiSignalsEnabled !== false;
+  return {
+    receivedThreshold,
+    capacityThreshold,
+    loadBandBoundaries,
+    teamTableDisplayLimit:
+      Number.isInteger(teamTableDisplayLimit) && teamTableDisplayLimit > 0
+        ? teamTableDisplayLimit
+        : 5,
+    aiSignalsEnabled,
+  };
+}
+
+function sponsorshipLoadBandOrder() {
+  return ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
+}
+
+function sponsorshipChainStateOrder() {
+  return [
+    'Chain Functioning',
+    'Breaking at Manager Level',
+    'Managers Resilient, Under-Supported',
+    'Sponsorship Failed at Both Levels',
+  ];
+}
+
+function chainSeverityRank(chainState) {
+  if (chainState === 'Sponsorship Failed at Both Levels') return 4;
+  if (chainState === 'Managers Resilient, Under-Supported') return 3;
+  if (chainState === 'Breaking at Manager Level') return 2;
+  return 1;
+}
+
+function loadSeverityRank(loadBand) {
+  if (loadBand === 'Overloaded') return 4;
+  if (loadBand === 'At Capacity') return 3;
+  if (loadBand === 'Stretched') return 2;
+  return 1;
 }
 
 function pulseSessionTimepointKind(session) {
@@ -1066,6 +1133,307 @@ export function registerPlatformOrgRoutes(router) {
       };
     });
 
+    const sponsorshipConfig = sponsorshipConfigFromOrgSettings(org.settings);
+    const managerInviteMap = new Map(managerOptions.map((row) => [row.id, row]));
+    const managerSelfMetrics = completedManagerRows
+      .map((row) => {
+        const scored = responseScoresOutOf40(row);
+        if (!scored.valid) return null;
+        const managerId = row?.invite_id || null;
+        if (!managerId) return null;
+        const managerProfile = managerInviteMap.get(managerId) || null;
+        const receivedScore = scored.sponsorshipReceivedScore;
+        const capacityScore = scored.sponsorshipCapacityScore;
+        const loadScore = scored.sponsorshipLoadScore;
+        if (receivedScore == null || capacityScore == null || loadScore == null) return null;
+        const loadBand = scoreBandForSponsorshipLoad(loadScore, sponsorshipConfig.loadBandBoundaries);
+        const chainState = classifySponsorshipChainState(receivedScore, capacityScore, {
+          receivedThreshold: sponsorshipConfig.receivedThreshold,
+          capacityThreshold: sponsorshipConfig.capacityThreshold,
+        });
+        return {
+          managerId,
+          managerName: managerProfile?.displayName || managerProfile?.email || null,
+          managerEmail: managerProfile?.email || null,
+          receivedScore,
+          capacityScore,
+          loadScore,
+          loadBand,
+          chainState,
+        };
+      })
+      .filter(Boolean);
+
+    const managerRespondentCount = managerSelfMetrics.length;
+    const receivedAvg =
+      managerRespondentCount > 0
+        ? round1(
+            managerSelfMetrics.reduce((sum, row) => sum + row.receivedScore, 0) / managerRespondentCount
+          )
+        : null;
+    const capacityAvg =
+      managerRespondentCount > 0
+        ? round1(
+            managerSelfMetrics.reduce((sum, row) => sum + row.capacityScore, 0) / managerRespondentCount
+          )
+        : null;
+    const receivedThresholdStatus =
+      receivedAvg != null && receivedAvg >= sponsorshipConfig.receivedThreshold
+        ? 'Above Threshold'
+        : 'Below Threshold';
+    const capacityThresholdStatus =
+      capacityAvg != null && capacityAvg >= sponsorshipConfig.capacityThreshold
+        ? 'Above Threshold'
+        : 'Below Threshold';
+
+    const loadBandNamesV3 = sponsorshipLoadBandOrder();
+    const loadBandCountsV3 = Object.fromEntries(loadBandNamesV3.map((name) => [name, 0]));
+    for (const row of managerSelfMetrics) {
+      loadBandCountsV3[row.loadBand] += 1;
+    }
+    const loadBandPercentsV3 = calculateLargestRemainderPercentages(
+      loadBandNamesV3.map((name) => loadBandCountsV3[name] || 0)
+    );
+    const loadBandsV3 = loadBandNamesV3.map((name, idx) => ({
+      name,
+      count: loadBandCountsV3[name] || 0,
+      percent: loadBandPercentsV3[idx] || 0,
+    }));
+
+    const chainStateNames = sponsorshipChainStateOrder();
+    const chainStateCounts = Object.fromEntries(chainStateNames.map((name) => [name, 0]));
+    for (const row of managerSelfMetrics) {
+      chainStateCounts[row.chainState] += 1;
+    }
+    const chainStatePercents = calculateLargestRemainderPercentages(
+      chainStateNames.map((name) => chainStateCounts[name] || 0)
+    );
+    const chainStates = chainStateNames.map((name, idx) => ({
+      name,
+      count: chainStateCounts[name] || 0,
+      percent: chainStatePercents[idx] || 0,
+    }));
+    const chainMajority = [...chainStates].sort((a, b) => b.percent - a.percent)[0] || null;
+
+    const matrixSeverityClass = (loadBand, chainState) => {
+      if (loadBand === 'Sustainable' && chainState === 'Chain Functioning') return 'cx0';
+      if (
+        (loadBand === 'Sustainable' && chainState !== 'Chain Functioning')
+        || (loadBand === 'Stretched' && chainState === 'Chain Functioning')
+      ) return 'cx1';
+      if (
+        loadBand === 'Stretched'
+        && (chainState === 'Breaking at Manager Level' || chainState === 'Managers Resilient, Under-Supported')
+      ) return 'cx2';
+      if (
+        (loadBand === 'Stretched' && chainState === 'Sponsorship Failed at Both Levels')
+        || (loadBand === 'At Capacity'
+          && (chainState === 'Breaking at Manager Level' || chainState === 'Managers Resilient, Under-Supported'))
+      ) return 'cx3';
+      if (
+        (loadBand === 'At Capacity' && chainState === 'Sponsorship Failed at Both Levels')
+        || (loadBand === 'Overloaded' && chainState === 'Managers Resilient, Under-Supported')
+      ) return 'cx4';
+      if (loadBand === 'Overloaded' && chainState === 'Sponsorship Failed at Both Levels') return 'cx5';
+      return 'cx3';
+    };
+
+    const matrixRowOrder = loadBandNamesV3;
+    const matrixColOrder = chainStateNames;
+    const matrixCountMap = new Map();
+    for (const row of managerSelfMetrics) {
+      const key = `${row.loadBand}::${row.chainState}`;
+      matrixCountMap.set(key, (matrixCountMap.get(key) || 0) + 1);
+    }
+    const crossMatrixRows = matrixRowOrder.map((loadBand) => ({
+      loadBand,
+      cells: matrixColOrder.map((chainState) => {
+        const count = matrixCountMap.get(`${loadBand}::${chainState}`) || 0;
+        return {
+          chainState,
+          count,
+          className: matrixSeverityClass(loadBand, chainState),
+        };
+      }),
+    }));
+    const crossMatrixTotal = crossMatrixRows.reduce(
+      (sum, row) => sum + row.cells.reduce((rowSum, cell) => rowSum + (cell.count || 0), 0),
+      0
+    );
+
+    const managerMetricsByManagerId = managerSelfMetrics.reduce((acc, item) => {
+      if (!acc[item.managerId]) acc[item.managerId] = [];
+      acc[item.managerId].push(item);
+      return acc;
+    }, {});
+    const teamRows = Object.entries(managerMetricsByManagerId).map(([managerId, items]) => {
+      const manager = managerInviteMap.get(managerId) || {};
+      const chainTally = {};
+      const loadTally = {};
+      for (const item of items) {
+        chainTally[item.chainState] = (chainTally[item.chainState] || 0) + 1;
+        loadTally[item.loadBand] = (loadTally[item.loadBand] || 0) + 1;
+      }
+      const chainState = Object.keys(chainTally).sort((a, b) => {
+        if (chainTally[b] !== chainTally[a]) return chainTally[b] - chainTally[a];
+        return chainSeverityRank(b) - chainSeverityRank(a);
+      })[0] || 'Chain Functioning';
+      const loadBand = Object.keys(loadTally).sort((a, b) => {
+        if (loadTally[b] !== loadTally[a]) return loadTally[b] - loadTally[a];
+        return loadSeverityRank(b) - loadSeverityRank(a);
+      })[0] || 'Sustainable';
+      const receivedAvg1to5 = round1(
+        items.reduce((sum, item) => sum + item.receivedScore / 4, 0) / items.length
+      );
+      const capacityAvg1to5 = round1(
+        items.reduce((sum, item) => sum + item.capacityScore / 4, 0) / items.length
+      );
+      const managerBreakdown = byManager.find((row) => row.managerId === managerId) || null;
+      return {
+        teamName: manager.displayName || manager.email || managerId,
+        managerId,
+        responses: managerBreakdown?.directReportCompletedCount || 0,
+        chainState,
+        loadBand,
+        receivedAvg: receivedAvg1to5,
+        capacityAvg: capacityAvg1to5,
+      };
+    });
+    const sortedTeamRows = [...teamRows].sort((a, b) => {
+      const chainDiff = chainSeverityRank(b.chainState) - chainSeverityRank(a.chainState);
+      if (chainDiff !== 0) return chainDiff;
+      const loadDiff = loadSeverityRank(b.loadBand) - loadSeverityRank(a.loadBand);
+      if (loadDiff !== 0) return loadDiff;
+      return b.responses - a.responses;
+    });
+    const teamRowsLimited = sortedTeamRows.slice(0, sponsorshipConfig.teamTableDisplayLimit);
+
+    const failingBothPercent =
+      chainStates.find((state) => state.name === 'Sponsorship Failed at Both Levels')?.percent || 0;
+    const highRiskTeamCount = sortedTeamRows.filter(
+      (row) => row.chainState === 'Sponsorship Failed at Both Levels'
+    ).length;
+    const subScoresBelowThresholdPct =
+      managerRespondentCount > 0
+        ? round1(
+            ((managerSelfMetrics.filter(
+              (row) =>
+                row.receivedScore < sponsorshipConfig.receivedThreshold
+                || row.capacityScore < sponsorshipConfig.capacityThreshold
+            ).length
+              || 0)
+              / managerRespondentCount)
+            * 100
+          )
+        : 0;
+    const interventionRequired =
+      receivedAvg == null
+      || capacityAvg == null
+      || receivedAvg < sponsorshipConfig.receivedThreshold
+      || capacityAvg < sponsorshipConfig.capacityThreshold;
+
+    const verdictHeadline = interventionRequired
+      ? 'The sponsorship chain is not functioning.'
+      : 'The sponsorship chain is functioning.';
+    const verdictBody = interventionRequired
+      ? 'Managers are absorbing pressure from both directions — and the window to act is now.'
+      : 'Leaders are receiving support and have capacity to sponsor change through their teams.';
+
+    const sponsorshipSignals = buildSponsorshipSectionSignals({
+      subScores: {
+        received: { avg: receivedAvg, threshold: sponsorshipConfig.receivedThreshold },
+        capacity: { avg: capacityAvg, threshold: sponsorshipConfig.capacityThreshold },
+      },
+      load: { bands: loadBandsV3 },
+      chain: { states: chainStates },
+      crossMatrix: { rows: crossMatrixRows },
+      teams: { rows: sortedTeamRows },
+    });
+    const sponsorshipAnalysis = {
+      verdict: {
+        headline: verdictHeadline,
+        body: verdictBody,
+        badge: interventionRequired ? 'Intervention Required' : 'Monitoring',
+        interventionRequired,
+        provenance: `Based on ${managerRespondentCount} manager responses · Derived from MQ9-MQ16 · Threshold: ${sponsorshipConfig.receivedThreshold}/20 per sub-score`,
+        chips: [
+          { label: 'Sub-scores below threshold', value: `${Math.round(subScoresBelowThresholdPct)}%` },
+          { label: 'Chain failure', value: `${failingBothPercent}% of managers` },
+          { label: 'High-risk teams', value: `${highRiskTeamCount} teams identified` },
+        ],
+      },
+      config: {
+        receivedThreshold: sponsorshipConfig.receivedThreshold,
+        capacityThreshold: sponsorshipConfig.capacityThreshold,
+        loadBandBoundaries: sponsorshipConfig.loadBandBoundaries,
+        teamTableDisplayLimit: sponsorshipConfig.teamTableDisplayLimit,
+        aiSignalsEnabled: sponsorshipConfig.aiSignalsEnabled,
+      },
+      cohort: {
+        managerRespondentCount,
+      },
+      section1: {
+        cardLabel: 'Section 1 — Sponsorship Sub-Score Overview · Manager cohort only',
+        explainer:
+          'Breaks the overall Sponsorship Credibility score into two distinct constructs: what managers are receiving from senior leadership above them, and whether managers have the conditions to sponsor their own teams below.',
+        whatThisMeasures: {
+          received:
+            'Whether senior leaders are visibly modelling the change, staying present under pressure, communicating the rationale clearly, and speaking with one voice.',
+          capacity:
+            'Whether managers have the autonomy, organisational support, personal resilience, and change leadership skills to sponsor their own teams effectively.',
+        },
+        received: {
+          avg: receivedAvg,
+          denominator: 20,
+          questionRangeLabel: 'MQ9 — MQ12',
+          threshold: sponsorshipConfig.receivedThreshold,
+          status: receivedThresholdStatus,
+          trackPercent: receivedAvg == null ? 0 : round1((receivedAvg / 20) * 100),
+        },
+        capacity: {
+          avg: capacityAvg,
+          denominator: 20,
+          questionRangeLabel: 'MQ13 — MQ16',
+          threshold: sponsorshipConfig.capacityThreshold,
+          status: capacityThresholdStatus,
+          trackPercent: capacityAvg == null ? 0 : round1((capacityAvg / 20) * 100),
+        },
+      },
+      section2: {
+        cardLabel: `Section 2 — Manager Load Report · ${managerRespondentCount} manager respondents`,
+        explainer:
+          'Measures the current capacity of each manager to absorb and lead additional change — scored from four questions about their workload, bandwidth, and self-reported sustainable load.',
+        bands: loadBandsV3.map((band) => ({
+          ...band,
+          critical: band.name === 'Overloaded' && band.percent >= 10,
+        })),
+      },
+      section3: {
+        cardLabel: 'Section 3 — Sponsorship Chain Matrix · % of managers per quadrant',
+        explainer:
+          'Classifies each manager respondent into one of four sponsorship chain states by crossing whether they are receiving adequate senior sponsorship with whether they have the capacity to sponsor their own team.',
+        states: chainStates,
+        majorityState: chainMajority?.name || null,
+      },
+      section4: {
+        cardLabel: `Section 4 — Load Band × Chain State · Manager count (n=${managerRespondentCount})`,
+        explainer:
+          'Crosses manager capacity (load band) against sponsorship chain state to identify which specific managers are simultaneously overloaded and unsupported — the group where intervention is most urgent before any change program is launched.',
+        rows: crossMatrixRows,
+        columnOrder: matrixColOrder,
+        totalManagers: managerRespondentCount,
+        totalCellCount: crossMatrixTotal,
+      },
+      section5: {
+        cardLabel: `Section 5 — Team-Level Sponsorship Chain Breakdown · Showing ${teamRowsLimited.length} of ${sortedTeamRows.length} teams`,
+        explainer:
+          'Maps the sponsorship chain state to each team — distinguishing teams with local failure from those experiencing the broader organisational pattern, and identifying which teams require targeted pre-launch engagement.',
+        rows: teamRowsLimited,
+        totalRows: sortedTeamRows.length,
+      },
+      signals: sponsorshipConfig.aiSignalsEnabled ? sponsorshipSignals : null,
+    };
+
     const previousWaveAdoptionScore = trendRows.length >= 2 ? trendRows[1].adoptionScore : null;
     const previousWaveSponsorshipScore = trendRows.length >= 2 ? trendRows[1].sponsorshipScore : null;
     const adoptionDelta = scoreDelta(adoptionScore, previousWaveAdoptionScore);
@@ -1199,6 +1567,7 @@ export function registerPlatformOrgRoutes(router) {
         teamSuppressedManagerCount,
       },
       byManager,
+      sponsorshipAnalysis,
       alerts: prioritizedAlerts.alerts,
       alertsOverflowCount: prioritizedAlerts.overflowCount,
       narrative: soWhat,
@@ -1293,6 +1662,76 @@ export function registerPlatformOrgRoutes(router) {
       templates: pulseInviteTemplatesPayload(updated, platformOrg?.settings),
       placeholders: PULSE_INVITE_TEMPLATE_PLACEHOLDERS,
     });
+  });
+
+  router.post('/organizations/:id/pulse-link-invites/templates/send-test', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const audience = String(req.body?.audience || '')
+      .trim()
+      .toLowerCase();
+    if (!PULSE_INVITE_TEMPLATE_AUDIENCES.has(audience)) {
+      return res.status(400).json({ error: 'audience must be staff or manager' });
+    }
+    const subject = String(req.body?.subject || '').trim();
+    if (!subject) return res.status(400).json({ error: 'subject is required' });
+    if (subject.length > PULSE_INVITE_TEMPLATE_MAX_SUBJECT_LENGTH) {
+      return res.status(400).json({
+        error: `subject must be ${PULSE_INVITE_TEMPLATE_MAX_SUBJECT_LENGTH} characters or less`,
+      });
+    }
+
+    const bodyHtml = String(req.body?.bodyHtml || '').trim();
+    if (!bodyHtml) return res.status(400).json({ error: 'bodyHtml is required' });
+    if (bodyHtml.length > PULSE_INVITE_TEMPLATE_MAX_BODY_LENGTH) {
+      return res.status(400).json({
+        error: `bodyHtml is too long (max ${PULSE_INVITE_TEMPLATE_MAX_BODY_LENGTH} chars)`,
+      });
+    }
+
+    if (!isResendConfigured()) {
+      return res.status(503).json({
+        error: 'Email is not configured',
+        details: 'Add RESEND_API_KEY in the server environment (e.g. Render → Environment).',
+      });
+    }
+    const targetEmail = String(req.user?.email || '')
+      .trim()
+      .toLowerCase();
+    if (!targetEmail) {
+      return res.status(400).json({ error: 'Your account does not have an email address for test sends.' });
+    }
+    const displayName = [
+      req.user?.firstName,
+      req.user?.lastName,
+      req.user?.first_name,
+      req.user?.last_name,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' ');
+    const pulseBaseUrl = resolvePulseAppBaseUrl();
+    const testLink = pulseBaseUrl
+      ? `${pulseBaseUrl}/rhythm-engine/link/test-link`
+      : 'https://app.employeepulse.app/rhythm-engine/link/test-link';
+    try {
+      await sendPulseInviteEmail(targetEmail, displayName || 'Test recipient', testLink, org.name, {
+        audience,
+        subjectTemplate: subject,
+        bodyTemplateHtml: bodyHtml,
+        clientLogoFilename: org.company_logo_filename,
+        clientLogoAlt: org.name,
+      });
+    } catch (e) {
+      const details = String(e?.message || '').slice(0, 500);
+      return res.status(500).json({
+        error: 'Could not send test email',
+        details:
+          details ||
+          'Check RESEND_API_KEY, RESEND_FROM_EMAIL (or EMAIL_FROM) domain verification, and Resend logs.',
+      });
+    }
+    return res.json({ ok: true, to: targetEmail });
   });
 
   router.post('/organizations/:id/pulse-link-invites/import', async (req, res) => {
@@ -1426,6 +1865,8 @@ export function registerPlatformOrgRoutes(router) {
         audience,
         subjectTemplate: template.subject,
         bodyTemplateHtml: template.bodyHtml,
+        clientLogoFilename: org.company_logo_filename,
+        clientLogoAlt: org.name,
       });
     } catch (e) {
       console.error('Rhythm Engine link invite send failed:', e);

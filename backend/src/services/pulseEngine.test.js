@@ -31,6 +31,11 @@ test('manager scoring includes manager load and banding', () => {
   assert.equal(scored.quadrantCode, 'high_risk');
   assert.equal(scored.managerLoad, 4);
   assert.equal(scored.managerLoadBand, 'Overloaded');
+  assert.equal(scored.sponsorshipReceivedScore, 4);
+  assert.equal(scored.sponsorshipCapacityScore, 4);
+  assert.equal(scored.sponsorshipLoadScore, 2);
+  assert.equal(scored.sponsorshipLoadBand, 'Overloaded');
+  assert.equal(scored.sponsorshipChainState, 'Sponsorship Failed at Both Levels');
 });
 
 test('manager load band boundaries follow doc mapping', () => {
@@ -100,4 +105,12 @@ test('load band boundaries are correct for stretched and at_capacity', () => {
   const scoredAtCap = computeSurveyScores({ audience: 'manager', answers: answersAtCap });
   assert.equal(scoredAtCap.managerLoad, 8);
   assert.equal(scoredAtCap.managerLoadBand, 'At Capacity');
+});
+
+test('manager sponsorship chain classification derives from received/capacity thresholds', () => {
+  const answers = answersWith('MQ', new Array(16).fill(5));
+  const scored = computeSurveyScores({ audience: 'manager', answers });
+  assert.equal(scored.sponsorshipReceivedScore, 20);
+  assert.equal(scored.sponsorshipCapacityScore, 20);
+  assert.equal(scored.sponsorshipChainState, 'Chain Functioning');
 });

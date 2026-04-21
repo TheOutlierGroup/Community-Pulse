@@ -1,4 +1,10 @@
 export const READINESS_THRESHOLD = 28;
+export const SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD = 14;
+export const SPONSORSHIP_LOAD_BAND_DEFAULTS = {
+  sustainableMin: 8,
+  stretchedMin: 6,
+  atCapacityMin: 4,
+};
 
 const DIMENSIONS = [
   {
@@ -332,6 +338,38 @@ function scoreBandForManagerLoad(load) {
   return 'Overloaded';
 }
 
+export function scoreBandForSponsorshipLoad(load, boundaries = SPONSORSHIP_LOAD_BAND_DEFAULTS) {
+  const sustainableMin = Number(boundaries?.sustainableMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.sustainableMin);
+  const stretchedMin = Number(boundaries?.stretchedMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.stretchedMin);
+  const atCapacityMin = Number(boundaries?.atCapacityMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.atCapacityMin);
+  if (load >= sustainableMin) return 'Sustainable';
+  if (load >= stretchedMin) return 'Stretched';
+  if (load >= atCapacityMin) return 'At Capacity';
+  return 'Overloaded';
+}
+
+export function classifySponsorshipChainState(
+  receivedScore,
+  capacityScore,
+  thresholds = {
+    receivedThreshold: SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD,
+    capacityThreshold: SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD,
+  }
+) {
+  const receivedThreshold = Number(
+    thresholds?.receivedThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD
+  );
+  const capacityThreshold = Number(
+    thresholds?.capacityThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD
+  );
+  const receivedHigh = receivedScore >= receivedThreshold;
+  const capacityHigh = capacityScore >= capacityThreshold;
+  if (receivedHigh && capacityHigh) return 'Chain Functioning';
+  if (receivedHigh && !capacityHigh) return 'Breaking at Manager Level';
+  if (!receivedHigh && capacityHigh) return 'Managers Resilient, Under-Supported';
+  return 'Sponsorship Failed at Both Levels';
+}
+
 function recommendationForQuadrant(quadrantCode) {
   if (quadrantCode === 'optimal') return 'Proceed. Conditions are strong.';
   if (quadrantCode === 'motivated_lost') return "Org ready; leaders won't carry it.";
@@ -403,6 +441,24 @@ export function computeSurveyScores({ audience, answers }) {
         parsed[answerIdForIndex('manager', 14)] +
         parsed[answerIdForIndex('manager', 15)]
       : null;
+  const sponsorshipReceivedScore =
+    normalizedAudience === 'manager'
+      ? parsed[answerIdForIndex('manager', 8)] +
+        parsed[answerIdForIndex('manager', 9)] +
+        parsed[answerIdForIndex('manager', 10)] +
+        parsed[answerIdForIndex('manager', 11)]
+      : null;
+  const sponsorshipCapacityScore =
+    normalizedAudience === 'manager'
+      ? parsed[answerIdForIndex('manager', 12)] +
+        parsed[answerIdForIndex('manager', 13)] +
+        parsed[answerIdForIndex('manager', 14)] +
+        parsed[answerIdForIndex('manager', 15)]
+      : null;
+  const sponsorshipLoadScore =
+    normalizedAudience === 'manager'
+      ? parsed[answerIdForIndex('manager', 14)] + parsed[answerIdForIndex('manager', 15)]
+      : null;
 
   const dimensions = DIMENSIONS.map((dim) => {
     const pair = normalizedAudience === 'manager' ? dim.managerQuestions : dim.employeeQuestions;
@@ -428,6 +484,15 @@ export function computeSurveyScores({ audience, answers }) {
     quadrantLabel: quadrant.label,
     managerLoad,
     managerLoadBand: managerLoad == null ? null : scoreBandForManagerLoad(managerLoad),
+    sponsorshipReceivedScore,
+    sponsorshipCapacityScore,
+    sponsorshipLoadScore,
+    sponsorshipLoadBand:
+      sponsorshipLoadScore == null ? null : scoreBandForSponsorshipLoad(sponsorshipLoadScore),
+    sponsorshipChainState:
+      sponsorshipReceivedScore == null || sponsorshipCapacityScore == null
+        ? null
+        : classifySponsorshipChainState(sponsorshipReceivedScore, sponsorshipCapacityScore),
     dimensions,
     recommendation: recommendationForQuadrant(quadrant.code),
   };

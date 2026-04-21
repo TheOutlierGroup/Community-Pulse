@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildSponsorshipSectionSignals,
   buildDimensionFloorAlerts,
   buildSponsorshipDecliningAlert,
   buildTeamOutlierAlerts,
@@ -141,4 +142,52 @@ test('dimension floor alerts skip null averages', () => {
   ];
   const alerts = buildDimensionFloorAlerts({ dimensions });
   assert.equal(alerts.length, 0);
+});
+
+test('sponsorship section signals are derived from computed metrics', () => {
+  const signals = buildSponsorshipSectionSignals({
+    subScores: {
+      received: { avg: 13.2, threshold: 14 },
+      capacity: { avg: 11.8, threshold: 14 },
+    },
+    load: {
+      bands: [
+        { name: 'Sustainable', percent: 18 },
+        { name: 'Stretched', percent: 41 },
+        { name: 'At Capacity', percent: 28 },
+        { name: 'Overloaded', percent: 13 },
+      ],
+    },
+    chain: {
+      states: [
+        { name: 'Chain Functioning', percent: 22 },
+        { name: 'Breaking at Manager Level', percent: 18 },
+        { name: 'Managers Resilient, Under-Supported', percent: 31 },
+        { name: 'Sponsorship Failed at Both Levels', percent: 29 },
+      ],
+    },
+    crossMatrix: {
+      rows: [
+        {
+          loadBand: 'Overloaded',
+          cells: [
+            { chainState: 'Chain Functioning', count: 0 },
+            { chainState: 'Breaking at Manager Level', count: 1 },
+            { chainState: 'Managers Resilient, Under-Supported', count: 3 },
+            { chainState: 'Sponsorship Failed at Both Levels', count: 4 },
+          ],
+        },
+      ],
+    },
+    teams: {
+      rows: [
+        { chainState: 'Sponsorship Failed at Both Levels', loadBand: 'Overloaded' },
+        { chainState: 'Breaking at Manager Level', loadBand: 'Stretched' },
+      ],
+    },
+  });
+  assert.equal(signals.load.variant, 'red');
+  assert.equal(signals.crossMatrix.variant, 'red');
+  assert.equal(signals.teams.variant, 'red');
+  assert.ok(signals.subScores.text.includes('13.2'));
 });

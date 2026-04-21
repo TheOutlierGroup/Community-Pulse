@@ -77,41 +77,6 @@ const QUADRANT_ORDER = [
 const ADOPTION_DIMENSIONS = ['1A', '1B', '1C', '1D'];
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 
-const SPONSORSHIP_BAND_DEFS = [
-  {
-    name: 'Sponsor Ready',
-    min: 32,
-    color: 'var(--pulse-green)',
-    tint: 'var(--pulse-green-dim)',
-    border: 'rgba(52, 211, 153, 0.22)',
-    note: 'Can actively sponsor and reinforce change behaviours.',
-  },
-  {
-    name: 'Developing',
-    min: 28,
-    color: 'var(--pulse-amber)',
-    tint: 'var(--pulse-amber-dim)',
-    border: 'rgba(245, 158, 11, 0.22)',
-    note: 'Near threshold. Needs targeted leader coaching support.',
-  },
-  {
-    name: 'Fragile',
-    min: 24,
-    color: 'var(--pulse-orange)',
-    tint: 'var(--pulse-orange-dim)',
-    border: 'rgba(251, 146, 60, 0.22)',
-    note: 'Inconsistent sponsorship signals across the team.',
-  },
-  {
-    name: 'Critical',
-    min: Number.NEGATIVE_INFINITY,
-    color: 'var(--pulse-red)',
-    tint: 'var(--pulse-red-dim)',
-    border: 'rgba(248, 113, 113, 0.22)',
-    note: 'High risk area. Stabilize sponsorship before launch.',
-  },
-];
-
 function sparkColor(loadBand) {
   if (loadBand === 'Sustainable') return 'var(--pulse-green)';
   if (loadBand === 'Overloaded') return 'var(--pulse-red)';
@@ -124,6 +89,13 @@ function quadrantPillClass(name) {
   if (name === 'Capable but Wary') return 'cw';
   if (name === 'Motivated but Lost') return 'ml';
   return 'hr';
+}
+
+function chainPillClass(name) {
+  if (name === 'Chain Functioning') return 'cp-fn';
+  if (name === 'Breaking at Manager Level') return 'cp-bm';
+  if (name === 'Managers Resilient, Under-Supported') return 'cp-ru';
+  return 'cp-fb';
 }
 
 function pause(ms) {
@@ -376,30 +348,8 @@ export default function PlatformClientPulse() {
   }));
   const activeDimensions = activeTab === 'employee' ? employeeDimensionRows : managerDimensionRows;
   const managerBreakdownRows = dashboard?.byManager || [];
-  const sponsorshipAnalysis = useMemo(() => {
-    const validRows = managerBreakdownRows.filter((row) => Number.isFinite(row?.sponsorshipScore));
-    const total = validRows.length;
-    const bands = SPONSORSHIP_BAND_DEFS.map((band) => ({ ...band, count: 0, percent: 0 }));
-    validRows.forEach((row) => {
-      const match = bands.find((band) => row.sponsorshipScore >= band.min);
-      if (match) match.count += 1;
-    });
-    bands.forEach((band) => {
-      band.percent = total > 0 ? (band.count / total) * 100 : 0;
-    });
-    const atOrAboveThresholdCount = validRows.filter((row) => row.sponsorshipScore >= threshold).length;
-    const belowThresholdCount = Math.max(0, total - atOrAboveThresholdCount);
-    const lowTailTeams = [...validRows]
-      .sort((a, b) => (a.sponsorshipScore ?? 0) - (b.sponsorshipScore ?? 0))
-      .slice(0, 3);
-    return {
-      total,
-      bands,
-      atOrAboveThresholdCount,
-      belowThresholdCount,
-      lowTailTeams,
-    };
-  }, [managerBreakdownRows, threshold]);
+  const sponsorshipView = dashboard?.sponsorshipAnalysis || null;
+  const sponsorshipSignals = sponsorshipView?.signals || {};
 
   const showSection = (sectionId) => pulseFocusedSection == null || pulseFocusedSection === sectionId;
 
@@ -615,56 +565,210 @@ export default function PlatformClientPulse() {
           </div>
           )}
 
-          {showSection('sponsorship-analysis') && (
-          <section className="pulse-prototype-card" id="sponsorship-analysis">
-            <div className="pulse-prototype-card__label accent">
-              Sponsorship Analysis · {sponsorshipAnalysis.total} comparable manager
-              {sponsorshipAnalysis.total === 1 ? '' : 's'}
-            </div>
-            <p className="muted" style={{ marginBottom: '0.75rem' }}>
-              {sponsorshipAnalysis.atOrAboveThresholdCount} at/above threshold ({threshold}/40) ·{' '}
-              {sponsorshipAnalysis.belowThresholdCount} below threshold.
-            </p>
-            <div className="pulse-prototype-sponsor-bar">
-              {sponsorshipAnalysis.bands.map((band) => (
-                <div
-                  key={band.name}
-                  className="pulse-prototype-sponsor-segment"
-                  style={{ flex: Math.max(band.percent || 0, 1), background: band.color }}
-                  title={`${band.name}: ${formatPercent(band.percent)}`}
-                />
-              ))}
-            </div>
-            <div className="pulse-prototype-sponsor-grid">
-              {sponsorshipAnalysis.bands.map((band) => (
-                <div
-                  key={band.name}
-                  className="pulse-prototype-sponsor-cell"
-                  style={{ background: band.tint, borderColor: band.border }}
-                >
-                  <div className="pulse-prototype-sponsor-cell__pct" style={{ color: band.color }}>
-                    {formatPercent(band.percent)}
-                  </div>
-                  <div className="pulse-prototype-sponsor-cell__name">{band.name}</div>
-                  <div className="pulse-prototype-sponsor-cell__desc">{band.note}</div>
+          {showSection('sponsorship-analysis') && sponsorshipView ? (
+          <section className="pulse-sa" id="sponsorship-analysis">
+            <div className="pulse-sa-verdict">
+              <div className="pulse-sa-verdict__meta">
+                Sponsorship Analysis · Manager Cohort · {todayLabel}
+              </div>
+              <div className="pulse-sa-verdict__main">
+                <div>
+                  <h2 className="pulse-sa-verdict__title">{sponsorshipView.verdict.headline}</h2>
+                  <p className="pulse-sa-verdict__body">{sponsorshipView.verdict.body}</p>
                 </div>
-              ))}
+                <span className="pulse-sa-verdict__badge">{sponsorshipView.verdict.badge}</span>
+              </div>
+              <div className="pulse-sa-verdict__foot">
+                <span>{sponsorshipView.verdict.provenance}</span>
+                <div className="pulse-sa-verdict__chips">
+                  {(sponsorshipView.verdict.chips || []).map((chip) => (
+                    <span key={chip.label} className="pulse-sa-chip">
+                      {chip.label}: {chip.value}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="pulse-prototype-sponsor-tail">
-              <div className="pulse-prototype-sponsor-tail__label">Lowest sponsorship teams</div>
-              {sponsorshipAnalysis.lowTailTeams.length ? (
-                sponsorshipAnalysis.lowTailTeams.map((row) => (
-                  <div key={row.managerId} className="pulse-prototype-sponsor-tail__row">
-                    <span>{row.managerName || row.managerEmail || 'Unassigned manager'}</span>
-                    <span className="pulse-prototype-mono">{formatScore(row.sponsorshipScore)}/40</span>
+
+            <section className="pulse-sa-card">
+              <div className="pulse-sa-card__label">{sponsorshipView.section1.cardLabel}</div>
+              <p className="pulse-sa-card__explainer">{sponsorshipView.section1.explainer}</p>
+              <div className="pulse-sa-subscores">
+                <article className="pulse-sa-subscore">
+                  <div className="pulse-sa-subscore__eyebrow">Sponsorship Received</div>
+                  <div className="pulse-sa-subscore__score">{formatScore(sponsorshipView.section1.received.avg)}</div>
+                  <div className="pulse-sa-subscore__denom">/20 points · {sponsorshipView.section1.received.questionRangeLabel}</div>
+                  <div className="pulse-sa-track">
+                    <span style={{ width: `${sponsorshipView.section1.received.trackPercent}%` }} />
                   </div>
-                ))
-              ) : (
-                <div className="muted">No manager-level sponsorship scores available yet.</div>
-              )}
-            </div>
+                  <div className="pulse-sa-threshold-tag">{sponsorshipView.section1.received.status}</div>
+                  <div className="pulse-sa-subscore__what">
+                    <div className="pulse-sa-subscore__what-label">What This Measures</div>
+                    <p>{sponsorshipView.section1.whatThisMeasures?.received}</p>
+                  </div>
+                </article>
+                <article className="pulse-sa-subscore">
+                  <div className="pulse-sa-subscore__eyebrow">Sponsorship Capacity</div>
+                  <div className="pulse-sa-subscore__score">{formatScore(sponsorshipView.section1.capacity.avg)}</div>
+                  <div className="pulse-sa-subscore__denom">/20 points · {sponsorshipView.section1.capacity.questionRangeLabel}</div>
+                  <div className="pulse-sa-track">
+                    <span style={{ width: `${sponsorshipView.section1.capacity.trackPercent}%` }} />
+                  </div>
+                  <div className="pulse-sa-threshold-tag">{sponsorshipView.section1.capacity.status}</div>
+                  <div className="pulse-sa-subscore__what">
+                    <div className="pulse-sa-subscore__what-label">What This Measures</div>
+                    <p>{sponsorshipView.section1.whatThisMeasures?.capacity}</p>
+                  </div>
+                </article>
+              </div>
+              {sponsorshipSignals?.subScores?.text ? (
+                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.subScores.variant || 'amber'}`}>
+                  <span className="pulse-sa-signal__label">Signal</span>
+                  {sponsorshipSignals.subScores.text}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="pulse-sa-card">
+              <div className="pulse-sa-card__label">{sponsorshipView.section2.cardLabel}</div>
+              <p className="pulse-sa-card__explainer">{sponsorshipView.section2.explainer}</p>
+              <div className="pulse-sa-load-bar">
+                {(sponsorshipView.section2.bands || []).map((band) => (
+                  <span
+                    key={band.name}
+                    className={`pulse-sa-load-segment ${labelToId(band.name)}`}
+                    style={{ flex: Math.max(1, band.percent || 0) }}
+                  />
+                ))}
+              </div>
+              <div className="pulse-sa-load-grid">
+                {(sponsorshipView.section2.bands || []).map((band) => (
+                  <article key={band.name} className={`pulse-sa-load-cell ${labelToId(band.name)}`}>
+                    <div className="pulse-sa-load-cell__pct">{formatPercent(band.percent)}</div>
+                    <div className="pulse-sa-load-cell__name">{band.name}</div>
+                  </article>
+                ))}
+              </div>
+              {(() => {
+                const overloaded = (sponsorshipView.section2.bands || []).find((band) => band.name === 'Overloaded');
+                if (!overloaded || !overloaded.critical) return null;
+                return (
+                  <div className="pulse-sa-inline-alert">
+                    Critical · {Math.round(overloaded.percent)}% Overloaded
+                  </div>
+                );
+              })()}
+              {sponsorshipSignals?.load?.text ? (
+                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.load.variant || 'amber'}`}>
+                  <span className="pulse-sa-signal__label">Signal</span>
+                  {sponsorshipSignals.load.text}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="pulse-sa-card">
+              <div className="pulse-sa-card__label">{sponsorshipView.section3.cardLabel}</div>
+              <p className="pulse-sa-card__explainer">{sponsorshipView.section3.explainer}</p>
+              <div className="pulse-sa-chain-grid">
+                {(sponsorshipView.section3.states || []).map((state) => (
+                  <article key={state.name} className={`pulse-sa-chain-tile ${chainPillClass(state.name)}`}>
+                    <div className="pulse-sa-chain-tile__pct">{formatPercent(state.percent)}</div>
+                    <div className="pulse-sa-chain-tile__name">{state.name}</div>
+                    {sponsorshipView.section3.majorityState === state.name ? (
+                      <div className="pulse-sa-chain-tile__majority">Majority</div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+              <div className="pulse-sa-axis">
+                <span>Low received sponsorship</span>
+                <span>High received sponsorship</span>
+              </div>
+              {sponsorshipSignals?.chain?.text ? (
+                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.chain.variant || 'sponsorship'}`}>
+                  <span className="pulse-sa-signal__label">Note</span>
+                  {sponsorshipSignals.chain.text}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="pulse-sa-card">
+              <div className="pulse-sa-card__label">{sponsorshipView.section4.cardLabel}</div>
+              <p className="pulse-sa-card__explainer">{sponsorshipView.section4.explainer}</p>
+              <table className="pulse-sa-matrix">
+                <thead>
+                  <tr>
+                    <th />
+                    {(sponsorshipView.section4.columnOrder || []).map((column) => (
+                      <th key={column}>{column}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(sponsorshipView.section4.rows || []).map((row) => (
+                    <tr key={row.loadBand}>
+                      <th>{row.loadBand}</th>
+                      {(row.cells || []).map((cell) => (
+                        <td key={`${row.loadBand}-${cell.chainState}`} className={cell.className}>
+                          {cell.count}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {sponsorshipSignals?.crossMatrix?.text ? (
+                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.crossMatrix.variant || 'red'}`}>
+                  <span className="pulse-sa-signal__label">Risk</span>
+                  {sponsorshipSignals.crossMatrix.text}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="pulse-sa-card">
+              <div className="pulse-sa-card__label">{sponsorshipView.section5.cardLabel}</div>
+              <p className="pulse-sa-card__explainer">{sponsorshipView.section5.explainer}</p>
+              <table className="pulse-sa-teams">
+                <thead>
+                  <tr>
+                    <th>Team / Function</th>
+                    <th>Responses</th>
+                    <th>Chain State</th>
+                    <th>Manager Load</th>
+                    <th>Received (1-5)</th>
+                    <th>Capacity (1-5)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(sponsorshipView.section5.rows || []).map((row) => (
+                    <tr key={row.managerId}>
+                      <td>{row.teamName}</td>
+                      <td className="pulse-prototype-mono">{row.responses}</td>
+                      <td>
+                        <span className={`pulse-sa-chain-pill ${chainPillClass(row.chainState)}`}>{row.chainState}</span>
+                      </td>
+                      <td className={`pulse-prototype-mono pulse-prototype-load-${labelToId(row.loadBand)}`}>
+                        {row.loadBand}
+                      </td>
+                      <td>
+                        <span className={`pulse-prototype-heat ${heatClass(row.receivedAvg)}`}>{formatScore(row.receivedAvg)}</span>
+                      </td>
+                      <td>
+                        <span className={`pulse-prototype-heat ${heatClass(row.capacityAvg)}`}>{formatScore(row.capacityAvg)}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {sponsorshipSignals?.teams?.text ? (
+                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.teams.variant || 'red'}`}>
+                  <span className="pulse-sa-signal__label">Note</span>
+                  {sponsorshipSignals.teams.text}
+                </div>
+              ) : null}
+            </section>
           </section>
-          )}
+          ) : null}
 
           {showSection('employee-breakdown') && (
           <div className="pulse-prototype-grid pulse-prototype-grid--analysis" id="employee-breakdown">

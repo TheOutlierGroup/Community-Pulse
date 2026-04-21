@@ -2,11 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
+import { orgLogoFilePath } from '../config/storage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Same CID in HTML and attachment so clients don't need to fetch a public URL. */
 const OUTLIER_LOGO_CONTENT_ID = 'outlier-logo';
+const CLIENT_LOGO_CONTENT_ID = 'client-logo';
 
 const DEFAULT_FROM = 'Rhythm Engine <noreply@employeepulse.app>';
 
@@ -158,6 +160,40 @@ function buildOutlierEmailLogoParts() {
   return { logoBlock, attachments };
 }
 
+function contentTypeForImageFilename(filename) {
+  const ext = path.extname(String(filename || '')).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.svg') return 'image/svg+xml';
+  return 'image/png';
+}
+
+function buildClientEmailLogoParts(clientLogoFilename, clientLogoAlt) {
+  const safeFilename = String(clientLogoFilename || '').trim();
+  if (!safeFilename) return buildOutlierEmailLogoParts();
+  const logoPath = orgLogoFilePath(safeFilename);
+  if (!fs.existsSync(logoPath)) return buildOutlierEmailLogoParts();
+
+  const content = fs.readFileSync(logoPath).toString('base64');
+  const alt = String(clientLogoAlt || 'Client')
+    .trim()
+    .slice(0, 120);
+  return {
+    logoBlock: `<div style="text-align: center; margin: 0 0 1.5rem;">
+        <img src="cid:${CLIENT_LOGO_CONTENT_ID}" alt="${escapeHtmlAttr(alt)} logo" style="display: inline-block; border: 0; outline: none; max-width: 220px; max-height: 56px; width: auto; height: auto;" />
+      </div>`,
+    attachments: [
+      {
+        filename: safeFilename,
+        content,
+        contentType: contentTypeForImageFilename(safeFilename),
+        contentId: CLIENT_LOGO_CONTENT_ID,
+      },
+    ],
+  };
+}
+
 export async function sendPasswordResetEmail(to, resetUrl) {
   const resend = requireResend();
   const { logoBlock, attachments } = buildOutlierEmailLogoParts();
@@ -230,7 +266,10 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     },
     { escapeValues: true }
   );
-  const { logoBlock, attachments } = buildOutlierEmailLogoParts();
+  const { logoBlock, attachments } = buildClientEmailLogoParts(
+    options?.clientLogoFilename,
+    options?.clientLogoAlt || orgPlain
+  );
   const { error } = await resend.emails.send({
     from: getResendFromAddress(),
     to,

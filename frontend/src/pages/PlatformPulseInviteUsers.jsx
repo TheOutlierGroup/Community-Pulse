@@ -151,6 +151,16 @@ function defaultTemplateForAudience(audience) {
   };
 }
 
+function applyTemplatePlaceholders(template, replacements) {
+  let out = String(template || '');
+  const map = replacements && typeof replacements === 'object' ? replacements : {};
+  for (const [key, value] of Object.entries(map)) {
+    const tokenPattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
+    out = out.replace(tokenPattern, String(value ?? ''));
+  }
+  return out;
+}
+
 function EmailTemplateRichEditor({ value, onChange, disabled }) {
   const editor = useEditor(
     {
@@ -331,7 +341,7 @@ function apiErrorDetail(err, fallback) {
 }
 
 export default function PlatformPulseInviteUsers() {
-  const { orgId } = useOutletContext();
+  const { orgId, org, clientLogoUrl } = useOutletContext();
   const { user } = useAuth();
   const { showToast } = useToast();
   const [invites, setInvites] = useState([]);
@@ -353,6 +363,7 @@ export default function PlatformPulseInviteUsers() {
   const [templateModalAudience, setTemplateModalAudience] = useState(null);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateTestSending, setTemplateTestSending] = useState(false);
   const [templateError, setTemplateError] = useState('');
   const [emailTemplates, setEmailTemplates] = useState({
     staff: defaultTemplateForAudience('staff'),
@@ -360,6 +371,7 @@ export default function PlatformPulseInviteUsers() {
   });
   const [editingTemplateSubject, setEditingTemplateSubject] = useState('');
   const [editingTemplateBodyHtml, setEditingTemplateBodyHtml] = useState('<p></p>');
+  const [templateEditorMode, setTemplateEditorMode] = useState('edit');
 
   const managerOptions = useMemo(
     () =>
@@ -520,6 +532,7 @@ export default function PlatformPulseInviteUsers() {
     setTemplateError('');
     setEditingTemplateSubject(String(template.subject || ''));
     setEditingTemplateBodyHtml(String(template.bodyHtml || '<p></p>'));
+    setTemplateEditorMode('edit');
   }
 
   function closeTemplateModal() {
@@ -573,6 +586,44 @@ export default function PlatformPulseInviteUsers() {
       setTemplateError(err.response?.data?.error || 'Could not save email template.');
     } finally {
       setTemplateSaving(false);
+    }
+  }
+
+  async function sendTemplateTestEmail() {
+    if (!templateModalAudience) return;
+    const subject = String(editingTemplateSubject || '').trim();
+    if (!subject) {
+      setTemplateError('Subject is required.');
+      return;
+    }
+    if (subject.length > 200) {
+      setTemplateError('Subject must be 200 characters or less.');
+      return;
+    }
+    const bodyHtml = String(editingTemplateBodyHtml || '').trim();
+    if (!stripHtmlToText(bodyHtml)) {
+      setTemplateError('Body is required.');
+      return;
+    }
+    setTemplateError('');
+    setTemplateTestSending(true);
+    try {
+      const { data } = await api.post(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates/send-test`,
+        {
+          audience: templateModalAudience,
+          subject,
+          bodyHtml,
+        }
+      );
+      const sentTo = String(data?.to || user?.email || '').trim();
+      showToast(sentTo ? `Test email sent to ${sentTo}.` : 'Test email sent.', {
+        variant: 'success',
+      });
+    } catch (err) {
+      setTemplateError(apiErrorDetail(err, 'Could not send test email.'));
+    } finally {
+      setTemplateTestSending(false);
     }
   }
 
@@ -667,6 +718,17 @@ export default function PlatformPulseInviteUsers() {
 
   if (!user) return null;
 
+  const previewName = 'Alex';
+  const previewLink = 'https://app.employeepulse.app/rhythm-engine/link/your-personal-token';
+  const previewSubject = applyTemplatePlaceholders(editingTemplateSubject, {
+    name: previewName,
+    link: previewLink,
+  });
+  const previewBodyHtml = applyTemplatePlaceholders(editingTemplateBodyHtml, {
+    name: previewName,
+    link: previewLink,
+  });
+
   return (
     <div className="pulse-prototype-page">
       <div className="pulse-platform-header">
@@ -729,24 +791,97 @@ export default function PlatformPulseInviteUsers() {
                 required
               />
             </div>
+            <div className="pulse-template-mode-switch" role="tablist" aria-label="Template editor mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={templateEditorMode === 'edit'}
+                className={`pulse-template-mode-switch__pill${
+                  templateEditorMode === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
+                }`}
+                onClick={() => setTemplateEditorMode('edit')}
+                disabled={templateSaving}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={templateEditorMode === 'view'}
+                className={`pulse-template-mode-switch__pill${
+                  templateEditorMode === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
+                }`}
+                onClick={() => setTemplateEditorMode('view')}
+                disabled={templateSaving}
+              >
+                View
+              </button>
+            </div>
             <div className="field pulse-template-body-field">
-              <label>Body</label>
-              <div className="pulse-template-editor">
-                <EmailTemplateRichEditor
-                  value={editingTemplateBodyHtml}
-                  onChange={setEditingTemplateBodyHtml}
-                  disabled={templateSaving}
-                />
-              </div>
+              <label>{templateEditorMode === 'view' ? 'Preview' : 'Body'}</label>
+              {templateEditorMode === 'edit' ? (
+                <div className="pulse-template-editor">
+                  <EmailTemplateRichEditor
+                    value={editingTemplateBodyHtml}
+                    onChange={setEditingTemplateBodyHtml}
+                    disabled={templateSaving}
+                  />
+                </div>
+              ) : (
+                <div className="pulse-template-preview">
+                  <div className="pulse-template-preview__subject">{previewSubject || '(No subject)'}</div>
+                  <div className="pulse-template-preview__canvas">
+                    {clientLogoUrl ? (
+                      <div className="pulse-template-preview__logo-wrap">
+                        <img
+                          src={clientLogoUrl}
+                          alt={`${String(org?.name || 'Client')} logo`}
+                          className="pulse-template-preview__logo"
+                        />
+                      </div>
+                    ) : null}
+                    <div
+                      className="pulse-template-preview__body"
+                      dangerouslySetInnerHTML={{ __html: previewBodyHtml || '<p></p>' }}
+                    />
+                    <p className="pulse-template-preview__footer">
+                      If the button does not work, copy and paste this URL into your browser:
+                      <br />
+                      <span>{previewLink}</span>
+                    </p>
+                  </div>
+                </div>
+              )}
               <p className="muted" style={{ marginTop: '0.45rem' }}>
                 Use placeholders: <code>{'{{name}}'}</code> and <code>{'{{link}}'}</code>.
               </p>
             </div>
+            <p className="muted" style={{ margin: '0 0 0.75rem' }}>
+              Test emails will be sent to: <code>{String(user?.email || 'your account email')}</code>
+            </p>
             <div className="modal-dialog__actions">
-              <button type="button" className="btn btn-ghost" onClick={closeTemplateModal} disabled={templateSaving}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={sendTemplateTestEmail}
+                disabled={templateSaving || templateTestSending}
+                title={user?.email ? `Send to ${user.email}` : 'Send to your account email'}
+              >
+                {templateTestSending ? 'Sending test…' : 'Send test'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={closeTemplateModal}
+                disabled={templateSaving || templateTestSending}
+              >
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={templateSaving}>
+              <button
+                type="submit"
+                className="btn btn-primary modal-dialog__submit"
+                disabled={templateSaving || templateTestSending}
+              >
                 {templateSaving ? 'Saving…' : 'Save template'}
               </button>
             </div>

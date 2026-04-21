@@ -6,6 +6,20 @@ const ALERT_PRIORITY = {
   info: 2,
 };
 
+const CHAIN_STATE_SEVERITY = {
+  'Sponsorship Failed at Both Levels': 4,
+  'Breaking at Manager Level': 3,
+  'Managers Resilient, Under-Supported': 2,
+  'Chain Functioning': 1,
+};
+
+const LOAD_BAND_SEVERITY = {
+  Overloaded: 4,
+  'At Capacity': 3,
+  Stretched: 2,
+  Sustainable: 1,
+};
+
 export function calculateLargestRemainderPercentages(counts) {
   const values = counts.map((count) => Number(count) || 0);
   const total = values.reduce((sum, value) => sum + value, 0);
@@ -183,4 +197,88 @@ export function buildDimensionFloorAlerts({ dimensions, threshold = 2.5 }) {
     }
   }
   return alerts;
+}
+
+function pct(value) {
+  return `${Math.round(Number(value) || 0)}%`;
+}
+
+export function buildSponsorshipSectionSignals({
+  subScores,
+  load,
+  chain,
+  crossMatrix,
+  teams,
+}) {
+  const received = Number(subScores?.received?.avg || 0);
+  const capacity = Number(subScores?.capacity?.avg || 0);
+  const subscoreText =
+    received >= (subScores?.received?.threshold || 14) && capacity >= (subScores?.capacity?.threshold || 14)
+      ? `Both sub-scores are above threshold. Received (${received.toFixed(1)}) and Capacity (${capacity.toFixed(1)}) indicate a stable sponsorship base.`
+      : `Both sub-scores are below the 14-point threshold. Capacity (${capacity.toFixed(1)}) is weaker than Received (${received.toFixed(1)}), so manager support structures are the immediate priority.`;
+
+  const loadBands = Array.isArray(load?.bands) ? load.bands : [];
+  const overloadedPct = loadBands.find((b) => b.name === 'Overloaded')?.percent || 0;
+  const atCapacityPct = loadBands.find((b) => b.name === 'At Capacity')?.percent || 0;
+  const loadText = `${pct(overloadedPct + atCapacityPct)} of managers are in At Capacity or Overloaded bands. This is the active delivery risk if additional change load is introduced.`;
+
+  const chainStates = Array.isArray(chain?.states) ? chain.states : [];
+  const topState = [...chainStates].sort((a, b) => (b.percent || 0) - (a.percent || 0))[0] || null;
+  const chainText = topState
+    ? `${topState.name} is the dominant chain state at ${pct(topState.percent)}. This indicates where intervention pressure is currently concentrated.`
+    : null;
+
+  const matrixRows = Array.isArray(crossMatrix?.rows) ? crossMatrix.rows : [];
+  let highestRiskCell = null;
+  for (const row of matrixRows) {
+    for (const cell of row.cells || []) {
+      const loadSeverity = LOAD_BAND_SEVERITY[row.loadBand] || 0;
+      const chainSeverity = CHAIN_STATE_SEVERITY[cell.chainState] || 0;
+      const combinedSeverity = loadSeverity + chainSeverity;
+      if (
+        !highestRiskCell ||
+        combinedSeverity > highestRiskCell.combinedSeverity ||
+        (combinedSeverity === highestRiskCell.combinedSeverity && (cell.count || 0) > highestRiskCell.count)
+      ) {
+        highestRiskCell = {
+          loadBand: row.loadBand,
+          chainState: cell.chainState,
+          count: cell.count || 0,
+          combinedSeverity,
+        };
+      }
+    }
+  }
+  const crossText = highestRiskCell
+    ? `${highestRiskCell.count} managers sit in the highest-risk cluster (${highestRiskCell.loadBand} × ${highestRiskCell.chainState}). This cohort requires direct support before launch.`
+    : null;
+
+  const teamRows = Array.isArray(teams?.rows) ? teams.rows : [];
+  const highRiskTeams = teamRows.filter(
+    (row) => row.chainState === 'Sponsorship Failed at Both Levels' || row.loadBand === 'Overloaded'
+  );
+  const teamText = `${highRiskTeams.length} teams are in critical sponsorship states. Use this list to target pre-launch enablement in sequence.`;
+
+  return {
+    subScores: {
+      variant: received < (subScores?.received?.threshold || 14) || capacity < (subScores?.capacity?.threshold || 14) ? 'amber' : 'sponsorship',
+      text: subscoreText,
+    },
+    load: {
+      variant: overloadedPct >= 10 ? 'red' : 'amber',
+      text: loadText,
+    },
+    chain: {
+      variant: 'sponsorship',
+      text: chainText,
+    },
+    crossMatrix: {
+      variant: 'red',
+      text: crossText,
+    },
+    teams: {
+      variant: highRiskTeams.length > 0 ? 'red' : 'amber',
+      text: teamText,
+    },
+  };
 }
