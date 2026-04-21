@@ -711,7 +711,11 @@ export default function PlatformPulseInviteUsers() {
         dialogClassName="modal-dialog--pulse-template"
       >
         {templateModalAudience ? (
-          <form onSubmit={saveEmailTemplate} style={{ padding: '0 0 0.25rem' }}>
+          <form
+            onSubmit={saveEmailTemplate}
+            className="pulse-template-form"
+            style={{ padding: '0 0 0.25rem' }}
+          >
             {templateError ? <p className="error" style={{ marginBottom: '1rem' }}>{templateError}</p> : null}
             <div className="field">
               <label htmlFor="pulse-template-subject">Subject</label>
@@ -725,7 +729,7 @@ export default function PlatformPulseInviteUsers() {
                 required
               />
             </div>
-            <div className="field">
+            <div className="field pulse-template-body-field">
               <label>Body</label>
               <div className="pulse-template-editor">
                 <EmailTemplateRichEditor

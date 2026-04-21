@@ -884,6 +884,48 @@ a:hover {
   max-width: min(980px, 97vw);
   min-height: min(78vh, 860px);
   max-height: min(95vh, 1020px);
+  display: flex;
+  flex-direction: column;
+}
+
+.pulse-template-form {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.pulse-template-body-field {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.pulse-template-body-field .pulse-template-editor {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.pulse-template-body-field .task-card-modal__rte {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.pulse-template-body-field .task-card-modal__rte-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.pulse-template-body-field .task-card-modal__rte-content .tiptap,
+.pulse-template-body-field .task-card-modal__rte-content .ProseMirror {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 
 .modal-dialog--add-task,
