@@ -1695,17 +1695,16 @@ export function registerPlatformOrgRoutes(router) {
         details: 'Add RESEND_API_KEY in the server environment (e.g. Render → Environment).',
       });
     }
-    const targetEmail = String(req.user?.email || '')
+    const authUser = await User.findUserById(req.user.id);
+    const targetEmail = String(authUser?.email || '')
       .trim()
       .toLowerCase();
     if (!targetEmail) {
       return res.status(400).json({ error: 'Your account does not have an email address for test sends.' });
     }
     const displayName = [
-      req.user?.firstName,
-      req.user?.lastName,
-      req.user?.first_name,
-      req.user?.last_name,
+      authUser?.first_name,
+      authUser?.last_name,
     ]
       .map((value) => String(value || '').trim())
       .filter(Boolean)
