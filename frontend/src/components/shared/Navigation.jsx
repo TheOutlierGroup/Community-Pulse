@@ -27,6 +27,23 @@ function sidebarLinkClass({ isActive }) {
   return `sidebar-nav-link${isActive ? ' sidebar-nav-link--active' : ''}`;
 }
 
+function formatDateKeyDdMmYy(dateKey) {
+  const raw = String(dateKey || '').trim();
+  if (!raw) return '';
+  const [year, month, day] = raw.split('-');
+  if (
+    year?.length !== 4
+    || month?.length !== 2
+    || day?.length !== 2
+    || Number.isNaN(Number(year))
+    || Number.isNaN(Number(month))
+    || Number.isNaN(Number(day))
+  ) {
+    return raw;
+  }
+  return `${day}/${month}/${year.slice(-2)}`;
+}
+
 export default function Navigation({ user, onLogout, variant = 'header', navContext = null }) {
   const navigate = useNavigate();
   const params = useParams();
@@ -179,7 +196,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       <option value="pre">Pre{preOption ? ` · ${preOption.label}` : ''}</option>
                       {duringOptions.map((option) => (
                         <option key={option.id} value={`during:${option.dateKey}`}>
-                          During · {option.label}
+                          {duringOptions.length > 1
+                            ? `During - ${formatDateKeyDdMmYy(option.dateKey)}`
+                            : 'During'}
                         </option>
                       ))}
                       {!duringOptions.length ? <option value="during">During</option> : null}

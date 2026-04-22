@@ -1,3 +1,5 @@
+import { normalizePulseStage } from './pulseStage.js';
+
 export const READINESS_THRESHOLD = 28;
 export const SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD = 14;
 export const SPONSORSHIP_LOAD_BAND_DEFAULTS = {
@@ -71,35 +73,35 @@ const EMPLOYEE_QUESTIONS = [
     dim: '1A',
     section: 'Adoption',
     theory: 'SDT — Competence',
-    text: "When changes have been rolled out here before, I've been given enough support to genuinely perform well in the new way — not just go through the motions.",
+    text: "When changes have been rolled out here before, I've been given enough support to genuinely perform well in the new way, not just go through the motions.",
   },
   {
     id: 'Q2',
     dim: '1A',
     section: 'Adoption',
     theory: 'SP — Psychic Space',
-    text: 'Right now, I feel I have the capacity — time, energy and headspace — to properly learn something new at work.',
+    text: 'Right now, I feel I have the capacity (time, energy and headspace) to properly learn something new at work.',
   },
   {
     id: 'Q3',
     dim: '1B',
     section: 'Adoption',
     theory: 'SP — Institutional Trust',
-    text: "Changes introduced here have generally stuck — we don't drift back to how things were before.",
+    text: "Changes introduced here have generally stuck; we don't drift back to how things were before.",
   },
   {
     id: 'Q4',
     dim: '1B',
     section: 'Adoption',
     theory: 'SP — Containing Experience',
-    text: "I've seen change delivered well here before — in a way that was organised and felt manageable.",
+    text: "I've seen change delivered well here before, in a way that was organised and felt manageable.",
   },
   {
     id: 'Q5',
     dim: '1C',
     section: 'Adoption',
     theory: 'SP — Anxiety Flooding',
-    text: "The number of changes currently underway feels manageable — I'm not overwhelmed by how much is shifting at once.",
+    text: "The number of changes currently underway feels manageable; I'm not overwhelmed by how much is shifting at once.",
   },
   {
     id: 'Q6',
@@ -113,35 +115,35 @@ const EMPLOYEE_QUESTIONS = [
     dim: '1D',
     section: 'Adoption',
     theory: 'SDT — Relatedness; SP — Containment',
-    text: "My direct manager actively helps me work through changes — they don't just pass on information, they engage with what it means for me.",
+    text: "My direct manager actively helps me work through changes; they don't just pass on information, they engage with what it means for me.",
   },
   {
     id: 'Q8',
     dim: '1D',
     section: 'Adoption',
     theory: 'SP — Projective Identification',
-    text: "When I've raised concerns during a change, I've felt genuinely heard — not just managed.",
+    text: "When I've raised concerns during a change, I've felt genuinely heard, not just managed.",
   },
   {
     id: 'Q9',
     dim: '2A',
     section: 'Sponsorship',
     theory: 'SP — Primary Task Holder',
-    text: "Senior leaders here do more than announce changes — I've seen them visibly live the change themselves.",
+    text: "Senior leaders here do more than announce changes; I've seen them visibly live the change themselves.",
   },
   {
     id: 'Q10',
     dim: '2A',
     section: 'Sponsorship',
     theory: 'SP — Containment Under Pressure',
-    text: "When changes get hard or messy, leaders stay present and engaged — they don't go quiet or pass it down.",
+    text: "When changes get hard or messy, leaders stay present and engaged; they don't go quiet or pass it down.",
   },
   {
     id: 'Q11',
     dim: '2B',
     section: 'Sponsorship',
     theory: 'SP — Splitting; SDT — Internalisation',
-    text: 'My manager asks me to do things they clearly do themselves — the change applies to them as much as it does to me.',
+    text: 'My manager asks me to do things they clearly do themselves; change applies to them as much as it does to me.',
   },
   {
     id: 'Q12',
@@ -155,28 +157,28 @@ const EMPLOYEE_QUESTIONS = [
     dim: '2C',
     section: 'Sponsorship',
     theory: 'SP — Paranoid-Schizoid Position',
-    text: "Leaders here are honest about the challenges a change will bring — they don't just sell the positives.",
+    text: "Leaders here are honest about the challenges a change will bring; they don't just sell the positives.",
   },
   {
     id: 'Q14',
     dim: '2C',
     section: 'Sponsorship',
     theory: 'SP — Work Group Functioning',
-    text: "I've seen leaders adjust the approach when something wasn't working — they don't just push harder on the same plan.",
+    text: "I've seen leaders adjust the approach when something wasn't working; they don't just push harder on the same plan.",
   },
   {
     id: 'Q15',
     dim: '2D',
     section: 'Sponsorship',
     theory: 'SP — Containment; SDT — Relatedness',
-    text: "It's safe here to say when you're struggling with a change — people aren't penalised for being honest about finding it hard.",
+    text: "It's safe here to say when you're struggling with a change; people aren't penalised for being honest about finding it hard.",
   },
   {
     id: 'Q16',
     dim: '2D',
     section: 'Sponsorship',
     theory: 'SP — Basic Assumption Fight-Flight',
-    text: 'I feel confident that if I genuinely struggled during a major transition, leadership would support me — not just performance-manage me.',
+    text: 'I feel confident that if I genuinely struggled during a major transition, leadership would support me; not just performance-manage me.',
   },
 ];
 
@@ -203,7 +205,7 @@ const MANAGER_QUESTIONS = [
     section: 'Adoption',
     load: false,
     theory: 'SP — Group Learning',
-    text: 'My team has successfully adopted significant changes before — and maintained them over time.',
+    text: 'My team has successfully adopted significant changes before and maintained them over time.',
   },
   {
     id: 'MQ4',
@@ -219,7 +221,7 @@ const MANAGER_QUESTIONS = [
     section: 'Adoption',
     load: true,
     theory: 'SP — System Overload',
-    text: "The number of initiatives currently underway across my team feels manageable — we're not juggling too many simultaneous changes.",
+    text: "The number of initiatives currently underway across my team feels manageable; we're not juggling too many simultaneous changes.",
   },
   {
     id: 'MQ6',
@@ -235,7 +237,7 @@ const MANAGER_QUESTIONS = [
     section: 'Adoption',
     load: false,
     theory: 'SDT — Autonomy; SP — Role/Authority',
-    text: "I feel I have enough authority and autonomy to make the decisions needed to support my team through change — I'm not constantly waiting for approval.",
+    text: "I feel I have enough authority and autonomy to make the decisions needed to support my team through change; I'm not constantly waiting for approval.",
   },
   {
     id: 'MQ8',
@@ -251,7 +253,7 @@ const MANAGER_QUESTIONS = [
     section: 'Sponsorship',
     load: false,
     theory: 'SP — Primary Task Holder',
-    text: "Senior leadership in this organisation are visibly modelling the changes they're asking people to make — not just advocating for them.",
+    text: "Senior leadership in this organisation are visibly modelling the changes they're asking people to make, not just advocating for them.",
   },
   {
     id: 'MQ10',
@@ -259,7 +261,7 @@ const MANAGER_QUESTIONS = [
     section: 'Sponsorship',
     load: false,
     theory: 'SP — Containment Cascade',
-    text: 'When change programs hit difficulty, I can count on senior leaders to remain visible and engaged — not to step back and leave managers to manage the fallout.',
+    text: 'When change programs hit difficulty, I can count on senior leaders to remain visible and engaged; not to step back and leave managers to manage the fallout.',
   },
   {
     id: 'MQ11',
@@ -267,7 +269,7 @@ const MANAGER_QUESTIONS = [
     section: 'Sponsorship',
     load: false,
     theory: 'SDT — Autonomy; SP — Task Clarity',
-    text: "The rationale for changes I'm asked to lead is clearly explained to me — I understand the why well enough to explain it convincingly to my team.",
+    text: "The rationale for changes I'm asked to lead is clearly explained to me; I understand the why well enough to explain it convincingly to my team.",
   },
   {
     id: 'MQ12',
@@ -275,7 +277,7 @@ const MANAGER_QUESTIONS = [
     section: 'Sponsorship',
     load: false,
     theory: 'SP — Leadership-Level Splitting',
-    text: "There is alignment among senior leaders about this change — I don't receive conflicting messages or priorities from different parts of leadership.",
+    text: "There is alignment among senior leaders about this change; I don't receive conflicting messages or priorities from different parts of leadership.",
   },
   {
     id: 'MQ13',
@@ -283,7 +285,7 @@ const MANAGER_QUESTIONS = [
     section: 'Sponsorship',
     load: false,
     theory: 'SDT — Autonomy; SP — Role Integrity',
-    text: "I'm given enough flexibility to adapt how a change is implemented for my team's specific context — it's not entirely prescribed from above.",
+    text: "I'm given enough flexibility to adapt how a change is implemented for my team's specific context; it's not entirely prescribed from above.",
   },
   {
     id: 'MQ14',
@@ -299,7 +301,7 @@ const MANAGER_QUESTIONS = [
     section: 'Sponsorship',
     load: true,
     theory: 'SP — Depleted Container',
-    text: "Managing my team through significant change is something I find personally sustainable — it doesn't regularly leave me feeling depleted or overwhelmed.",
+    text: "Managing my team through significant change is something I find personally sustainable; it doesn't regularly leave me feeling depleted or overwhelmed.",
   },
   {
     id: 'MQ16',
@@ -307,7 +309,7 @@ const MANAGER_QUESTIONS = [
     section: 'Sponsorship',
     load: true,
     theory: 'SDT — Competence; SP — Task Avoidance',
-    text: 'I feel equipped with the skills and tools to lead my team through a major change effectively — change leadership is an area I feel confident in.',
+    text: 'I feel equipped with the skills and tools to lead my team through a major change effectively; change leadership is an area I feel confident in.',
   },
 ];
 
@@ -317,6 +319,117 @@ const THEMES = DIMENSIONS.map((d) => ({
   managerLabel: d.managerLabel,
 }));
 
+const EMPLOYEE_STAGE_TEXT = {
+  mid: {
+    Q1: 'During this change, I am receiving enough support to genuinely perform well in the new way, not just go through the motions.',
+    Q2: 'Right now, while this change is underway, I feel I have the capacity (time, energy and headspace) to keep learning and adapting.',
+    Q3: "So far in this change, the new ways of working are taking hold; we're not drifting back to how things were.",
+    Q4: 'This change is being delivered in a way that feels organised and manageable.',
+    Q5: 'The number of things shifting at once during this change feels manageable; I am not overwhelmed.',
+    Q6: 'My team is managing its workload alongside this change; we are not struggling to keep up with both.',
+    Q7: 'My direct manager is actively helping me work through this change; they engage with what it means for me, not just pass on information.',
+    Q8: 'When I have raised concerns during this change, I have felt genuinely heard, not just managed.',
+    Q9: 'Senior leaders are doing more than announcing this change; I can see them visibly living it themselves.',
+    Q10: 'Now that this change is underway, leaders are staying present and engaged; they are not going quiet or passing it down when it gets difficult.',
+    Q11: 'My manager is asking me to do things they are clearly doing themselves; this change applies to them as much as it does to me.',
+    Q12: 'What leaders said would happen in this change is broadly matching what is actually happening.',
+    Q13: 'Leaders are being honest about the challenges this change is bringing; they are not just selling the positives.',
+    Q14: 'I have seen leaders adjust the approach during this change when something has not been working; they are not just pushing harder on the same plan.',
+    Q15: 'It feels safe to say I am struggling with this change; I do not feel I will be penalised for being honest about finding it hard.',
+    Q16: 'I feel confident that my struggles during this change are being met with genuine support, not just performance management.',
+  },
+  post: {
+    Q1: 'During this change, I was given enough support to genuinely perform well in the new way, not just go through the motions.',
+    Q2: 'Throughout this change, I felt I had enough capacity (time, energy and headspace) to properly learn and adapt.',
+    Q3: 'The changes introduced through this programme have stuck; we have not drifted back to how things were before.',
+    Q4: 'This change was delivered in a way that felt organised and manageable throughout.',
+    Q5: 'The pace and volume of change during this programme felt manageable; I was not overwhelmed by how much was shifting at once.',
+    Q6: 'My team maintained enough bandwidth throughout this change to absorb it without other priorities seriously suffering.',
+    Q7: 'My direct manager actively helped me work through this change; they engaged with what it meant for me, not just passed on information.',
+    Q8: 'When I raised concerns during this change, I felt genuinely heard; not just managed.',
+    Q9: 'Senior leaders did more than announce this change; I saw them visibly living it themselves throughout.',
+    Q10: 'When this change got hard or messy, leaders stayed present and engaged; they did not go quiet or pass it down.',
+    Q11: 'My manager asked me to do things they clearly did themselves; this change applied to them as much as it did to me.',
+    Q12: 'What leaders said would happen in this change matched what actually happened.',
+    Q13: 'Leaders were honest about the challenges this change brought; they did not just sell the positives.',
+    Q14: 'I saw leaders adjust the approach during this change when something was not working; they did not just push harder on the same plan.',
+    Q15: 'It was safe to say when I was struggling with this change; I did not feel penalised for being honest about finding it hard.',
+    Q16: 'When I struggled during this change, I felt genuinely supported by leadership; not just performance managed.',
+  },
+};
+
+const MANAGER_STAGE_TEXT = {
+  mid: {
+    MQ1: 'I feel confident I have the information and support I need to help my team navigate this change as it unfolds.',
+    MQ2: 'I have enough time and genuine capacity right now to actively support my team through this change, rather than just communicating it.',
+    MQ3: 'My team is successfully adopting this change; the new ways of working are beginning to take hold.',
+    MQ4: 'During this change, I have been able to maintain team performance and morale throughout the transition so far.',
+    MQ5: 'The number of things my team is managing simultaneously during this change feels manageable; we are not stretched too thin.',
+    MQ6: 'I currently have enough bandwidth to manage the additional leadership responsibility this change requires.',
+    MQ7: 'I feel I have enough authority and autonomy to make the decisions needed to support my team through this change; I am not constantly waiting for approval.',
+    MQ8: 'When I raise concerns about this change with senior leadership, I feel they genuinely engage with my input rather than just proceeding regardless.',
+    MQ9: 'Senior leadership in this organisation are visibly modelling this change, not just advocating for it.',
+    MQ10: 'Now that this programme has hit difficulty, senior leaders are remaining visible and engaged; they are not stepping back and leaving managers to manage the fallout.',
+    MQ11: 'The rationale for this change has been clearly explained to me; I understand the why well enough to explain it convincingly to my team.',
+    MQ12: 'There is alignment among senior leaders about this change; I am not receiving conflicting messages or priorities from different parts of leadership.',
+    MQ13: 'I am being given enough flexibility to adapt how this change is implemented for my team’s specific context; it is not entirely prescribed from above.',
+    MQ14: 'I feel supported by the organisation to have honest conversations with my team about the challenges of this change, rather than only presenting a positive picture.',
+    MQ15: 'Managing my team through this change is something I am finding personally sustainable; it is not regularly leaving me feeling depleted or overwhelmed.',
+    MQ16: 'I feel equipped with the skills and tools to lead my team through this change effectively; I feel confident in my ability to do so.',
+  },
+  post: {
+    MQ1: 'I felt confident throughout this change that I had the information and support I needed to help my team navigate it effectively.',
+    MQ2: 'I had enough time and genuine capacity throughout this change to actively support my team, rather than just communicate it.',
+    MQ3: 'My team successfully adopted this change, and the new ways of working have been maintained over time.',
+    MQ4: 'During this change, I was able to maintain team performance and morale throughout the transition.',
+    MQ5: 'The number of things my team was managing simultaneously during this change felt manageable; we were not stretched too thin.',
+    MQ6: 'I had enough bandwidth throughout this change to manage the additional leadership responsibility it required.',
+    MQ7: 'I felt I had enough authority and autonomy to make the decisions needed to support my team through this change; I was not constantly waiting for approval.',
+    MQ8: 'When I raised concerns about this change with senior leadership, I felt they genuinely engaged with my input rather than just proceeding regardless.',
+    MQ9: 'Senior leadership visibly modelled this change throughout; they did not just advocate for it.',
+    MQ10: 'When this programme hit difficulty, senior leaders remained visible and engaged; they did not step back and leave managers to manage the fallout.',
+    MQ11: 'The rationale for this change was clearly explained to me; I understood the why well enough to explain it convincingly to my team.',
+    MQ12: 'There was alignment among senior leaders about this change; I did not receive conflicting messages or priorities from different parts of leadership.',
+    MQ13: 'I was given enough flexibility to adapt how this change was implemented for my team’s specific context; it was not entirely prescribed from above.',
+    MQ14: 'I felt supported by the organisation to have honest conversations with my team about the challenges of this change, rather than only presenting a positive picture.',
+    MQ15: 'Managing my team through this change was something I found personally sustainable; it did not regularly leave me feeling depleted or overwhelmed.',
+    MQ16: 'I felt equipped with the skills and tools to lead my team through this change effectively; change leadership is an area I felt confident in.',
+  },
+};
+
+const STAGE_COPY = {
+  pre: {
+    employeeIntro:
+      'Before this change starts, we want to understand how ready the organisation is. Your honest responses are anonymous and help identify where support is needed.',
+    managerIntro:
+      'Before this change starts, we want to understand manager readiness and support conditions. Your responses are anonymous and used in aggregate only.',
+    transition:
+      'You have completed the first section. The next set of questions focuses on leadership sponsorship around this change.',
+    reflection:
+      'Thank you for completing the pre-change survey. This baseline will be used to compare progress at mid and post stages.',
+  },
+  mid: {
+    employeeIntro:
+      'This change is now underway, and we want to understand how it is going for you. Your honest responses are anonymous and will help the organisation focus support where needed.',
+    managerIntro:
+      'This change is now underway. We want to understand how you are experiencing it as a manager, where pressure is highest, and what support is most useful right now.',
+    transition:
+      'You have completed the first section. The next set of questions moves from your own experience of this change so far to your experience of leadership and sponsorship around it.',
+    reflection:
+      'Thank you for completing the mid-change survey. Your responses help track what is improving and what still needs attention while delivery is live.',
+  },
+  post: {
+    employeeIntro:
+      'This change programme has now concluded. We want to understand how it went for you: what worked, what was hard, and what the experience has left you with.',
+    managerIntro:
+      'This change programme has now concluded. We want to understand how it went from your perspective as a manager and what should be different next time.',
+    transition:
+      'You have completed the first section. The next set of questions moves from your experience of adopting this change to your reflections on leadership and sponsorship around it.',
+    reflection:
+      'Thank you for completing the post-change survey. Your reflections will help the organisation learn from this programme and prepare better for the next one.',
+  },
+};
+
 function normalizeAudience(raw) {
   if (raw === 'manager' || raw === 'admin') return 'manager';
   return 'staff';
@@ -324,6 +437,39 @@ function normalizeAudience(raw) {
 
 function questionSetForAudience(audience) {
   return normalizeAudience(audience) === 'manager' ? MANAGER_QUESTIONS : EMPLOYEE_QUESTIONS;
+}
+
+function stageTextForAudience(audience, stage) {
+  if (normalizeAudience(audience) === 'manager') {
+    return MANAGER_STAGE_TEXT[stage] || null;
+  }
+  return EMPLOYEE_STAGE_TEXT[stage] || null;
+}
+
+function questionsForAudienceAndStage(audience, stage) {
+  const normalizedStage = normalizePulseStage(stage);
+  const stageText = stageTextForAudience(audience, normalizedStage);
+  const source = questionSetForAudience(audience);
+  if (!stageText) return source;
+  return source.map((question) => ({
+    ...question,
+    text: stageText[question.id] || question.text,
+  }));
+}
+
+function surveyCopyForAudienceAndStage(audience, stage) {
+  const normalizedStage = normalizePulseStage(stage);
+  const copy = STAGE_COPY[normalizedStage] || STAGE_COPY.pre;
+  return {
+    stage: normalizedStage,
+    audience: normalizeAudience(audience),
+    intro:
+      normalizeAudience(audience) === 'manager'
+        ? copy.managerIntro
+        : copy.employeeIntro,
+    transition: copy.transition,
+    reflection: copy.reflection,
+  };
 }
 
 function answerIdForIndex(audience, index) {
@@ -408,12 +554,17 @@ export function classifyQuadrant(adoption, sponsorship) {
   return { code: 'high_risk', label: 'High Risk' };
 }
 
-export function getQuestionsForAudience(rawAudience) {
-  return questionSetForAudience(rawAudience);
+export function getQuestionsForAudience(rawAudience, rawStage = 'pre') {
+  return questionsForAudienceAndStage(rawAudience, rawStage);
 }
 
-export function computeSurveyScores({ audience, answers }) {
+export function getSurveyCopyForAudience(rawAudience, rawStage = 'pre') {
+  return surveyCopyForAudienceAndStage(rawAudience, rawStage);
+}
+
+export function computeSurveyScores({ audience, answers, stage = 'pre' }) {
   const normalizedAudience = normalizeAudience(audience);
+  const normalizedStage = normalizePulseStage(stage);
   const ids = Array.from({ length: 16 }, (_, i) => answerIdForIndex(normalizedAudience, i));
   const parsed = {};
 
@@ -427,6 +578,7 @@ export function computeSurveyScores({ audience, answers }) {
       valid: false,
       unanswered,
       audience: normalizedAudience,
+      stage: normalizedStage,
     };
   }
 
@@ -477,6 +629,7 @@ export function computeSurveyScores({ audience, answers }) {
   return {
     valid: true,
     audience: normalizedAudience,
+    stage: normalizedStage,
     answers: parsed,
     adoption,
     sponsorship,
@@ -498,10 +651,10 @@ export function computeSurveyScores({ audience, answers }) {
   };
 }
 
-export function scoreResponseFromSteps(step1, step2, step3, step4, explicitAudience = null) {
+export function scoreResponseFromSteps(step1, step2, step3, step4, explicitAudience = null, stage = 'pre') {
   const answers = extractAnswersFromStepPayload(step1, step2, step3, step4);
   const audience = inferAudienceFromAnswers(answers, explicitAudience || 'staff');
-  return computeSurveyScores({ audience, answers });
+  return computeSurveyScores({ audience, answers, stage });
 }
 
 export function computeContributionStyle(step1, step2, step3, step4 = {}, audience = null) {
@@ -544,6 +697,7 @@ export function buildPersonalReflection(step1, step2, step3, step4, contribution
   return {
     incomplete: false,
     audience: scored.audience,
+    stage: scored.stage,
     adoptionScore: scored.adoption,
     sponsorshipScore: scored.sponsorship,
     quadrant: scored.quadrantLabel,

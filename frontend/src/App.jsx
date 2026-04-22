@@ -46,7 +46,9 @@ export default function App() {
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/invite/:token" element={<InviteAccept />} />}
             <Route path="/sso/exchange" element={<RhythmEngineSsoExchange />} />
             <Route path="/rhythm-engine" element={<EmployeeRhythmEngine />} />
+            <Route path="/rhythm-engine/:stage" element={<EmployeeRhythmEngine />} />
             <Route path="/rhythm-engine/link/:token" element={<PublicRhythmEngine />} />
+            <Route path="/rhythm-engine/:stage/link/:token" element={<PublicRhythmEngine />} />
             <Route path="/pulse" element={<Navigate to="/rhythm-engine" replace />} />
             <Route path="/pulse/link/:token" element={<PublicRhythmEngine />} />
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform" element={<PlatformHome />} />}

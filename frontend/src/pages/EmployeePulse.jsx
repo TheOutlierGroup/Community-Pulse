@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import { CLIENT_SERVICE_PULSE, getPostLoginPath, userHasService } from '../utils/postLogin.js';
 import SurveyQuestionStep from '../components/employee/SurveyQuestionStep.jsx';
 import Step5Reflection from '../components/employee/Step5Reflection.jsx';
+import { normalizePulseStage } from '../utils/pulseStage.js';
 
 function buildStepPayload(questions, answers) {
   const byStep = [{}, {}, {}, {}];
@@ -33,10 +34,13 @@ function extractAnswers(response) {
 }
 
 export default function EmployeePulse() {
+  const { stage: stageParam } = useParams();
+  const stage = stageParam ? normalizePulseStage(stageParam) : null;
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   const [questions, setQuestions] = useState([]);
   const [session, setSession] = useState(null);
+  const [surveyCopy, setSurveyCopy] = useState(null);
   const [step, setStep] = useState(1);
   const [answers, setAnswers] = useState({});
   const [reflection, setReflection] = useState(null);
@@ -46,16 +50,19 @@ export default function EmployeePulse() {
   const load = useCallback(async () => {
     setError('');
     try {
+      const apiParams = stage ? { params: { stage } } : undefined;
       const [tRes, sRes] = await Promise.all([
-        api.get('/api/rhythm-engine/themes'),
-        api.get('/api/rhythm-engine/active-session'),
+        api.get('/api/rhythm-engine/themes', apiParams),
+        api.get('/api/rhythm-engine/active-session', apiParams),
       ]);
       setQuestions(tRes.data.questions || []);
+      setSurveyCopy(tRes.data.copy || null);
       setSession(sRes.data.session);
       if (!sRes.data.session) return;
 
-      const rRes = await api.get('/api/rhythm-engine/response');
+      const rRes = await api.get('/api/rhythm-engine/response', apiParams);
       const r = rRes.data.response;
+      setSurveyCopy(rRes.data.copy || tRes.data.copy || null);
       setAnswers(extractAnswers(r));
       if (r.completedAt) {
         setStep(5);
@@ -66,7 +73,7 @@ export default function EmployeePulse() {
     } catch (e) {
       setError(e.response?.data?.error || 'Could not load Rhythm Engine.');
     }
-  }, []);
+  }, [stage]);
 
   useEffect(() => {
     if (!loading && !user) navigate('/');
@@ -95,6 +102,7 @@ export default function EmployeePulse() {
       const payload = buildStepPayload(questions, answers);
       await api.put(`/api/rhythm-engine/response/step/${nextStep}`, {
         ...payload,
+        ...(stage ? { stage } : {}),
       });
       setStep(nextStep);
     } catch (e) {
@@ -116,6 +124,7 @@ export default function EmployeePulse() {
       const payload = buildStepPayload(questions, answers);
       const { data } = await api.post('/api/rhythm-engine/response/complete', {
         ...payload,
+        ...(stage ? { stage } : {}),
       });
       setReflection(data.reflection);
       setStep(5);
@@ -155,17 +164,22 @@ export default function EmployeePulse() {
             <p className="muted" style={{ marginBottom: '1.25rem' }}>
               Session: <strong>{session.name}</strong>
             </p>
+            {surveyCopy?.intro ? (
+              <p className="muted" style={{ marginBottom: '1.25rem' }}>
+                {surveyCopy.intro}
+              </p>
+            ) : null}
             {error && <p className="error">{error}</p>}
             {step >= 1 && step <= 4 && (
               <SurveyQuestionStep
                 title={`Section ${step} of 4`}
-                subtitle="Rate each statement using the 1-5 scale."
+                subtitle={surveyCopy?.transition || 'Rate each statement using the 1-5 scale.'}
                 questions={questions.slice((step - 1) * 4, step * 4)}
                 answers={answers}
                 onAnswer={(id, value) => setAnswers((current) => ({ ...current, [id]: value }))}
               />
             )}
-            {step === 5 && <Step5Reflection reflection={reflection} />}
+            {step === 5 && <Step5Reflection reflection={reflection} surveyCopy={surveyCopy} />}
 
             <div className="btn-row">
               {step > 1 && step < 5 && (

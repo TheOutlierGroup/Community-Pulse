@@ -364,6 +364,7 @@ export default function PlatformClientLayout() {
           setPulseManagerOptions,
           pulseTimepoint,
           pulseDuringDate,
+          pulseTimepointOptions,
           trendAnalysisVisible,
         }}
       />

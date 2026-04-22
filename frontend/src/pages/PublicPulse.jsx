@@ -6,6 +6,7 @@ import Layout from '../components/shared/Layout.jsx';
 import SurveyQuestionStep from '../components/employee/SurveyQuestionStep.jsx';
 import Step5Reflection from '../components/employee/Step5Reflection.jsx';
 import outlierLogo from '../images/outlier-logo.png';
+import { normalizePulseStage } from '../utils/pulseStage.js';
 
 const EXPIRED_OR_INVALID_LINK_RE = /invalid or expired link/i;
 
@@ -52,9 +53,14 @@ function extractAnswers(response) {
 }
 
 export default function PublicPulse() {
-  const { token } = useParams();
+  const { stage: stageParam, token } = useParams();
+  const stage = stageParam ? normalizePulseStage(stageParam) : null;
   const { logout } = useAuth();
-  const linkParams = useMemo(() => ({ params: { token: token || '' } }), [token]);
+  const linkParams = useMemo(() => {
+    const params = { token: token || '' };
+    if (stage) params.stage = stage;
+    return { params };
+  }, [stage, token]);
   const [questions, setQuestions] = useState([]);
   const [session, setSession] = useState(null);
   const [step, setStep] = useState(1);
@@ -63,6 +69,7 @@ export default function PublicPulse() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [surveyAudience, setSurveyAudience] = useState(null);
+  const [surveyCopy, setSurveyCopy] = useState(null);
   const [showWelcomeIntro, setShowWelcomeIntro] = useState(true);
   const [introStartBusy, setIntroStartBusy] = useState(false);
 
@@ -75,6 +82,7 @@ export default function PublicPulse() {
         api.get('/api/rhythm-engine-link/active-session', linkParams),
       ]);
       setQuestions(tRes.data.questions || []);
+      setSurveyCopy(tRes.data.copy || null);
       setSession(sRes.data.session);
       setSurveyAudience(sRes.data.surveyAudience ?? null);
       if (!sRes.data.session) {
@@ -84,6 +92,7 @@ export default function PublicPulse() {
 
       const rRes = await api.get('/api/rhythm-engine-link/response', linkParams);
       const r = rRes.data.response;
+      setSurveyCopy(rRes.data.copy || tRes.data.copy || null);
       setShowWelcomeIntro(!shouldSkipWelcomeIntro(r));
       setAnswers(extractAnswers(r));
       if (r.completedAt) {
@@ -115,7 +124,7 @@ export default function PublicPulse() {
       const payload = buildStepPayload(questions, answers);
       await api.put(
         `/api/rhythm-engine-link/response/step/${nextStep}`,
-        payload,
+        { ...payload, ...(stage ? { stage } : {}) },
         linkParams
       );
       setStep(nextStep);
@@ -139,7 +148,7 @@ export default function PublicPulse() {
       const payload = buildStepPayload(questions, answers);
       const { data } = await api.post(
         '/api/rhythm-engine-link/response/complete',
-        payload,
+        { ...payload, ...(stage ? { stage } : {}) },
         linkParams
       );
       setReflection(data.reflection);
@@ -155,7 +164,7 @@ export default function PublicPulse() {
     setIntroStartBusy(true);
     setError('');
     try {
-      await api.post('/api/rhythm-engine-link/survey-started', {}, linkParams);
+      await api.post('/api/rhythm-engine-link/survey-started', stage ? { stage } : {}, linkParams);
       setShowWelcomeIntro(false);
     } catch (e) {
       setError(e.response?.data?.error || 'Could not continue.');
@@ -236,8 +245,8 @@ export default function PublicPulse() {
             </p>
             <h1 style={{ margin: '0 0 1rem' }}>Welcome</h1>
             <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1rem' }}>
-              You’ve been invited to share a short, honest view of how work feels day to day — things like
-              clarity, collaboration, pace, and support. Most people finish in about five to ten minutes.
+              {surveyCopy?.intro
+                || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.'}
             </p>
             {session.sessionPurpose !== 'link_invite' && session.name ? (
               <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1rem' }}>
@@ -279,13 +288,13 @@ export default function PublicPulse() {
             {step >= 1 && step <= 4 && (
               <SurveyQuestionStep
                 title={`${surveyAudience === 'manager' ? 'Manager' : 'Staff'} survey · Section ${step} of 4`}
-                subtitle="Rate each statement using the 1-5 scale."
+                subtitle={surveyCopy?.transition || 'Rate each statement using the 1-5 scale.'}
                 questions={questions.slice((step - 1) * 4, step * 4)}
                 answers={answers}
                 onAnswer={(id, value) => setAnswers((current) => ({ ...current, [id]: value }))}
               />
             )}
-            {step === 5 && <Step5Reflection reflection={reflection} />}
+            {step === 5 && <Step5Reflection reflection={reflection} surveyCopy={surveyCopy} />}
 
             <div className="btn-row">
               {step > 1 && step < 5 && (

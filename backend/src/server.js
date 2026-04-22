@@ -19,6 +19,7 @@ import pulseLinkRoutes from './routes/pulseLink.js';
 import adminRoutes from './routes/admin.js';
 import analyticsRoutes from './routes/analytics.js';
 import platformRoutes from './routes/platformRouter.js';
+import reportRoutes from './routes/reports.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -128,6 +129,7 @@ if (!isCrmSurface) {
   app.use('/api/analytics', analyticsRoutes);
 }
 app.use('/api/platform', platformRoutes);
+app.use('/api/reports', reportRoutes);
 
 if (!isCrmSurface) {
   app.get(

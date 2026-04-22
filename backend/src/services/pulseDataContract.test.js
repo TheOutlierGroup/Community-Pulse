@@ -62,3 +62,44 @@ test('listSessionResponses returns merged rows and normalizes link role', async 
   assert.deepEqual(out.responseContract.cohortsIncluded, ['employee', 'pulse_link']);
   assert.equal(out.responseContract.includesLinkInviteRespondents, true);
 });
+
+test('listSessionResponses filters by stage when requested', async () => {
+  const employeeResponseModel = {
+    listResponsesForSession: async () => [
+      { id: 'er-pre', role: 'employee', stage: 'pre' },
+      { id: 'er-mid', role: 'employee', stage: 'mid' },
+    ],
+  };
+  const pulseLinkResponseModel = {
+    listResponsesForSession: async () => [
+      {
+        id: 'lr-post',
+        invite_id: 'inv-1',
+        session_id: 'session-1',
+        stage: 'post',
+        current_step: 1,
+        step1_data: {},
+        step2_data: {},
+        step3_data: {},
+        step4_data: {},
+        contribution_style: null,
+        completed_at: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+        email: 'staff@example.com',
+        display_name: 'Staff',
+        survey_role: 'staff',
+      },
+    ],
+  };
+
+  const out = await listSessionResponses('session-1', {
+    stage: 'mid',
+    employeeResponseModel,
+    pulseLinkResponseModel,
+  });
+
+  assert.equal(out.rows.length, 1);
+  assert.equal(out.rows[0].id, 'er-mid');
+  assert.equal(out.rows[0].stage, 'mid');
+});

@@ -14,91 +14,107 @@ import {
   listSessionResponses,
   RESPONSE_MODE_EMPLOYEE_ONLY,
 } from '../services/pulseDataContract.js';
+import { normalizePulseStage } from '../services/pulseStage.js';
 
-const router = Router();
+export function createAnalyticsRoutes({
+  authMiddleware = requireAuth,
+  adminMiddleware = requireAdmin,
+  clientOrgMiddleware = requireClientOrganization,
+  pulseServiceMiddleware = requireClientPulseService,
+  pulseSessionModel = PulseSession,
+  actionPlanModel = ActionPlan,
+  aggregateSessionResponsesFn = aggregateSessionResponses,
+  buildActionPlanDraftFn = buildActionPlanDraft,
+  writeSessionExportFn = writeSessionExport,
+  listSessionResponsesFn = listSessionResponses,
+  responseModeEmployeeOnly = RESPONSE_MODE_EMPLOYEE_ONLY,
+} = {}) {
+  const router = Router();
 
-router.use(requireAuth, requireAdmin, requireClientOrganization, requireClientPulseService);
+  router.use(authMiddleware, adminMiddleware, clientOrgMiddleware, pulseServiceMiddleware);
 
-router.get('/sessions/:id', async (req, res) => {
-  const session = await PulseSession.getSessionById(
+  router.get('/sessions/:id', async (req, res) => {
+  const session = await pulseSessionModel.getSessionById(
     req.params.id,
     req.user.organizationId
   );
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  const mode = req.query?.responseMode === RESPONSE_MODE_EMPLOYEE_ONLY
-    ? RESPONSE_MODE_EMPLOYEE_ONLY
+  const mode = req.query?.responseMode === responseModeEmployeeOnly
+    ? responseModeEmployeeOnly
     : undefined;
-  const { rows, responseContract } = await listSessionResponses(session.id, { mode });
-  const analytics = aggregateSessionResponses(rows);
-  const plan = await ActionPlan.getActionPlan(session.id, req.user.organizationId);
+  const stage = req.query?.stage ? normalizePulseStage(req.query.stage) : null;
+  const { rows, responseContract } = await listSessionResponsesFn(session.id, { mode, stage });
+  const analytics = aggregateSessionResponsesFn(rows);
+  const plan = await actionPlanModel.getActionPlan(session.id, req.user.organizationId);
   res.json({ session, analytics, actionPlan: plan, responseContract });
-});
+  });
 
-router.post('/sessions/:id/action-plan', async (req, res) => {
-  const session = await PulseSession.getSessionById(
+  router.post('/sessions/:id/action-plan', async (req, res) => {
+  const session = await pulseSessionModel.getSessionById(
     req.params.id,
     req.user.organizationId
   );
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  const mode = req.query?.responseMode === RESPONSE_MODE_EMPLOYEE_ONLY
-    ? RESPONSE_MODE_EMPLOYEE_ONLY
+  const mode = req.query?.responseMode === responseModeEmployeeOnly
+    ? responseModeEmployeeOnly
     : undefined;
-  const { rows, responseContract } = await listSessionResponses(session.id, { mode });
-  const analytics = aggregateSessionResponses(rows);
-  const draft = buildActionPlanDraft({
+  const stage = req.query?.stage ? normalizePulseStage(req.query.stage) : null;
+  const { rows, responseContract } = await listSessionResponsesFn(session.id, { mode, stage });
+  const analytics = aggregateSessionResponsesFn(rows);
+  const draft = buildActionPlanDraftFn({
     hotspots: analytics.hotspots,
     strengths: analytics.strengths,
     tensionPairs: analytics.tensionPairs,
     participationRate: analytics.participationRate,
     avgNps: analytics.avgNps ?? 0,
   });
-  const saved = await ActionPlan.upsertActionPlan(
+  const saved = await actionPlanModel.upsertActionPlan(
     session.id,
     req.user.organizationId,
     draft
   );
   res.json({ actionPlan: saved, analyticsSnapshot: analytics, responseContract });
-});
+  });
 
-router.get('/sessions/:id/action-plan', async (req, res) => {
-  const session = await PulseSession.getSessionById(
+  router.get('/sessions/:id/action-plan', async (req, res) => {
+  const session = await pulseSessionModel.getSessionById(
     req.params.id,
     req.user.organizationId
   );
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  const plan = await ActionPlan.getActionPlan(session.id, req.user.organizationId);
+  const plan = await actionPlanModel.getActionPlan(session.id, req.user.organizationId);
   res.json({ actionPlan: plan });
-});
+  });
 
-router.post('/sessions/:id/export', async (req, res) => {
-  const session = await PulseSession.getSessionById(
+  router.post('/sessions/:id/export', async (req, res) => {
+  const session = await pulseSessionModel.getSessionById(
     req.params.id,
     req.user.organizationId
   );
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  const mode = req.query?.responseMode === RESPONSE_MODE_EMPLOYEE_ONLY
-    ? RESPONSE_MODE_EMPLOYEE_ONLY
+  const mode = req.query?.responseMode === responseModeEmployeeOnly
+    ? responseModeEmployeeOnly
     : undefined;
-  const { rows, responseContract } = await listSessionResponses(session.id, { mode });
-  const analytics = aggregateSessionResponses(rows);
-  const plan = await ActionPlan.getActionPlan(session.id, req.user.organizationId);
-  const { filename } = await writeSessionExport(session.id, {
+  const stage = req.query?.stage ? normalizePulseStage(req.query.stage) : null;
+  const { rows, responseContract } = await listSessionResponsesFn(session.id, { mode, stage });
+  const analytics = aggregateSessionResponsesFn(rows);
+  const plan = await actionPlanModel.getActionPlan(session.id, req.user.organizationId);
+  const { filename } = await writeSessionExportFn(session.id, {
     session,
     exportedAt: new Date().toISOString(),
     analytics,
     actionPlan: plan,
     responses: rows.map((r) => ({
-      email: r.email,
       sourceType: r.source_type || 'employee',
+      stage: r.stage || 'pre',
       completedAt: r.completed_at,
       contributionStyle: r.contribution_style,
-      step1: r.step1_data,
-      step2: r.step2_data,
-      step3: r.step3_data,
-      step4: r.step4_data,
     })),
   });
   res.json({ ok: true, filename, downloadPath: `/api/exports/${filename}`, responseContract });
-});
+  });
 
-export default router;
+  return router;
+}
+
+export default createAnalyticsRoutes();

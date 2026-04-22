@@ -344,14 +344,20 @@ function normalizeInviteTimepoint(value) {
   const v = String(value || '')
     .trim()
     .toLowerCase();
-  if (v === 'post') return 'completed';
-  if (v === 'pre' || v === 'during' || v === 'completed') return v;
+  if (v === 'during') return 'mid';
+  if (v === 'completed') return 'post';
+  if (v === 'pre' || v === 'mid' || v === 'post') return v;
   return 'pre';
 }
 
 function inviteTimepointLabel(timepoint) {
-  if (timepoint === 'completed') return 'post';
   return timepoint;
+}
+
+function previousInviteTimepoint(timepoint) {
+  if (timepoint === 'mid') return 'pre';
+  if (timepoint === 'post') return 'mid';
+  return null;
 }
 
 export default function PlatformPulseInviteUsers() {
@@ -407,6 +413,11 @@ export default function PlatformPulseInviteUsers() {
 
   const inviteTimepoint = useMemo(() => normalizeInviteTimepoint(pulseTimepoint), [pulseTimepoint]);
   const inviteTimepointText = useMemo(() => inviteTimepointLabel(inviteTimepoint), [inviteTimepoint]);
+  const copySourceTimepoint = useMemo(() => previousInviteTimepoint(inviteTimepoint), [inviteTimepoint]);
+  const copySourceTimepointText = useMemo(
+    () => (copySourceTimepoint ? inviteTimepointLabel(copySourceTimepoint) : ''),
+    [copySourceTimepoint]
+  );
 
   const load = useCallback(async (options = {}) => {
     const silent = Boolean(options.silent);
@@ -496,15 +507,15 @@ export default function PlatformPulseInviteUsers() {
   }
 
   async function copyRecipientsFromPre() {
-    if (inviteTimepoint === 'pre') return;
+    if (!copySourceTimepoint) return;
     setCopyingFromPre(true);
     try {
       const { data: preData } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`, {
-        params: { timepoint: 'pre' },
+        params: { timepoint: copySourceTimepoint },
       });
       const preInvites = Array.isArray(preData?.invites) ? preData.invites : [];
       if (preInvites.length === 0) {
-        showToast('Pre recipients are empty. Upload a CSV list first.', { variant: 'error' });
+        showToast(`${copySourceTimepointText} recipients are empty. Upload a CSV list first.`, { variant: 'error' });
         return;
       }
       const recipients = preInvites.map((row) => {
@@ -527,15 +538,18 @@ export default function PlatformPulseInviteUsers() {
       const { data } = await api.post(
         `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`,
         { recipients },
-        { params: { timepoint: inviteTimepoint } }
+        { params: { timepoint: inviteTimepoint, allowUnassignedStaff: true } }
       );
-      showToast(`Copied ${data.upserted} recipient(s) from pre.`, { variant: 'success' });
+      showToast(`Copied ${data.upserted} recipient(s) from ${copySourceTimepointText}.`, { variant: 'success' });
       if (data.errorCount > 0) {
         showToast(`${data.errorCount} recipient(s) could not be copied.`, { variant: 'error' });
       }
       await load();
     } catch (err) {
-      showToast(err.response?.data?.error || 'Could not copy recipients from pre.', { variant: 'error' });
+      showToast(
+        err.response?.data?.error || `Could not copy recipients from ${copySourceTimepointText}.`,
+        { variant: 'error' }
+      );
     } finally {
       setCopyingFromPre(false);
     }
@@ -805,7 +819,7 @@ export default function PlatformPulseInviteUsers() {
   if (!user) return null;
 
   const previewName = 'Alex';
-  const previewLink = 'https://app.employeepulse.app/rhythm-engine/link/your-personal-token';
+  const previewLink = `https://app.employeepulse.app/rhythm-engine/${inviteTimepoint}/link/your-personal-token`;
   const previewSubject = applyTemplatePlaceholders(editingTemplateSubject, {
     name: previewName,
     link: previewLink,
@@ -1197,7 +1211,8 @@ export default function PlatformPulseInviteUsers() {
                       ) : (
                         <div style={{ display: 'grid', gap: '0.7rem' }}>
                           <span>
-                            No recipients yet for {inviteTimepointText}. Copy from pre or upload a new CSV list.
+                            No recipients yet for {inviteTimepointText}. Copy from {copySourceTimepointText} or upload
+                            a new CSV list.
                           </span>
                           <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                             <button
@@ -1206,7 +1221,9 @@ export default function PlatformPulseInviteUsers() {
                               onClick={copyRecipientsFromPre}
                               disabled={copyingFromPre || busyImport || bulkSending}
                             >
-                              {copyingFromPre ? 'Copying from pre…' : 'Copy from pre'}
+                              {copyingFromPre
+                                ? `Copying from ${copySourceTimepointText}…`
+                                : `Copy from ${copySourceTimepointText}`}
                             </button>
                             <button
                               type="button"

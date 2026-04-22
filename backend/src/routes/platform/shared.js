@@ -8,6 +8,7 @@ import * as User from '../../models/User.js';
 import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import { normalizeClientServiceIds } from '../../services/clientServices.js';
+import { normalizePulseStage } from '../../services/pulseStage.js';
 
 function platformUploadError(err, fileSizeMessage) {
   const msg = err.code === 'LIMIT_FILE_SIZE' ? fileSizeMessage : err.message;
@@ -112,12 +113,17 @@ export async function assertClientUserInOrg(orgId, userId, viewerUser = null) {
 }
 
 export function publicPulseSessionRow(row) {
+  const purpose = String(row.session_purpose || '').trim().toLowerCase();
+  const stage = normalizePulseStage(
+    purpose === 'during_project' ? 'mid' : purpose === 'completed_project' ? 'post' : 'pre'
+  );
   return {
     id: row.id,
     name: row.name,
     status: row.status,
     audience: row.audience || 'staff',
     sessionPurpose: row.session_purpose || 'standard',
+    stage,
     createdAt: row.created_at,
     closedAt: row.closed_at,
   };

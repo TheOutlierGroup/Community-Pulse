@@ -30,6 +30,16 @@ test('validateInviteImportRows requires manager reference for staff rows', () =>
   assert.equal(errors[0]?.error, 'manager_required');
 });
 
+test('validateInviteImportRows allows unassigned staff when explicitly enabled', () => {
+  const rows = normalizeInviteImportRecipients([
+    { email: 'staff@example.com', role: 'staff' },
+  ]);
+  const { errors } = validateInviteImportRows(rows, new Map(), {
+    allowStaffWithoutManagerRef: true,
+  });
+  assert.equal(errors.length, 0);
+});
+
 test('validateInviteImportRows allows valid existing managerInviteId', () => {
   const rows = normalizeInviteImportRecipients([
     { email: 'staff@example.com', role: 'staff', managerInviteId: 'manager-1' },

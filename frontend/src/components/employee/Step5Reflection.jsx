@@ -1,4 +1,4 @@
-export default function Step5Reflection({ reflection }) {
+export default function Step5Reflection({ reflection, surveyCopy = null }) {
   if (!reflection) {
     return <p className="muted">Complete the steps to see your reflection.</p>;
   }
@@ -12,7 +12,7 @@ export default function Step5Reflection({ reflection }) {
     <div className="step5-reflection">
       <p className="step5-thank-you">Your survey has been submitted.</p>
       <p className="step5-thank-you-sub muted">
-        Scores are calculated instantly from your 16 responses.
+        {surveyCopy?.reflection || 'Scores are calculated instantly from your 16 responses.'}
       </p>
       <div className="reflection-box">
         <h2 style={{ marginTop: 0 }}>{reflection.quadrant}</h2>

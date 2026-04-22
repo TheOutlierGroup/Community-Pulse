@@ -10,12 +10,18 @@
     "retention:sweep": "node src/jobs/retentionSweep.js",
     "perf:platform-tasks": "node scripts/bench-platform-tasks.js",
     "perf:compare": "node scripts/perf-compare.js",
+    "perf:k6:survey": "k6 run scripts/load/perf-survey-submission.js",
+    "perf:k6:dashboard": "k6 run scripts/load/perf-dashboard-load.js",
+    "perf:k6:freshness": "k6 run scripts/load/perf-dashboard-freshness.js",
+    "perf:k6:slug": "k6 run scripts/load/perf-slug-resolution.js",
+    "perf:k6:soak": "k6 run scripts/load/perf-soak.js",
     "migrate": "node src/migrations/run.js",
     "seed": "node src/seeds/run.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "docx": "^9.6.1",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.0",

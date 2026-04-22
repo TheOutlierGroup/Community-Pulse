@@ -4,6 +4,7 @@ import { RefreshCw } from 'lucide-react';
 import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
 import { resolvePulseFocusedSection } from './pulseNavigationRules.js';
+import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
 
 function formatScore(value) {
   if (value == null || Number.isNaN(value)) return '—';
@@ -43,17 +44,17 @@ function labelToId(value) {
     .replace(/^-+|-+$/g, '');
 }
 
-function formatPulseTimepointLabel(timepoint, duringDate) {
+function formatPulseTimepointLabel(timepoint, duringDate, duringCheckpointCount = 0) {
   if (timepoint === 'pre') return 'Pre';
   if (timepoint === 'completed') return 'Post';
   if (timepoint === 'during') {
-    if (!duringDate) return 'During';
+    if (duringCheckpointCount <= 1 || !duringDate) return 'During';
     const dt = new Date(`${duringDate}T00:00:00.000Z`);
-    if (Number.isNaN(dt.getTime())) return `During · ${duringDate}`;
-    return `During · ${dt.toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
+    if (Number.isNaN(dt.getTime())) return `During - ${duringDate}`;
+    return `During - ${dt.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
     })}`;
   }
   return 'During';
@@ -185,6 +186,7 @@ export default function PlatformClientPulse() {
     setPulseManagerOptions,
     pulseTimepoint,
     pulseDuringDate,
+    pulseTimepointOptions,
     trendAnalysisVisible,
   } = useOutletContext();
   const location = useLocation();
@@ -193,6 +195,7 @@ export default function PlatformClientPulse() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('employee');
+  const [reportModalOpen, setReportModalOpen] = useState(false);
   const loadRequestIdRef = useRef(0);
 
   const enabledServices = normalizeServices(org.settings);
@@ -353,7 +356,17 @@ export default function PlatformClientPulse() {
           : pulseFocusedSection === 'team-level-view'
             ? 'Team-Level View'
             : 'Organisation Dashboard';
-  const selectedTimepointLabel = formatPulseTimepointLabel(pulseTimepoint, pulseDuringDate);
+  const duringCheckpointCount = useMemo(
+    () => (Array.isArray(pulseTimepointOptions)
+      ? pulseTimepointOptions.filter((option) => option.phase === 'during').length
+      : 0),
+    [pulseTimepointOptions]
+  );
+  const selectedTimepointLabel = formatPulseTimepointLabel(
+    pulseTimepoint,
+    pulseDuringDate,
+    duringCheckpointCount
+  );
 
   return (
     <div className="pulse-prototype-page">
@@ -366,6 +379,13 @@ export default function PlatformClientPulse() {
           </div>
         </div>
         <div className="pulse-platform-header__right" style={{ gap: '0.6rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setReportModalOpen(true)}
+          >
+            Generate Report
+          </button>
           <span className="pulse-platform-header__date">{todayLabel}</span>
           <button
             type="button"
@@ -965,6 +985,11 @@ export default function PlatformClientPulse() {
           </section>
           )}
       </div>
+      <ReportGeneratorModal
+        open={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        organization={org}
+      />
     </div>
   );
 }

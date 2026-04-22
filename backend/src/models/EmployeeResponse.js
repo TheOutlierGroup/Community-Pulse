@@ -1,4 +1,5 @@
 import { query } from '../config/database.js';
+import { normalizePulseStage } from '../services/pulseStage.js';
 
 export async function getResponse(userId, sessionId) {
   const { rows } = await query(
@@ -11,17 +12,20 @@ export async function getResponse(userId, sessionId) {
 export async function upsertResponseDraft({
   userId,
   sessionId,
+  stage = 'pre',
   currentStep,
   step1,
   step2,
   step3,
   step4,
 }) {
+  const normalizedStage = normalizePulseStage(stage);
   const { rows } = await query(
     `INSERT INTO employee_responses
-      (user_id, session_id, current_step, step1_data, step2_data, step3_data, step4_data, updated_at)
-     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, NOW())
+      (user_id, session_id, stage, current_step, step1_data, step2_data, step3_data, step4_data, updated_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, NOW())
      ON CONFLICT (user_id, session_id) DO UPDATE SET
+       stage = EXCLUDED.stage,
        current_step = EXCLUDED.current_step,
        step1_data = EXCLUDED.step1_data,
        step2_data = EXCLUDED.step2_data,
@@ -32,6 +36,7 @@ export async function upsertResponseDraft({
     [
       userId,
       sessionId,
+      normalizedStage,
       currentStep,
       JSON.stringify(step1 || {}),
       JSON.stringify(step2 || {}),
@@ -45,20 +50,23 @@ export async function upsertResponseDraft({
 export async function completeResponse({
   userId,
   sessionId,
+  stage = 'pre',
   step1,
   step2,
   step3,
   step4,
   contributionStyle,
 }) {
+  const normalizedStage = normalizePulseStage(stage);
   const { rows } = await query(
     `UPDATE employee_responses SET
+       stage = $3,
        current_step = 5,
-       step1_data = $3::jsonb,
-       step2_data = $4::jsonb,
-       step3_data = $5::jsonb,
-       step4_data = $6::jsonb,
-       contribution_style = $7,
+       step1_data = $4::jsonb,
+       step2_data = $5::jsonb,
+       step3_data = $6::jsonb,
+       step4_data = $7::jsonb,
+       contribution_style = $8,
        completed_at = NOW(),
        updated_at = NOW()
      WHERE user_id = $1 AND session_id = $2
@@ -66,6 +74,7 @@ export async function completeResponse({
     [
       userId,
       sessionId,
+      normalizedStage,
       JSON.stringify(step1 || {}),
       JSON.stringify(step2 || {}),
       JSON.stringify(step3 || {}),
@@ -103,8 +112,9 @@ export async function countParticipationForSession(sessionId) {
 
 export async function ensureResponseRow(userId, sessionId) {
   await query(
-    `INSERT INTO employee_responses (user_id, session_id) VALUES ($1, $2)
-     ON CONFLICT (user_id, session_id) DO NOTHING`,
+    `INSERT INTO employee_responses (user_id, session_id, stage) VALUES ($1, $2, 'pre')
+     ON CONFLICT (user_id, session_id) DO UPDATE SET
+       stage = COALESCE(employee_responses.stage, 'pre')`,
     [userId, sessionId]
   );
 }

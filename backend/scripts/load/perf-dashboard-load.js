@@ -1,0 +1,29 @@
+import http from 'k6/http';
+import { check } from 'k6';
+
+const baseUrl = __ENV.K6_BASE_URL || 'http://127.0.0.1:3001';
+const dashboardPath = __ENV.K6_DASHBOARD_PATH || '/api/admin/overview';
+const url = `${baseUrl}${dashboardPath}`;
+
+export const options = {
+  scenarios: {
+    dashboardBurst: {
+      executor: 'constant-vus',
+      vus: 50,
+      duration: '60s',
+    },
+  },
+  thresholds: {
+    http_req_duration: ['p(95)<2000'],
+    http_req_failed: ['rate<0.001'],
+  },
+};
+
+export default function () {
+  const headers = { 'Content-Type': 'application/json' };
+  if (__ENV.K6_AUTH_BEARER) headers.Authorization = `Bearer ${__ENV.K6_AUTH_BEARER}`;
+  const res = http.get(url, { headers });
+  check(res, {
+    'dashboard status is 200/401/403': (r) => [200, 401, 403].includes(r.status),
+  });
+}

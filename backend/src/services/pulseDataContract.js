@@ -1,5 +1,6 @@
 import * as EmployeeResponse from '../models/EmployeeResponse.js';
 import * as PulseLinkResponse from '../models/PulseLinkResponse.js';
+import { normalizePulseStage } from './pulseStage.js';
 
 export const RESPONSE_MODE_EMPLOYEE_ONLY = 'employee_only';
 export const RESPONSE_MODE_MERGED = 'merged';
@@ -21,6 +22,7 @@ function mapLinkRowToUnifiedResponse(r) {
     step3_data: r.step3_data,
     step4_data: r.step4_data,
     contribution_style: r.contribution_style,
+    stage: r.stage || 'pre',
     completed_at: r.completed_at,
     created_at: r.created_at,
     updated_at: r.updated_at,
@@ -35,7 +37,11 @@ function mapLinkRowToUnifiedResponse(r) {
 }
 
 function addEmployeeSourceType(rows) {
-  return rows.map((row) => ({ ...row, source_type: 'employee' }));
+  return rows.map((row) => ({
+    ...row,
+    stage: row.stage || 'pre',
+    source_type: 'employee',
+  }));
 }
 
 function buildResponseContract(mode) {
@@ -50,19 +56,29 @@ function buildResponseContract(mode) {
 
 export async function listSessionResponses(
   sessionId,
-  { mode, employeeResponseModel = EmployeeResponse, pulseLinkResponseModel = PulseLinkResponse } = {}
+  {
+    mode,
+    stage = null,
+    employeeResponseModel = EmployeeResponse,
+    pulseLinkResponseModel = PulseLinkResponse,
+  } = {}
 ) {
   const resolvedMode = normalizeResponseMode(mode);
+  const normalizedStage = stage ? normalizePulseStage(stage) : null;
   const employeeRows = await employeeResponseModel.listResponsesForSession(sessionId);
+  const filteredEmployeeRows =
+    normalizedStage == null ? employeeRows : employeeRows.filter((row) => (row.stage || 'pre') === normalizedStage);
   if (resolvedMode === RESPONSE_MODE_EMPLOYEE_ONLY) {
     return {
-      rows: addEmployeeSourceType(employeeRows),
+      rows: addEmployeeSourceType(filteredEmployeeRows),
       responseContract: buildResponseContract(resolvedMode),
     };
   }
   const linkRows = await pulseLinkResponseModel.listResponsesForSession(sessionId);
+  const filteredLinkRows =
+    normalizedStage == null ? linkRows : linkRows.filter((row) => (row.stage || 'pre') === normalizedStage);
   return {
-    rows: [...addEmployeeSourceType(employeeRows), ...linkRows.map(mapLinkRowToUnifiedResponse)],
+    rows: [...addEmployeeSourceType(filteredEmployeeRows), ...filteredLinkRows.map(mapLinkRowToUnifiedResponse)],
     responseContract: buildResponseContract(resolvedMode),
   };
 }

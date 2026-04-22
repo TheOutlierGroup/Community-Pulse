@@ -12,7 +12,14 @@ export function aggregateSessionResponses(rows) {
   const scoredRows = completedRows
     .map((r) => {
       const audience = r?.role === 'admin' || r?.survey_role === 'manager' ? 'manager' : 'staff';
-      return scoreResponseFromSteps(r.step1_data, r.step2_data, r.step3_data, r.step4_data, audience);
+      return scoreResponseFromSteps(
+        r.step1_data,
+        r.step2_data,
+        r.step3_data,
+        r.step4_data,
+        audience,
+        r.stage || 'pre'
+      );
     })
     .filter((result) => result.valid);
 

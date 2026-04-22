@@ -5873,6 +5873,86 @@ input[type='range'] {
   border-radius: 1px;
 }
 
+.report-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+  display: grid;
+  place-items: center;
+  z-index: 2000;
+  padding: 1rem;
+}
+
+.report-modal {
+  background: #ffffff;
+  border-radius: 12px;
+  width: min(720px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.25);
+  border: 1px solid #e5e7eb;
+}
+
+.report-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.report-modal__form {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.1rem 1.2rem 1.3rem;
+}
+
+.report-modal__form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.92rem;
+  color: #111827;
+}
+
+.report-modal__form input,
+.report-modal__form select,
+.report-modal__form textarea {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.58rem 0.68rem;
+  font-size: 0.93rem;
+  background: #fff;
+}
+
+.report-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.report-modal__result {
+  border: 1px solid #d1fae5;
+  background: #ecfdf5;
+  color: #065f46;
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.report-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (max-width: 860px) {
+  .report-modal__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1400px) {
   .pulse-prototype-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));

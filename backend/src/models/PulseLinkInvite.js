@@ -2,6 +2,11 @@ import { randomUUID } from 'crypto';
 import { query } from '../config/database.js';
 import { hashInviteToken } from '../security/inviteToken.js';
 import * as PulseLinkResponse from './PulseLinkResponse.js';
+import {
+  internalTimepointToPulseStage,
+  normalizePulseStage,
+  pulseStageToInternalTimepoint,
+} from '../services/pulseStage.js';
 
 function normalizeEmail(email) {
   return String(email || '')
@@ -10,12 +15,7 @@ function normalizeEmail(email) {
 }
 
 export function normalizeInviteTimepointPhase(raw) {
-  const v = String(raw || '')
-    .trim()
-    .toLowerCase();
-  if (v === 'post') return 'completed';
-  if (v === 'pre' || v === 'during' || v === 'completed') return v;
-  return 'pre';
+  return pulseStageToInternalTimepoint(normalizePulseStage(raw));
 }
 
 export function publicInviteRow(row) {
@@ -35,7 +35,7 @@ export function publicInviteRow(row) {
     id: row.id,
     displayName: row.display_name,
     email: row.email,
-    timepointPhase: normalizeInviteTimepointPhase(row.timepoint_phase),
+    timepointPhase: internalTimepointToPulseStage(row.timepoint_phase),
     surveyRole: row.survey_role || 'staff',
     managerInviteId: row.manager_invite_id || null,
     managerName: row.manager_display_name || null,

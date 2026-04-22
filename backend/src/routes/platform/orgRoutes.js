@@ -61,6 +61,11 @@ import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
 } from '../../services/pulseInviteImportValidation.js';
+import {
+  internalTimepointToPulseStage,
+  normalizePulseStage,
+  pulseStageToInternalTimepoint,
+} from '../../services/pulseStage.js';
 import { createPulseHandoffToken } from '../../security/pulseHandoffToken.js';
 import {
   CLIENT_SERVICE_PULSE,
@@ -94,7 +99,8 @@ function responseScoresOutOf40(row) {
     row?.step2_data,
     row?.step3_data,
     row?.step4_data,
-    audience
+    audience,
+    row?.stage || 'pre'
   );
 }
 
@@ -183,16 +189,14 @@ function pulseSessionDateKey(session) {
 }
 
 function parsePulseDashboardTimepoint(value) {
-  const v = String(value || '')
-    .trim()
-    .toLowerCase();
-  if (v === 'post') return 'completed';
-  if (v === 'pre' || v === 'during' || v === 'completed') return v;
-  return null;
+  if (value == null || value === '') return null;
+  const canonical = normalizePulseStage(value, null);
+  if (!canonical) return null;
+  return pulseStageToInternalTimepoint(canonical);
 }
 
 function parsePulseInviteTimepoint(value) {
-  return PulseLinkInvite.normalizeInviteTimepointPhase(value);
+  return pulseStageToInternalTimepoint(normalizePulseStage(value));
 }
 
 function createDuringPulseCheckpointName(now = new Date()) {
@@ -295,6 +299,12 @@ function parseMultipartBool(v) {
   if (v === true || v === 'true' || v === '1') return true;
   if (v === false || v === 'false' || v === '0') return false;
   return false;
+}
+
+function parseTruthyQueryBool(v) {
+  if (v == null) return false;
+  const normalized = String(v).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
 function normalizeClientStatus(value) {
@@ -1717,8 +1727,8 @@ export function registerPlatformOrgRoutes(router) {
       .join(' ');
     const pulseBaseUrl = resolvePulseAppBaseUrl();
     const testLink = pulseBaseUrl
-      ? `${pulseBaseUrl}/rhythm-engine/link/test-link`
-      : 'https://app.employeepulse.app/rhythm-engine/link/test-link';
+      ? `${pulseBaseUrl}/rhythm-engine/pre/link/test-link`
+      : 'https://app.employeepulse.app/rhythm-engine/pre/link/test-link';
     try {
       await sendPulseInviteEmail(targetEmail, displayName || 'Test recipient', testLink, org.name, {
         audience,
@@ -1750,10 +1760,13 @@ export function registerPlatformOrgRoutes(router) {
     if (recipients.length > 2000) {
       return res.status(400).json({ error: 'Too many rows at once (max 2000)' });
     }
+    const allowUnassignedStaff = parseTruthyQueryBool(req.query?.allowUnassignedStaff);
     const existingInvites = await PulseLinkInvite.listInviteRowsForOrg(req.params.id, { timepointPhase });
     const invitesById = new Map(existingInvites.map((row) => [row.id, row]));
     const normalizedRows = normalizeInviteImportRecipients(recipients);
-    const prevalidation = validateInviteImportRows(normalizedRows, invitesById);
+    const prevalidation = validateInviteImportRows(normalizedRows, invitesById, {
+      allowStaffWithoutManagerRef: allowUnassignedStaff,
+    });
     const errors = [...prevalidation.errors];
     const invalidIndices = new Set(prevalidation.invalidIndices);
     const managerRefToRow = prevalidation.managerRefToRow;
@@ -1798,6 +1811,10 @@ export function registerPlatformOrgRoutes(router) {
         resolvedManagerId = managerRefToInviteId.get(source.managerRef) || null;
       }
       if (!resolvedManagerId) {
+        if (allowUnassignedStaff) {
+          await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, null, { timepointPhase });
+          continue;
+        }
         errors.push({
           index: source.index,
           email: source.email,
@@ -1866,7 +1883,8 @@ export function registerPlatformOrgRoutes(router) {
     }
     const rotated = await PulseLinkInvite.rotateTokenAndMarkSent(invite.id, orgId);
     if (!rotated) return res.status(500).json({ error: 'Could not prepare invite link' });
-    const linkUrl = `${baseUrl}/rhythm-engine/link/${rotated.rawToken}`;
+    const inviteStage = internalTimepointToPulseStage(invite.timepoint_phase);
+    const linkUrl = `${baseUrl}/rhythm-engine/${inviteStage}/link/${rotated.rawToken}`;
     const audience = invite.survey_role === 'manager' ? 'manager' : 'staff';
     const platformOrg = await Organization.getOrganization(req.user.organizationId);
     const template = pulseInviteTemplateFromSettings(org.settings, audience, org.name, platformOrg?.settings);

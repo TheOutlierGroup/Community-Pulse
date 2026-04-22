@@ -1,4 +1,10 @@
 import { query } from '../config/database.js';
+import {
+  PULSE_STAGE_MID,
+  PULSE_STAGE_POST,
+  PULSE_STAGE_PRE,
+  normalizePulseStage,
+} from '../services/pulseStage.js';
 
 export async function listSessionsForOrg(organizationId) {
   const { rows } = await query(
@@ -8,7 +14,7 @@ export async function listSessionsForOrg(organizationId) {
   return rows;
 }
 
-function normalizeSessionPurpose(sessionPurpose) {
+export function normalizeSessionPurpose(sessionPurpose) {
   const raw = String(sessionPurpose || 'standard')
     .trim()
     .toLowerCase();
@@ -17,6 +23,14 @@ function normalizeSessionPurpose(sessionPurpose) {
   if (raw === 'completed_project') return 'completed_project';
   if (raw === 'during_project') return 'during_project';
   return 'standard';
+}
+
+export function stageFromSessionPurpose(sessionPurpose, fallback = PULSE_STAGE_PRE) {
+  const purpose = normalizeSessionPurpose(sessionPurpose);
+  if (purpose === 'pre_project') return PULSE_STAGE_PRE;
+  if (purpose === 'during_project') return PULSE_STAGE_MID;
+  if (purpose === 'completed_project') return PULSE_STAGE_POST;
+  return normalizePulseStage(fallback);
 }
 
 export async function createSession(

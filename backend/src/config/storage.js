@@ -18,15 +18,17 @@ export function getStorageRoot() {
 export function ensureStorageDirs() {
   const root = getStorageRoot();
   const exportsDir = path.join(root, 'exports');
+  const reportsDir = path.join(root, 'reports');
   const uploadsDir = path.join(root, 'uploads');
   const avatarsDir = path.join(uploadsDir, 'avatars');
   const orgLogosDir = path.join(uploadsDir, 'org-logos');
   const taskImagesDir = path.join(uploadsDir, 'task-images');
   fs.mkdirSync(exportsDir, { recursive: true });
+  fs.mkdirSync(reportsDir, { recursive: true });
   fs.mkdirSync(avatarsDir, { recursive: true });
   fs.mkdirSync(orgLogosDir, { recursive: true });
   fs.mkdirSync(taskImagesDir, { recursive: true });
-  return { root, exportsDir, uploadsDir, avatarsDir, orgLogosDir, taskImagesDir };
+  return { root, exportsDir, reportsDir, uploadsDir, avatarsDir, orgLogosDir, taskImagesDir };
 }
 
 export function avatarFilePath(filename) {
@@ -51,6 +53,12 @@ export function uploadFilePath(filename) {
   const { uploadsDir } = ensureStorageDirs();
   const safe = path.basename(filename);
   return path.join(uploadsDir, safe);
+}
+
+export function reportFilePath(filename) {
+  const { reportsDir } = ensureStorageDirs();
+  const safe = path.basename(filename);
+  return path.join(reportsDir, safe);
 }
 
 export function taskImageFilePath(filename) {

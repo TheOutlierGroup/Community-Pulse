@@ -24,7 +24,8 @@ export function normalizeInviteImportRecipients(recipients) {
   });
 }
 
-export function validateInviteImportRows(normalizedRows, existingInvitesById = new Map()) {
+export function validateInviteImportRows(normalizedRows, existingInvitesById = new Map(), options = {}) {
+  const allowStaffWithoutManagerRef = options?.allowStaffWithoutManagerRef === true;
   const errors = [];
   const invalidIndices = new Set();
   const managerRefToRow = new Map();
@@ -69,6 +70,7 @@ export function validateInviteImportRows(normalizedRows, existingInvitesById = n
     }
 
     if (!row.managerRef) {
+      if (allowStaffWithoutManagerRef) continue;
       errors.push({ index: row.index, email: row.email, error: 'manager_required' });
       invalidIndices.add(row.index);
       continue;
