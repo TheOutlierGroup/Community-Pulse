@@ -32,7 +32,6 @@ jobs:
         run: npm run test:e2e
 
   k6-performance:
-    if: ${{ secrets.K6_BASE_URL != '' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,22 +47,29 @@ jobs:
       K6_TARGET_WINDOW_SECONDS: ${{ secrets.K6_TARGET_WINDOW_SECONDS }}
     steps:
       - name: Checkout
+        if: ${{ env.K6_BASE_URL != '' }}
         uses: actions/checkout@v4
 
       - name: Setup k6
+        if: ${{ env.K6_BASE_URL != '' }}
         uses: grafana/setup-k6-action@v1
 
       - name: Run survey submission profile
+        if: ${{ env.K6_BASE_URL != '' }}
         run: npm run perf:k6:survey
 
       - name: Run dashboard burst profile
+        if: ${{ env.K6_BASE_URL != '' }}
         run: npm run perf:k6:dashboard
 
       - name: Run dashboard freshness profile
+        if: ${{ env.K6_BASE_URL != '' }}
         run: npm run perf:k6:freshness
 
       - name: Run slug resolution profile
+        if: ${{ env.K6_BASE_URL != '' }}
         run: npm run perf:k6:slug
 
       - name: Run soak profile
+        if: ${{ env.K6_BASE_URL != '' }}
         run: npm run perf:k6:soak
