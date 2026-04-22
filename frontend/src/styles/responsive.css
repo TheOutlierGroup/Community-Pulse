@@ -12,7 +12,7 @@
   /* Primary CTA (Outlier homepage capsule buttons) */
   --btn-cta-bg: #ffcc80;
   --btn-cta-bg-hover: #ffc266;
-  --btn-cta-text: #ffffff;
+  --btn-cta-text: #1c1917;
   --btn-cta-rgb: 255, 204, 128;
   --warn: #d97706;
   --danger: #dc2626;
@@ -1470,13 +1470,13 @@ a:hover {
 }
 
 .login-card .muted a {
-  color: var(--btn-cta-bg);
+  color: #8a5a00;
   text-decoration: none;
   font-weight: 500;
 }
 
 .login-card .muted a:hover {
-  color: var(--btn-cta-bg-hover);
+  color: #6f4700;
   text-decoration: underline;
 }
 

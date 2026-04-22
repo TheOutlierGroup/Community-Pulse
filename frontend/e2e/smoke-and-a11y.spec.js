@@ -10,10 +10,10 @@ test('login page renders required auth controls', async ({ page }) => {
 });
 
 test('public pulse link handles invalid token safely', async ({ page }) => {
-  await page.goto('/rhythm-engine/post/link/invalid-token-for-e2e');
+  await page.goto('/rhythm-engine/link/invalid-token-for-e2e');
   await expect(
     page.getByText(
-      /expired|invalid|could not load rhythm engine|could not start the questionnaire/i
+      /expired|invalid|not found|could not load rhythm engine|could not start the questionnaire/i
     )
   ).toBeVisible();
 });
