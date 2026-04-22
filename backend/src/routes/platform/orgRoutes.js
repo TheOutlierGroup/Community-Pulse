@@ -186,8 +186,13 @@ function parsePulseDashboardTimepoint(value) {
   const v = String(value || '')
     .trim()
     .toLowerCase();
+  if (v === 'post') return 'completed';
   if (v === 'pre' || v === 'during' || v === 'completed') return v;
   return null;
+}
+
+function parsePulseInviteTimepoint(value) {
+  return PulseLinkInvite.normalizeInviteTimepointPhase(value);
 }
 
 function createDuringPulseCheckpointName(now = new Date()) {
@@ -1602,7 +1607,8 @@ export function registerPlatformOrgRoutes(router) {
   router.get('/organizations/:id/pulse-link-invites', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
-    const rows = await PulseLinkInvite.listInvitesForOrg(req.params.id);
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const rows = await PulseLinkInvite.listInvitesForOrg(req.params.id, { timepointPhase });
     res.json({ invites: rows.map(PulseLinkInvite.publicInviteRow) });
   });
 
@@ -1736,6 +1742,7 @@ export function registerPlatformOrgRoutes(router) {
   router.post('/organizations/:id/pulse-link-invites/import', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
     const recipients = req.body?.recipients;
     if (!Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({ error: 'recipients must be a non-empty array' });
@@ -1743,7 +1750,7 @@ export function registerPlatformOrgRoutes(router) {
     if (recipients.length > 2000) {
       return res.status(400).json({ error: 'Too many rows at once (max 2000)' });
     }
-    const existingInvites = await PulseLinkInvite.listInviteRowsForOrg(req.params.id);
+    const existingInvites = await PulseLinkInvite.listInviteRowsForOrg(req.params.id, { timepointPhase });
     const invitesById = new Map(existingInvites.map((row) => [row.id, row]));
     const normalizedRows = normalizeInviteImportRecipients(recipients);
     const prevalidation = validateInviteImportRows(normalizedRows, invitesById);
@@ -1756,6 +1763,7 @@ export function registerPlatformOrgRoutes(router) {
       if (invalidIndices.has(row.index)) continue;
       const { row: upsertedRow, error } = await PulseLinkInvite.upsertInviteRow({
         organizationId: req.params.id,
+        timepointPhase,
         displayName: row.displayName,
         email: row.email,
         surveyRole: row.surveyRole,
@@ -1780,7 +1788,7 @@ export function registerPlatformOrgRoutes(router) {
     for (const item of upsertedRows) {
       const { source, invite } = item;
       if (source.surveyRole !== 'staff') {
-        await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, null);
+        await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, null, { timepointPhase });
         continue;
       }
       let resolvedManagerId = null;
@@ -1806,7 +1814,7 @@ export function registerPlatformOrgRoutes(router) {
         continue;
       }
       const resolvedManagerRow = invitesById.get(resolvedManagerId)
-        || (await PulseLinkInvite.getInviteInOrg(resolvedManagerId, req.params.id));
+        || (await PulseLinkInvite.getInviteInOrg(resolvedManagerId, req.params.id, { timepointPhase }));
       if (!resolvedManagerRow || resolvedManagerRow.survey_role !== 'manager') {
         errors.push({
           index: source.index,
@@ -1815,7 +1823,9 @@ export function registerPlatformOrgRoutes(router) {
         });
         continue;
       }
-      const updated = await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, resolvedManagerId);
+      const updated = await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, resolvedManagerId, {
+        timepointPhase,
+      });
       if (!updated) {
         errors.push({
           index: source.index,
@@ -1835,7 +1845,8 @@ export function registerPlatformOrgRoutes(router) {
     const orgId = req.params.id;
     const org = await assertClientOrganizationPlatformForUser(orgId, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
-    const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId);
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId, { timepointPhase });
     if (!invite) return res.status(404).json({ error: 'Invite not found' });
     if (await PulseLinkInvite.inviteHasCompletedSurvey(invite.id)) {
       return res.status(409).json({
@@ -1884,7 +1895,8 @@ export function registerPlatformOrgRoutes(router) {
     const orgId = req.params.id;
     const org = await assertClientOrganizationPlatformForUser(orgId, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
-    const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId);
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId, { timepointPhase });
     if (!invite) return res.status(404).json({ error: 'Invite not found' });
     if (await PulseLinkInvite.inviteHasCompletedSurvey(invite.id)) {
       return res.status(409).json({
@@ -1892,7 +1904,7 @@ export function registerPlatformOrgRoutes(router) {
         details: 'This recipient has finished the questionnaire. They cannot be removed from the list.',
       });
     }
-    const ok = await PulseLinkInvite.deleteInviteInOrg(invite.id, orgId);
+    const ok = await PulseLinkInvite.deleteInviteInOrg(invite.id, orgId, { timepointPhase });
     if (!ok) return res.status(404).json({ error: 'Invite not found' });
     res.status(204).end();
   });

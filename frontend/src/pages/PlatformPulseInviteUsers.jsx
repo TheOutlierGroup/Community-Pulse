@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -340,14 +340,30 @@ function apiErrorDetail(err, fallback) {
   return msg;
 }
 
+function normalizeInviteTimepoint(value) {
+  const v = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (v === 'post') return 'completed';
+  if (v === 'pre' || v === 'during' || v === 'completed') return v;
+  return 'pre';
+}
+
+function inviteTimepointLabel(timepoint) {
+  if (timepoint === 'completed') return 'post';
+  return timepoint;
+}
+
 export default function PlatformPulseInviteUsers() {
-  const { orgId, org, clientLogoUrl } = useOutletContext();
+  const { orgId, org, clientLogoUrl, pulseTimepoint } = useOutletContext();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const fileInputRef = useRef(null);
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyImport, setBusyImport] = useState(false);
+  const [copyingFromPre, setCopyingFromPre] = useState(false);
   const [sendingId, setSendingId] = useState(null);
   const [deleteConfirmRow, setDeleteConfirmRow] = useState(null);
   const [deleteWorking, setDeleteWorking] = useState(false);
@@ -389,6 +405,9 @@ export default function PlatformPulseInviteUsers() {
     [invites]
   );
 
+  const inviteTimepoint = useMemo(() => normalizeInviteTimepoint(pulseTimepoint), [pulseTimepoint]);
+  const inviteTimepointText = useMemo(() => inviteTimepointLabel(inviteTimepoint), [inviteTimepoint]);
+
   const load = useCallback(async (options = {}) => {
     const silent = Boolean(options.silent);
     if (!silent) {
@@ -396,7 +415,9 @@ export default function PlatformPulseInviteUsers() {
     }
     setError('');
     try {
-      const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`);
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`, {
+        params: { timepoint: inviteTimepoint },
+      });
       setInvites(data.invites || []);
     } catch (e) {
       setError(e.response?.data?.error || 'Could not load invite list.');
@@ -406,7 +427,7 @@ export default function PlatformPulseInviteUsers() {
         setLoading(false);
       }
     }
-  }, [orgId]);
+  }, [inviteTimepoint, orgId]);
 
   const loadTemplates = useCallback(async () => {
     setTemplatesLoading(true);
@@ -452,9 +473,11 @@ export default function PlatformPulseInviteUsers() {
         });
         return;
       }
-      const { data } = await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`, {
-        recipients,
-      });
+      const { data } = await api.post(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`,
+        { recipients },
+        { params: { timepoint: inviteTimepoint } }
+      );
       showToast(`Imported ${data.upserted} row(s).`, { variant: 'success' });
       if (data.errorCount > 0) {
         showToast(`${data.errorCount} row(s) skipped.`, { variant: 'error' });
@@ -464,6 +487,57 @@ export default function PlatformPulseInviteUsers() {
       showToast(err.response?.data?.error || 'Import failed.', { variant: 'error' });
     } finally {
       setBusyImport(false);
+    }
+  }
+
+  function openCsvPicker() {
+    if (busyImport || bulkSending || copyingFromPre) return;
+    fileInputRef.current?.click();
+  }
+
+  async function copyRecipientsFromPre() {
+    if (inviteTimepoint === 'pre') return;
+    setCopyingFromPre(true);
+    try {
+      const { data: preData } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`, {
+        params: { timepoint: 'pre' },
+      });
+      const preInvites = Array.isArray(preData?.invites) ? preData.invites : [];
+      if (preInvites.length === 0) {
+        showToast('Pre recipients are empty. Upload a CSV list first.', { variant: 'error' });
+        return;
+      }
+      const recipients = preInvites.map((row) => {
+        const fallbackName = String(row?.email || '')
+          .split('@')[0]
+          .trim();
+        const recipient = {
+          name: String(row?.displayName || '').trim() || fallbackName || 'Recipient',
+          email: String(row?.email || '').trim().toLowerCase(),
+          role: row?.surveyRole === 'manager' ? 'manager' : 'staff',
+        };
+        if (recipient.role === 'manager') {
+          recipient.managerId = recipient.email;
+        } else {
+          const managerEmail = String(row?.managerEmail || '').trim().toLowerCase();
+          if (managerEmail) recipient.managerId = managerEmail;
+        }
+        return recipient;
+      });
+      const { data } = await api.post(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`,
+        { recipients },
+        { params: { timepoint: inviteTimepoint } }
+      );
+      showToast(`Copied ${data.upserted} recipient(s) from pre.`, { variant: 'success' });
+      if (data.errorCount > 0) {
+        showToast(`${data.errorCount} recipient(s) could not be copied.`, { variant: 'error' });
+      }
+      await load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not copy recipients from pre.', { variant: 'error' });
+    } finally {
+      setCopyingFromPre(false);
     }
   }
 
@@ -501,9 +575,11 @@ export default function PlatformPulseInviteUsers() {
       const name = String(addName || '').trim() || email.split('@')[0];
       const recipient = { name, email, role: addRole };
       if (addRole === 'staff') recipient.managerInviteId = addManagerInviteId;
-      const { data } = await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`, {
-        recipients: [recipient],
-      });
+      const { data } = await api.post(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`,
+        { recipients: [recipient] },
+        { params: { timepoint: inviteTimepoint } }
+      );
       if (data.errorCount > 0) {
         const first = data.errors?.[0];
         let message = 'Could not add recipient.';
@@ -630,7 +706,11 @@ export default function PlatformPulseInviteUsers() {
   async function sendInvite(id) {
     setSendingId(id);
     try {
-      await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${id}/send`);
+      await api.post(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${id}/send`,
+        {},
+        { params: { timepoint: inviteTimepoint } }
+      );
       showToast('Invite sent.', { variant: 'success' });
       await load();
     } catch (err) {
@@ -661,7 +741,11 @@ export default function PlatformPulseInviteUsers() {
       for (let i = 0; i < snapshot.length; i += 1) {
         setBulkProgress({ current: i + 1, total });
         try {
-          await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${snapshot[i]}/send`);
+          await api.post(
+            `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${snapshot[i]}/send`,
+            {},
+            { params: { timepoint: inviteTimepoint } }
+          );
           success += 1;
         } catch (e) {
           failed += 1;
@@ -705,7 +789,9 @@ export default function PlatformPulseInviteUsers() {
     }
     setDeleteWorking(true);
     try {
-      await api.delete(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${deleteConfirmRow.id}`);
+      await api.delete(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${deleteConfirmRow.id}`, {
+        params: { timepoint: inviteTimepoint },
+      });
       showToast('Recipient removed.', { variant: 'success' });
       setDeleteConfirmRow(null);
       await load();
@@ -735,27 +821,26 @@ export default function PlatformPulseInviteUsers() {
         <div>
           <div className="pulse-platform-header__eyebrow">Client administration</div>
           <h1 className="pulse-platform-header__title">Rhythm Engine link recipients</h1>
+          <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+            Recipient list for <strong>{inviteTimepointText}</strong> survey.
+          </p>
         </div>
         <div className="pulse-platform-header__right" style={{ flexWrap: 'wrap' }}>
-          <label
+          <button
+            type="button"
             className="btn btn-primary"
-            style={{ cursor: busyImport || bulkSending ? 'wait' : 'pointer', margin: 0 }}
+            style={{ margin: 0 }}
+            disabled={busyImport || bulkSending || copyingFromPre}
+            onClick={openCsvPicker}
           >
             <Upload size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
             {busyImport ? 'Importing…' : 'Import CSV'}
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              disabled={busyImport || bulkSending}
-              onChange={onFile}
-            />
-          </label>
+          </button>
           <button
             type="button"
             className="btn btn-primary"
             onClick={() => setAddOpen(true)}
-            disabled={bulkSending}
+            disabled={bulkSending || busyImport || copyingFromPre}
           >
             <UserPlus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
             Add
@@ -764,6 +849,14 @@ export default function PlatformPulseInviteUsers() {
       </div>
 
       {error && <p className="error">{error}</p>}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        hidden
+        disabled={busyImport || bulkSending || copyingFromPre}
+        onChange={onFile}
+      />
 
       <ModalDialog
         open={Boolean(templateModalAudience)}
@@ -1099,7 +1192,33 @@ export default function PlatformPulseInviteUsers() {
                 {invites.length === 0 && (
                   <tr>
                     <td colSpan={6} className="muted" style={{ padding: '1.25rem' }}>
-                      No recipients yet. Use Add or Import CSV.
+                      {inviteTimepoint === 'pre' ? (
+                        'No recipients yet. Use Add or Import CSV.'
+                      ) : (
+                        <div style={{ display: 'grid', gap: '0.7rem' }}>
+                          <span>
+                            No recipients yet for {inviteTimepointText}. Copy from pre or upload a new CSV list.
+                          </span>
+                          <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={copyRecipientsFromPre}
+                              disabled={copyingFromPre || busyImport || bulkSending}
+                            >
+                              {copyingFromPre ? 'Copying from pre…' : 'Copy from pre'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={openCsvPicker}
+                              disabled={copyingFromPre || busyImport || bulkSending}
+                            >
+                              Upload new CSV
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}

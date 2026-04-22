@@ -9,6 +9,15 @@ function normalizeEmail(email) {
     .toLowerCase();
 }
 
+export function normalizeInviteTimepointPhase(raw) {
+  const v = String(raw || '')
+    .trim()
+    .toLowerCase();
+  if (v === 'post') return 'completed';
+  if (v === 'pre' || v === 'during' || v === 'completed') return v;
+  return 'pre';
+}
+
 export function publicInviteRow(row) {
   if (!row) return null;
   const completedAt = row.survey_completed_at ?? null;
@@ -26,6 +35,7 @@ export function publicInviteRow(row) {
     id: row.id,
     displayName: row.display_name,
     email: row.email,
+    timepointPhase: normalizeInviteTimepointPhase(row.timepoint_phase),
     surveyRole: row.survey_role || 'staff',
     managerInviteId: row.manager_invite_id || null,
     managerName: row.manager_display_name || null,
@@ -37,11 +47,13 @@ export function publicInviteRow(row) {
   };
 }
 
-export async function listInvitesForOrg(organizationId) {
+export async function listInvitesForOrg(organizationId, options = {}) {
+  const timepointPhase = normalizeInviteTimepointPhase(options?.timepointPhase);
   const { rows } = await query(
     `SELECT pli.id,
             pli.display_name,
             pli.email,
+            pli.timepoint_phase,
             pli.survey_role,
             pli.manager_invite_id,
             mgr.display_name AS manager_display_name,
@@ -84,18 +96,21 @@ export async function listInvitesForOrg(organizationId) {
        ON mgr.id = pli.manager_invite_id
       AND mgr.organization_id = pli.organization_id
      WHERE pli.organization_id = $1
+       AND pli.timepoint_phase = $2
      ORDER BY lower(pli.email)`,
-    [organizationId]
+    [organizationId, timepointPhase]
   );
   return rows;
 }
 
-export async function listInviteRowsForOrg(organizationId) {
+export async function listInviteRowsForOrg(organizationId, options = {}) {
+  const timepointPhase = normalizeInviteTimepointPhase(options?.timepointPhase);
   const { rows } = await query(
     `SELECT pli.id,
             pli.organization_id,
             pli.display_name,
             pli.email,
+            pli.timepoint_phase,
             pli.survey_role,
             pli.manager_invite_id,
             pli.last_invited_at,
@@ -108,17 +123,27 @@ export async function listInviteRowsForOrg(organizationId) {
        ON mgr.id = pli.manager_invite_id
       AND mgr.organization_id = pli.organization_id
      WHERE pli.organization_id = $1
+       AND pli.timepoint_phase = $2
      ORDER BY lower(pli.email)`,
-    [organizationId]
+    [organizationId, timepointPhase]
   );
   return rows;
 }
 
-export async function getInviteInOrg(inviteId, organizationId) {
-  const { rows } = await query(
-    `SELECT * FROM pulse_link_invites WHERE id = $1 AND organization_id = $2`,
-    [inviteId, organizationId]
-  );
+export async function getInviteInOrg(inviteId, organizationId, options = {}) {
+  const timepointPhase = options?.timepointPhase;
+  const normalizedPhase =
+    timepointPhase == null ? null : normalizeInviteTimepointPhase(timepointPhase);
+  const { rows } =
+    normalizedPhase == null
+      ? await query(`SELECT * FROM pulse_link_invites WHERE id = $1 AND organization_id = $2`, [inviteId, organizationId])
+      : await query(
+          `SELECT * FROM pulse_link_invites
+           WHERE id = $1
+             AND organization_id = $2
+             AND timepoint_phase = $3`,
+          [inviteId, organizationId, normalizedPhase]
+        );
   return rows[0] || null;
 }
 
@@ -140,6 +165,7 @@ export async function findByTokenHash(tokenHash) {
 
 export async function upsertInviteRow({
   organizationId,
+  timepointPhase = 'pre',
   displayName,
   email,
   surveyRole = 'staff',
@@ -148,31 +174,47 @@ export async function upsertInviteRow({
   const em = normalizeEmail(email);
   if (!em) return { row: null, error: 'invalid_email' };
   const role = surveyRole === 'manager' ? 'manager' : 'staff';
+  const phase = normalizeInviteTimepointPhase(timepointPhase);
   const name = String(displayName || '').trim();
   const managerId = role === 'manager' ? null : managerInviteId || null;
   const { rows } = await query(
-    `INSERT INTO pulse_link_invites (organization_id, display_name, email, survey_role, manager_invite_id)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (organization_id, email) DO UPDATE SET
+    `INSERT INTO pulse_link_invites (organization_id, timepoint_phase, display_name, email, survey_role, manager_invite_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (organization_id, timepoint_phase, email) DO UPDATE SET
        display_name = EXCLUDED.display_name,
        survey_role = EXCLUDED.survey_role,
        manager_invite_id = EXCLUDED.manager_invite_id,
        updated_at = NOW()
      RETURNING *`,
-    [organizationId, name, em, role, managerId]
+    [organizationId, phase, name, em, role, managerId]
   );
   return { row: rows[0], error: null };
 }
 
-export async function updateManagerInviteId(inviteId, organizationId, managerInviteId) {
-  const { rows } = await query(
-    `UPDATE pulse_link_invites
-     SET manager_invite_id = $3,
-         updated_at = NOW()
-     WHERE id = $1 AND organization_id = $2
-     RETURNING *`,
-    [inviteId, organizationId, managerInviteId || null]
-  );
+export async function updateManagerInviteId(inviteId, organizationId, managerInviteId, options = {}) {
+  const timepointPhase = options?.timepointPhase;
+  const normalizedPhase =
+    timepointPhase == null ? null : normalizeInviteTimepointPhase(timepointPhase);
+  const { rows } =
+    normalizedPhase == null
+      ? await query(
+          `UPDATE pulse_link_invites
+           SET manager_invite_id = $3,
+               updated_at = NOW()
+           WHERE id = $1 AND organization_id = $2
+           RETURNING *`,
+          [inviteId, organizationId, managerInviteId || null]
+        )
+      : await query(
+          `UPDATE pulse_link_invites
+           SET manager_invite_id = $3,
+               updated_at = NOW()
+           WHERE id = $1
+             AND organization_id = $2
+             AND timepoint_phase = $4
+           RETURNING *`,
+          [inviteId, organizationId, managerInviteId || null, normalizedPhase]
+        );
   return rows[0] || null;
 }
 
@@ -206,11 +248,20 @@ export async function countSentInvitesBySurveyRole(organizationId) {
   return out;
 }
 
-export async function deleteInviteInOrg(inviteId, organizationId) {
-  const { rowCount } = await query(
-    `DELETE FROM pulse_link_invites WHERE id = $1 AND organization_id = $2`,
-    [inviteId, organizationId]
-  );
+export async function deleteInviteInOrg(inviteId, organizationId, options = {}) {
+  const timepointPhase = options?.timepointPhase;
+  const normalizedPhase =
+    timepointPhase == null ? null : normalizeInviteTimepointPhase(timepointPhase);
+  const { rowCount } =
+    normalizedPhase == null
+      ? await query(`DELETE FROM pulse_link_invites WHERE id = $1 AND organization_id = $2`, [inviteId, organizationId])
+      : await query(
+          `DELETE FROM pulse_link_invites
+           WHERE id = $1
+             AND organization_id = $2
+             AND timepoint_phase = $3`,
+          [inviteId, organizationId, normalizedPhase]
+        );
   return rowCount > 0;
 }
 
