@@ -4,6 +4,7 @@ export const PULSE_SECTION_IDS = [
   'organisation-dashboard',
   'organisation-scores',
   'trend-analysis',
+  'sponsorship-analysis',
   'employee-breakdown',
   'score-breakdown',
   'team-level-view',
@@ -26,6 +27,7 @@ export function resolvePulseFocusedSection(rawHash, trendAnalysisVisible) {
   if (fullOverview) return null;
   if (normalizedHash === 'trend-analysis' && !trendAnalysisVisible) return null;
   if (normalizedHash === 'score-breakdown') return 'employee-breakdown';
+  if (normalizedHash === 'manager-load-report') return 'sponsorship-analysis';
   if (PULSE_SECTION_IDS.includes(normalizedHash)) return normalizedHash;
   return null;
 }

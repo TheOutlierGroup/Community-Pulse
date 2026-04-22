@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useOutletContext } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
 import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
 import { resolvePulseFocusedSection } from './pulseNavigationRules.js';
 import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
 
+const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
+const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
+
 function formatScore(value) {
-  if (value == null || Number.isNaN(value)) return '—';
+  if (value == null || Number.isNaN(value)) return '--';
   return value.toFixed(1);
 }
 
@@ -16,32 +18,16 @@ function formatPercent(value) {
   return `${Math.round(value)}%`;
 }
 
-function deltaText(value) {
-  if (value == null || Number.isNaN(value)) return 'No prior';
+function formatDelta(value) {
+  if (value == null || Number.isNaN(value)) return '--';
   if (value > 0) return `+${value.toFixed(1)}`;
-  if (value < 0) return `${value.toFixed(1)}`;
+  if (value < 0) return value.toFixed(1);
   return '0.0';
 }
 
-function deltaClass(value) {
+function deltaTone(value) {
   if (value == null || Number.isNaN(value) || value === 0) return 'flat';
-  return value > 0 ? 'up' : 'dn';
-}
-
-function heatClass(value) {
-  if (value == null || Number.isNaN(value)) return 'h1';
-  if (value >= 4.0) return 'h5';
-  if (value >= 3.5) return 'h4';
-  if (value >= 3.0) return 'h3';
-  if (value >= 2.5) return 'h2';
-  return 'h1';
-}
-
-function labelToId(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+  return value > 0 ? 'up' : 'down';
 }
 
 function formatPulseTimepointLabel(timepoint, duringDate, duringCheckpointCount = 0) {
@@ -64,37 +50,13 @@ function formatReportStage(stage) {
   if (stage === 'pre') return 'Pre-Change';
   if (stage === 'mid') return 'Mid-Change';
   if (stage === 'post') return 'Post-Change';
-  return stage || '—';
+  return stage || '--';
 }
 
 function formatReportAuthor(author) {
   if (!author) return 'Unknown';
-  const full = [author.first_name, author.last_name].filter(Boolean).join(' ').trim();
-  return full || author.email || 'Unknown';
-}
-
-const QUADRANT_ORDER = [
-  'Motivated but Lost',
-  'Optimal',
-  'High Risk',
-  'Capable but Wary',
-];
-
-const ADOPTION_DIMENSIONS = ['1A', '1B', '1C', '1D'];
-const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
-
-function sparkColor(loadBand) {
-  if (loadBand === 'Sustainable') return 'var(--pulse-green)';
-  if (loadBand === 'Overloaded') return 'var(--pulse-red)';
-  if (loadBand === 'At Capacity') return 'var(--pulse-orange)';
-  return 'var(--pulse-amber)';
-}
-
-function quadrantPillClass(name) {
-  if (name === 'Optimal') return 'opt';
-  if (name === 'Capable but Wary') return 'cw';
-  if (name === 'Motivated but Lost') return 'ml';
-  return 'hr';
+  const fullName = [author.first_name, author.last_name].filter(Boolean).join(' ').trim();
+  return fullName || author.email || 'Unknown';
 }
 
 function pause(ms) {
@@ -182,6 +144,51 @@ async function fetchPulseDashboardWithRetry(orgId, params) {
   throw wrappedError;
 }
 
+function sectionLabel(sectionId) {
+  if (sectionId === 'organisation-scores') return 'Organisation Scores';
+  if (sectionId === 'trend-analysis') return 'Trend Analysis';
+  if (sectionId === 'sponsorship-analysis') return 'Sponsorship Analysis';
+  if (sectionId === 'employee-breakdown') return 'Employee Breakdown';
+  if (sectionId === 'team-level-view') return 'Team-Level View';
+  if (sectionId === 'reports') return 'Reports';
+  return 'Organisation Dashboard';
+}
+
+function quadrantTone(name) {
+  if (name === 'Optimal') return 'optimal';
+  if (name === 'Motivated but Lost') return 'motivated';
+  if (name === 'Capable but Wary') return 'wary';
+  return 'risk';
+}
+
+function normalizeInviteTimepoint(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'during') return 'mid';
+  if (raw === 'completed') return 'post';
+  if (raw === 'pre' || raw === 'mid' || raw === 'post') return raw;
+  return 'pre';
+}
+
+function majorityLabel(values, fallback = '--') {
+  const counts = new Map();
+  values.forEach((value) => {
+    const label = String(value || '').trim();
+    if (!label) return;
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+  if (counts.size === 0) return fallback;
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function heatTone(value) {
+  if (value == null || Number.isNaN(value)) return 'h1';
+  if (value >= 4.0) return 'h5';
+  if (value >= 3.5) return 'h4';
+  if (value >= 3.0) return 'h3';
+  if (value >= 2.5) return 'h2';
+  return 'h1';
+}
+
 export default function PlatformClientPulse() {
   const {
     org,
@@ -200,7 +207,8 @@ export default function PlatformClientPulse() {
   const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('employee');
+  const [activeDimensionTab, setActiveDimensionTab] = useState('employee');
+  const [groupInviteMap, setGroupInviteMap] = useState({});
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(true);
@@ -209,12 +217,193 @@ export default function PlatformClientPulse() {
 
   const enabledServices = normalizeServices(org.settings);
   const pulseEnabled = enabledServices.includes('pulse');
+  const pulseFocusedSection = useMemo(
+    () => resolvePulseFocusedSection(location.hash, trendAnalysisVisible),
+    [location.hash, trendAnalysisVisible]
+  );
+  const pageTitle = sectionLabel(pulseFocusedSection);
+  const kpis = dashboard?.kpis || {};
+  const scoreSemantics = dashboard?.scoreSemantics || {};
+  const quadrants = useMemo(() => {
+    const source = dashboard?.quadrants || [];
+    return QUADRANT_ORDER.map((name) => source.find((q) => q.name === name) || { name, percent: 0 });
+  }, [dashboard?.quadrants]);
+  const optimalPercent = quadrants.find((q) => q.name === 'Optimal')?.percent ?? 0;
+  const remainingPercent = Math.max(0, 100 - optimalPercent);
+  const insightCards = (dashboard?.alerts || []).slice(0, 3);
+  const sponsorshipSignals = dashboard?.sponsorshipAnalysis?.signals || null;
+  const threshold = Number.isFinite(scoreSemantics.threshold) ? scoreSemantics.threshold : 28;
+  const adoptionScore = Number.isFinite(kpis.adoptionScore) ? kpis.adoptionScore : null;
+  const sponsorshipScore = Number.isFinite(kpis.sponsorshipScore) ? kpis.sponsorshipScore : null;
+  const managerBreakdownRows = dashboard?.byManager || [];
+  const dimensions = dashboard?.dimensions || [];
+  const trendBars = useMemo(
+    () => [...(dashboard?.trend || []).slice(0, 4)].reverse(),
+    [dashboard?.trend]
+  );
+  const employeeDimensions = useMemo(
+    () => dimensions.map((dimension) => ({
+      id: dimension.id,
+      label: dimension.label,
+      avg: dimension.energyAvg,
+      highPercent: dimension.highEnergyPercent,
+    })),
+    [dimensions]
+  );
+  const managerDimensions = useMemo(
+    () => dimensions.map((dimension) => ({
+      id: dimension.id,
+      label: dimension.managerLabel || dimension.label,
+      avg: dimension.frictionAvg,
+      highPercent: dimension.managerHighPercent ?? dimension.highEnergyPercent,
+    })),
+    [dimensions]
+  );
+  const activeDimensionRows = activeDimensionTab === 'employee' ? employeeDimensions : managerDimensions;
+  const trendMax = Math.max(
+    40,
+    ...trendBars.flatMap((item) => [item?.adoptionScore || 0, item?.sponsorshipScore || 0])
+  );
+  const managerLoadDistribution = useMemo(() => {
+    const total = managerBreakdownRows.length;
+    const bands = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
+    return bands.map((band) => {
+      const count = managerBreakdownRows.filter((row) => String(row?.managerLoadBand || '').trim() === band).length;
+      const percent = total > 0 ? (count / total) * 100 : 0;
+      return { band, count, percent };
+    });
+  }, [managerBreakdownRows]);
+  const groupLevelLabels = useMemo(() => {
+    const labels = Array.isArray(org?.settings?.groupLevelLabels) ? org.settings.groupLevelLabels : [];
+    return labels.map((value) => String(value || '').trim()).filter(Boolean);
+  }, [org?.settings?.groupLevelLabels]);
+  const groupedTeamRows = useMemo(() => {
+    if (!managerBreakdownRows.length) return [];
+
+    const createNode = (name, depth = 0) => ({
+      name,
+      depth,
+      children: new Map(),
+      managers: [],
+      aggregate: null,
+    });
+    const root = createNode('root', -1);
+
+    managerBreakdownRows.forEach((managerRow) => {
+      const managerGroups = Array.isArray(groupInviteMap?.[managerRow.managerId])
+        ? groupInviteMap[managerRow.managerId]
+        : [];
+      const path = managerGroups
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+      const normalizedPath = path.length > 0 ? path : ['Unassigned'];
+
+      let cursor = root;
+      normalizedPath.forEach((segment, index) => {
+        if (!cursor.children.has(segment)) {
+          cursor.children.set(segment, createNode(segment, index));
+        }
+        cursor = cursor.children.get(segment);
+      });
+      cursor.managers.push(managerRow);
+    });
+
+    const aggregateNode = (node) => {
+      const childAggregates = [...node.children.values()].map(aggregateNode);
+      const ownManagers = node.managers;
+      const allManagers = [...ownManagers, ...childAggregates.flatMap((item) => item.allManagers)];
+      const weightedRows = allManagers.map((row) => {
+        const weight = Math.max(1, Number(row.directReportCompletedCount || row.completedResponses || 0));
+        return { row, weight };
+      });
+      const totalWeight = weightedRows.reduce((sum, item) => sum + item.weight, 0);
+      const weightedAverage = (selector) => {
+        if (!weightedRows.length || totalWeight <= 0) return null;
+        const numerator = weightedRows.reduce((sum, item) => {
+          const value = selector(item.row);
+          if (value == null || Number.isNaN(value)) return sum;
+          return sum + (value * item.weight);
+        }, 0);
+        return numerator / totalWeight;
+      };
+
+      const trend = [0, 1, 2, 3].map((index) => {
+        const values = weightedRows
+          .map((item) => {
+            const score = item.row?.trend?.[index]?.adoptionScore;
+            if (score == null || Number.isNaN(score)) return null;
+            return { score, weight: item.weight };
+          })
+          .filter(Boolean);
+        if (!values.length) return null;
+        const sumWeight = values.reduce((sum, value) => sum + value.weight, 0);
+        if (sumWeight <= 0) return null;
+        return values.reduce((sum, value) => sum + (value.score * value.weight), 0) / sumWeight;
+      });
+
+      node.aggregate = {
+        allManagers,
+        responses: allManagers.reduce((sum, row) => sum + (row.directReportCompletedCount || 0), 0),
+        adoption: weightedAverage((row) => row.adoptionScore),
+        sponsorship: weightedAverage((row) => row.sponsorshipScore),
+        loadBand: majorityLabel(allManagers.map((row) => row.managerLoadBand), '--'),
+        quadrant: majorityLabel(allManagers.map((row) => row.quadrant), '--'),
+        trend,
+      };
+      return node.aggregate;
+    };
+
+    aggregateNode(root);
+
+    const flattened = [];
+    const walk = (node) => {
+      const children = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
+      children.forEach((child) => {
+        flattened.push({
+          key: `${child.depth}-${child.name}`,
+          depth: child.depth,
+          name: child.name,
+          ...child.aggregate,
+        });
+        walk(child);
+      });
+    };
+    walk(root);
+    return flattened;
+  }, [groupInviteMap, managerBreakdownRows]);
+  const todayLabel = new Date().toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  const duringCheckpointCount = useMemo(
+    () => (Array.isArray(pulseTimepointOptions)
+      ? pulseTimepointOptions.filter((option) => option.phase === 'during').length
+      : 0),
+    [pulseTimepointOptions]
+  );
+  const selectedTimepointLabel = formatPulseTimepointLabel(
+    pulseTimepoint,
+    pulseDuringDate,
+    duringCheckpointCount
+  );
+
+  useEffect(() => {
+    const previous = document.title;
+    const client = String(org?.name ?? '').trim() || 'Client';
+    document.title = `Rhythm Engine · ${pageTitle} | ${client}`;
+    return () => {
+      document.title = previous;
+    };
+  }, [pageTitle, org?.name]);
 
   const loadDashboard = useCallback(async () => {
     const requestId = loadRequestIdRef.current + 1;
     loadRequestIdRef.current = requestId;
     setLoading(true);
     setError('');
+
     const params = {};
     if (pulseTimepoint === 'pre' || pulseTimepoint === 'during' || pulseTimepoint === 'completed') {
       params.timepoint = pulseTimepoint;
@@ -226,12 +415,15 @@ export default function PlatformClientPulse() {
       params.managerIds = selectedManagerIds.join(',');
       params.includeManagerSelf = includeManagerSelf ? 'true' : 'false';
     }
+
     try {
-      const { response, attempts } = await fetchPulseDashboardWithRetry(orgId, params);
+      const { response } = await fetchPulseDashboardWithRetry(orgId, params);
       if (requestId !== loadRequestIdRef.current) return;
+
       const data = response?.data || null;
       setDashboard(data);
       setPulseManagerOptions(data?.managers || []);
+
       if (typeof setPulseSelectedManagerIds === 'function') {
         const availableIds = new Set((data?.managers || []).map((m) => m.id));
         setPulseSelectedManagerIds((current) => {
@@ -242,15 +434,11 @@ export default function PlatformClientPulse() {
           return unchanged ? list : filtered;
         });
       }
-      if (attempts > 1) {
-        setError('');
-      }
     } catch (failure) {
       if (requestId !== loadRequestIdRef.current) return;
       const cause = failure?.originalError || failure;
       const attempts = Number(failure?.retryAttempts || 1);
       setError(pulseDashboardErrorText(cause, attempts));
-      // Keep the last successful dashboard visible if we have one.
     } finally {
       if (requestId === loadRequestIdRef.current) {
         setLoading(false);
@@ -258,10 +446,10 @@ export default function PlatformClientPulse() {
     }
   }, [
     orgId,
-    selectedManagerIds,
-    includeManagerSelf,
     pulseTimepoint,
     pulseDuringDate,
+    selectedManagerIds,
+    includeManagerSelf,
     setPulseManagerOptions,
     setPulseSelectedManagerIds,
   ]);
@@ -269,7 +457,37 @@ export default function PlatformClientPulse() {
   useEffect(() => {
     if (!pulseEnabled) return;
     loadDashboard();
-  }, [orgId, pulseEnabled, loadDashboard]);
+  }, [pulseEnabled, loadDashboard]);
+
+  useEffect(() => {
+    if (!pulseEnabled) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const timepoint = normalizeInviteTimepoint(pulseTimepoint);
+        const { data } = await api.get(
+          `/api/platform/organizations/${orgId}/rhythm-engine-link-invites`,
+          { params: { timepoint } }
+        );
+        if (cancelled) return;
+        const rows = Array.isArray(data?.invites) ? data.invites : [];
+        const nextMap = {};
+        rows
+          .filter((row) => row?.surveyRole === 'manager')
+          .forEach((row) => {
+            nextMap[row.id] = Array.isArray(row.groupValues) ? row.groupValues : [];
+          });
+        setGroupInviteMap(nextMap);
+      } catch {
+        if (!cancelled) setGroupInviteMap({});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, pulseEnabled, pulseTimepoint]);
 
   const loadReports = useCallback(async () => {
     if (!pulseEnabled) {
@@ -277,6 +495,7 @@ export default function PlatformClientPulse() {
       setReportsLoading(false);
       return;
     }
+
     setReportsLoading(true);
     setReportsError('');
     try {
@@ -284,9 +503,9 @@ export default function PlatformClientPulse() {
         params: { org_id: orgId, limit: 50 },
       });
       setReports(Array.isArray(data?.reports) ? data.reports : []);
-    } catch (e) {
+    } catch (requestError) {
       setReports([]);
-      setReportsError(e?.response?.data?.error || 'Could not load report history.');
+      setReportsError(requestError?.response?.data?.error || 'Could not load report history.');
     } finally {
       setReportsLoading(false);
     }
@@ -318,621 +537,436 @@ export default function PlatformClientPulse() {
     }
   }
 
-  const pulseFocusedSection = useMemo(() => {
-    return resolvePulseFocusedSection(location.hash, trendAnalysisVisible);
-  }, [location.hash, trendAnalysisVisible]);
-
-  const pulseDocumentSectionLabel = useMemo(() => {
-    const s = pulseFocusedSection;
-    if (s === 'organisation-scores') return 'Organisation scores';
-    if (s === 'trend-analysis') return 'Trend analysis';
-    if (s === 'employee-breakdown') return 'Employee breakdown';
-    if (s === 'team-level-view') return 'Team-level view';
-    if (s === 'reports') return 'Reports';
-    return 'Organisation dashboard';
-  }, [pulseFocusedSection]);
-
-  useEffect(() => {
-    const previous = document.title;
-    const client = String(org?.name ?? '').trim() || 'Client';
-    document.title = `Rhythm Engine · ${pulseDocumentSectionLabel} | ${client}`;
-    return () => {
-      document.title = previous;
-    };
-  }, [pulseDocumentSectionLabel, org?.name]);
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-    const main = document.querySelector('.pulse-prototype-content');
-    if (main && typeof main.scrollTop === 'number') main.scrollTop = 0;
-  }, [pulseFocusedSection]);
-
-  const kpis = dashboard?.kpis || {};
-  const scoreSemantics = dashboard?.scoreSemantics || {};
-  const coverage = dashboard?.coverage || {};
-  const trendBars = useMemo(
-    () => [...(dashboard?.trend || []).slice(0, 4)].reverse(),
-    [dashboard?.trend]
-  );
-  const quadrants = useMemo(() => {
-    const source = dashboard?.quadrants || [];
-    return QUADRANT_ORDER.map((name) => source.find((q) => q.name === name) || { name, percent: 0 });
-  }, [dashboard?.quadrants]);
-  const dimensions = dashboard?.dimensions || [];
-  const threshold = scoreSemantics.threshold ?? 28;
-  const adoptionScore = kpis.adoptionScore ?? null;
-  const sponsorshipScore = kpis.sponsorshipScore ?? null;
-  const quadrantFocus =
-    quadrants.reduce((top, item) => (item.percent > top.percent ? item : top), quadrants[0] || { name: '—', percent: 0 }) || {
-      name: '—',
-      percent: 0,
-    };
-
-  const todayLabel = new Date().toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-
-  const trendMax = Math.max(
-    40,
-    ...trendBars.flatMap((item) => [item?.adoptionScore || 0, item?.sponsorshipScore || 0])
-  );
-
-  const employeeDimensionRows = dimensions.map((d) => ({
-    id: d.id,
-    label: d.label,
-    family: ADOPTION_DIMENSIONS.includes(d.id) ? 'a' : 's',
-    avg: d.energyAvg,
-    highPercent: d.highEnergyPercent,
-  }));
-  const managerDimensionRows = dimensions.map((d) => ({
-    id: d.id,
-    label: d.managerLabel || d.label,
-    family: ADOPTION_DIMENSIONS.includes(d.id) ? 'a' : 's',
-    avg: d.frictionAvg,
-    highPercent: d.managerHighPercent ?? d.highEnergyPercent,
-  }));
-  const activeDimensions = activeTab === 'employee' ? employeeDimensionRows : managerDimensionRows;
-  const managerBreakdownRows = dashboard?.byManager || [];
-  const managerLoadDistribution = useMemo(() => {
-    const total = managerBreakdownRows.length;
-    const bands = [
-      { name: 'Sustainable', className: 'sustainable' },
-      { name: 'Stretched', className: 'stretched' },
-      { name: 'At Capacity', className: 'at-capacity' },
-      { name: 'Overloaded', className: 'overloaded' },
-    ];
-    return bands.map((band) => {
-      const count = managerBreakdownRows.filter((row) => String(row?.managerLoadBand || '').trim() === band.name).length;
-      const percent = total > 0 ? (count / total) * 100 : 0;
-      return { ...band, count, percent };
-    });
-  }, [managerBreakdownRows]);
-
-  const showSection = (sectionId) => pulseFocusedSection == null || pulseFocusedSection === sectionId;
-
-  const pageTitle =
-    pulseFocusedSection === 'organisation-scores'
-      ? 'Organisation Scores'
-      : pulseFocusedSection === 'trend-analysis'
-        ? 'Trend Analysis'
-        : pulseFocusedSection === 'employee-breakdown'
-          ? 'Employee Breakdown'
-          : pulseFocusedSection === 'team-level-view'
-            ? 'Team-Level View'
-            : pulseFocusedSection === 'reports'
-              ? 'Reports'
-            : 'Organisation Dashboard';
-  const duringCheckpointCount = useMemo(
-    () => (Array.isArray(pulseTimepointOptions)
-      ? pulseTimepointOptions.filter((option) => option.phase === 'during').length
-      : 0),
-    [pulseTimepointOptions]
-  );
-  const selectedTimepointLabel = formatPulseTimepointLabel(
-    pulseTimepoint,
-    pulseDuringDate,
-    duringCheckpointCount
-  );
+  if (!pulseEnabled) {
+    return (
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Rhythm Engine</h2>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          Rhythm Engine is not enabled for this client.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="pulse-prototype-page">
-      <div className="pulse-platform-header">
-        <div>
-          <div className="pulse-platform-header__eyebrow">Client administration</div>
-          <h1 className="pulse-platform-header__title">{pageTitle}</h1>
-          <div className="pulse-platform-header__timepoint" aria-label={`Point in time ${selectedTimepointLabel}`}>
-            {selectedTimepointLabel}
+    <>
+      <section className="pulse-clean-header card">
+        <div className="pulse-clean-header__top">
+          <div>
+            <p className="pulse-clean-header__eyebrow">Client Administration</p>
+            <h2 className="pulse-clean-header__title">{pageTitle}</h2>
+            <p className="pulse-clean-header__timepoint">{selectedTimepointLabel}</p>
+          </div>
+          <div className="pulse-clean-header__meta">
+            <span className="pulse-clean-header__chip">Client Worksheets</span>
+            <span className="pulse-clean-header__chip">Results {new Date().getFullYear()}</span>
+            <span className="pulse-clean-header__chip">Reports</span>
+            <span className="pulse-clean-header__date">{todayLabel}</span>
+            <button type="button" className="btn btn-ghost" onClick={loadDashboard} disabled={loading}>
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
           </div>
         </div>
-        <div className="pulse-platform-header__right" style={{ gap: '0.6rem', alignItems: 'center' }}>
-          <span className="pulse-platform-header__date">{todayLabel}</span>
-          <button
-            type="button"
-            className="btn btn-ghost pulse-refresh-btn"
-            onClick={loadDashboard}
-            disabled={loading}
-            aria-label={loading ? 'Refreshing dashboard' : 'Refresh dashboard'}
-            title={loading ? 'Refreshing dashboard' : 'Refresh dashboard'}
-          >
-            <RefreshCw
-              size={16}
-              strokeWidth={1.85}
-              aria-hidden
-              className={loading ? 'pulse-refresh-btn__icon pulse-refresh-btn__icon--spinning' : 'pulse-refresh-btn__icon'}
-            />
-          </button>
+
+        <div className="pulse-clean-header__kpis">
+          <div className="pulse-clean-header__kpi">
+            <p className="pulse-clean-header__kpi-label">Total Responses</p>
+            <p className="pulse-clean-header__kpi-value">{kpis.completedTotal ?? 0}</p>
+            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedTotal ?? 0} invited</p>
+            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.participationRate)}`}>
+              {formatPercent(kpis.participationRate)}
+            </p>
+          </div>
+          <div className="pulse-clean-header__kpi">
+            <p className="pulse-clean-header__kpi-label">Employee Responses</p>
+            <p className="pulse-clean-header__kpi-value">{kpis.completedEmployees ?? 0}</p>
+            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedEmployees ?? 0}</p>
+          </div>
+          <div className="pulse-clean-header__kpi">
+            <p className="pulse-clean-header__kpi-label">Manager Responses</p>
+            <p className="pulse-clean-header__kpi-value">{kpis.completedManagers ?? 0}</p>
+            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedManagers ?? 0}</p>
+          </div>
+          <div className="pulse-clean-header__kpi">
+            <p className="pulse-clean-header__kpi-label">Avg Adoption Score</p>
+            <p className="pulse-clean-header__kpi-value">{formatScore(kpis.adoptionScore)}</p>
+            <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
+            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.adoptionDelta)}`}>
+              {formatDelta(kpis.adoptionDelta)}
+            </p>
+          </div>
+          <div className="pulse-clean-header__kpi">
+            <p className="pulse-clean-header__kpi-label">Avg Sponsorship Score</p>
+            <p className="pulse-clean-header__kpi-value">{formatScore(kpis.sponsorshipScore)}</p>
+            <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
+            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.sponsorshipDelta)}`}>
+              {formatDelta(kpis.sponsorshipDelta)}
+            </p>
+          </div>
         </div>
-      </div>
 
-      {error && <p className="error">{error}</p>}
-      {!error && loading && <p className="muted">Loading Rhythm Engine dashboard…</p>}
-
-      <div className="pulse-prototype-content">
-
-          {showSection('organisation-dashboard') && (
-          <div className="pulse-prototype-kpis" id="organisation-dashboard">
-            <div className="pulse-prototype-kpi">
-              <div className="pulse-prototype-kpi__label">Total Responses</div>
-              <div className="pulse-prototype-kpi__value neutral">{kpis.completedTotal ?? 0}</div>
-              <div className="pulse-prototype-kpi__meta">of {kpis.invitedTotal ?? 0} invited</div>
-              <div className={`pulse-prototype-kpi__delta ${deltaClass(kpis.participationRate)}`}>
-                {formatPercent(kpis.participationRate)}
-              </div>
-              <div className="pulse-prototype-kpi__bar" />
-            </div>
-            <div className="pulse-prototype-kpi">
-              <div className="pulse-prototype-kpi__label">Employee Responses</div>
-              <div className="pulse-prototype-kpi__value neutral">{kpis.completedEmployees ?? 0}</div>
-              <div className="pulse-prototype-kpi__meta">
-                of {kpis.invitedEmployees ?? 0} · {formatPercent(kpis.employeeParticipationRate)}
-              </div>
-              <div className="pulse-prototype-kpi__bar adoption" />
-            </div>
-            <div className="pulse-prototype-kpi">
-              <div className="pulse-prototype-kpi__label">Manager Responses</div>
-              <div className="pulse-prototype-kpi__value neutral">{kpis.completedManagers ?? 0}</div>
-              <div className="pulse-prototype-kpi__meta">
-                of {kpis.invitedManagers ?? 0} · {formatPercent(kpis.managerParticipationRate)}
-              </div>
-              <div className="pulse-prototype-kpi__bar sponsorship" />
-            </div>
-            <div className="pulse-prototype-kpi">
-              <div className="pulse-prototype-kpi__label">Avg Adoption Score</div>
-              <div className="pulse-prototype-kpi__value adoption">{formatScore(adoptionScore)}</div>
-              <div className="pulse-prototype-kpi__meta">/40 · Threshold: {threshold}</div>
-              <div className={`pulse-prototype-kpi__delta ${deltaClass(kpis.adoptionDelta)}`}>
-                {deltaText(kpis.adoptionDelta)}
-              </div>
-              <div className="pulse-prototype-kpi__bar adoption" />
-            </div>
-            <div className="pulse-prototype-kpi">
-              <div className="pulse-prototype-kpi__label">Avg Sponsorship Score</div>
-              <div className="pulse-prototype-kpi__value sponsorship">{formatScore(sponsorshipScore)}</div>
-              <div className="pulse-prototype-kpi__meta">
-                /40 · {sponsorshipScore != null && sponsorshipScore >= threshold ? 'At threshold' : 'Below threshold'}
-              </div>
-              <div className={`pulse-prototype-kpi__delta ${deltaClass(kpis.sponsorshipDelta)}`}>
-                {deltaText(kpis.sponsorshipDelta)}
-              </div>
-              <div className="pulse-prototype-kpi__bar sponsorship" />
-            </div>
+        <div className="pulse-clean-header__summary">
+          <div>
+            <p className="pulse-clean-header__summary-title">
+              {kpis.launchHeadline || '--'}
+            </p>
+            <p className="pulse-clean-header__summary-text">
+              {dashboard?.soWhatStatus === 'unavailable'
+                ? 'AI summary unavailable for this timepoint.'
+                : (dashboard?.soWhat || dashboard?.narrative || '--')}
+            </p>
           </div>
-          )}
+          <span className="pulse-clean-header__badge">
+            {kpis.launchVerdict === 'cleared' ? 'Cleared for launch' : 'Not Cleared for Launch'}
+          </span>
+        </div>
+      </section>
 
-          {showSection('organisation-scores') && (
-          <div className="pulse-prototype-grid pulse-prototype-grid--scores" id="organisation-scores">
-            <section className="pulse-prototype-card">
-              <div className="pulse-prototype-card__label">
-                Organisation Scores ·
-                {scoreSemantics.averaging === 'pooled_completed_respondents'
-                  ? ' Pooled Completed Respondents'
-                  : ' All Respondents'}
-              </div>
-              <div className="pulse-prototype-score-split">
-                <div>
-                  <div className="pulse-prototype-score-tag adoption">Adoption Readiness</div>
-                  <div className="pulse-prototype-score-value adoption">{formatScore(adoptionScore)}</div>
-                  <div className="pulse-prototype-score-denom">/40 points</div>
-                  <div className="pulse-prototype-track">
-                    <div
-                      className="pulse-prototype-fill adoption"
-                      style={{ width: `${Math.max(0, Math.min(((adoptionScore || 0) / 40) * 100, 100))}%` }}
-                    />
-                  </div>
-                  <span className={`pulse-prototype-pill ${adoptionScore != null && adoptionScore >= threshold ? 'high' : 'low'}`}>
-                    {adoptionScore != null && adoptionScore >= threshold ? 'Above Threshold' : 'Below Threshold'}
-                  </span>
-                </div>
-                <div className="pulse-prototype-divider" />
-                <div>
-                  <div className="pulse-prototype-score-tag sponsorship">Sponsorship Credibility</div>
-                  <div className="pulse-prototype-score-value sponsorship">{formatScore(sponsorshipScore)}</div>
-                  <div className="pulse-prototype-score-denom">/40 points</div>
-                  <div className="pulse-prototype-track">
-                    <div
-                      className="pulse-prototype-fill sponsorship"
-                      style={{ width: `${Math.max(0, Math.min(((sponsorshipScore || 0) / 40) * 100, 100))}%` }}
-                    />
-                  </div>
-                  <span
-                    className={`pulse-prototype-pill ${
-                      sponsorshipScore != null && sponsorshipScore >= threshold ? 'high' : 'low'
-                    }`}
-                  >
-                    {sponsorshipScore != null && sponsorshipScore >= threshold ? 'Above Threshold' : 'Below Threshold'}
-                  </span>
-                </div>
-              </div>
-              <div className="pulse-prototype-note">
-                <div className="pulse-prototype-note__title">
-                  <span
-                    className={`pulse-prototype-verdict-badge ${
-                      kpis.launchVerdict === 'cleared'
-                        ? 'pulse-prototype-verdict-badge--cleared'
-                        : kpis.launchVerdict === 'not_cleared'
-                          ? 'pulse-prototype-verdict-badge--not-cleared'
-                          : 'pulse-prototype-verdict-badge--unknown'
-                    }`}
-                  >
-                    {kpis.launchHeadline || 'Launch verdict unavailable'}
-                  </span>
-                  {' · '}
-                  {quadrantFocus.name}
-                </div>
-                <p>
-                  {dashboard?.narrative || dashboard?.soWhat || 'AI summary currently unavailable for this client.'}
-                </p>
-                {dashboard?.soWhatStatus === 'unavailable' ? (
-                  <p className="muted" style={{ marginTop: '0.45rem' }}>
-                    Check `ANTHROPIC_API_KEY` and Claude API connectivity on the backend deployment.
-                  </p>
-                ) : null}
-                <p className="muted" style={{ marginTop: '0.45rem' }}>
-                  Delta baseline: previous 7-day window. Threshold: {scoreSemantics.threshold ?? 28}.
-                </p>
-              </div>
-            </section>
+      {error ? <p className="error">{error}</p> : null}
+      {loading ? <p className="muted">Loading dashboard data...</p> : null}
 
-            <section className="pulse-prototype-card">
-              <div className="pulse-prototype-card__label">Readiness Distribution · % of respondents</div>
-              <div className="pulse-prototype-quadrants">
-                {quadrants.map((q) => (
-                  <div
-                    key={q.name}
-                    className={`pulse-prototype-quadrant ${quadrantPillClass(q.name)}`}
-                    id={`quad-${labelToId(q.name)}`}
-                  >
-                    <div className="pulse-prototype-quadrant__pct">{formatPercent(q.percent)}</div>
-                    <div className="pulse-prototype-quadrant__name">{q.name}</div>
-                  </div>
-                ))}
+      <section className="pulse-clean-readiness card">
+        <div className="pulse-clean-readiness__top">
+          <div className="pulse-clean-readiness__quadrants">
+            {quadrants.map((quadrant) => (
+              <div
+                key={quadrant.name}
+                className={`pulse-clean-readiness__quadrant pulse-clean-readiness__quadrant--${quadrantTone(quadrant.name)}`}
+              >
+                <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
+                <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
               </div>
-              <div className="pulse-prototype-axis">
-                <span>&larr; Low Sponsorship</span>
-                <span>High Sponsorship &rarr;</span>
-              </div>
-              <div className="pulse-prototype-axis-up">↑ High Adoption</div>
-              {(() => {
-                const optimalPct = quadrants.find((q) => q.name === 'Optimal')?.percent ?? 0;
-                const nonOptimalPct = 100 - optimalPct;
-                if (optimalPct >= 95) {
-                  return (
-                    <p className="pulse-prototype-readiness-statement pulse-prototype-readiness-statement--positive">
-                      {optimalPct}% of respondents are in a position to absorb and sustain this change without additional intervention.
-                    </p>
-                  );
-                }
-                return (
-                  <p className="pulse-prototype-readiness-statement">
-                    Only {optimalPct}% of respondents are in a position to absorb and sustain this change without
-                    additional intervention. The remaining {nonOptimalPct}% are distributed across three readiness
-                    states — each carrying a distinct failure mode, and none of which offset the others.
-                  </p>
-                );
-              })()}
-            </section>
+            ))}
           </div>
-          )}
+          <p className="pulse-clean-readiness__statement">
+            Only {formatPercent(optimalPercent)} of respondents are in a position to absorb and sustain this change
+            without additional intervention. The remaining {formatPercent(remainingPercent)} are distributed across
+            three readiness states.
+          </p>
+        </div>
 
-          {showSection('trend-analysis') && trendAnalysisVisible ? (
-          <section className="pulse-prototype-card" id="trend-analysis">
-            <div className="pulse-prototype-card__label">Trend Analysis · Rolling 4 Waves</div>
-            <div className="pulse-prototype-trend-chart">
-              <div className="pulse-prototype-trend-threshold">
-                <span>{threshold} (threshold)</span>
-              </div>
-              {trendBars.map((item, idx) => {
-                const adoptionHeight = Math.max(6, ((item?.adoptionScore || 0) / trendMax) * 100);
-                const sponsorshipHeight = Math.max(6, ((item?.sponsorshipScore || 0) / trendMax) * 100);
-                return (
-                  <div key={item.weekLabel || idx} className="pulse-prototype-trend-group">
-                    <div className="pulse-prototype-trend-bars">
-                      <div className="pulse-prototype-trend-bar adoption" style={{ height: `${adoptionHeight}%` }} />
-                      <div className="pulse-prototype-trend-bar sponsorship" style={{ height: `${sponsorshipHeight}%` }} />
-                    </div>
-                    <div className="pulse-prototype-trend-label">W{idx + 1}</div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="pulse-prototype-legend">
-              <div className="pulse-prototype-legend-item">
-                <span className="pulse-prototype-legend-dot adoption" />
-                Adoption
-              </div>
-              <div className="pulse-prototype-legend-item">
-                <span className="pulse-prototype-legend-dot sponsorship" />
-                Sponsorship
-              </div>
-            </div>
-            {!trendBars.length ? (
-              <p className="muted" style={{ marginTop: '0.65rem' }}>
-                Trend data will appear after enough completed responses are available.
+        <div className="pulse-clean-readiness__cards">
+          {insightCards.length > 0 ? (
+            insightCards.map((card) => (
+              <article key={card.title} className="pulse-clean-readiness__card">
+                <p className="pulse-clean-readiness__card-label">{card.level || 'Insight'}</p>
+                <h3 className="pulse-clean-readiness__card-title">{card.title}</h3>
+                <p className="pulse-clean-readiness__card-body">{card.body}</p>
+              </article>
+            ))
+          ) : (
+            <article className="pulse-clean-readiness__card">
+              <p className="pulse-clean-readiness__card-label">System</p>
+              <h3 className="pulse-clean-readiness__card-title">No readiness alerts returned</h3>
+              <p className="pulse-clean-readiness__card-body">
+                This timepoint returned no prioritized readiness alerts from the backend.
               </p>
-            ) : null}
-            <div style={{ marginTop: '1rem' }}>
-              <div className="pulse-prototype-card__label">Manager load profile</div>
-              <div className="pulse-prototype-load-bar">
-                {managerLoadDistribution.map((band) => (
-                  <span
-                    key={band.name}
-                    className={`pulse-prototype-load-segment ${band.className}`}
-                    style={{ flex: Math.max(1, band.count || 0) }}
-                  />
-                ))}
-              </div>
-              <div className="pulse-prototype-load-grid">
-                {managerLoadDistribution.map((band) => (
-                  <div key={band.name} className={`pulse-prototype-load-cell ${band.className}`}>
-                    <div className="pulse-prototype-load-cell__pct">{formatPercent(band.percent)}</div>
-                    <div className="pulse-prototype-load-cell__name">{band.name}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-          ) : null}
-
-          {showSection('employee-breakdown') && (
-          <div className="pulse-prototype-grid pulse-prototype-grid--analysis" id="employee-breakdown">
-            <section className="pulse-prototype-card">
-              <div className="pulse-prototype-tabs">
-                <button
-                  type="button"
-                  className={`pulse-prototype-tab ${activeTab === 'employee' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('employee')}
-                >
-                  Employee Dimensions
-                </button>
-                <button
-                  type="button"
-                  className={`pulse-prototype-tab ${activeTab === 'manager' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('manager')}
-                >
-                  Manager Dimensions
-                </button>
-              </div>
-              <table className="pulse-prototype-dtable">
-                <thead>
-                  <tr>
-                    <th>Dimension</th>
-                    <th>Avg (1-5)</th>
-                    <th>% High</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeDimensions.map((d) => (
-                    <tr key={`${activeTab}-${d.id}`}>
-                      <td>
-                        <span className="pulse-prototype-dname">{d.label}</span>
-                        <span className={`pulse-prototype-dtag ${d.family}`}>
-                          {d.family === 'a' ? 'Adoption' : 'Sponsorship'}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`pulse-prototype-heat ${heatClass(d.avg)}`}>{formatScore(d.avg)}</span>
-                      </td>
-                      <td className="pulse-prototype-dpct">{formatPercent(d.highPercent)}</td>
-                    </tr>
-                  ))}
-                  {!activeDimensions.length && (
-                    <tr>
-                      <td colSpan={3} className="pulse-prototype-empty">
-                        No dimension data yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </section>
-
-            <div className="pulse-prototype-side-stack">
-              <section className="pulse-prototype-card">
-                <div className="pulse-prototype-card__label">System Alerts</div>
-                <div className="pulse-prototype-alerts">
-                  {(dashboard?.alerts || []).map((alert) => (
-                    <div key={alert.title} className={`pulse-prototype-alert ${alert.level || 'info'}`}>
-                      <div className="pulse-prototype-alert-title">{alert.title}</div>
-                      <div className="pulse-prototype-alert-body">{alert.body}</div>
-                    </div>
-                  ))}
-                </div>
-                {(dashboard?.alertsOverflowCount || 0) > 0 ? (
-                  <p className="muted" style={{ marginTop: '0.6rem' }}>
-                    +{dashboard.alertsOverflowCount} additional alert
-                    {dashboard.alertsOverflowCount === 1 ? '' : 's'} not shown.
-                  </p>
-                ) : null}
-              </section>
-            </div>
-          </div>
+            </article>
           )}
+        </div>
+      </section>
 
-          {showSection('team-level-view') && (
-          <section className="pulse-prototype-card" id="team-level-view">
-            <div className="pulse-prototype-card__label">
-              Manager-Level Breakdown · {managerBreakdownRows.length} manager
-              {managerBreakdownRows.length === 1 ? '' : 's'}
+      <section className="pulse-clean-scores card">
+        <div className="pulse-clean-scores__top">
+          <article className="pulse-clean-scores__score-card">
+            <p className="pulse-clean-scores__label">Adoption Readiness</p>
+            <p className="pulse-clean-scores__value">{formatScore(adoptionScore)}</p>
+            <p className="pulse-clean-scores__meta">/40 points</p>
+            <div className="pulse-clean-scores__bar">
+              <span style={{ width: `${Math.max(0, Math.min(((adoptionScore || 0) / 40) * 100, 100))}%` }} />
             </div>
-            <p className="muted" style={{ marginBottom: '0.6rem' }}>
-              Manager assignment coverage: {formatPercent(coverage.employeeManagerAssignmentCoveragePercent)} ·
-              Missing assignments: {coverage.employeeRowsMissingManagerAssignment ?? 0}
+            <p className="pulse-clean-scores__threshold">
+              {adoptionScore != null && adoptionScore >= threshold ? 'Above' : 'Below'} threshold
             </p>
-            <p className="muted" style={{ marginBottom: '0.8rem' }}>
-              Comparable teams (n&gt;=5): {coverage.managersWithComparableTeamSize ?? 0} · Suppressed:
-              {' '}
-              {coverage.teamSuppressedManagerCount ?? 0}
+          </article>
+
+          <article className="pulse-clean-scores__score-card">
+            <p className="pulse-clean-scores__label">Sponsorship Credibility</p>
+            <p className="pulse-clean-scores__value pulse-clean-scores__value--sponsorship">
+              {formatScore(sponsorshipScore)}
             </p>
-            <table className="pulse-prototype-rtable">
+            <p className="pulse-clean-scores__meta">/40 points</p>
+            <div className="pulse-clean-scores__bar pulse-clean-scores__bar--sponsorship">
+              <span style={{ width: `${Math.max(0, Math.min(((sponsorshipScore || 0) / 40) * 100, 100))}%` }} />
+            </div>
+            <p className="pulse-clean-scores__threshold">
+              {sponsorshipScore != null && sponsorshipScore >= threshold ? 'Above' : 'Below'} threshold
+            </p>
+          </article>
+        </div>
+
+        <div className="pulse-clean-scores__signals">
+          {sponsorshipSignals?.load?.text ? (
+            <p
+              className={`pulse-clean-scores__signal pulse-clean-scores__signal--${
+                sponsorshipSignals.load.variant === 'red' ? 'risk' : 'warn'
+              }`}
+            >
+              <strong>Load Signal:</strong> {sponsorshipSignals.load.text}
+            </p>
+          ) : null}
+          {sponsorshipSignals?.subScores?.text ? (
+            <p
+              className={`pulse-clean-scores__signal pulse-clean-scores__signal--${
+                sponsorshipSignals.subScores.variant === 'red' ? 'risk' : 'warn'
+              }`}
+            >
+              <strong>Sub-score Signal:</strong> {sponsorshipSignals.subScores.text}
+            </p>
+          ) : null}
+          {!sponsorshipSignals?.load?.text && !sponsorshipSignals?.subScores?.text ? (
+            <p className="pulse-clean-scores__signal pulse-clean-scores__signal--info">
+              Sponsorship signal set was not returned for this timepoint.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="pulse-clean-scores__load">
+          <div className="pulse-clean-scores__load-head">
+            <p className="pulse-clean-scores__load-title">Manager Load Profile</p>
+            <p className="pulse-clean-scores__load-meta">
+              {managerBreakdownRows.length} manager{managerBreakdownRows.length === 1 ? '' : 's'}
+            </p>
+          </div>
+          <div className="pulse-clean-scores__load-track">
+            {managerLoadDistribution.map((item) => (
+              <span
+                key={item.band}
+                className={`pulse-clean-scores__load-segment pulse-clean-scores__load-segment--${item.band.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                style={{ flex: Math.max(1, item.count) }}
+              />
+            ))}
+          </div>
+          <div className="pulse-clean-scores__load-grid">
+            {managerLoadDistribution.map((item) => (
+              <article key={item.band} className="pulse-clean-scores__load-card">
+                <p className="pulse-clean-scores__load-percent">{formatPercent(item.percent)}</p>
+                <p className="pulse-clean-scores__load-name">{item.band}</p>
+              </article>
+            ))}
+          </div>
+          <p className="pulse-clean-scores__load-footnote">
+            If this group skews toward "At Capacity" and "Overloaded", execution risk is elevated without intervention.
+          </p>
+        </div>
+      </section>
+
+      <section className="pulse-clean-dimensions card">
+        <div className="pulse-clean-dimensions__left">
+          <div className="pulse-clean-dimensions__tabs">
+            <button
+              type="button"
+              className={`pulse-clean-dimensions__tab${activeDimensionTab === 'employee' ? ' is-active' : ''}`}
+              onClick={() => setActiveDimensionTab('employee')}
+            >
+              Employee Dimensions
+            </button>
+            <button
+              type="button"
+              className={`pulse-clean-dimensions__tab${activeDimensionTab === 'manager' ? ' is-active' : ''}`}
+              onClick={() => setActiveDimensionTab('manager')}
+            >
+              Manager Dimensions
+            </button>
+          </div>
+
+          <div className="table-wrap">
+            <table className="pulse-clean-dimensions__table">
               <thead>
                 <tr>
-                  <th>Manager</th>
-                  <th>Direct Reports (Invited)</th>
-                  <th>Direct Reports (Completed)</th>
-                  <th>Adoption</th>
-                  <th>Sponsorship</th>
-                  <th>Manager Load</th>
-                  <th>Quadrant</th>
-                  <th>4-Wk Trend</th>
+                  <th>Dimension</th>
+                  <th>Avg</th>
+                  <th>% High</th>
                 </tr>
               </thead>
               <tbody>
-                {managerBreakdownRows.map((row) => (
-                  <tr key={row.managerId}>
+                {activeDimensionRows.map((dimension) => (
+                  <tr key={`${activeDimensionTab}-${dimension.id}`}>
+                    <td>{dimension.label}</td>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{row.managerName || row.managerEmail || '—'}</div>
-                      <div className="muted pulse-prototype-mono" style={{ fontSize: '0.82rem' }}>
-                        {row.managerEmail || '—'}
-                      </div>
-                    </td>
-                    <td className="pulse-prototype-mono">{row.directReportInvitedCount ?? 0}</td>
-                    <td className="pulse-prototype-mono">{row.directReportCompletedCount ?? 0}</td>
-                    <td>
-                      <span className={`pulse-prototype-heat ${heatClass((row.adoptionScore || 0) / 8)}`}>
-                        {formatScore(row.adoptionScore)}
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.avg)}`}>
+                        {formatScore(dimension.avg)}
                       </span>
                     </td>
-                    <td>
-                      <span className={`pulse-prototype-heat ${heatClass((row.sponsorshipScore || 0) / 8)}`}>
-                        {formatScore(row.sponsorshipScore)}
-                      </span>
-                    </td>
-                    <td className={`pulse-prototype-mono pulse-prototype-load-${labelToId(row.managerLoadBand || '')}`}>
-                      {row.managerLoadBand || '—'}
-                    </td>
-                    <td>
-                      {row.quadrant ? (
-                        <span className={`pulse-prototype-qpill ${quadrantPillClass(row.quadrant)}`}>
-                          {row.quadrant}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td>
-                      <div className="pulse-prototype-spark">
-                        {(row.trend || []).map((item, idx) => {
-                          const value = item?.adoptionScore ?? 0;
-                          return (
-                          <span
-                            key={`${row.managerId}-spark-${idx}`}
-                            style={{
-                              height: `${Math.max(3, (value / 35) * 18)}px`,
-                              backgroundColor: sparkColor(row.managerLoadBand),
-                            }}
-                          />
-                          );
-                        })}
-                      </div>
-                    </td>
+                    <td>{formatPercent(dimension.highPercent)}</td>
                   </tr>
                 ))}
-                {managerBreakdownRows.length === 0 ? (
+                {activeDimensionRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="muted" style={{ padding: '1rem' }}>
-                      No manager breakdown available yet.
-                    </td>
+                    <td colSpan={3} className="muted">No dimension data available yet.</td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
-          </section>
-          )}
+          </div>
+        </div>
 
-          {pulseFocusedSection === 'reports' && (
-          <section className="pulse-prototype-card" id="reports">
-            <div className="pulse-prototype-card__label">Reports</div>
-            <p className="muted" style={{ marginBottom: '0.8rem' }}>
-              Generate a report for this point in time and selected filters.
-            </p>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setReportModalOpen(true)}
-            >
-              Generate Report
-            </button>
-            {reportsError ? <p className="error" style={{ marginTop: '1rem' }}>{reportsError}</p> : null}
-            {reportsLoading ? <p className="muted" style={{ marginTop: '1rem' }}>Loading reports…</p> : null}
-            {!reportsLoading && reports.length === 0 ? (
-              <p className="muted" style={{ marginTop: '1rem' }}>No reports generated yet.</p>
-            ) : null}
-            {!reportsLoading && reports.length > 0 ? (
-              <div className="table-wrap" style={{ marginTop: '1rem' }}>
-                <table className="admin-table platform-client-dashboard__tasks-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Generated</th>
-                      <th scope="col">Stage</th>
-                      <th scope="col">Format</th>
-                      <th scope="col">Responses</th>
-                      <th scope="col">Generated by</th>
-                      <th scope="col">Expires</th>
-                      <th scope="col">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reports.map((report) => (
-                      <tr key={report.id}>
-                        <td className="muted">
-                          {new Date(report.generated_at).toLocaleDateString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })}
-                        </td>
-                        <td>{formatReportStage(report.stage)}</td>
-                        <td className="pulse-prototype-mono">{String(report.format || '').toUpperCase()}</td>
-                        <td>{report.response_count || 0}</td>
-                        <td className="muted">{formatReportAuthor(report.generated_by)}</td>
-                        <td className="muted">
-                          {new Date(report.expires_at).toLocaleDateString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={() => downloadPastReport(report.id)}
-                            disabled={report.status !== 'complete'}
-                          >
-                            Download
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+        <div className="pulse-clean-dimensions__right">
+          <section className="pulse-clean-trend">
+            <div className="pulse-clean-trend__head">
+              <p className="pulse-clean-trend__title">Trend</p>
+              <p className="pulse-clean-trend__meta">Rolling 4 waves</p>
+            </div>
+            <div className="pulse-clean-trend__bars">
+              {trendBars.map((item, index) => {
+                const adoptionHeight = Math.max(10, ((item?.adoptionScore || 0) / trendMax) * 100);
+                const sponsorshipHeight = Math.max(10, ((item?.sponsorshipScore || 0) / trendMax) * 100);
+                return (
+                  <div key={item.weekLabel || index} className="pulse-clean-trend__group">
+                    <div className="pulse-clean-trend__columns">
+                      <span className="pulse-clean-trend__bar pulse-clean-trend__bar--adoption" style={{ height: `${adoptionHeight}%` }} />
+                      <span className="pulse-clean-trend__bar pulse-clean-trend__bar--sponsorship" style={{ height: `${sponsorshipHeight}%` }} />
+                    </div>
+                    <p className="pulse-clean-trend__label">W{index + 1}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="pulse-clean-alerts">
+            <p className="pulse-clean-alerts__title">System Alerts</p>
+            {(dashboard?.alerts || []).slice(0, 3).map((alert) => (
+              <article key={`system-${alert.title}`} className={`pulse-clean-alerts__item pulse-clean-alerts__item--${alert.level || 'info'}`}>
+                <p className="pulse-clean-alerts__item-title">{alert.title}</p>
+                <p className="pulse-clean-alerts__item-body">{alert.body}</p>
+              </article>
+            ))}
+            {(dashboard?.alerts || []).length === 0 ? (
+              <article className="pulse-clean-alerts__item pulse-clean-alerts__item--info">
+                <p className="pulse-clean-alerts__item-title">No active alerts</p>
+                <p className="pulse-clean-alerts__item-body">
+                  Alerts will appear here when thresholds indicate elevated delivery risk.
+                </p>
+              </article>
             ) : null}
           </section>
-          )}
-      </div>
+        </div>
+      </section>
+
+      <section className="pulse-clean-groups card">
+        <div className="pulse-clean-groups__head">
+          <h3 style={{ margin: 0 }}>Team-Level Breakdown</h3>
+          <p className="pulse-clean-groups__meta">
+            {groupLevelLabels.length > 0 ? groupLevelLabels.join(' > ') : 'Group hierarchy'}
+          </p>
+        </div>
+        <div className="table-wrap" style={{ marginTop: '0.6rem' }}>
+          <table className="pulse-clean-groups__table">
+            <thead>
+              <tr>
+                <th>Group</th>
+                <th>Responses</th>
+                <th>Adoption</th>
+                <th>Sponsorship</th>
+                <th>Manager Load</th>
+                <th>Quadrant</th>
+                <th>Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupedTeamRows.map((row) => (
+                <tr key={row.key}>
+                  <td className="pulse-clean-groups__name">
+                    {`${row.depth > 0 ? `${'- '.repeat(row.depth)}` : ''}${row.name}`}
+                  </td>
+                  <td>{row.responses || 0}</td>
+                  <td>{formatScore(row.adoption)}</td>
+                  <td>{formatScore(row.sponsorship)}</td>
+                  <td>{row.loadBand}</td>
+                  <td>{row.quadrant}</td>
+                  <td>
+                    <div className="pulse-clean-groups__spark">
+                      {(row.trend || []).map((value, idx) => (
+                        <span
+                          key={`${row.key}-spark-${idx}`}
+                          style={{ height: `${Math.max(3, Math.min(18, ((value || 0) / 40) * 18))}px` }}
+                        />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {groupedTeamRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="muted">
+                    No grouped team data available yet.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+        <p className="pulse-clean-groups__footnote">
+          Nested groups are shown with a leading <strong>-</strong> so sub-groups stay visibly linked to their parent group.
+        </p>
+      </section>
+
+      <section className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+          <h3 style={{ margin: 0 }}>Past Reports</h3>
+          <button type="button" className="btn btn-primary" onClick={() => setReportModalOpen(true)}>
+            Generate Report
+          </button>
+        </div>
+        {reportsError ? <p className="error" style={{ marginTop: '1rem' }}>{reportsError}</p> : null}
+        {reportsLoading ? <p className="muted" style={{ marginTop: '1rem' }}>Loading reports...</p> : null}
+        {!reportsLoading && reports.length === 0 ? (
+          <p className="muted" style={{ marginTop: '1rem' }}>No reports generated yet.</p>
+        ) : null}
+        {!reportsLoading && reports.length > 0 ? (
+          <div className="table-wrap" style={{ marginTop: '1rem' }}>
+            <table className="admin-table platform-client-dashboard__tasks-table">
+              <thead>
+                <tr>
+                  <th scope="col">Generated</th>
+                  <th scope="col">Stage</th>
+                  <th scope="col">Format</th>
+                  <th scope="col">Responses</th>
+                  <th scope="col">Generated by</th>
+                  <th scope="col">Expires</th>
+                  <th scope="col">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((report) => (
+                  <tr key={report.id}>
+                    <td className="muted">
+                      {new Date(report.generated_at).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </td>
+                    <td>{formatReportStage(report.stage)}</td>
+                    <td className="pulse-prototype-mono">{String(report.format || '').toUpperCase()}</td>
+                    <td>{report.response_count || 0}</td>
+                    <td className="muted">{formatReportAuthor(report.generated_by)}</td>
+                    <td className="muted">
+                      {new Date(report.expires_at).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => downloadPastReport(report.id)}
+                        disabled={report.status !== 'complete'}
+                      >
+                        Download
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
       <ReportGeneratorModal
         open={reportModalOpen}
         onClose={() => {
@@ -941,6 +975,6 @@ export default function PlatformClientPulse() {
         }}
         organization={org}
       />
-    </div>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import {
   LogIn,
   LogOut,
   LayoutDashboard,
+  Gauge,
   Building2,
   Activity,
   Users,
@@ -241,6 +242,13 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       Trend Analysis
                     </Link>
                   ) : null}
+                  <Link
+                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine#sponsorship-analysis`}
+                    className={pulseSectionLinkClass('sponsorship-analysis')}
+                  >
+                    <Gauge size={20} strokeWidth={1.75} aria-hidden />
+                    Sponsorship Analysis
+                  </Link>
                   <Link
                     to={`/platform/clients/${platformClientOrgId}/rhythm-engine#reports`}
                     className={pulseSectionLinkClass('reports')}
