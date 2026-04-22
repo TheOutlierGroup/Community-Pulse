@@ -8,6 +8,7 @@ export const PULSE_SECTION_IDS = [
   'employee-breakdown',
   'score-breakdown',
   'team-level-view',
+  'reports',
 ];
 
 export function trendAnalysisVisibleFromOptions(pulseTimepointOptions) {
@@ -27,7 +28,6 @@ export function resolvePulseFocusedSection(rawHash, trendAnalysisVisible) {
   if (normalizedHash === 'trend-analysis' && !trendAnalysisVisible) return null;
   if (normalizedHash === 'score-breakdown') return 'employee-breakdown';
   if (normalizedHash === 'manager-load-report') return 'sponsorship-analysis';
-  if (normalizedHash === 'reports') return null;
   if (PULSE_SECTION_IDS.includes(normalizedHash)) return normalizedHash;
   return null;
 }

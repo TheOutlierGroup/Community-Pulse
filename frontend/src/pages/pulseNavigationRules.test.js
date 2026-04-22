@@ -22,5 +22,5 @@ test('resolvePulseFocusedSection maps aliases and guards trend-analysis visibili
   assert.equal(resolvePulseFocusedSection('#trend-analysis', false), null);
   assert.equal(resolvePulseFocusedSection('#trend-analysis', true), 'trend-analysis');
   assert.equal(resolvePulseFocusedSection('#team-level-view', true), 'team-level-view');
-  assert.equal(resolvePulseFocusedSection('#reports', true), null);
+  assert.equal(resolvePulseFocusedSection('#reports', true), 'reports');
 });

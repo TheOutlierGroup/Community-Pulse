@@ -207,6 +207,25 @@ function createDuringPulseCheckpointName(now = new Date()) {
   })}`;
 }
 
+async function createFreshActiveDuringSession(organizationId, name, audience) {
+  const current = await PulseSession.getActiveSessionForOrg(organizationId, audience);
+  if (current) {
+    await PulseSession.updateSessionStatus(current.id, organizationId, 'closed');
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await PulseSession.createSession(organizationId, name, 'active', audience, 'during_project');
+    } catch (error) {
+      // Another concurrent request may have created the active session first.
+      if (error?.code !== '23505') throw error;
+      const concurrent = await PulseSession.getActiveSessionForOrg(organizationId, audience);
+      if (concurrent) return concurrent;
+      if (attempt === 1) throw error;
+    }
+  }
+  throw new Error('Could not create active during-project session');
+}
+
 async function listMergedResponsesForSession(sessionId) {
   const { rows } = await listSessionResponses(sessionId);
   return rows;
@@ -840,23 +859,32 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ sessions: sessions.map(publicPulseSessionRow) });
   });
 
-  router.post('/organizations/:id/pulse-timepoints/during', async (req, res) => {
-    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
-    if (!org) return res.status(404).json({ error: 'Organization not found' });
-    if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
-      return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
+  router.post('/organizations/:id/pulse-timepoints/during', async (req, res, next) => {
+    try {
+      const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+      if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
+        return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
+      }
+
+      const name = createDuringPulseCheckpointName(new Date());
+      const [staffSession, managerSession] = await Promise.all([
+        createFreshActiveDuringSession(org.id, name, 'staff'),
+        createFreshActiveDuringSession(org.id, name, 'manager'),
+      ]);
+
+      return res.status(201).json({
+        checkpointDate: pulseSessionDateKey(staffSession),
+        sessions: [staffSession, managerSession].map(publicPulseSessionRow),
+      });
+    } catch (error) {
+      if (error?.code === '23505') {
+        return res.status(409).json({
+          error: 'An active pulse checkpoint was created concurrently. Please refresh and retry.',
+        });
+      }
+      return next(error);
     }
-
-    const name = createDuringPulseCheckpointName(new Date());
-    const [staffSession, managerSession] = await Promise.all([
-      PulseSession.createSession(org.id, name, 'active', 'staff', 'during_project'),
-      PulseSession.createSession(org.id, name, 'active', 'manager', 'during_project'),
-    ]);
-
-    res.status(201).json({
-      checkpointDate: pulseSessionDateKey(staffSession),
-      sessions: [staffSession, managerSession].map(publicPulseSessionRow),
-    });
   });
 
   router.get('/organizations/:id/pulse-dashboard', async (req, res) => {
