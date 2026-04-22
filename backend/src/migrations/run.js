@@ -7,6 +7,8 @@ import { pool } from '../config/database.js';
 dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.env') });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const MIGRATION_LOCK_KEY_1 = 842317;
+const MIGRATION_LOCK_KEY_2 = 119904;
 
 async function ensureMigrationsTable(client) {
   await client.query(`
@@ -26,6 +28,7 @@ async function appliedMigrations(client) {
 async function run() {
   const client = await pool.connect();
   try {
+    await client.query('SELECT pg_advisory_lock($1, $2)', [MIGRATION_LOCK_KEY_1, MIGRATION_LOCK_KEY_2]);
     await ensureMigrationsTable(client);
     const applied = await appliedMigrations(client);
     const files = fs
@@ -39,7 +42,10 @@ async function run() {
       await client.query('BEGIN');
       try {
         await client.query(sql);
-        await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
+        await client.query(
+          'INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING',
+          [file]
+        );
         await client.query('COMMIT');
         console.log(`Migration applied: ${file}`);
       } catch (e) {
@@ -49,6 +55,11 @@ async function run() {
     }
     console.log('Migrations complete.');
   } finally {
+    try {
+      await client.query('SELECT pg_advisory_unlock($1, $2)', [MIGRATION_LOCK_KEY_1, MIGRATION_LOCK_KEY_2]);
+    } catch {
+      // Connection-level failures auto-release advisory locks; avoid masking prior migration errors.
+    }
     client.release();
     await pool.end();
   }
