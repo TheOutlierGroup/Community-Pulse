@@ -36,6 +36,16 @@ function formatSessionDateLabel(dateKey) {
   });
 }
 
+function formatSessionTimeLabel(dateValue) {
+  if (!dateValue) return '';
+  const dt = new Date(dateValue);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function PlatformClientLayout() {
   const { orgId } = useParams();
   const location = useLocation();
@@ -55,6 +65,7 @@ export default function PlatformClientLayout() {
   const [pulseManagerOptions, setPulseManagerOptions] = useState([]);
   const [pulseTimepoint, setPulseTimepoint] = useState('during');
   const [pulseDuringDate, setPulseDuringDate] = useState('');
+  const [pulseDuringSessionId, setPulseDuringSessionId] = useState('');
   const [pulseTimepointOptions, setPulseTimepointOptions] = useState([]);
   const [pulseTimepointBusy, setPulseTimepointBusy] = useState(false);
   const [pulseTimepointError, setPulseTimepointError] = useState('');
@@ -101,6 +112,7 @@ export default function PlatformClientLayout() {
     setPulseManagerOptions([]);
     setPulseTimepoint('during');
     setPulseDuringDate('');
+    setPulseDuringSessionId('');
     setPulseTimepointOptions([]);
     setPulseTimepointError('');
   }, [orgId]);
@@ -109,28 +121,46 @@ export default function PlatformClientLayout() {
     if (!orgId) return [];
     const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-sessions`);
     const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
-    const grouped = new Map();
-    sessions.forEach((session) => {
-      const phase = pulseTimepointFromSession(session?.sessionPurpose);
-      if (!phase) return;
-      const key = sessionDateKey(session?.createdAt);
-      if (!key) return;
-      const groupKey = `${phase}:${key}`;
-      if (!grouped.has(groupKey)) {
-        grouped.set(groupKey, {
-          id: groupKey,
+    const normalized = sessions
+      .map((session) => {
+        const phase = pulseTimepointFromSession(session?.sessionPurpose);
+        if (!phase) return null;
+        const dateKey = sessionDateKey(session?.createdAt);
+        if (!dateKey) return null;
+        return {
+          id: String(session?.id || ''),
           phase,
-          dateKey: key,
-          label: formatSessionDateLabel(key),
-          isActive: false,
-          count: 0,
-        });
-      }
-      const row = grouped.get(groupKey);
-      row.count += 1;
-      if (session?.status === 'active') row.isActive = true;
+          dateKey,
+          createdAt: session?.createdAt || '',
+          isActive: session?.status === 'active',
+          audience: session?.audience === 'manager' ? 'manager' : 'staff',
+        };
+      })
+      .filter((row) => row && row.id);
+
+    const preferredByPhase = ['pre', 'during', 'completed'].flatMap((phase) => {
+      const rows = normalized.filter((row) => row.phase === phase);
+      if (!rows.length) return [];
+      const staffRows = rows.filter((row) => row.audience === 'staff');
+      const selectedRows = staffRows.length > 0 ? staffRows : rows;
+      return selectedRows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     });
-    const options = [...grouped.values()].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+
+    const duringRows = preferredByPhase.filter((row) => row.phase === 'during');
+    const duringDateCounts = duringRows.reduce((acc, row) => {
+      acc.set(row.dateKey, (acc.get(row.dateKey) || 0) + 1);
+      return acc;
+    }, new Map());
+
+    const options = preferredByPhase.map((row) => {
+      const baseLabel = formatSessionDateLabel(row.dateKey);
+      const hasDuplicateDate = row.phase === 'during' && (duringDateCounts.get(row.dateKey) || 0) > 1;
+      const timeLabel = hasDuplicateDate ? formatSessionTimeLabel(row.createdAt) : '';
+      return {
+        ...row,
+        label: timeLabel ? `${baseLabel} ${timeLabel}` : baseLabel,
+      };
+    });
     setPulseTimepointOptions(options);
 
     if (options.length > 0) {
@@ -142,6 +172,7 @@ export default function PlatformClientLayout() {
       if (fallback) {
         setPulseTimepoint(fallback.phase);
         setPulseDuringDate(fallback.phase === 'during' ? fallback.dateKey : '');
+        setPulseDuringSessionId(fallback.phase === 'during' ? fallback.id : '');
       }
     }
     return options;
@@ -159,9 +190,11 @@ export default function PlatformClientLayout() {
       if (match) {
         setPulseTimepoint('during');
         setPulseDuringDate(match.dateKey);
+        setPulseDuringSessionId(match.id);
       } else if (createdDate) {
         setPulseTimepoint('during');
         setPulseDuringDate(createdDate);
+        setPulseDuringSessionId('');
       }
     } catch (e) {
       setPulseTimepointError(e?.response?.data?.error || 'Could not create a new during checkpoint.');
@@ -180,6 +213,7 @@ export default function PlatformClientLayout() {
       } catch (e) {
         if (!cancelled) {
           setPulseTimepointOptions([]);
+          setPulseDuringSessionId('');
           setPulseTimepointError(e?.response?.data?.error || 'Could not load Rhythm Engine timepoints.');
         }
       }
@@ -301,6 +335,8 @@ export default function PlatformClientLayout() {
       setPulseTimepoint,
       pulseDuringDate,
       setPulseDuringDate,
+      pulseDuringSessionId,
+      setPulseDuringSessionId,
       pulseTimepointOptions,
       pulseTimepointBusy,
       pulseTimepointError,
@@ -314,6 +350,7 @@ export default function PlatformClientLayout() {
       pulseManagerOptions,
       pulseTimepoint,
       pulseDuringDate,
+      pulseDuringSessionId,
       pulseTimepointOptions,
       pulseTimepointBusy,
       pulseTimepointError,
@@ -364,6 +401,7 @@ export default function PlatformClientLayout() {
           setPulseManagerOptions,
           pulseTimepoint,
           pulseDuringDate,
+          pulseDuringSessionId,
           pulseTimepointOptions,
           trendAnalysisVisible,
         }}

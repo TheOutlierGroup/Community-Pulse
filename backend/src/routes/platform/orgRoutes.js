@@ -913,13 +913,20 @@ export function registerPlatformOrgRoutes(router) {
 
     const requestedTimepoint = parsePulseDashboardTimepoint(req.query?.timepoint);
     const requestedDuringDate = String(req.query?.duringDate || '').trim();
+    const requestedDuringSessionId = String(req.query?.duringSessionId || '').trim();
     const timepointFiltered = requestedTimepoint
       ? sessions.filter((s) => pulseSessionTimepointKind(s) === requestedTimepoint)
       : sessions;
     const dateFiltered = requestedTimepoint === 'during' && requestedDuringDate
       ? timepointFiltered.filter((s) => pulseSessionDateKey(s) === requestedDuringDate)
       : timepointFiltered;
-    const candidateSessions = dateFiltered.length > 0 ? dateFiltered : timepointFiltered;
+    const sessionFiltered = requestedTimepoint === 'during' && requestedDuringSessionId
+      ? timepointFiltered.filter((s) => String(s.id) === requestedDuringSessionId)
+      : dateFiltered;
+    const candidateSessions =
+      sessionFiltered.length > 0
+        ? sessionFiltered
+        : (dateFiltered.length > 0 ? dateFiltered : timepointFiltered);
 
     const activeSessions = candidateSessions.filter((s) => s.status === 'active');
     const currentSession =

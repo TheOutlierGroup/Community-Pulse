@@ -66,8 +66,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const pulseClientName = String(navContext?.clientOrganization?.name || '').trim();
   const pulseTimepoint = String(navContext?.pulseTimepoint || 'during');
   const setPulseTimepoint = navContext?.setPulseTimepoint;
-  const pulseDuringDate = String(navContext?.pulseDuringDate || '');
   const setPulseDuringDate = navContext?.setPulseDuringDate;
+  const pulseDuringSessionId = String(navContext?.pulseDuringSessionId || '');
+  const setPulseDuringSessionId = navContext?.setPulseDuringSessionId;
   const pulseTimepointOptions = Array.isArray(navContext?.pulseTimepointOptions)
     ? navContext.pulseTimepointOptions
     : [];
@@ -78,7 +79,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const preOption = pulseTimepointOptions.find((row) => row.phase === 'pre');
   const completedOption = pulseTimepointOptions.find((row) => row.phase === 'completed');
   const duringOptions = pulseTimepointOptions.filter((row) => row.phase === 'during');
-  const duringValue = pulseDuringDate || duringOptions[0]?.dateKey || '';
+  const duringValue = pulseDuringSessionId || duringOptions[0]?.id || '';
   const timepointSelectValue =
     pulseTimepoint === 'pre'
       ? 'pre'
@@ -97,16 +98,20 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     if (nextValue === 'pre') {
       setPulseTimepoint('pre');
       if (typeof setPulseDuringDate === 'function') setPulseDuringDate('');
+      if (typeof setPulseDuringSessionId === 'function') setPulseDuringSessionId('');
       return;
     }
     if (nextValue === 'completed') {
       setPulseTimepoint('completed');
       if (typeof setPulseDuringDate === 'function') setPulseDuringDate('');
+      if (typeof setPulseDuringSessionId === 'function') setPulseDuringSessionId('');
       return;
     }
     const dateKey = nextValue.startsWith('during:') ? nextValue.slice('during:'.length) : '';
+    const matchingDuring = duringOptions.find((option) => option.id === dateKey);
     setPulseTimepoint('during');
-    if (typeof setPulseDuringDate === 'function') setPulseDuringDate(dateKey);
+    if (typeof setPulseDuringDate === 'function') setPulseDuringDate(matchingDuring?.dateKey || '');
+    if (typeof setPulseDuringSessionId === 'function') setPulseDuringSessionId(dateKey);
   }
 
   async function openPulseTabForPlatformClient() {
@@ -196,9 +201,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     >
                       <option value="pre">Pre{preOption ? ` · ${preOption.label}` : ''}</option>
                       {duringOptions.map((option) => (
-                        <option key={option.id} value={`during:${option.dateKey}`}>
+                        <option key={option.id} value={`during:${option.id}`}>
                           {duringOptions.length > 1
-                            ? `During - ${formatDateKeyDdMmYy(option.dateKey)}`
+                            ? `During - ${option.label || formatDateKeyDdMmYy(option.dateKey)}`
                             : 'During'}
                         </option>
                       ))}

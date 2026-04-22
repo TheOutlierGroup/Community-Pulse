@@ -199,6 +199,7 @@ export default function PlatformClientPulse() {
     setPulseManagerOptions,
     pulseTimepoint,
     pulseDuringDate,
+    pulseDuringSessionId,
     pulseTimepointOptions,
     trendAnalysisVisible,
   } = useOutletContext();
@@ -421,6 +422,9 @@ export default function PlatformClientPulse() {
     if (pulseTimepoint === 'during' && pulseDuringDate) {
       params.duringDate = pulseDuringDate;
     }
+    if (pulseTimepoint === 'during' && pulseDuringSessionId) {
+      params.duringSessionId = pulseDuringSessionId;
+    }
     if (selectedManagerIds.length > 0) {
       params.managerIds = selectedManagerIds.join(',');
       params.includeManagerSelf = includeManagerSelf ? 'true' : 'false';
@@ -458,6 +462,7 @@ export default function PlatformClientPulse() {
     orgId,
     pulseTimepoint,
     pulseDuringDate,
+    pulseDuringSessionId,
     selectedManagerIds,
     includeManagerSelf,
     setPulseManagerOptions,
