@@ -60,6 +60,19 @@ function formatPulseTimepointLabel(timepoint, duringDate, duringCheckpointCount 
   return 'During';
 }
 
+function formatReportStage(stage) {
+  if (stage === 'pre') return 'Pre-Change';
+  if (stage === 'mid') return 'Mid-Change';
+  if (stage === 'post') return 'Post-Change';
+  return stage || '—';
+}
+
+function formatReportAuthor(author) {
+  if (!author) return 'Unknown';
+  const full = [author.first_name, author.last_name].filter(Boolean).join(' ').trim();
+  return full || author.email || 'Unknown';
+}
+
 const QUADRANT_ORDER = [
   'Motivated but Lost',
   'Optimal',
@@ -82,13 +95,6 @@ function quadrantPillClass(name) {
   if (name === 'Capable but Wary') return 'cw';
   if (name === 'Motivated but Lost') return 'ml';
   return 'hr';
-}
-
-function chainPillClass(name) {
-  if (name === 'Chain Functioning') return 'cp-fn';
-  if (name === 'Breaking at Manager Level') return 'cp-bm';
-  if (name === 'Managers Resilient, Under-Supported') return 'cp-ru';
-  return 'cp-fb';
 }
 
 function pause(ms) {
@@ -196,6 +202,9 @@ export default function PlatformClientPulse() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('employee');
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reports, setReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [reportsError, setReportsError] = useState('');
   const loadRequestIdRef = useRef(0);
 
   const enabledServices = normalizeServices(org.settings);
@@ -262,6 +271,53 @@ export default function PlatformClientPulse() {
     loadDashboard();
   }, [orgId, pulseEnabled, loadDashboard]);
 
+  const loadReports = useCallback(async () => {
+    if (!pulseEnabled) {
+      setReports([]);
+      setReportsLoading(false);
+      return;
+    }
+    setReportsLoading(true);
+    setReportsError('');
+    try {
+      const { data } = await api.get('/api/reports', {
+        params: { org_id: orgId, limit: 50 },
+      });
+      setReports(Array.isArray(data?.reports) ? data.reports : []);
+    } catch (e) {
+      setReports([]);
+      setReportsError(e?.response?.data?.error || 'Could not load report history.');
+    } finally {
+      setReportsLoading(false);
+    }
+  }, [orgId, pulseEnabled]);
+
+  useEffect(() => {
+    loadReports();
+  }, [loadReports]);
+
+  async function downloadPastReport(reportId) {
+    setReportsError('');
+    try {
+      const response = await api.get(`/api/reports/${reportId}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], {
+        type: response?.headers?.['content-type'] || 'application/octet-stream',
+      });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = `${org.slug || org.id}-report`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setReportsError('Could not download report.');
+    }
+  }
+
   const pulseFocusedSection = useMemo(() => {
     return resolvePulseFocusedSection(location.hash, trendAnalysisVisible);
   }, [location.hash, trendAnalysisVisible]);
@@ -270,9 +326,9 @@ export default function PlatformClientPulse() {
     const s = pulseFocusedSection;
     if (s === 'organisation-scores') return 'Organisation scores';
     if (s === 'trend-analysis') return 'Trend analysis';
-    if (s === 'sponsorship-analysis') return 'Sponsorship analysis';
     if (s === 'employee-breakdown') return 'Employee breakdown';
     if (s === 'team-level-view') return 'Team-level view';
+    if (s === 'reports') return 'Reports';
     return 'Organisation dashboard';
   }, [pulseFocusedSection]);
 
@@ -339,8 +395,20 @@ export default function PlatformClientPulse() {
   }));
   const activeDimensions = activeTab === 'employee' ? employeeDimensionRows : managerDimensionRows;
   const managerBreakdownRows = dashboard?.byManager || [];
-  const sponsorshipView = dashboard?.sponsorshipAnalysis || null;
-  const sponsorshipSignals = sponsorshipView?.signals || {};
+  const managerLoadDistribution = useMemo(() => {
+    const total = managerBreakdownRows.length;
+    const bands = [
+      { name: 'Sustainable', className: 'sustainable' },
+      { name: 'Stretched', className: 'stretched' },
+      { name: 'At Capacity', className: 'at-capacity' },
+      { name: 'Overloaded', className: 'overloaded' },
+    ];
+    return bands.map((band) => {
+      const count = managerBreakdownRows.filter((row) => String(row?.managerLoadBand || '').trim() === band.name).length;
+      const percent = total > 0 ? (count / total) * 100 : 0;
+      return { ...band, count, percent };
+    });
+  }, [managerBreakdownRows]);
 
   const showSection = (sectionId) => pulseFocusedSection == null || pulseFocusedSection === sectionId;
 
@@ -349,12 +417,12 @@ export default function PlatformClientPulse() {
       ? 'Organisation Scores'
       : pulseFocusedSection === 'trend-analysis'
         ? 'Trend Analysis'
-      : pulseFocusedSection === 'sponsorship-analysis'
-        ? 'Sponsorship Analysis'
         : pulseFocusedSection === 'employee-breakdown'
           ? 'Employee Breakdown'
           : pulseFocusedSection === 'team-level-view'
             ? 'Team-Level View'
+            : pulseFocusedSection === 'reports'
+              ? 'Reports'
             : 'Organisation Dashboard';
   const duringCheckpointCount = useMemo(
     () => (Array.isArray(pulseTimepointOptions)
@@ -379,13 +447,6 @@ export default function PlatformClientPulse() {
           </div>
         </div>
         <div className="pulse-platform-header__right" style={{ gap: '0.6rem', alignItems: 'center' }}>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setReportModalOpen(true)}
-          >
-            Generate Report
-          </button>
           <span className="pulse-platform-header__date">{todayLabel}</span>
           <button
             type="button"
@@ -611,211 +672,26 @@ export default function PlatformClientPulse() {
                 Trend data will appear after enough completed responses are available.
               </p>
             ) : null}
-          </section>
-          ) : null}
-
-          {showSection('sponsorship-analysis') && sponsorshipView ? (
-          <section className="pulse-sa" id="sponsorship-analysis">
-            <div className="pulse-sa-verdict">
-              <div className="pulse-sa-verdict__meta">
-                Sponsorship Analysis · Manager Cohort · {todayLabel}
-              </div>
-              <div className="pulse-sa-verdict__main">
-                <div>
-                  <h2 className="pulse-sa-verdict__title">{sponsorshipView.verdict.headline}</h2>
-                  <p className="pulse-sa-verdict__body">{sponsorshipView.verdict.body}</p>
-                </div>
-                <span className="pulse-sa-verdict__badge">{sponsorshipView.verdict.badge}</span>
-              </div>
-              <div className="pulse-sa-verdict__foot">
-                <span>{sponsorshipView.verdict.provenance}</span>
-                <div className="pulse-sa-verdict__chips">
-                  {(sponsorshipView.verdict.chips || []).map((chip) => (
-                    <span key={chip.label} className="pulse-sa-chip">
-                      {chip.label}: {chip.value}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <section className="pulse-sa-card">
-              <div className="pulse-sa-card__label">{sponsorshipView.section1.cardLabel}</div>
-              <p className="pulse-sa-card__explainer">{sponsorshipView.section1.explainer}</p>
-              <div className="pulse-sa-subscores">
-                <article className="pulse-sa-subscore">
-                  <div className="pulse-sa-subscore__eyebrow">Sponsorship Received</div>
-                  <div className="pulse-sa-subscore__score">{formatScore(sponsorshipView.section1.received.avg)}</div>
-                  <div className="pulse-sa-subscore__denom">/20 points · {sponsorshipView.section1.received.questionRangeLabel}</div>
-                  <div className="pulse-sa-track">
-                    <span style={{ width: `${sponsorshipView.section1.received.trackPercent}%` }} />
-                  </div>
-                  <div className="pulse-sa-threshold-tag">{sponsorshipView.section1.received.status}</div>
-                  <div className="pulse-sa-subscore__what">
-                    <div className="pulse-sa-subscore__what-label">What This Measures</div>
-                    <p>{sponsorshipView.section1.whatThisMeasures?.received}</p>
-                  </div>
-                </article>
-                <article className="pulse-sa-subscore">
-                  <div className="pulse-sa-subscore__eyebrow">Sponsorship Capacity</div>
-                  <div className="pulse-sa-subscore__score">{formatScore(sponsorshipView.section1.capacity.avg)}</div>
-                  <div className="pulse-sa-subscore__denom">/20 points · {sponsorshipView.section1.capacity.questionRangeLabel}</div>
-                  <div className="pulse-sa-track">
-                    <span style={{ width: `${sponsorshipView.section1.capacity.trackPercent}%` }} />
-                  </div>
-                  <div className="pulse-sa-threshold-tag">{sponsorshipView.section1.capacity.status}</div>
-                  <div className="pulse-sa-subscore__what">
-                    <div className="pulse-sa-subscore__what-label">What This Measures</div>
-                    <p>{sponsorshipView.section1.whatThisMeasures?.capacity}</p>
-                  </div>
-                </article>
-              </div>
-              {sponsorshipSignals?.subScores?.text ? (
-                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.subScores.variant || 'amber'}`}>
-                  <span className="pulse-sa-signal__label">Signal</span>
-                  {sponsorshipSignals.subScores.text}
-                </div>
-              ) : null}
-            </section>
-
-            <section className="pulse-sa-card">
-              <div className="pulse-sa-card__label">{sponsorshipView.section2.cardLabel}</div>
-              <p className="pulse-sa-card__explainer">{sponsorshipView.section2.explainer}</p>
-              <div className="pulse-sa-load-bar">
-                {(sponsorshipView.section2.bands || []).map((band) => (
+            <div style={{ marginTop: '1rem' }}>
+              <div className="pulse-prototype-card__label">Manager load profile</div>
+              <div className="pulse-prototype-load-bar">
+                {managerLoadDistribution.map((band) => (
                   <span
                     key={band.name}
-                    className={`pulse-sa-load-segment ${labelToId(band.name)}`}
-                    style={{ flex: Math.max(1, band.percent || 0) }}
+                    className={`pulse-prototype-load-segment ${band.className}`}
+                    style={{ flex: Math.max(1, band.count || 0) }}
                   />
                 ))}
               </div>
-              <div className="pulse-sa-load-grid">
-                {(sponsorshipView.section2.bands || []).map((band) => (
-                  <article key={band.name} className={`pulse-sa-load-cell ${labelToId(band.name)}`}>
-                    <div className="pulse-sa-load-cell__pct">{formatPercent(band.percent)}</div>
-                    <div className="pulse-sa-load-cell__name">{band.name}</div>
-                  </article>
-                ))}
-              </div>
-              {(() => {
-                const overloaded = (sponsorshipView.section2.bands || []).find((band) => band.name === 'Overloaded');
-                if (!overloaded || !overloaded.critical) return null;
-                return (
-                  <div className="pulse-sa-inline-alert">
-                    Critical · {Math.round(overloaded.percent)}% Overloaded
+              <div className="pulse-prototype-load-grid">
+                {managerLoadDistribution.map((band) => (
+                  <div key={band.name} className={`pulse-prototype-load-cell ${band.className}`}>
+                    <div className="pulse-prototype-load-cell__pct">{formatPercent(band.percent)}</div>
+                    <div className="pulse-prototype-load-cell__name">{band.name}</div>
                   </div>
-                );
-              })()}
-              {sponsorshipSignals?.load?.text ? (
-                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.load.variant || 'amber'}`}>
-                  <span className="pulse-sa-signal__label">Signal</span>
-                  {sponsorshipSignals.load.text}
-                </div>
-              ) : null}
-            </section>
-
-            <section className="pulse-sa-card">
-              <div className="pulse-sa-card__label">{sponsorshipView.section3.cardLabel}</div>
-              <p className="pulse-sa-card__explainer">{sponsorshipView.section3.explainer}</p>
-              <div className="pulse-sa-chain-grid">
-                {(sponsorshipView.section3.states || []).map((state) => (
-                  <article key={state.name} className={`pulse-sa-chain-tile ${chainPillClass(state.name)}`}>
-                    <div className="pulse-sa-chain-tile__pct">{formatPercent(state.percent)}</div>
-                    <div className="pulse-sa-chain-tile__name">{state.name}</div>
-                    {sponsorshipView.section3.majorityState === state.name ? (
-                      <div className="pulse-sa-chain-tile__majority">Majority</div>
-                    ) : null}
-                  </article>
                 ))}
               </div>
-              <div className="pulse-sa-axis">
-                <span>Low received sponsorship</span>
-                <span>High received sponsorship</span>
-              </div>
-              {sponsorshipSignals?.chain?.text ? (
-                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.chain.variant || 'sponsorship'}`}>
-                  <span className="pulse-sa-signal__label">Note</span>
-                  {sponsorshipSignals.chain.text}
-                </div>
-              ) : null}
-            </section>
-
-            <section className="pulse-sa-card">
-              <div className="pulse-sa-card__label">{sponsorshipView.section4.cardLabel}</div>
-              <p className="pulse-sa-card__explainer">{sponsorshipView.section4.explainer}</p>
-              <table className="pulse-sa-matrix">
-                <thead>
-                  <tr>
-                    <th />
-                    {(sponsorshipView.section4.columnOrder || []).map((column) => (
-                      <th key={column}>{column}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(sponsorshipView.section4.rows || []).map((row) => (
-                    <tr key={row.loadBand}>
-                      <th>{row.loadBand}</th>
-                      {(row.cells || []).map((cell) => (
-                        <td key={`${row.loadBand}-${cell.chainState}`} className={cell.className}>
-                          {cell.count}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {sponsorshipSignals?.crossMatrix?.text ? (
-                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.crossMatrix.variant || 'red'}`}>
-                  <span className="pulse-sa-signal__label">Risk</span>
-                  {sponsorshipSignals.crossMatrix.text}
-                </div>
-              ) : null}
-            </section>
-
-            <section className="pulse-sa-card">
-              <div className="pulse-sa-card__label">{sponsorshipView.section5.cardLabel}</div>
-              <p className="pulse-sa-card__explainer">{sponsorshipView.section5.explainer}</p>
-              <table className="pulse-sa-teams">
-                <thead>
-                  <tr>
-                    <th>Team / Function</th>
-                    <th>Responses</th>
-                    <th>Chain State</th>
-                    <th>Manager Load</th>
-                    <th>Received (1-5)</th>
-                    <th>Capacity (1-5)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(sponsorshipView.section5.rows || []).map((row) => (
-                    <tr key={row.managerId}>
-                      <td>{row.teamName}</td>
-                      <td className="pulse-prototype-mono">{row.responses}</td>
-                      <td>
-                        <span className={`pulse-sa-chain-pill ${chainPillClass(row.chainState)}`}>{row.chainState}</span>
-                      </td>
-                      <td className={`pulse-prototype-mono pulse-prototype-load-${labelToId(row.loadBand)}`}>
-                        {row.loadBand}
-                      </td>
-                      <td>
-                        <span className={`pulse-prototype-heat ${heatClass(row.receivedAvg)}`}>{formatScore(row.receivedAvg)}</span>
-                      </td>
-                      <td>
-                        <span className={`pulse-prototype-heat ${heatClass(row.capacityAvg)}`}>{formatScore(row.capacityAvg)}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {sponsorshipSignals?.teams?.text ? (
-                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.teams.variant || 'red'}`}>
-                  <span className="pulse-sa-signal__label">Note</span>
-                  {sponsorshipSignals.teams.text}
-                </div>
-              ) : null}
-            </section>
+            </div>
           </section>
           ) : null}
 
@@ -984,10 +860,85 @@ export default function PlatformClientPulse() {
             </table>
           </section>
           )}
+
+          {pulseFocusedSection === 'reports' && (
+          <section className="pulse-prototype-card" id="reports">
+            <div className="pulse-prototype-card__label">Reports</div>
+            <p className="muted" style={{ marginBottom: '0.8rem' }}>
+              Generate a report for this point in time and selected filters.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setReportModalOpen(true)}
+            >
+              Generate Report
+            </button>
+            {reportsError ? <p className="error" style={{ marginTop: '1rem' }}>{reportsError}</p> : null}
+            {reportsLoading ? <p className="muted" style={{ marginTop: '1rem' }}>Loading reports…</p> : null}
+            {!reportsLoading && reports.length === 0 ? (
+              <p className="muted" style={{ marginTop: '1rem' }}>No reports generated yet.</p>
+            ) : null}
+            {!reportsLoading && reports.length > 0 ? (
+              <div className="table-wrap" style={{ marginTop: '1rem' }}>
+                <table className="admin-table platform-client-dashboard__tasks-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Generated</th>
+                      <th scope="col">Stage</th>
+                      <th scope="col">Format</th>
+                      <th scope="col">Responses</th>
+                      <th scope="col">Generated by</th>
+                      <th scope="col">Expires</th>
+                      <th scope="col">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reports.map((report) => (
+                      <tr key={report.id}>
+                        <td className="muted">
+                          {new Date(report.generated_at).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </td>
+                        <td>{formatReportStage(report.stage)}</td>
+                        <td className="pulse-prototype-mono">{String(report.format || '').toUpperCase()}</td>
+                        <td>{report.response_count || 0}</td>
+                        <td className="muted">{formatReportAuthor(report.generated_by)}</td>
+                        <td className="muted">
+                          {new Date(report.expires_at).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => downloadPastReport(report.id)}
+                            disabled={report.status !== 'complete'}
+                          >
+                            Download
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </section>
+          )}
       </div>
       <ReportGeneratorModal
         open={reportModalOpen}
-        onClose={() => setReportModalOpen(false)}
+        onClose={() => {
+          setReportModalOpen(false);
+          loadReports();
+        }}
         organization={org}
       />
     </div>

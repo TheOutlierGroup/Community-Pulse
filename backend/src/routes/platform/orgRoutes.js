@@ -339,6 +339,13 @@ function buildClientUserImportTemplateCsv(groupLevelLabels) {
   return `${headerLine}\n`;
 }
 
+function normalizedGroupLevelLabelsFromSettings(settings) {
+  return (Array.isArray(settings?.groupLevelLabels) ? settings.groupLevelLabels : [])
+    .map((label) => String(label ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
 export function registerPlatformOrgRoutes(router) {
   const requirePlatformAdminRole = (req, res, next) => {
     if (req.user?.role !== 'admin') {
@@ -1761,11 +1768,13 @@ export function registerPlatformOrgRoutes(router) {
       return res.status(400).json({ error: 'Too many rows at once (max 2000)' });
     }
     const allowUnassignedStaff = parseTruthyQueryBool(req.query?.allowUnassignedStaff);
+    const expectedGroupLevelLabels = normalizedGroupLevelLabelsFromSettings(org.settings);
     const existingInvites = await PulseLinkInvite.listInviteRowsForOrg(req.params.id, { timepointPhase });
     const invitesById = new Map(existingInvites.map((row) => [row.id, row]));
     const normalizedRows = normalizeInviteImportRecipients(recipients);
     const prevalidation = validateInviteImportRows(normalizedRows, invitesById, {
       allowStaffWithoutManagerRef: allowUnassignedStaff,
+      expectedGroupLevels: expectedGroupLevelLabels.length,
     });
     const errors = [...prevalidation.errors];
     const invalidIndices = new Set(prevalidation.invalidIndices);
@@ -1781,6 +1790,7 @@ export function registerPlatformOrgRoutes(router) {
         email: row.email,
         surveyRole: row.surveyRole,
         managerInviteId: null,
+        groupLevelValues: row.groupValues,
       });
       if (error || !upsertedRow) {
         errors.push({ index: row.index, email: row.email, error: error || 'invalid' });

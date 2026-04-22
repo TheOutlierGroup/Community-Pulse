@@ -17,8 +17,9 @@ test('resolvePulseFocusedSection maps aliases and guards trend-analysis visibili
   assert.equal(resolvePulseFocusedSection('', false), null);
   assert.equal(resolvePulseFocusedSection('#organisation-dashboard', true), null);
   assert.equal(resolvePulseFocusedSection('#score-breakdown', true), 'employee-breakdown');
-  assert.equal(resolvePulseFocusedSection('#manager-load-report', true), 'sponsorship-analysis');
+  assert.equal(resolvePulseFocusedSection('#manager-load-report', true), null);
   assert.equal(resolvePulseFocusedSection('#trend-analysis', false), null);
   assert.equal(resolvePulseFocusedSection('#trend-analysis', true), 'trend-analysis');
   assert.equal(resolvePulseFocusedSection('#team-level-view', true), 'team-level-view');
+  assert.equal(resolvePulseFocusedSection('#reports', true), 'reports');
 });

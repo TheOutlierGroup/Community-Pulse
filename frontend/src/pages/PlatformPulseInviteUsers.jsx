@@ -7,6 +7,7 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
+import { parseRecipientCsv } from '../utils/pulseInviteCsv.js';
 import { Bold, Italic, Link2, List, ListOrdered, Mail, Trash2, Upload, UserPlus } from 'lucide-react';
 
 /** Minimum gap between each send request to stay under typical email API rate limits (e.g. Resend ~2 rps). */
@@ -16,103 +17,6 @@ function delay(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
-}
-
-function splitCsvLine(line) {
-  const parts = [];
-  let cur = '';
-  let inQ = false;
-  for (let j = 0; j < line.length; j++) {
-    const c = line[j];
-    if (c === '"') {
-      inQ = !inQ;
-    } else if (c === ',' && !inQ) {
-      parts.push(cur.trim());
-      cur = '';
-    } else {
-      cur += c;
-    }
-  }
-  parts.push(cur.trim());
-  return parts.map((p) => p.replace(/^"|"$/g, ''));
-}
-
-function parseRecipientCsv(text) {
-  const lines = String(text || '')
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return [];
-
-  const headerCells = splitCsvLine(lines[0]);
-  const headerLower = headerCells.map((c) => c.toLowerCase());
-  const hasHeader = headerLower.includes('email');
-  let start = 0;
-  let colEmail = -1;
-  let colName = -1;
-  let colRole = -1;
-  let colManagerId = -1;
-
-  if (hasHeader) {
-    start = 1;
-    colEmail = headerLower.indexOf('email');
-    colName = headerLower.indexOf('name');
-    if (colName < 0) colName = headerLower.indexOf('display name');
-    colRole = headerLower.indexOf('role');
-    if (colRole < 0) colRole = headerLower.indexOf('survey_role');
-    if (colRole < 0) colRole = headerLower.indexOf('survey role');
-    colManagerId = headerLower.indexOf('manager_id');
-    if (colManagerId < 0) colManagerId = headerLower.indexOf('manager id');
-  }
-
-  const out = [];
-  for (let i = start; i < lines.length; i++) {
-    const cells = splitCsvLine(lines[i]);
-    let name = '';
-    let email = '';
-    let roleRaw;
-    let managerIdRaw;
-
-    if (hasHeader) {
-      email = colEmail >= 0 ? cells[colEmail] || '' : '';
-      name = colName >= 0 ? cells[colName] || '' : '';
-      roleRaw = colRole >= 0 ? cells[colRole] : undefined;
-      managerIdRaw = colManagerId >= 0 ? cells[colManagerId] : undefined;
-      if (!email) {
-        for (const c of cells) {
-          if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(c).toLowerCase())) {
-            email = c;
-            break;
-          }
-        }
-      }
-    } else if (cells.length >= 2) {
-      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cells[0].toLowerCase())) {
-        email = cells[0];
-        name = cells[1] || '';
-        roleRaw = cells[2];
-        managerIdRaw = cells[3];
-      } else {
-        name = cells[0];
-        email = cells[1] || '';
-        roleRaw = cells[2];
-        managerIdRaw = cells[3];
-      }
-    }
-
-    const em = String(email).trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) continue;
-
-    const rec = { name: String(name || '').trim() || em.split('@')[0], email: em };
-    if (roleRaw != null && String(roleRaw).trim() !== '') {
-      rec.role = String(roleRaw).trim();
-    }
-    if (managerIdRaw != null && String(managerIdRaw).trim() !== '') {
-      rec.managerId = String(managerIdRaw).trim();
-    }
-    out.push(rec);
-  }
-  return out;
 }
 
 function formatSentAt(iso) {
@@ -395,6 +299,14 @@ export default function PlatformPulseInviteUsers() {
   const [editingTemplateBodyHtml, setEditingTemplateBodyHtml] = useState('<p></p>');
   const [templateEditorMode, setTemplateEditorMode] = useState('edit');
 
+  const configuredGroupLabels = useMemo(() => {
+    const labels = Array.isArray(org?.settings?.groupLevelLabels) ? org.settings.groupLevelLabels : [];
+    return labels
+      .map((label) => String(label ?? '').trim())
+      .filter(Boolean)
+      .slice(0, 5);
+  }, [org?.settings?.groupLevelLabels]);
+
   const managerOptions = useMemo(
     () =>
       invites
@@ -418,6 +330,7 @@ export default function PlatformPulseInviteUsers() {
     () => (copySourceTimepoint ? inviteTimepointLabel(copySourceTimepoint) : ''),
     [copySourceTimepoint]
   );
+  const recipientsTableColumnCount = 6 + configuredGroupLabels.length;
 
   const load = useCallback(async (options = {}) => {
     const silent = Boolean(options.silent);
@@ -477,7 +390,7 @@ export default function PlatformPulseInviteUsers() {
     setBusyImport(true);
     try {
       const text = await file.text();
-      const recipients = parseRecipientCsv(text);
+      const recipients = parseRecipientCsv(text, { groupLabels: configuredGroupLabels });
       if (recipients.length === 0) {
         showToast('No rows found. Use a CSV with columns: name, email, role, and manager_id for staff rows.', {
           variant: 'error',
@@ -532,6 +445,13 @@ export default function PlatformPulseInviteUsers() {
         } else {
           const managerEmail = String(row?.managerEmail || '').trim().toLowerCase();
           if (managerEmail) recipient.managerId = managerEmail;
+        }
+        if (
+          configuredGroupLabels.length > 0
+          && Array.isArray(row?.groupValues)
+          && row.groupValues.length > 0
+        ) {
+          recipient.groupValues = row.groupValues;
         }
         return recipient;
       });
@@ -1196,6 +1116,11 @@ export default function PlatformPulseInviteUsers() {
                   <th scope="col">Email</th>
                   <th scope="col">Role</th>
                   <th scope="col">Manager</th>
+                  {configuredGroupLabels.map((label, index) => (
+                    <th scope="col" key={`group-col-${index}`}>
+                      {label}
+                    </th>
+                  ))}
                   <th scope="col">Link &amp; survey</th>
                   <th scope="col" style={{ minWidth: '12.5rem', whiteSpace: 'nowrap' }}>
                     Actions
@@ -1205,7 +1130,7 @@ export default function PlatformPulseInviteUsers() {
               <tbody>
                 {invites.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="muted" style={{ padding: '1.25rem' }}>
+                    <td colSpan={recipientsTableColumnCount} className="muted" style={{ padding: '1.25rem' }}>
                       {inviteTimepoint === 'pre' ? (
                         'No recipients yet. Use Add or Import CSV.'
                       ) : (
@@ -1247,6 +1172,9 @@ export default function PlatformPulseInviteUsers() {
                       <td className="pulse-prototype-mono">{row.email}</td>
                       <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
                       <td>{row.surveyRole === 'staff' ? row.managerName || row.managerEmail || '—' : '—'}</td>
+                      {configuredGroupLabels.map((label, index) => (
+                        <td key={`${row.id}-group-${index}`}>{row.groupValues?.[index] || '—'}</td>
+                      ))}
                       <td>
                         <InviteLinkSurveyStatus row={row} />
                       </td>

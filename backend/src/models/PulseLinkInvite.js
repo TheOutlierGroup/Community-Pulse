@@ -14,6 +14,14 @@ function normalizeEmail(email) {
     .toLowerCase();
 }
 
+function normalizeGroupLevelValues(values) {
+  if (!Array.isArray(values)) return [];
+  return values.slice(0, 5).map((value) => {
+    const normalized = String(value ?? '').trim();
+    return normalized || null;
+  });
+}
+
 export function normalizeInviteTimepointPhase(raw) {
   return pulseStageToInternalTimepoint(normalizePulseStage(raw));
 }
@@ -40,6 +48,7 @@ export function publicInviteRow(row) {
     managerInviteId: row.manager_invite_id || null,
     managerName: row.manager_display_name || null,
     managerEmail: row.manager_email || null,
+    groupValues: normalizeGroupLevelValues(row.group_level_values),
     lastInvitedAt: row.last_invited_at,
     createdAt: row.created_at,
     surveyStatus,
@@ -56,6 +65,7 @@ export async function listInvitesForOrg(organizationId, options = {}) {
             pli.timepoint_phase,
             pli.survey_role,
             pli.manager_invite_id,
+            pli.group_level_values,
             mgr.display_name AS manager_display_name,
             mgr.email AS manager_email,
             pli.last_invited_at,
@@ -113,6 +123,7 @@ export async function listInviteRowsForOrg(organizationId, options = {}) {
             pli.timepoint_phase,
             pli.survey_role,
             pli.manager_invite_id,
+            pli.group_level_values,
             pli.last_invited_at,
             pli.created_at,
             pli.updated_at,
@@ -170,6 +181,7 @@ export async function upsertInviteRow({
   email,
   surveyRole = 'staff',
   managerInviteId = null,
+  groupLevelValues = [],
 }) {
   const em = normalizeEmail(email);
   if (!em) return { row: null, error: 'invalid_email' };
@@ -177,16 +189,26 @@ export async function upsertInviteRow({
   const phase = normalizeInviteTimepointPhase(timepointPhase);
   const name = String(displayName || '').trim();
   const managerId = role === 'manager' ? null : managerInviteId || null;
+  const normalizedGroupLevelValues = normalizeGroupLevelValues(groupLevelValues);
   const { rows } = await query(
-    `INSERT INTO pulse_link_invites (organization_id, timepoint_phase, display_name, email, survey_role, manager_invite_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO pulse_link_invites (
+       organization_id,
+       timepoint_phase,
+       display_name,
+       email,
+       survey_role,
+       manager_invite_id,
+       group_level_values
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
      ON CONFLICT (organization_id, timepoint_phase, email) DO UPDATE SET
        display_name = EXCLUDED.display_name,
        survey_role = EXCLUDED.survey_role,
        manager_invite_id = EXCLUDED.manager_invite_id,
+       group_level_values = EXCLUDED.group_level_values,
        updated_at = NOW()
      RETURNING *`,
-    [organizationId, phase, name, em, role, managerId]
+    [organizationId, phase, name, em, role, managerId, JSON.stringify(normalizedGroupLevelValues)]
   );
   return { row: rows[0], error: null };
 }

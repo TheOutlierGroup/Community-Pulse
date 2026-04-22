@@ -3,7 +3,6 @@ import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { ClipboardList, Users } from 'lucide-react';
-import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
 import {
   clientServiceLabel,
   clientStatusBadgeClass,
@@ -57,19 +56,6 @@ function assigneeLabel(a) {
   return n || a.email || '—';
 }
 
-function formatReportStage(stage) {
-  if (stage === 'pre') return 'Pre-Change';
-  if (stage === 'mid') return 'Mid-Change';
-  if (stage === 'post') return 'Post-Change';
-  return stage || '—';
-}
-
-function formatReportAuthor(author) {
-  if (!author) return 'Unknown';
-  const full = [author.first_name, author.last_name].filter(Boolean).join(' ').trim();
-  return full || author.email || 'Unknown';
-}
-
 export default function PlatformClientOverview() {
   const { org, orgId, clientLogoUrl } = useOutletContext();
   const navigate = useNavigate();
@@ -78,10 +64,6 @@ export default function PlatformClientOverview() {
   const [dashError, setDashError] = useState('');
   const [dashLoading, setDashLoading] = useState(true);
   const [serviceCatalog, setServiceCatalog] = useState([]);
-  const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [reports, setReports] = useState([]);
-  const [reportsLoading, setReportsLoading] = useState(true);
-  const [reportsError, setReportsError] = useState('');
 
   const loadDashboard = useCallback(async () => {
     setDashLoading(true);
@@ -118,47 +100,6 @@ export default function PlatformClientOverview() {
     };
   }, []);
 
-  const loadReports = useCallback(async () => {
-    setReportsLoading(true);
-    setReportsError('');
-    try {
-      const { data } = await api.get('/api/reports', {
-        params: { org_id: orgId, limit: 50 },
-      });
-      setReports(Array.isArray(data?.reports) ? data.reports : []);
-    } catch (e) {
-      setReports([]);
-      setReportsError(e?.response?.data?.error || 'Could not load report history.');
-    } finally {
-      setReportsLoading(false);
-    }
-  }, [orgId]);
-
-  useEffect(() => {
-    loadReports();
-  }, [loadReports]);
-
-  async function downloadPastReport(reportId) {
-    try {
-      const response = await api.get(`/api/reports/${reportId}`, {
-        responseType: 'blob',
-      });
-      const blob = new Blob([response.data], {
-        type: response?.headers?.['content-type'] || 'application/octet-stream',
-      });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.href = url;
-      link.download = `${org.slug || org.id}-report`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      setReportsError('Could not download report.');
-    }
-  }
-
   const counts = dash?.taskCountsByStatus;
   const activeServices = normalizeServices(org?.settings).map((serviceId) =>
     clientServiceLabel(serviceId, serviceCatalog)
@@ -177,9 +118,6 @@ export default function PlatformClientOverview() {
         <span className="muted" style={{ fontSize: '0.9rem' }}>
           Active services: {activeServices.join(', ') || 'None'}
         </span>
-        <button type="button" className="btn btn-primary" onClick={() => setReportModalOpen(true)}>
-          Generate Report
-        </button>
       </div>
       {dashError && <p className="error" style={{ marginBottom: '1rem' }}>{dashError}</p>}
       <div className="platform-client-dashboard-grid">
@@ -285,81 +223,7 @@ export default function PlatformClientOverview() {
             </div>
           )}
         </div>
-
-        <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">
-          <div className="platform-client-dashboard__table-head">
-            <h3 className="platform-client-dashboard__h2" style={{ margin: 0 }}>
-              Past Reports
-            </h3>
-            <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.9rem' }}>
-              Previously generated reports for this client.
-            </p>
-          </div>
-          {reportsLoading ? <p className="muted" style={{ marginTop: '1rem' }}>Loading reports…</p> : null}
-          {!reportsLoading && reports.length === 0 ? (
-            <p className="muted" style={{ marginTop: '1rem' }}>No reports generated yet.</p>
-          ) : null}
-          {!reportsLoading && reports.length > 0 ? (
-            <div className="table-wrap" style={{ marginTop: '1rem' }}>
-              <table className="admin-table platform-client-dashboard__tasks-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Generated</th>
-                    <th scope="col">Stage</th>
-                    <th scope="col">Format</th>
-                    <th scope="col">Responses</th>
-                    <th scope="col">Generated by</th>
-                    <th scope="col">Expires</th>
-                    <th scope="col">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reports.map((report) => (
-                    <tr key={report.id}>
-                      <td className="muted">
-                        {new Date(report.generated_at).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
-                      </td>
-                      <td>{formatReportStage(report.stage)}</td>
-                      <td className="pulse-prototype-mono">{String(report.format || '').toUpperCase()}</td>
-                      <td>{report.response_count || 0}</td>
-                      <td className="muted">{formatReportAuthor(report.generated_by)}</td>
-                      <td className="muted">
-                        {new Date(report.expires_at).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => downloadPastReport(report.id)}
-                          disabled={report.status !== 'complete'}
-                        >
-                          Download
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-        </div>
       </div>
-      <ReportGeneratorModal
-        open={reportModalOpen}
-        onClose={() => {
-          setReportModalOpen(false);
-          loadReports();
-        }}
-        organization={org}
-      />
     </>
   );
 }

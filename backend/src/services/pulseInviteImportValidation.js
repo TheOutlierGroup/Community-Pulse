@@ -8,6 +8,11 @@ export function normalizeSurveyRoleFromImport(raw) {
   return null;
 }
 
+function normalizeGroupValues(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 5).map((value) => String(value ?? '').trim() || null);
+}
+
 export function normalizeInviteImportRecipients(recipients) {
   return (recipients || []).map((r, index) => {
     const rawRole = r?.role ?? r?.surveyRole;
@@ -20,12 +25,18 @@ export function normalizeInviteImportRecipients(recipients) {
       surveyRole,
       managerRef: String(r?.managerId ?? r?.manager_id ?? '').trim() || null,
       managerInviteId: String(r?.managerInviteId ?? r?.manager_invite_id ?? '').trim() || null,
+      groupValues: normalizeGroupValues(r?.groupValues ?? r?.group_values),
     };
   });
 }
 
 export function validateInviteImportRows(normalizedRows, existingInvitesById = new Map(), options = {}) {
   const allowStaffWithoutManagerRef = options?.allowStaffWithoutManagerRef === true;
+  const expectedGroupLevelsRaw = Number.parseInt(String(options?.expectedGroupLevels ?? ''), 10);
+  const expectedGroupLevels =
+    Number.isInteger(expectedGroupLevelsRaw) && expectedGroupLevelsRaw >= 0
+      ? Math.min(expectedGroupLevelsRaw, 5)
+      : null;
   const errors = [];
   const invalidIndices = new Set();
   const managerRefToRow = new Map();
@@ -37,6 +48,23 @@ export function validateInviteImportRows(normalizedRows, existingInvitesById = n
       invalidIndices.add(row.index);
       continue;
     }
+
+    if (expectedGroupLevels != null) {
+      const values = normalizeGroupValues(row.groupValues);
+      if (values.length > expectedGroupLevels) {
+        errors.push({
+          index: row.index,
+          email: row.email,
+          error: 'invalid_group_levels',
+          expected: expectedGroupLevels,
+          actual: values.length,
+        });
+        invalidIndices.add(row.index);
+        continue;
+      }
+      row.groupValues = [...values, ...Array.from({ length: expectedGroupLevels - values.length }, () => null)];
+    }
+
     if (row.surveyRole === 'manager' && row.managerRef) {
       if (managerRefToRow.has(row.managerRef)) {
         duplicateManagerRefs.add(row.managerRef);

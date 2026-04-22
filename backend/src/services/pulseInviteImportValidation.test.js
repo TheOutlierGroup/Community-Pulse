@@ -70,3 +70,49 @@ test('validateInviteImportRows accepts staff manager_id mapped to manager row in
   const { errors } = validateInviteImportRows(rows, new Map());
   assert.equal(errors.length, 0);
 });
+
+test('normalizeInviteImportRecipients normalizes group values to max 5 entries', () => {
+  const rows = normalizeInviteImportRecipients([
+    {
+      email: 'staff@example.com',
+      groupValues: [' Department ', '', null, ' Team ', 'Pod', 'Ignored'],
+    },
+  ]);
+  assert.deepEqual(rows[0].groupValues, ['Department', null, null, 'Team', 'Pod']);
+});
+
+test('validateInviteImportRows pads group values when expectedGroupLevels configured', () => {
+  const rows = normalizeInviteImportRecipients([
+    { email: 'boss@example.com', role: 'manager', managerId: 'mgr-1', groupValues: ['Leadership'] },
+    { email: 'staff@example.com', role: 'staff', managerId: 'mgr-1', groupValues: ['Engineering', 'Mobile'] },
+  ]);
+  const { errors } = validateInviteImportRows(rows, new Map(), { expectedGroupLevels: 3 });
+  assert.equal(errors.length, 0);
+  assert.deepEqual(rows[0].groupValues, ['Leadership', null, null]);
+  assert.deepEqual(rows[1].groupValues, ['Engineering', 'Mobile', null]);
+});
+
+test('validateInviteImportRows rejects rows with too many group values', () => {
+  const rows = normalizeInviteImportRecipients([
+    { email: 'boss@example.com', role: 'manager', managerId: 'mgr-1', groupValues: ['A', 'B', 'C'] },
+  ]);
+  const { errors } = validateInviteImportRows(rows, new Map(), { expectedGroupLevels: 2 });
+  assert.equal(errors[0]?.error, 'invalid_group_levels');
+  assert.equal(errors[0]?.expected, 2);
+  assert.equal(errors[0]?.actual, 3);
+});
+
+test('validateInviteImportRows keeps partial-success shape with mixed valid and invalid dynamic rows', () => {
+  const rows = normalizeInviteImportRecipients([
+    { email: 'boss@example.com', role: 'manager', managerId: 'mgr-1', groupValues: ['Leadership'] },
+    { email: 'staff-valid@example.com', role: 'staff', managerId: 'mgr-1', groupValues: ['Engineering'] },
+    { email: 'staff-invalid@example.com', role: 'staff', managerId: 'mgr-1', groupValues: ['A', 'B', 'C'] },
+  ]);
+  const { errors, invalidIndices } = validateInviteImportRows(rows, new Map(), { expectedGroupLevels: 2 });
+
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0]?.error, 'invalid_group_levels');
+  assert.deepEqual([...invalidIndices].sort((a, b) => a - b), [2]);
+  assert.deepEqual(rows[0].groupValues, ['Leadership', null]);
+  assert.deepEqual(rows[1].groupValues, ['Engineering', null]);
+});
