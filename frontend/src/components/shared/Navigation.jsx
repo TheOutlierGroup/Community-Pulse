@@ -10,7 +10,6 @@ import {
   Users,
   ArrowLeft,
   ClipboardList,
-  FileText,
   CircleUser,
   UserPlus,
   SlidersHorizontal,
@@ -248,13 +247,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                   >
                     <Gauge size={20} strokeWidth={1.75} aria-hidden />
                     Sponsorship Analysis
-                  </Link>
-                  <Link
-                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine#reports`}
-                    className={pulseSectionLinkClass('reports')}
-                  >
-                    <FileText size={20} strokeWidth={1.75} aria-hidden />
-                    Reports
                   </Link>
                 </>
               ) : (

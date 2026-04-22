@@ -3,7 +3,6 @@ import { useLocation, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
 import { resolvePulseFocusedSection } from './pulseNavigationRules.js';
-import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
 
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
@@ -44,19 +43,6 @@ function formatPulseTimepointLabel(timepoint, duringDate, duringCheckpointCount 
     })}`;
   }
   return 'During';
-}
-
-function formatReportStage(stage) {
-  if (stage === 'pre') return 'Pre-Change';
-  if (stage === 'mid') return 'Mid-Change';
-  if (stage === 'post') return 'Post-Change';
-  return stage || '--';
-}
-
-function formatReportAuthor(author) {
-  if (!author) return 'Unknown';
-  const fullName = [author.first_name, author.last_name].filter(Boolean).join(' ').trim();
-  return fullName || author.email || 'Unknown';
 }
 
 function pause(ms) {
@@ -209,10 +195,6 @@ export default function PlatformClientPulse() {
   const [loading, setLoading] = useState(true);
   const [activeDimensionTab, setActiveDimensionTab] = useState('employee');
   const [groupInviteMap, setGroupInviteMap] = useState({});
-  const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [reports, setReports] = useState([]);
-  const [reportsLoading, setReportsLoading] = useState(true);
-  const [reportsError, setReportsError] = useState('');
   const loadRequestIdRef = useRef(0);
 
   const enabledServices = normalizeServices(org.settings);
@@ -222,6 +204,15 @@ export default function PlatformClientPulse() {
     [location.hash, trendAnalysisVisible]
   );
   const pageTitle = sectionLabel(pulseFocusedSection);
+  const showingFullDashboard = pulseFocusedSection == null;
+  const showReadinessSection = showingFullDashboard || pulseFocusedSection === 'organisation-scores';
+  const showScoresSection = showingFullDashboard
+    || pulseFocusedSection === 'organisation-scores'
+    || pulseFocusedSection === 'sponsorship-analysis';
+  const showDimensionsSection = showingFullDashboard
+    || pulseFocusedSection === 'employee-breakdown'
+    || pulseFocusedSection === 'trend-analysis';
+  const showTeamLevelSection = showingFullDashboard || pulseFocusedSection === 'team-level-view';
   const kpis = dashboard?.kpis || {};
   const scoreSemantics = dashboard?.scoreSemantics || {};
   const quadrants = useMemo(() => {
@@ -489,54 +480,6 @@ export default function PlatformClientPulse() {
     };
   }, [orgId, pulseEnabled, pulseTimepoint]);
 
-  const loadReports = useCallback(async () => {
-    if (!pulseEnabled) {
-      setReports([]);
-      setReportsLoading(false);
-      return;
-    }
-
-    setReportsLoading(true);
-    setReportsError('');
-    try {
-      const { data } = await api.get('/api/reports', {
-        params: { org_id: orgId, limit: 50 },
-      });
-      setReports(Array.isArray(data?.reports) ? data.reports : []);
-    } catch (requestError) {
-      setReports([]);
-      setReportsError(requestError?.response?.data?.error || 'Could not load report history.');
-    } finally {
-      setReportsLoading(false);
-    }
-  }, [orgId, pulseEnabled]);
-
-  useEffect(() => {
-    loadReports();
-  }, [loadReports]);
-
-  async function downloadPastReport(reportId) {
-    setReportsError('');
-    try {
-      const response = await api.get(`/api/reports/${reportId}`, {
-        responseType: 'blob',
-      });
-      const blob = new Blob([response.data], {
-        type: response?.headers?.['content-type'] || 'application/octet-stream',
-      });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.href = url;
-      link.download = `${org.slug || org.id}-report`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      setReportsError('Could not download report.');
-    }
-  }
-
   if (!pulseEnabled) {
     return (
       <div className="card">
@@ -625,7 +568,8 @@ export default function PlatformClientPulse() {
       {error ? <p className="error">{error}</p> : null}
       {loading ? <p className="muted">Loading dashboard data...</p> : null}
 
-      <section className="pulse-clean-readiness card">
+      {showReadinessSection ? (
+        <section className="pulse-clean-readiness card">
         <div className="pulse-clean-readiness__top">
           <div className="pulse-clean-readiness__quadrants">
             {quadrants.map((quadrant) => (
@@ -664,9 +608,11 @@ export default function PlatformClientPulse() {
             </article>
           )}
         </div>
-      </section>
+        </section>
+      ) : null}
 
-      <section className="pulse-clean-scores card">
+      {showScoresSection ? (
+        <section className="pulse-clean-scores card">
         <div className="pulse-clean-scores__top">
           <article className="pulse-clean-scores__score-card">
             <p className="pulse-clean-scores__label">Adoption Readiness</p>
@@ -749,9 +695,11 @@ export default function PlatformClientPulse() {
             If this group skews toward "At Capacity" and "Overloaded", execution risk is elevated without intervention.
           </p>
         </div>
-      </section>
+        </section>
+      ) : null}
 
-      <section className="pulse-clean-dimensions card">
+      {showDimensionsSection ? (
+        <section className="pulse-clean-dimensions card">
         <div className="pulse-clean-dimensions__left">
           <div className="pulse-clean-dimensions__tabs">
             <button
@@ -842,9 +790,11 @@ export default function PlatformClientPulse() {
             ) : null}
           </section>
         </div>
-      </section>
+        </section>
+      ) : null}
 
-      <section className="pulse-clean-groups card">
+      {showTeamLevelSection ? (
+        <section className="pulse-clean-groups card">
         <div className="pulse-clean-groups__head">
           <h3 style={{ margin: 0 }}>Team-Level Breakdown</h3>
           <p className="pulse-clean-groups__meta">
@@ -900,81 +850,8 @@ export default function PlatformClientPulse() {
         <p className="pulse-clean-groups__footnote">
           Nested groups are shown with a leading <strong>-</strong> so sub-groups stay visibly linked to their parent group.
         </p>
-      </section>
-
-      <section className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-          <h3 style={{ margin: 0 }}>Past Reports</h3>
-          <button type="button" className="btn btn-primary" onClick={() => setReportModalOpen(true)}>
-            Generate Report
-          </button>
-        </div>
-        {reportsError ? <p className="error" style={{ marginTop: '1rem' }}>{reportsError}</p> : null}
-        {reportsLoading ? <p className="muted" style={{ marginTop: '1rem' }}>Loading reports...</p> : null}
-        {!reportsLoading && reports.length === 0 ? (
-          <p className="muted" style={{ marginTop: '1rem' }}>No reports generated yet.</p>
-        ) : null}
-        {!reportsLoading && reports.length > 0 ? (
-          <div className="table-wrap" style={{ marginTop: '1rem' }}>
-            <table className="admin-table platform-client-dashboard__tasks-table">
-              <thead>
-                <tr>
-                  <th scope="col">Generated</th>
-                  <th scope="col">Stage</th>
-                  <th scope="col">Format</th>
-                  <th scope="col">Responses</th>
-                  <th scope="col">Generated by</th>
-                  <th scope="col">Expires</th>
-                  <th scope="col">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reports.map((report) => (
-                  <tr key={report.id}>
-                    <td className="muted">
-                      {new Date(report.generated_at).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </td>
-                    <td>{formatReportStage(report.stage)}</td>
-                    <td className="pulse-prototype-mono">{String(report.format || '').toUpperCase()}</td>
-                    <td>{report.response_count || 0}</td>
-                    <td className="muted">{formatReportAuthor(report.generated_by)}</td>
-                    <td className="muted">
-                      {new Date(report.expires_at).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => downloadPastReport(report.id)}
-                        disabled={report.status !== 'complete'}
-                      >
-                        Download
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </section>
-
-      <ReportGeneratorModal
-        open={reportModalOpen}
-        onClose={() => {
-          setReportModalOpen(false);
-          loadReports();
-        }}
-        organization={org}
-      />
+        </section>
+      ) : null}
     </>
   );
 }
