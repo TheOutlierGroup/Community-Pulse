@@ -25,8 +25,19 @@ export function normalizeCsvHeader(value) {
     .replace(/[_-]+/g, ' ');
 }
 
+function normalizeManagerRef(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
 export function parseRecipientCsv(text, options = {}) {
   const groupLabels = Array.isArray(options?.groupLabels) ? options.groupLabels : [];
+  const ambiguousBlankManagerRole =
+    String(options?.ambiguousBlankManagerRole || '').trim().toLowerCase() === 'manager'
+      ? 'manager'
+      : 'staff';
   const normalizedGroupLabels = groupLabels
     .map((label) => String(label ?? '').trim())
     .filter(Boolean)
@@ -53,6 +64,8 @@ export function parseRecipientCsv(text, options = {}) {
     if (colEmail < 0) colEmail = headerLower.indexOf('email address');
     colName = headerLower.indexOf('name');
     if (colName < 0) colName = headerLower.indexOf('display name');
+    if (colName < 0) colName = headerLower.indexOf('employee preferred first name');
+    if (colName < 0) colName = headerLower.indexOf('preferred first name');
     colRole = headerLower.indexOf('role');
     if (colRole < 0) colRole = headerLower.indexOf('survey_role');
     if (colRole < 0) colRole = headerLower.indexOf('survey role');
@@ -63,6 +76,7 @@ export function parseRecipientCsv(text, options = {}) {
   }
 
   const out = [];
+  const parsedMeta = [];
   for (let i = start; i < lines.length; i++) {
     const cells = splitCsvLine(lines[i]);
     let name = '';
@@ -110,13 +124,61 @@ export function parseRecipientCsv(text, options = {}) {
     if (roleRaw != null && String(roleRaw).trim() !== '') {
       rec.role = String(roleRaw).trim();
     }
-    if (managerIdRaw != null && String(managerIdRaw).trim() !== '') {
-      rec.managerId = String(managerIdRaw).trim();
+    const managerRef = String(managerIdRaw ?? '').trim();
+    if (managerRef !== '') {
+      rec.managerId = managerRef;
     }
     if (groupValuesRaw.length > 0) {
       rec.groupValues = groupValuesRaw.map((value) => String(value ?? '').trim() || null);
     }
     out.push(rec);
+    parsedMeta.push({
+      rec,
+      hasExplicitRole: Object.prototype.hasOwnProperty.call(rec, 'role'),
+      managerRef,
+      normalizedManagerRef: normalizeManagerRef(managerRef),
+      normalizedName: normalizeManagerRef(rec.name),
+      normalizedEmail: normalizeManagerRef(rec.email),
+    });
   }
+
+  if (parsedMeta.length === 0) return out;
+
+  const managerRefs = new Set(
+    parsedMeta
+      .map((entry) => entry.normalizedManagerRef)
+      .filter(Boolean)
+  );
+
+  for (const entry of parsedMeta) {
+    const roleNorm = String(entry.rec.role ?? '')
+      .trim()
+      .toLowerCase();
+    const explicitManager = roleNorm === 'manager';
+    const managerRefMissing = entry.managerRef === '';
+    const referencedByOthers =
+      managerRefs.has(entry.normalizedName) || managerRefs.has(entry.normalizedEmail);
+
+    if ((explicitManager && managerRefMissing) || (!entry.hasExplicitRole && managerRefMissing && referencedByOthers)) {
+      entry.rec.role = 'manager';
+      if (!entry.rec.managerId) {
+        entry.rec.managerId = entry.rec.name || entry.rec.email;
+      }
+      continue;
+    }
+
+    if (!entry.hasExplicitRole && entry.managerRef) {
+      entry.rec.role = 'staff';
+      continue;
+    }
+
+    if (!entry.hasExplicitRole && managerRefMissing && !referencedByOthers) {
+      entry.rec.role = ambiguousBlankManagerRole;
+      if (entry.rec.role === 'manager' && !entry.rec.managerId) {
+        entry.rec.managerId = entry.rec.name || entry.rec.email;
+      }
+    }
+  }
+
   return out;
 }
