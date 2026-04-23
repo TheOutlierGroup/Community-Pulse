@@ -15,8 +15,6 @@ const CHANGE_TYPE_OPTIONS = ['Technology', 'Restructure', 'Culture', 'Process', 
 
 export default function ReportGeneratorModal({ open, onClose, organization }) {
   const [stage, setStage] = useState('pre');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const [format, setFormat] = useState('docx');
   const [programmeName, setProgrammeName] = useState('');
   const [industry, setIndustry] = useState('');
@@ -30,7 +28,7 @@ export default function ReportGeneratorModal({ open, onClose, organization }) {
 
   const responseCountLabel = useMemo(() => {
     if (!result?.response_count) return null;
-    return `${result.response_count} responses in selected range`;
+    return `${result.response_count} responses included`;
   }, [result]);
 
   if (!open) return null;
@@ -45,8 +43,6 @@ export default function ReportGeneratorModal({ open, onClose, organization }) {
         organization,
         stage,
         format,
-        dateFrom,
-        dateTo,
         programmeName,
         industry,
         changeType,
@@ -112,16 +108,6 @@ export default function ReportGeneratorModal({ open, onClose, organization }) {
               ))}
             </select>
           </label>
-          <div className="report-modal__grid">
-            <label>
-              Date from
-              <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-            </label>
-            <label>
-              Date to
-              <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-            </label>
-          </div>
           <label>
             Export format
             <select value={format} onChange={(event) => setFormat(event.target.value)}>
