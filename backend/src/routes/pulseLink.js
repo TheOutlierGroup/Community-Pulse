@@ -127,7 +127,8 @@ function sessionJsonForLink(session) {
     }
     const session = await pulseSessionModel.resolveSessionForPulseLink(
       req.pulseLinkInvite.organization_id,
-      audience
+      audience,
+      stage
     );
     res.json({
       session: sessionJsonForLink(session),
@@ -145,7 +146,8 @@ function sessionJsonForLink(session) {
     }
     const session = await pulseSessionModel.resolveSessionForPulseLink(
       req.pulseLinkInvite.organization_id,
-      audience
+      audience,
+      stage
     );
     await pulseLinkResponseModel.ensureResponseRow(req.pulseLinkInvite.id, session.id, stage);
     let row = await pulseLinkResponseModel.getResponse(req.pulseLinkInvite.id, session.id);
@@ -194,7 +196,8 @@ function sessionJsonForLink(session) {
     }
     const session = await pulseSessionModel.resolveSessionForPulseLink(
       req.pulseLinkInvite.organization_id,
-      audience
+      audience,
+      stage
     );
     await pulseLinkResponseModel.ensureResponseRow(req.pulseLinkInvite.id, session.id, stage);
     const updated = await pulseLinkResponseModel.markSurveyStarted(req.pulseLinkInvite.id, session.id);
@@ -216,7 +219,8 @@ function sessionJsonForLink(session) {
   }
   const session = await pulseSessionModel.resolveSessionForPulseLink(
     req.pulseLinkInvite.organization_id,
-    audience
+    audience,
+    stage
   );
 
   const body = req.body || {};
@@ -262,7 +266,8 @@ function sessionJsonForLink(session) {
   }
   const session = await pulseSessionModel.resolveSessionForPulseLink(
     req.pulseLinkInvite.organization_id,
-    audience
+    audience,
+    stage
   );
 
   const body = req.body || {};

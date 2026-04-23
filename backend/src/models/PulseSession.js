@@ -97,6 +97,23 @@ export async function getSessionById(id, organizationId) {
   return rows[0] || null;
 }
 
+export async function getLatestSessionForOrgByPurpose(
+  organizationId,
+  audience = 'staff',
+  sessionPurpose = 'standard'
+) {
+  const aud = audience === 'manager' ? 'manager' : 'staff';
+  const purpose = normalizeSessionPurpose(sessionPurpose);
+  const { rows } = await query(
+    `SELECT * FROM pulse_sessions
+     WHERE organization_id = $1 AND audience = $2 AND session_purpose = $3
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [organizationId, aud, purpose]
+  );
+  return rows[0] || null;
+}
+
 export async function getLinkInviteTemplateSession(organizationId, audience = 'staff') {
   const aud = audience === 'manager' ? 'manager' : 'staff';
   const { rows } = await query(
@@ -120,11 +137,58 @@ export async function createLinkInviteSession(organizationId, audience = 'staff'
   return rows[0];
 }
 
+function stagePurposeForLink(stage) {
+  const normalized = normalizePulseStage(stage);
+  if (normalized === PULSE_STAGE_PRE) return 'pre_project';
+  if (normalized === PULSE_STAGE_POST) return 'completed_project';
+  return 'during_project';
+}
+
+function fallbackSessionNameForLink(stage) {
+  const normalized = normalizePulseStage(stage);
+  if (normalized === PULSE_STAGE_PRE) return 'Pre checkpoint (link)';
+  if (normalized === PULSE_STAGE_POST) return 'Post checkpoint (link)';
+  return 'During checkpoint (link)';
+}
+
 /**
- * Personal invite links join the org's active Pulse wave when one exists; otherwise use (or reactivate)
- * a dedicated link-invite session so recipients are never blocked by "no active session".
+ * Personal invite links must resolve to a session that matches the invite stage.
+ * This keeps pre/mid/post responses aligned with the same timepoint buckets used by dashboards.
  */
-export async function resolveSessionForPulseLink(organizationId, audience = 'staff') {
+export async function resolveSessionForPulseLink(organizationId, audience = 'staff', stage = PULSE_STAGE_PRE) {
+  const normalizedStage = normalizePulseStage(stage);
+  const expectedPurpose = stagePurposeForLink(normalizedStage);
+
+  const latestStageSession = await getLatestSessionForOrgByPurpose(
+    organizationId,
+    audience,
+    expectedPurpose
+  );
+  if (latestStageSession) return latestStageSession;
+
+  const active = await getActiveSessionForOrg(organizationId, audience);
+  if (active && normalizePulseStage(stageFromSessionPurpose(active.session_purpose, normalizedStage)) === normalizedStage) {
+    return active;
+  }
+
+  if (normalizedStage === PULSE_STAGE_MID) {
+    const linkSession = await getLinkInviteTemplateSession(organizationId, audience);
+    if (linkSession) return linkSession;
+  }
+
+  return createSession(
+    organizationId,
+    fallbackSessionNameForLink(normalizedStage),
+    'draft',
+    audience,
+    expectedPurpose
+  );
+}
+
+/**
+ * Legacy helper for callers that still use link-invite template sessions directly.
+ */
+export async function resolveLegacyLinkInviteSession(organizationId, audience = 'staff') {
   const active = await getActiveSessionForOrg(organizationId, audience);
   if (active) return active;
 

@@ -226,8 +226,8 @@ async function createFreshActiveDuringSession(organizationId, name, audience) {
   throw new Error('Could not create active during-project session');
 }
 
-async function listMergedResponsesForSession(sessionId) {
-  const { rows } = await listSessionResponses(sessionId);
+async function listMergedResponsesForSession(sessionId, stage = null) {
+  const { rows } = await listSessionResponses(sessionId, { stage });
   return rows;
 }
 
@@ -912,6 +912,7 @@ export function registerPlatformOrgRoutes(router) {
     const includeManagerSelf = parseQueryBool(req.query?.includeManagerSelf, false);
 
     const requestedTimepoint = parsePulseDashboardTimepoint(req.query?.timepoint);
+    const requestedStage = requestedTimepoint ? normalizePulseStage(requestedTimepoint, null) : null;
     const requestedDuringDate = String(req.query?.duringDate || '').trim();
     const requestedDuringSessionId = String(req.query?.duringSessionId || '').trim();
     const timepointFiltered = requestedTimepoint
@@ -936,11 +937,15 @@ export function registerPlatformOrgRoutes(router) {
       null;
 
     const sessionsForCurrentRows =
-      activeSessions.length > 0 ? activeSessions : currentSession ? [currentSession] : [];
+      requestedTimepoint === 'pre' || requestedTimepoint === 'completed'
+        ? sessions
+        : (activeSessions.length > 0 ? activeSessions : currentSession ? [currentSession] : []);
     const currentRows =
       sessionsForCurrentRows.length > 0
         ? (
-            await Promise.all(sessionsForCurrentRows.map((s) => listMergedResponsesForSession(s.id)))
+            await Promise.all(
+              sessionsForCurrentRows.map((s) => listMergedResponsesForSession(s.id, requestedStage))
+            )
           ).flat()
         : [];
     const scopedCurrentRows = filterRowsForManagerScope(
@@ -1079,9 +1084,16 @@ export function registerPlatformOrgRoutes(router) {
       end: new Date(now.getTime() - i * WEEK_MS),
     }));
 
-    const sessionsForTrend = candidateSessions.length > 0 ? candidateSessions : sessions;
+    const sessionsForTrend =
+      requestedTimepoint === 'pre' || requestedTimepoint === 'completed'
+        ? sessions
+        : (candidateSessions.length > 0 ? candidateSessions : sessions);
     const allSessionRows = sessionsForTrend.length > 0
-      ? (await Promise.all(sessionsForTrend.map((s) => listMergedResponsesForSession(s.id)))).flat()
+      ? (
+          await Promise.all(
+            sessionsForTrend.map((s) => listMergedResponsesForSession(s.id, requestedStage))
+          )
+        ).flat()
       : [];
     const allScopedRows = filterRowsForManagerScope(allSessionRows, selectedManagerIdSet, includeManagerSelf);
 

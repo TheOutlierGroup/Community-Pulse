@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import api from '../../services/api.js';
+import { IS_RHYTHM_ENGINE_SURFACE } from '../../config/appSurface.js';
 
 function NotificationsEmptyIllustration() {
   return (
@@ -57,6 +58,27 @@ function formatWhen(iso) {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
   return d.toLocaleDateString();
+}
+
+function notificationTargetPath(notification) {
+  const orgId = String(notification?.organizationId || '').trim();
+  if (!orgId) return '/platform';
+
+  const type = String(notification?.type || '').trim().toLowerCase();
+  const taskId = String(notification?.taskId || '').trim();
+
+  if (type === 'pulse_alert') {
+    return `/platform/clients/${encodeURIComponent(orgId)}/rhythm-engine#organisation-dashboard`;
+  }
+
+  if (!IS_RHYTHM_ENGINE_SURFACE) {
+    if (taskId) {
+      return `/platform/clients/${encodeURIComponent(orgId)}/tasks?task=${encodeURIComponent(taskId)}`;
+    }
+    return `/platform/clients/${encodeURIComponent(orgId)}/tasks`;
+  }
+
+  return `/platform/clients/${encodeURIComponent(orgId)}/rhythm-engine#organisation-dashboard`;
 }
 
 export default function PlatformNotificationBell() {
@@ -116,7 +138,7 @@ export default function PlatformNotificationBell() {
       }
     }
     setOpen(false);
-    navigate(`/platform/clients/${n.organizationId}/tasks?task=${encodeURIComponent(n.taskId)}`);
+    navigate(notificationTargetPath(n));
   }
 
   async function markAllRead(e) {
