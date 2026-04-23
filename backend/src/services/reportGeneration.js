@@ -45,6 +45,15 @@ export async function generateReport({
   format,
   context = {},
 }) {
+  // Validate and assemble report inputs before creating a database row.
+  // This prevents failed validation (e.g. insufficient responses) from creating ghost report entries.
+  const reportData = await assembleReportData({
+    organization,
+    stage,
+    dateFrom,
+    dateTo,
+  });
+
   const placeholderFilename = `${organization.slug || organization.id}_${stage}_${isoDay()}_${randomUUID()}.${format}`;
   const pending = await GeneratedReport.createGeneratedReport({
     organizationId: organization.id,
@@ -60,12 +69,6 @@ export async function generateReport({
   });
 
   try {
-    const reportData = await assembleReportData({
-      organization,
-      stage,
-      dateFrom,
-      dateTo,
-    });
     const signals = await generateReportSignals(reportData, context);
     const docxBuffer = await buildReportDocx({ reportData, signals });
 

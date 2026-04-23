@@ -63,11 +63,18 @@ export default function ReportGeneratorModal({ open, onClose, organization }) {
   }
 
   async function handleDownload() {
-    if (!result?.download_url) return;
+    if (!result?.report_id && !result?.download_url) return;
     setDownloading(true);
     setError('');
     try {
-      const response = await api.get(result.download_url, { responseType: 'blob' });
+      let downloadUrl = result?.download_url || '';
+      if (result?.report_id) {
+        const { data } = await api.get(`/api/reports/${result.report_id}/download-link`);
+        downloadUrl = data?.download_url || downloadUrl;
+      }
+      if (!downloadUrl) throw new Error('Missing download URL');
+
+      const response = await api.get(downloadUrl, { responseType: 'blob' });
       const contentType = response?.headers?.['content-type'] || 'application/octet-stream';
       const blob = new Blob([response.data], { type: contentType });
       const url = URL.createObjectURL(blob);

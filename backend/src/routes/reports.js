@@ -42,8 +42,9 @@ export function createReportsRoutes({
   const reports = await generatedReportModel.listGeneratedReportsForOrganization(access.organization.id, {
     limit: Number.parseInt(String(req.query?.limit || '25'), 10),
   });
+  const visibleReports = reports.filter((report) => String(report?.status || '').toLowerCase() === 'complete');
   return res.json({
-    reports: reports.map((report) => ({
+    reports: visibleReports.map((report) => ({
       id: report.id,
       stage: report.stage,
       format: report.format,
@@ -98,6 +99,35 @@ export function createReportsRoutes({
       const status = code === 'INSUFFICIENT_DATA' ? 400 : 500;
       return res.status(status).json({ error: error?.message || 'Generation failed', code });
     }
+  });
+
+  router.get('/:reportId/download-link', async (req, res) => {
+    const report = await generatedReportModel.getGeneratedReportById(req.params.reportId);
+    if (!report || report.status !== 'complete') {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    if (new Date(report.expires_at).getTime() <= Date.now()) {
+      return res.status(404).json({ error: 'Report has expired' });
+    }
+    const access = await resolveReportOrganizationForUserFn({
+      user: req.user,
+      requestedOrgSlug: null,
+      requestedOrgId: report.organization_id,
+    });
+    if (!access.ok) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (String(access.organization.id) !== String(report.organization_id)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const token = createReportDownloadTokenFn({
+      reportId: report.id,
+      userId: req.user.id,
+      organizationId: report.organization_id,
+    });
+    return res.json({
+      download_url: `/api/reports/download/${report.id}?token=${encodeURIComponent(token)}`,
+    });
   });
 
   router.get('/download/:reportId', async (req, res) => {

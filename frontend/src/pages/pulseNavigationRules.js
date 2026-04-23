@@ -13,12 +13,18 @@ export const PULSE_SECTION_IDS = [
 
 export function trendAnalysisVisibleFromOptions(pulseTimepointOptions) {
   const options = Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : [];
-  const phases = new Set(
+  const timepoints = new Set(
     options
-      .map((row) => String(row?.phase || '').trim())
-      .filter((phase) => STAGE_PHASES.has(phase))
+      .filter((row) => STAGE_PHASES.has(String(row?.phase || '').trim()))
+      .map((row) =>
+        [
+          String(row?.phase || '').trim(),
+          String(row?.id || '').trim(),
+          String(row?.dateKey || '').trim(),
+        ].join(':')
+      )
   );
-  return phases.size >= 2;
+  return timepoints.size >= 2;
 }
 
 export function resolvePulseFocusedSection(rawHash, trendAnalysisVisible) {

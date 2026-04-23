@@ -53,6 +53,45 @@ test('GET /api/reports requires org selector', async () => {
   assert.match(res.body.error, /org_id or org_slug is required/i);
 });
 
+test('GET /api/reports hides non-complete generated reports', async () => {
+  const router = createReportsRoutes({
+    authMiddleware: auth,
+    generatedReportModel: {
+      async listGeneratedReportsForOrganization() {
+        return [
+          {
+            id: 'report-complete',
+            stage: 'mid',
+            format: 'docx',
+            status: 'complete',
+            generated_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 60_000).toISOString(),
+            meta: { responseCount: 12 },
+            generated_by: 'user-1',
+          },
+          {
+            id: 'report-failed',
+            stage: 'mid',
+            format: 'docx',
+            status: 'failed',
+            generated_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 60_000).toISOString(),
+            meta: { responseCount: 0 },
+            generated_by: 'user-1',
+          },
+        ];
+      },
+    },
+    resolveReportOrganizationForUserFn: async () => ({ ok: true, organization: { id: 'org-1' } }),
+  });
+  const app = appWithRouter(router);
+  const res = await request(app, { path: '/api/reports?org_id=org-1' });
+  assert.equal(res.status, 200);
+  assert.equal(Array.isArray(res.body.reports), true);
+  assert.equal(res.body.reports.length, 1);
+  assert.equal(res.body.reports[0]?.id, 'report-complete');
+});
+
 test('POST /api/reports/generate returns validation error', async () => {
   const router = createReportsRoutes({
     authMiddleware: auth,
@@ -85,6 +124,28 @@ test('GET /api/reports/:id redirects with signed download token', async () => {
   const res = await request(app, { path: '/api/reports/report-1' });
   assert.equal(res.status, 302);
   assert.match(res.headers.get('location') || '', /download\/report-1\?token=signed-token/);
+});
+
+test('GET /api/reports/:id/download-link returns signed download URL', async () => {
+  const router = createReportsRoutes({
+    authMiddleware: auth,
+    generatedReportModel: {
+      async getGeneratedReportById() {
+        return {
+          id: 'report-1',
+          status: 'complete',
+          organization_id: 'org-1',
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        };
+      },
+    },
+    resolveReportOrganizationForUserFn: async () => ({ ok: true, organization: { id: 'org-1' } }),
+    createReportDownloadTokenFn: () => 'signed-token',
+  });
+  const app = appWithRouter(router);
+  const res = await request(app, { path: '/api/reports/report-1/download-link' });
+  assert.equal(res.status, 200);
+  assert.match(res.body.download_url || '', /download\/report-1\?token=signed-token/);
 });
 
 test('GET /api/reports/:id returns forbidden when org access fails', async () => {
