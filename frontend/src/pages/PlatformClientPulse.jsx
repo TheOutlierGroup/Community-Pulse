@@ -30,11 +30,11 @@ function deltaTone(value) {
   return value > 0 ? 'up' : 'down';
 }
 
-function formatPulseTimepointLabel(timepoint, duringDate, duringCheckpointCount = 0) {
+function formatPulseTimepointLabel(timepoint, duringDate, includeDuringDate = false) {
   if (timepoint === 'pre') return 'Pre';
   if (timepoint === 'completed') return 'Post';
   if (timepoint === 'during') {
-    if (duringCheckpointCount <= 1 || !duringDate) return 'During';
+    if (!includeDuringDate || !duringDate) return 'During';
     const dt = new Date(`${duringDate}T00:00:00.000Z`);
     if (Number.isNaN(dt.getTime())) return `During - ${duringDate}`;
     return `During - ${dt.toLocaleDateString('en-GB', {
@@ -460,16 +460,29 @@ export default function PlatformClientPulse() {
     year: 'numeric',
   });
 
-  const duringCheckpointCount = useMemo(
+  const orderedDuringOptions = useMemo(
     () => (Array.isArray(pulseTimepointOptions)
-      ? pulseTimepointOptions.filter((option) => option.phase === 'during').length
-      : 0),
+      ? pulseTimepointOptions.filter((option) => option.phase === 'during')
+      : []),
     [pulseTimepointOptions]
   );
+  const selectedDuringIndex = useMemo(() => {
+    if (pulseTimepoint !== 'during') return -1;
+    if (!orderedDuringOptions.length) return -1;
+    if (pulseDuringSessionId) {
+      return orderedDuringOptions.findIndex((option) => option.id === pulseDuringSessionId);
+    }
+    if (pulseDuringDate) {
+      return orderedDuringOptions.findIndex((option) => option.dateKey === pulseDuringDate);
+    }
+    return -1;
+  }, [orderedDuringOptions, pulseDuringDate, pulseDuringSessionId, pulseTimepoint]);
+  const selectedDuringOption = selectedDuringIndex >= 0 ? orderedDuringOptions[selectedDuringIndex] : null;
+  const includeSelectedDuringDate = Boolean(selectedDuringOption && !selectedDuringOption.isSystemGeneratedDuring);
   const selectedTimepointLabel = formatPulseTimepointLabel(
     pulseTimepoint,
     pulseDuringDate,
-    duringCheckpointCount
+    includeSelectedDuringDate
   );
 
   useEffect(() => {

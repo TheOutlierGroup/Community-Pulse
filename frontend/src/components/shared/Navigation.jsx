@@ -202,7 +202,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       <option value="pre">Pre{preOption ? ` · ${preOption.label}` : ''}</option>
                       {duringOptions.map((option) => (
                         <option key={option.id} value={`during:${option.id}`}>
-                          {duringOptions.length > 1
+                          {duringOptions.length > 1 && !option.isSystemGeneratedDuring
                             ? `During - ${option.label || formatDateKeyDdMmYy(option.dateKey)}`
                             : 'During'}
                         </option>

@@ -134,6 +134,7 @@ export default function PlatformClientLayout() {
           createdAt: session?.createdAt || '',
           isActive: session?.status === 'active',
           audience: session?.audience === 'manager' ? 'manager' : 'staff',
+          isSystemGeneratedDuring: Boolean(session?.isSystemGeneratedDuring),
         };
       })
       .filter((row) => row && row.id);

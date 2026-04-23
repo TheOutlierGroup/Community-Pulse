@@ -248,11 +248,6 @@ export default function PublicPulse() {
               {surveyCopy?.intro
                 || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.'}
             </p>
-            {session.sessionPurpose !== 'link_invite' && session.name ? (
-              <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1rem' }}>
-                This Rhythm Engine wave: <strong>{session.name}</strong>
-              </p>
-            ) : null}
             <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1.5rem' }}>
               {surveyAudience === 'manager'
                 ? 'Your perspective as a manager helps leaders see what’s working and what might need attention.'
@@ -279,11 +274,6 @@ export default function PublicPulse() {
                 <span key={s} className={`step-dot ${step === s ? 'active' : ''}`} title={`Step ${s}`} />
               ))}
             </div>
-            {session.sessionPurpose !== 'link_invite' ? (
-              <p className="muted" style={{ marginBottom: '1.25rem' }}>
-                Rhythm Engine wave: <strong>{session.name}</strong>
-              </p>
-            ) : null}
             {error && <p className="error">{error}</p>}
             {step >= 1 && step <= 4 && (
               <SurveyQuestionStep

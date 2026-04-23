@@ -117,12 +117,14 @@ export function publicPulseSessionRow(row) {
   const stage = normalizePulseStage(
     purpose === 'during_project' ? 'mid' : purpose === 'completed_project' ? 'post' : 'pre'
   );
+  const isSystemGeneratedDuring = purpose === 'standard';
   return {
     id: row.id,
     name: row.name,
     status: row.status,
     audience: row.audience || 'staff',
     sessionPurpose: row.session_purpose || 'standard',
+    isSystemGeneratedDuring,
     stage,
     createdAt: row.created_at,
     closedAt: row.closed_at,
