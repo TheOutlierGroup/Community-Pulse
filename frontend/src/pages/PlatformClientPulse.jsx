@@ -243,7 +243,7 @@ export default function PlatformClientPulse() {
     || pulseFocusedSection === 'employee-breakdown'
     || pulseFocusedSection === 'trend-analysis';
   const showTeamLevelSection = showingFullDashboard || pulseFocusedSection === 'team-level-view';
-  const showReportsSection = showingFullDashboard || pulseFocusedSection === 'reports';
+  const showReportsSection = pulseFocusedSection === 'reports';
   const kpis = dashboard?.kpis || {};
   const scoreSemantics = dashboard?.scoreSemantics || {};
   const quadrants = useMemo(() => {
