@@ -189,6 +189,17 @@ function heatTone(value) {
   return 'h1';
 }
 
+function loadBandClassName(label) {
+  return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+function managerChainStatus(quadrant) {
+  if (quadrant === 'Optimal') return 'Chain Functioning';
+  if (quadrant === 'Motivated but Lost') return 'Resilient, Under-supported';
+  if (quadrant === 'Capable but Wary') return 'At-Risk Leadership';
+  return 'Failed at Both Levels';
+}
+
 export default function PlatformClientPulse() {
   const {
     org,
@@ -283,6 +294,67 @@ export default function PlatformClientPulse() {
       const percent = total > 0 ? (count / total) * 100 : 0;
       return { band, count, percent };
     });
+  }, [managerBreakdownRows]);
+  const criticalLoadPercent = managerLoadDistribution
+    .filter((item) => item.band === 'At Capacity' || item.band === 'Overloaded')
+    .reduce((sum, item) => sum + item.percent, 0);
+  const sponsorshipGap = adoptionScore == null || sponsorshipScore == null
+    ? null
+    : (adoptionScore - sponsorshipScore);
+  const interventionRequired = (sponsorshipScore != null && sponsorshipScore < threshold)
+    || criticalLoadPercent >= 35
+    || optimalPercent < 25;
+  const sponsorshipVerdict = interventionRequired ? 'Intervention Required' : 'Chain Stable';
+  const sponsorshipExecutiveSignal = interventionRequired
+    ? 'Managers are absorbing pressure from both directions and need targeted sponsorship support.'
+    : 'Sponsorship coverage is broadly holding; continue monitoring manager load pressure.';
+  const chainStatusDistribution = useMemo(() => {
+    const statuses = [
+      'Chain Functioning',
+      'Resilient, Under-supported',
+      'At-Risk Leadership',
+      'Failed at Both Levels',
+    ];
+    const total = managerBreakdownRows.length;
+    const counts = managerBreakdownRows.reduce((acc, row) => {
+      const status = managerChainStatus(String(row?.quadrant || '').trim());
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+    return statuses.map((status) => {
+      const count = counts[status] || 0;
+      return {
+        status,
+        count,
+        percent: total > 0 ? (count / total) * 100 : 0,
+      };
+    });
+  }, [managerBreakdownRows]);
+  const loadByChainMatrix = useMemo(() => {
+    const bands = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
+    const statuses = [
+      'Chain Functioning',
+      'Resilient, Under-supported',
+      'At-Risk Leadership',
+      'Failed at Both Levels',
+    ];
+    const rows = bands.map((band) => ({
+      band,
+      cells: statuses.reduce((acc, status) => ({ ...acc, [status]: 0 }), {}),
+      total: 0,
+    }));
+    const rowMap = new Map(rows.map((row) => [row.band, row]));
+
+    managerBreakdownRows.forEach((row) => {
+      const band = String(row?.managerLoadBand || '').trim();
+      const matrixRow = rowMap.get(band);
+      if (!matrixRow) return;
+      const status = managerChainStatus(String(row?.quadrant || '').trim());
+      matrixRow.cells[status] += 1;
+      matrixRow.total += 1;
+    });
+
+    return { rows, statuses };
   }, [managerBreakdownRows]);
   const groupLevelLabels = useMemo(() => {
     const labels = Array.isArray(org?.settings?.groupLevelLabels) ? org.settings.groupLevelLabels : [];
@@ -685,89 +757,156 @@ export default function PlatformClientPulse() {
       ) : null}
 
       {showScoresSection ? (
-        <section className="pulse-clean-scores card">
-        <div className="pulse-clean-scores__top">
-          <article className="pulse-clean-scores__score-card">
-            <p className="pulse-clean-scores__label">Adoption Readiness</p>
-            <p className="pulse-clean-scores__value">{formatScore(adoptionScore)}</p>
-            <p className="pulse-clean-scores__meta">/40 points</p>
-            <div className="pulse-clean-scores__bar">
-              <span style={{ width: `${Math.max(0, Math.min(((adoptionScore || 0) / 40) * 100, 100))}%` }} />
+        <section className="pulse-clean-scores pulse-sponsorship card">
+          <header className="pulse-sponsorship__hero">
+            <div>
+              <p className="pulse-sponsorship__eyebrow">Sponsorship Analysis · Manager Load Report</p>
+              <h3 className="pulse-sponsorship__headline">
+                The sponsorship chain is {interventionRequired ? 'not functioning' : 'mostly functioning'}.
+                Managers are absorbing pressure from both directions.
+              </h3>
+              <p className="pulse-sponsorship__subhead">{sponsorshipExecutiveSignal}</p>
             </div>
-            <p className="pulse-clean-scores__threshold">
-              {adoptionScore != null && adoptionScore >= threshold ? 'Above' : 'Below'} threshold
-            </p>
-          </article>
+            <span className={`pulse-sponsorship__verdict pulse-sponsorship__verdict--${interventionRequired ? 'critical' : 'stable'}`}>
+              {sponsorshipVerdict}
+            </span>
+          </header>
 
-          <article className="pulse-clean-scores__score-card">
-            <p className="pulse-clean-scores__label">Sponsorship Credibility</p>
-            <p className="pulse-clean-scores__value pulse-clean-scores__value--sponsorship">
-              {formatScore(sponsorshipScore)}
-            </p>
-            <p className="pulse-clean-scores__meta">/40 points</p>
-            <div className="pulse-clean-scores__bar pulse-clean-scores__bar--sponsorship">
-              <span style={{ width: `${Math.max(0, Math.min(((sponsorshipScore || 0) / 40) * 100, 100))}%` }} />
+          <section className="pulse-sponsorship__section">
+            <div className="pulse-sponsorship__section-head">
+              <p className="pulse-sponsorship__section-id">Section 1</p>
+              <p className="pulse-sponsorship__section-title">Sponsorship Sub-score Overview</p>
             </div>
-            <p className="pulse-clean-scores__threshold">
-              {sponsorshipScore != null && sponsorshipScore >= threshold ? 'Above' : 'Below'} threshold
-            </p>
-          </article>
-        </div>
-
-        <div className="pulse-clean-scores__signals">
-          {sponsorshipSignals?.load?.text ? (
-            <p
-              className={`pulse-clean-scores__signal pulse-clean-scores__signal--${
-                sponsorshipSignals.load.variant === 'red' ? 'risk' : 'warn'
-              }`}
-            >
-              <strong>Load Signal:</strong> {sponsorshipSignals.load.text}
-            </p>
-          ) : null}
-          {sponsorshipSignals?.subScores?.text ? (
-            <p
-              className={`pulse-clean-scores__signal pulse-clean-scores__signal--${
-                sponsorshipSignals.subScores.variant === 'red' ? 'risk' : 'warn'
-              }`}
-            >
-              <strong>Sub-score Signal:</strong> {sponsorshipSignals.subScores.text}
-            </p>
-          ) : null}
-          {!sponsorshipSignals?.load?.text && !sponsorshipSignals?.subScores?.text ? (
-            <p className="pulse-clean-scores__signal pulse-clean-scores__signal--info">
-              Sponsorship signal set was not returned for this timepoint.
-            </p>
-          ) : null}
-        </div>
-
-        <div className="pulse-clean-scores__load">
-          <div className="pulse-clean-scores__load-head">
-            <p className="pulse-clean-scores__load-title">Manager Load Profile</p>
-            <p className="pulse-clean-scores__load-meta">
-              {managerBreakdownRows.length} manager{managerBreakdownRows.length === 1 ? '' : 's'}
-            </p>
-          </div>
-          <div className="pulse-clean-scores__load-track">
-            {managerLoadDistribution.map((item) => (
-              <span
-                key={item.band}
-                className={`pulse-clean-scores__load-segment pulse-clean-scores__load-segment--${item.band.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
-                style={{ flex: Math.max(1, item.count) }}
-              />
-            ))}
-          </div>
-          <div className="pulse-clean-scores__load-grid">
-            {managerLoadDistribution.map((item) => (
-              <article key={item.band} className="pulse-clean-scores__load-card">
-                <p className="pulse-clean-scores__load-percent">{formatPercent(item.percent)}</p>
-                <p className="pulse-clean-scores__load-name">{item.band}</p>
+            <div className="pulse-sponsorship__score-grid">
+              <article className="pulse-sponsorship__score-card">
+                <p className="pulse-sponsorship__score-label">Adoption Readiness</p>
+                <p className="pulse-sponsorship__score-value">{formatScore(adoptionScore)}</p>
+                <p className="pulse-sponsorship__score-meta">/40 points</p>
+                <div className="pulse-sponsorship__score-bar">
+                  <span style={{ width: `${Math.max(0, Math.min(((adoptionScore || 0) / 40) * 100, 100))}%` }} />
+                </div>
+                <p className="pulse-sponsorship__score-note">
+                  {adoptionScore != null && adoptionScore >= threshold ? 'Above' : 'Below'} threshold
+                </p>
               </article>
-            ))}
-          </div>
-          <p className="pulse-clean-scores__load-footnote">
-            If this group skews toward "At Capacity" and "Overloaded", execution risk is elevated without intervention.
-          </p>
-        </div>
+              <article className="pulse-sponsorship__score-card pulse-sponsorship__score-card--sponsorship">
+                <p className="pulse-sponsorship__score-label">Sponsorship Credibility</p>
+                <p className="pulse-sponsorship__score-value">{formatScore(sponsorshipScore)}</p>
+                <p className="pulse-sponsorship__score-meta">/40 points</p>
+                <div className="pulse-sponsorship__score-bar pulse-sponsorship__score-bar--sponsorship">
+                  <span style={{ width: `${Math.max(0, Math.min(((sponsorshipScore || 0) / 40) * 100, 100))}%` }} />
+                </div>
+                <p className="pulse-sponsorship__score-note">
+                  {sponsorshipScore != null && sponsorshipScore >= threshold ? 'Above' : 'Below'} threshold
+                </p>
+              </article>
+            </div>
+            <p className="pulse-sponsorship__signal-summary">
+              Score gap (adoption minus sponsorship): <strong>{sponsorshipGap == null ? '--' : formatDelta(sponsorshipGap)}</strong>
+            </p>
+            <div className="pulse-sponsorship__signals">
+              {sponsorshipSignals?.load?.text ? (
+                <p
+                  className={`pulse-sponsorship__signal pulse-sponsorship__signal--${
+                    sponsorshipSignals.load.variant === 'red' ? 'risk' : 'warn'
+                  }`}
+                >
+                  <strong>Load Signal:</strong> {sponsorshipSignals.load.text}
+                </p>
+              ) : null}
+              {sponsorshipSignals?.subScores?.text ? (
+                <p
+                  className={`pulse-sponsorship__signal pulse-sponsorship__signal--${
+                    sponsorshipSignals.subScores.variant === 'red' ? 'risk' : 'warn'
+                  }`}
+                >
+                  <strong>Sub-score Signal:</strong> {sponsorshipSignals.subScores.text}
+                </p>
+              ) : null}
+              {!sponsorshipSignals?.load?.text && !sponsorshipSignals?.subScores?.text ? (
+                <p className="pulse-sponsorship__signal pulse-sponsorship__signal--info">
+                  Sponsorship signal set was not returned for this timepoint.
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="pulse-sponsorship__section">
+            <div className="pulse-sponsorship__section-head">
+              <p className="pulse-sponsorship__section-id">Section 2</p>
+              <p className="pulse-sponsorship__section-title">Manager Load Report</p>
+            </div>
+            <div className="pulse-sponsorship__load-banner">
+              <p className="pulse-sponsorship__load-banner-title">Managers carrying critical load</p>
+              <p className="pulse-sponsorship__load-banner-value">{formatPercent(criticalLoadPercent)}</p>
+              <p className="pulse-sponsorship__load-banner-meta">
+                {managerBreakdownRows.length} manager{managerBreakdownRows.length === 1 ? '' : 's'} in scope
+              </p>
+            </div>
+            <div className="pulse-sponsorship__load-track">
+              {managerLoadDistribution.map((item) => (
+                <span
+                  key={item.band}
+                  className={`pulse-sponsorship__load-segment pulse-sponsorship__load-segment--${loadBandClassName(item.band)}`}
+                  style={{ flex: Math.max(1, item.count) }}
+                />
+              ))}
+            </div>
+            <div className="pulse-sponsorship__load-grid">
+              {managerLoadDistribution.map((item) => (
+                <article key={item.band} className={`pulse-sponsorship__load-card pulse-sponsorship__load-card--${loadBandClassName(item.band)}`}>
+                  <p className="pulse-sponsorship__load-percent">{formatPercent(item.percent)}</p>
+                  <p className="pulse-sponsorship__load-name">{item.band}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="pulse-sponsorship__section">
+            <div className="pulse-sponsorship__section-head">
+              <p className="pulse-sponsorship__section-id">Section 3</p>
+              <p className="pulse-sponsorship__section-title">Sponsorship Chain States</p>
+            </div>
+            <div className="pulse-sponsorship__chain-grid">
+              {chainStatusDistribution.map((item) => (
+                <article key={item.status} className={`pulse-sponsorship__chain-card pulse-sponsorship__chain-card--${loadBandClassName(item.status)}`}>
+                  <p className="pulse-sponsorship__chain-percent">{formatPercent(item.percent)}</p>
+                  <p className="pulse-sponsorship__chain-name">{item.status}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="pulse-sponsorship__section">
+            <div className="pulse-sponsorship__section-head">
+              <p className="pulse-sponsorship__section-id">Section 4</p>
+              <p className="pulse-sponsorship__section-title">Load Band × Chain Status</p>
+            </div>
+            <div className="table-wrap">
+              <table className="pulse-sponsorship__matrix">
+                <thead>
+                  <tr>
+                    <th>Load Band</th>
+                    {loadByChainMatrix.statuses.map((status) => (
+                      <th key={`status-col-${status}`}>{status}</th>
+                    ))}
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadByChainMatrix.rows.map((row) => (
+                    <tr key={row.band}>
+                      <td className="pulse-sponsorship__matrix-band">{row.band}</td>
+                      {loadByChainMatrix.statuses.map((status) => (
+                        <td key={`${row.band}-${status}`}>{row.cells[status] || 0}</td>
+                      ))}
+                      <td>{row.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </section>
       ) : null}
 
