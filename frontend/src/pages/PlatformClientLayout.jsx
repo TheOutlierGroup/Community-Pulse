@@ -63,7 +63,7 @@ export default function PlatformClientLayout() {
   const [pulseSelectedManagerIds, setPulseSelectedManagerIds] = useState([]);
   const [pulseIncludeManagerSelf, setPulseIncludeManagerSelf] = useState(false);
   const [pulseManagerOptions, setPulseManagerOptions] = useState([]);
-  const [pulseTimepoint, setPulseTimepoint] = useState('during');
+  const [pulseTimepoint, setPulseTimepoint] = useState('pre');
   const [pulseDuringDate, setPulseDuringDate] = useState('');
   const [pulseDuringSessionId, setPulseDuringSessionId] = useState('');
   const [pulseTimepointOptions, setPulseTimepointOptions] = useState([]);
@@ -110,7 +110,7 @@ export default function PlatformClientLayout() {
     setPulseSelectedManagerIds([]);
     setPulseIncludeManagerSelf(false);
     setPulseManagerOptions([]);
-    setPulseTimepoint('during');
+    setPulseTimepoint('pre');
     setPulseDuringDate('');
     setPulseDuringSessionId('');
     setPulseTimepointOptions([]);
@@ -165,11 +165,11 @@ export default function PlatformClientLayout() {
     setPulseTimepointOptions(options);
 
     if (options.length > 0) {
+      const latestPre = options.find((row) => row.phase === 'pre');
       const activeDuring = options.find((row) => row.phase === 'during' && row.isActive);
       const latestDuring = options.find((row) => row.phase === 'during');
-      const latestPre = options.find((row) => row.phase === 'pre');
       const latestCompleted = options.find((row) => row.phase === 'completed');
-      const fallback = activeDuring || latestDuring || latestPre || latestCompleted;
+      const fallback = latestPre || activeDuring || latestDuring || latestCompleted;
       if (fallback) {
         setPulseTimepoint(fallback.phase);
         setPulseDuringDate(fallback.phase === 'during' ? fallback.dateKey : '');

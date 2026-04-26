@@ -45,6 +45,17 @@ function formatDateKeyDdMmYy(dateKey) {
   return `${day}/${month}/${year.slice(-2)}`;
 }
 
+function formatTimeHm(createdAt) {
+  const raw = String(createdAt || '').trim();
+  if (!raw) return '';
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function Navigation({ user, onLogout, variant = 'header', navContext = null }) {
   const navigate = useNavigate();
   const params = useParams();
@@ -64,7 +75,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       : (location.hash || '#organisation-dashboard').replace(/^#/, '')
     : '';
   const pulseClientName = String(navContext?.clientOrganization?.name || '').trim();
-  const pulseTimepoint = String(navContext?.pulseTimepoint || 'during');
+  const pulseTimepoint = String(navContext?.pulseTimepoint || 'pre');
   const setPulseTimepoint = navContext?.setPulseTimepoint;
   const setPulseDuringDate = navContext?.setPulseDuringDate;
   const pulseDuringSessionId = String(navContext?.pulseDuringSessionId || '');
@@ -79,7 +90,17 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const preOption = pulseTimepointOptions.find((row) => row.phase === 'pre');
   const completedOption = pulseTimepointOptions.find((row) => row.phase === 'completed');
   const duringOptions = pulseTimepointOptions.filter((row) => row.phase === 'during');
-  const duringValue = pulseDuringSessionId || duringOptions[0]?.id || '';
+  const primaryDuringOption = duringOptions.length > 0 ? duringOptions[duringOptions.length - 1] : null;
+  const additionalDuringOptions = primaryDuringOption
+    ? duringOptions.filter((row) => row.id !== primaryDuringOption.id)
+    : [];
+  const additionalDuringDateCounts = additionalDuringOptions.reduce((acc, option) => {
+    const key = String(option.dateKey || '').trim();
+    if (!key) return acc;
+    acc.set(key, (acc.get(key) || 0) + 1);
+    return acc;
+  }, new Map());
+  const duringValue = pulseDuringSessionId || primaryDuringOption?.id || duringOptions[0]?.id || '';
   const timepointSelectValue =
     pulseTimepoint === 'pre'
       ? 'pre'
@@ -200,11 +221,18 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       aria-label="Select Rhythm Engine point in time"
                     >
                       <option value="pre">Pre{preOption ? ` · ${preOption.label}` : ''}</option>
-                      {duringOptions.map((option) => (
+                      {primaryDuringOption ? (
+                        <option key={primaryDuringOption.id} value={`during:${primaryDuringOption.id}`}>
+                          During
+                        </option>
+                      ) : null}
+                      {additionalDuringOptions.map((option) => (
                         <option key={option.id} value={`during:${option.id}`}>
-                          {duringOptions.length > 1 && !option.isSystemGeneratedDuring
-                            ? `During - ${option.label || formatDateKeyDdMmYy(option.dateKey)}`
-                            : 'During'}
+                          {`During ${formatDateKeyDdMmYy(option.dateKey)}${
+                            (additionalDuringDateCounts.get(String(option.dateKey || '').trim()) || 0) > 1
+                              ? ` ${formatTimeHm(option.createdAt)}`
+                              : ''
+                          }`}
                         </option>
                       ))}
                       {!duringOptions.length ? <option value="during">During</option> : null}

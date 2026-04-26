@@ -307,26 +307,29 @@ export default function PlatformClients() {
                   If set, we create this user as a company admin (no invite link).
                 </p>
               </div>
-              <div className="field" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 10rem' }}>
-                  <label htmlFor="afirst">First name (optional)</label>
-                  <input
-                    id="afirst"
-                    value={newOrgAdminFirstName}
-                    onChange={(e) => setNewOrgAdminFirstName(e.target.value)}
-                    autoComplete="given-name"
-                  />
+              <fieldset className="modal-dialog__fieldset">
+                <legend>First admin name (optional)</legend>
+                <div className="modal-dialog__name-row">
+                  <div className="field">
+                    <label htmlFor="afirst">First name</label>
+                    <input
+                      id="afirst"
+                      value={newOrgAdminFirstName}
+                      onChange={(e) => setNewOrgAdminFirstName(e.target.value)}
+                      autoComplete="given-name"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="alast">Last name</label>
+                    <input
+                      id="alast"
+                      value={newOrgAdminLastName}
+                      onChange={(e) => setNewOrgAdminLastName(e.target.value)}
+                      autoComplete="family-name"
+                    />
+                  </div>
                 </div>
-                <div style={{ flex: '1 1 10rem' }}>
-                  <label htmlFor="alast">Last name (optional)</label>
-                  <input
-                    id="alast"
-                    value={newOrgAdminLastName}
-                    onChange={(e) => setNewOrgAdminLastName(e.target.value)}
-                    autoComplete="family-name"
-                  />
-                </div>
-              </div>
+              </fieldset>
               <div className="field">
                 <p className="muted" style={{ fontSize: '0.85rem', margin: '0 0 0.5rem' }}>
                   First admin options (when email is set)

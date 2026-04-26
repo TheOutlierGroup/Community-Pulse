@@ -307,8 +307,8 @@ export default function PlatformPulseInviteUsers() {
   const [testDataOpen, setTestDataOpen] = useState(false);
   const [testDataBusy, setTestDataBusy] = useState(false);
   const [testDataError, setTestDataError] = useState('');
-  const [testDataStaffCount, setTestDataStaffCount] = useState('50');
-  const [testDataManagerCount, setTestDataManagerCount] = useState('10');
+  const [testDataStaffCount, setTestDataStaffCount] = useState('0');
+  const [testDataManagerCount, setTestDataManagerCount] = useState('0');
   const [testDataGroupCounts, setTestDataGroupCounts] = useState([]);
 
   const configuredGroupLabels = useMemo(() => {
@@ -542,8 +542,8 @@ export default function PlatformPulseInviteUsers() {
 
   function openTestDataModal() {
     setTestDataError('');
-    setTestDataStaffCount('50');
-    setTestDataManagerCount('10');
+    setTestDataStaffCount('0');
+    setTestDataManagerCount('0');
     setTestDataOpen(true);
   }
 
@@ -611,7 +611,10 @@ export default function PlatformPulseInviteUsers() {
       );
       const importedUsers = Number(data?.importedUsers || 0);
       const completedResponses = Number(data?.completedResponses || 0);
-      showToast(`Created ${importedUsers} test users and ${completedResponses} completed responses.`, {
+      const expectedTotal = staffCount + managerCount;
+      showToast(
+        `Created ${importedUsers} test users (${staffCount} staff, ${managerCount} managers; total requested ${expectedTotal}) and ${completedResponses} completed responses.`,
+        {
         variant: 'success',
       });
       if (Number(data?.importErrorCount || 0) > 0 || Number(data?.completionErrorCount || 0) > 0) {
@@ -992,6 +995,9 @@ export default function PlatformPulseInviteUsers() {
               disabled={testDataBusy}
               required
             />
+            <p className="muted" style={{ marginTop: '0.4rem' }}>
+              Total users created = staff + managers.
+            </p>
           </div>
           {configuredGroupLabels.map((label, index) => (
             <div className="field" key={`pulse-test-group-count-${index}`}>
