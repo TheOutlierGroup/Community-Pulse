@@ -25,6 +25,23 @@ export function normalizeCsvHeader(value) {
     .replace(/[_-]+/g, ' ');
 }
 
+function canonicalizeHeaderForAlias(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function isManagerFlagHeader(value) {
+  const canonical = canonicalizeHeaderForAlias(value);
+  return (
+    canonical === 'manager'
+    || canonical === 'is manager'
+    || canonical === 'manager yes no'
+  );
+}
+
 function normalizeManagerRef(value) {
   return String(value ?? '')
     .trim()
@@ -80,14 +97,7 @@ export function parseRecipientCsv(text, options = {}) {
     colRole = headerLower.indexOf('role');
     if (colRole < 0) colRole = headerLower.indexOf('survey_role');
     if (colRole < 0) colRole = headerLower.indexOf('survey role');
-    colManagerFlag = headerLower.findIndex((header) =>
-      header === 'manager'
-      || header === 'is manager'
-      || header === 'manager?'
-      || header === 'manager (yes/no)'
-      || header === 'manager yes/no'
-      || header === 'manager yes no'
-    );
+    colManagerFlag = headerLower.findIndex((header) => isManagerFlagHeader(header));
     colManagerId = headerLower.indexOf('manager_id');
     if (colManagerId < 0) colManagerId = headerLower.indexOf('manager id');
     if (colManagerId < 0) colManagerId = headerLower.indexOf('manager name');

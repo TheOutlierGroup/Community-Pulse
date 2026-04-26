@@ -104,6 +104,21 @@ test('parseRecipientCsv supports Manager yes/no column for survey role mapping',
   assert.equal(rows[1].managerId, 'Olivia');
 });
 
+test('parseRecipientCsv supports manager flag headers with slash spacing', () => {
+  const csv = [
+    'name,email,Manager (Yes / No),Manager Name',
+    'Olivia,olivia@example.com,Yes,',
+    'Noah,noah@example.com,No,Olivia',
+  ].join('\n');
+
+  const rows = parseRecipientCsv(csv);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].role, 'manager');
+  assert.equal(rows[0].managerId, 'Olivia');
+  assert.equal(rows[1].role, 'staff');
+  assert.equal(rows[1].managerId, 'Olivia');
+});
+
 test('parseRecipientCsv prioritizes Manager yes/no over role when both are present', () => {
   const csv = [
     'name,email,role,Manager,Manager Name',

@@ -10,6 +10,7 @@ import * as Invite from '../../models/Invite.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import * as PulseSession from '../../models/PulseSession.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
+import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import {
   isResendConfigured,
@@ -61,6 +62,7 @@ import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
 } from '../../services/pulseInviteImportValidation.js';
+import { collectStaffInvitesNeedingManagerRole } from '../../services/pulseLinkRoleRepair.js';
 import {
   internalTimepointToPulseStage,
   normalizePulseStage,
@@ -197,6 +199,170 @@ function parsePulseDashboardTimepoint(value) {
 
 function parsePulseInviteTimepoint(value) {
   return pulseStageToInternalTimepoint(normalizePulseStage(value));
+}
+
+function buildTestSurveyStepAnswers(surveyRole, seed = 0) {
+  const prefix = surveyRole === 'manager' ? 'MQ' : 'Q';
+  const answers = {};
+  for (let i = 1; i <= 16; i += 1) {
+    answers[`${prefix}${i}`] = ((seed + i) % 5) + 1;
+  }
+  return { answers };
+}
+
+function normalizeGroupCountInput(rawCount) {
+  const parsed = Number.parseInt(String(rawCount ?? ''), 10);
+  if (!Number.isInteger(parsed) || parsed < 0) return 0;
+  return Math.min(parsed, 100);
+}
+
+function buildTestGroupValues(groupLabels, groupCounts, index) {
+  return groupLabels.map((label, groupIndex) => {
+    const distinctCount = normalizeGroupCountInput(groupCounts?.[groupIndex]);
+    if (distinctCount <= 0) return null;
+    const bucket = (index % distinctCount) + 1;
+    return `${label} ${bucket}`;
+  });
+}
+
+function buildTestRecipients({ managerCount, staffCount, groupLabels, groupCounts, datasetToken }) {
+  const recipients = [];
+  const managerEmails = [];
+  let absoluteIndex = 0;
+
+  for (let i = 0; i < managerCount; i += 1) {
+    const email = `test-manager-${datasetToken}-${i + 1}@example.com`;
+    managerEmails.push(email);
+    recipients.push({
+      name: `Test Manager ${i + 1}`,
+      email,
+      role: 'manager',
+      managerId: email,
+      groupValues: buildTestGroupValues(groupLabels, groupCounts, absoluteIndex),
+    });
+    absoluteIndex += 1;
+  }
+
+  for (let i = 0; i < staffCount; i += 1) {
+    const managerEmail = managerEmails[i % managerEmails.length];
+    recipients.push({
+      name: `Test Staff ${i + 1}`,
+      email: `test-staff-${datasetToken}-${i + 1}@example.com`,
+      role: 'staff',
+      managerId: managerEmail,
+      groupValues: buildTestGroupValues(groupLabels, groupCounts, absoluteIndex),
+    });
+    absoluteIndex += 1;
+  }
+
+  return recipients;
+}
+
+async function upsertPulseInviteRecipients({
+  organizationId,
+  timepointPhase,
+  recipients,
+  allowUnassignedStaff,
+  expectedGroupLevelLabels,
+}) {
+  const existingInvites = await PulseLinkInvite.listInviteRowsForOrg(organizationId, { timepointPhase });
+  const invitesById = new Map(existingInvites.map((row) => [row.id, row]));
+  const normalizedRows = normalizeInviteImportRecipients(recipients);
+  const prevalidation = validateInviteImportRows(normalizedRows, invitesById, {
+    allowStaffWithoutManagerRef: allowUnassignedStaff,
+    expectedGroupLevels: expectedGroupLevelLabels.length,
+  });
+  const errors = [...prevalidation.errors];
+  const invalidIndices = new Set(prevalidation.invalidIndices);
+
+  const upsertedRows = [];
+  for (const row of normalizedRows) {
+    if (invalidIndices.has(row.index)) continue;
+    const { row: upsertedRow, error } = await PulseLinkInvite.upsertInviteRow({
+      organizationId,
+      timepointPhase,
+      displayName: row.displayName,
+      email: row.email,
+      surveyRole: row.surveyRole,
+      managerInviteId: null,
+      groupLevelValues: row.groupValues,
+    });
+    if (error || !upsertedRow) {
+      errors.push({ index: row.index, email: row.email, error: error || 'invalid' });
+      invalidIndices.add(row.index);
+      continue;
+    }
+    upsertedRows.push({ source: row, invite: upsertedRow });
+    invitesById.set(upsertedRow.id, upsertedRow);
+  }
+
+  const managerRefToInviteId = new Map();
+  for (const item of upsertedRows) {
+    if (item.source.surveyRole === 'manager' && item.source.managerRef) {
+      managerRefToInviteId.set(item.source.managerRef, item.invite.id);
+    }
+  }
+
+  for (const item of upsertedRows) {
+    const { source, invite } = item;
+    if (source.surveyRole !== 'staff') {
+      await PulseLinkInvite.updateManagerInviteId(invite.id, organizationId, null, { timepointPhase });
+      continue;
+    }
+    let resolvedManagerId = null;
+    if (source.managerInviteId) {
+      resolvedManagerId = source.managerInviteId;
+    } else if (source.managerRef) {
+      resolvedManagerId = managerRefToInviteId.get(source.managerRef) || null;
+    }
+    if (!resolvedManagerId) {
+      if (allowUnassignedStaff) {
+        await PulseLinkInvite.updateManagerInviteId(invite.id, organizationId, null, { timepointPhase });
+        continue;
+      }
+      errors.push({
+        index: source.index,
+        email: source.email,
+        error: 'manager_not_found',
+      });
+      continue;
+    }
+    if (resolvedManagerId === invite.id) {
+      errors.push({
+        index: source.index,
+        email: source.email,
+        error: 'self_manager_not_allowed',
+      });
+      continue;
+    }
+    const resolvedManagerRow = invitesById.get(resolvedManagerId)
+      || (await PulseLinkInvite.getInviteInOrg(resolvedManagerId, organizationId, { timepointPhase }));
+    if (!resolvedManagerRow || resolvedManagerRow.survey_role !== 'manager') {
+      errors.push({
+        index: source.index,
+        email: source.email,
+        error: 'invalid_manager_invite',
+      });
+      continue;
+    }
+    const updated = await PulseLinkInvite.updateManagerInviteId(invite.id, organizationId, resolvedManagerId, {
+      timepointPhase,
+    });
+    if (!updated) {
+      errors.push({
+        index: source.index,
+        email: source.email,
+        error: 'manager_assignment_failed',
+      });
+    }
+  }
+
+  return {
+    upsertedRows,
+    upserted: upsertedRows.length,
+    errorCount: errors.length,
+    errors: errors.slice(0, 50),
+  };
 }
 
 function createDuringPulseCheckpointName(now = new Date()) {
@@ -1817,102 +1983,136 @@ export function registerPlatformOrgRoutes(router) {
     }
     const allowUnassignedStaff = parseTruthyQueryBool(req.query?.allowUnassignedStaff);
     const expectedGroupLevelLabels = normalizedGroupLevelLabelsFromSettings(org.settings);
-    const existingInvites = await PulseLinkInvite.listInviteRowsForOrg(req.params.id, { timepointPhase });
-    const invitesById = new Map(existingInvites.map((row) => [row.id, row]));
-    const normalizedRows = normalizeInviteImportRecipients(recipients);
-    const prevalidation = validateInviteImportRows(normalizedRows, invitesById, {
-      allowStaffWithoutManagerRef: allowUnassignedStaff,
-      expectedGroupLevels: expectedGroupLevelLabels.length,
+    const result = await upsertPulseInviteRecipients({
+      organizationId: req.params.id,
+      timepointPhase,
+      recipients,
+      allowUnassignedStaff,
+      expectedGroupLevelLabels,
     });
-    const errors = [...prevalidation.errors];
-    const invalidIndices = new Set(prevalidation.invalidIndices);
-    const managerRefToRow = prevalidation.managerRefToRow;
+    res.json(result);
+  });
 
-    const upsertedRows = [];
-    for (const row of normalizedRows) {
-      if (invalidIndices.has(row.index)) continue;
-      const { row: upsertedRow, error } = await PulseLinkInvite.upsertInviteRow({
-        organizationId: req.params.id,
-        timepointPhase,
-        displayName: row.displayName,
-        email: row.email,
-        surveyRole: row.surveyRole,
-        managerInviteId: null,
-        groupLevelValues: row.groupValues,
+  router.post('/organizations/:id/pulse-link-invites/test-data', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    const managerCount = Number.parseInt(String(req.body?.managerCount ?? ''), 10);
+    const staffCount = Number.parseInt(String(req.body?.staffCount ?? ''), 10);
+    if (!Number.isInteger(managerCount) || managerCount < 0) {
+      return res.status(400).json({ error: 'managerCount must be a non-negative integer' });
+    }
+    if (!Number.isInteger(staffCount) || staffCount < 0) {
+      return res.status(400).json({ error: 'staffCount must be a non-negative integer' });
+    }
+    if (managerCount === 0 && staffCount === 0) {
+      return res.status(400).json({ error: 'At least one manager or staff user is required' });
+    }
+    if (staffCount > 0 && managerCount === 0) {
+      return res.status(400).json({ error: 'At least one manager is required when staffCount is greater than 0' });
+    }
+    if (managerCount + staffCount > 2000) {
+      return res.status(400).json({ error: 'Too many test users requested (max 2000)' });
+    }
+
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const groupLabels = normalizedGroupLevelLabelsFromSettings(org.settings);
+    const groupCounts = Array.isArray(req.body?.groupCounts) ? req.body.groupCounts : [];
+    const normalizedGroupCounts = groupLabels.map((_, index) => normalizeGroupCountInput(groupCounts[index]));
+    const datasetToken = randomUUID().replace(/-/g, '').slice(0, 12);
+
+    const recipients = buildTestRecipients({
+      managerCount,
+      staffCount,
+      groupLabels,
+      groupCounts: normalizedGroupCounts,
+      datasetToken,
+    });
+    const upsertResult = await upsertPulseInviteRecipients({
+      organizationId: req.params.id,
+      timepointPhase,
+      recipients,
+      allowUnassignedStaff: false,
+      expectedGroupLevelLabels: groupLabels,
+    });
+
+    const stage = internalTimepointToPulseStage(timepointPhase);
+    let completedResponses = 0;
+    const completionErrors = [];
+    for (let index = 0; index < upsertResult.upsertedRows.length; index += 1) {
+      const inviteRow = upsertResult.upsertedRows[index]?.invite;
+      if (!inviteRow) continue;
+      try {
+        const audience = inviteRow.survey_role === 'manager' ? 'manager' : 'staff';
+        const session = await PulseSession.resolveSessionForPulseLink(req.params.id, audience, stage);
+        await PulseLinkResponse.ensureResponseRow(inviteRow.id, session.id, stage);
+        const step1 = buildTestSurveyStepAnswers(inviteRow.survey_role, index);
+        const completed = await PulseLinkResponse.completeResponse({
+          inviteId: inviteRow.id,
+          sessionId: session.id,
+          stage,
+          step1,
+          step2: {},
+          step3: {},
+          step4: {},
+          contributionStyle: null,
+        });
+        if (completed) completedResponses += 1;
+      } catch (error) {
+        completionErrors.push({
+          inviteId: inviteRow.id,
+          error: String(error?.message || 'response_completion_failed').slice(0, 200),
+        });
+      }
+    }
+
+    return res.json({
+      ok: true,
+      importedUsers: upsertResult.upserted,
+      importErrorCount: upsertResult.errorCount,
+      importErrors: upsertResult.errors,
+      completedResponses,
+      completionErrorCount: completionErrors.length,
+      completionErrors: completionErrors.slice(0, 20),
+      timepoint: stage,
+    });
+  });
+
+  router.post('/organizations/:id/pulse-link-invites/repair-manager-role', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint ?? req.body?.timepoint);
+    const applyRepair = parseQueryBool(
+      req.query?.apply,
+      parseQueryBool(req.body?.apply, false)
+    );
+
+    const responseRows = await PulseLinkInvite.listStaffInviteResponseRowsForOrg(req.params.id, {
+      timepointPhase,
+    });
+    const candidates = collectStaffInvitesNeedingManagerRole(responseRows);
+
+    if (!applyRepair) {
+      return res.json({
+        dryRun: true,
+        timepoint: internalTimepointToPulseStage(timepointPhase),
+        candidateCount: candidates.length,
+        candidates,
       });
-      if (error || !upsertedRow) {
-        errors.push({ index: row.index, email: row.email, error: error || 'invalid' });
-        invalidIndices.add(row.index);
-        continue;
-      }
-      upsertedRows.push({ source: row, invite: upsertedRow });
-      invitesById.set(upsertedRow.id, upsertedRow);
     }
 
-    const managerRefToInviteId = new Map();
-    for (const item of upsertedRows) {
-      if (item.source.surveyRole === 'manager' && item.source.managerRef) {
-        managerRefToInviteId.set(item.source.managerRef, item.invite.id);
-      }
-    }
-
-    for (const item of upsertedRows) {
-      const { source, invite } = item;
-      if (source.surveyRole !== 'staff') {
-        await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, null, { timepointPhase });
-        continue;
-      }
-      let resolvedManagerId = null;
-      if (source.managerInviteId) {
-        resolvedManagerId = source.managerInviteId;
-      } else if (source.managerRef) {
-        resolvedManagerId = managerRefToInviteId.get(source.managerRef) || null;
-      }
-      if (!resolvedManagerId) {
-        if (allowUnassignedStaff) {
-          await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, null, { timepointPhase });
-          continue;
-        }
-        errors.push({
-          index: source.index,
-          email: source.email,
-          error: 'manager_not_found',
-        });
-        continue;
-      }
-      if (resolvedManagerId === invite.id) {
-        errors.push({
-          index: source.index,
-          email: source.email,
-          error: 'self_manager_not_allowed',
-        });
-        continue;
-      }
-      const resolvedManagerRow = invitesById.get(resolvedManagerId)
-        || (await PulseLinkInvite.getInviteInOrg(resolvedManagerId, req.params.id, { timepointPhase }));
-      if (!resolvedManagerRow || resolvedManagerRow.survey_role !== 'manager') {
-        errors.push({
-          index: source.index,
-          email: source.email,
-          error: 'invalid_manager_invite',
-        });
-        continue;
-      }
-      const updated = await PulseLinkInvite.updateManagerInviteId(invite.id, req.params.id, resolvedManagerId, {
-        timepointPhase,
-      });
-      if (!updated) {
-        errors.push({
-          index: source.index,
-          email: source.email,
-          error: 'manager_assignment_failed',
-        });
-      }
-    }
-    res.json({
-      upserted: upsertedRows.length,
-      errorCount: errors.length,
-      errors: errors.slice(0, 50),
+    const updated = await PulseLinkInvite.promoteInvitesToManagerInOrg(
+      candidates.map((candidate) => candidate.inviteId),
+      req.params.id,
+      { timepointPhase }
+    );
+    return res.json({
+      dryRun: false,
+      timepoint: internalTimepointToPulseStage(timepointPhase),
+      candidateCount: candidates.length,
+      updatedCount: updated.length,
+      updatedInviteIds: updated.map((row) => row.id),
     });
   });
 

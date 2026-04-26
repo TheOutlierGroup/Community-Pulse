@@ -141,6 +141,30 @@ export async function listInviteRowsForOrg(organizationId, options = {}) {
   return rows;
 }
 
+export async function listStaffInviteResponseRowsForOrg(organizationId, options = {}) {
+  const timepointPhase = normalizeInviteTimepointPhase(options?.timepointPhase);
+  const { rows } = await query(
+    `SELECT pli.id AS invite_id,
+            pli.email,
+            pli.display_name,
+            pli.timepoint_phase,
+            plr.id AS response_id,
+            plr.completed_at,
+            plr.step1_data,
+            plr.step2_data,
+            plr.step3_data,
+            plr.step4_data
+     FROM pulse_link_invites pli
+     JOIN pulse_link_responses plr ON plr.invite_id = pli.id
+     WHERE pli.organization_id = $1
+       AND pli.timepoint_phase = $2
+       AND pli.survey_role = 'staff'
+     ORDER BY pli.id ASC, plr.updated_at DESC`,
+    [organizationId, timepointPhase]
+  );
+  return rows;
+}
+
 export async function getInviteInOrg(inviteId, organizationId, options = {}) {
   const timepointPhase = options?.timepointPhase;
   const normalizedPhase =
@@ -238,6 +262,28 @@ export async function updateManagerInviteId(inviteId, organizationId, managerInv
           [inviteId, organizationId, managerInviteId || null, normalizedPhase]
         );
   return rows[0] || null;
+}
+
+export async function promoteInvitesToManagerInOrg(inviteIds, organizationId, options = {}) {
+  const ids = Array.isArray(inviteIds)
+    ? inviteIds
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+    : [];
+  if (ids.length === 0) return [];
+  const timepointPhase = normalizeInviteTimepointPhase(options?.timepointPhase);
+  const { rows } = await query(
+    `UPDATE pulse_link_invites
+     SET survey_role = 'manager',
+         manager_invite_id = NULL,
+         updated_at = NOW()
+     WHERE organization_id = $1
+       AND timepoint_phase = $2
+       AND id = ANY($3::uuid[])
+     RETURNING id, email, display_name, timepoint_phase`,
+    [organizationId, timepointPhase, ids]
+  );
+  return rows;
 }
 
 /**

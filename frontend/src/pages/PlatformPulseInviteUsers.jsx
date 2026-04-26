@@ -304,6 +304,12 @@ export default function PlatformPulseInviteUsers() {
   const [editingTemplateSubject, setEditingTemplateSubject] = useState('');
   const [editingTemplateBodyHtml, setEditingTemplateBodyHtml] = useState('<p></p>');
   const [templateEditorMode, setTemplateEditorMode] = useState('edit');
+  const [testDataOpen, setTestDataOpen] = useState(false);
+  const [testDataBusy, setTestDataBusy] = useState(false);
+  const [testDataError, setTestDataError] = useState('');
+  const [testDataStaffCount, setTestDataStaffCount] = useState('50');
+  const [testDataManagerCount, setTestDataManagerCount] = useState('10');
+  const [testDataGroupCounts, setTestDataGroupCounts] = useState([]);
 
   const configuredGroupLabels = useMemo(() => {
     const labels = Array.isArray(org?.settings?.groupLevelLabels) ? org.settings.groupLevelLabels : [];
@@ -337,6 +343,17 @@ export default function PlatformPulseInviteUsers() {
     [copySourceTimepoint]
   );
   const recipientsTableColumnCount = 7 + configuredGroupLabels.length;
+
+  useEffect(() => {
+    if (!testDataOpen) return;
+    setTestDataGroupCounts((previous) =>
+      configuredGroupLabels.map((_, index) => {
+        const existing = Number.parseInt(String(previous[index] ?? ''), 10);
+        if (Number.isInteger(existing) && existing >= 0) return String(existing);
+        return '3';
+      })
+    );
+  }, [configuredGroupLabels, testDataOpen]);
 
   const load = useCallback(async (options = {}) => {
     const silent = Boolean(options.silent);
@@ -521,6 +538,94 @@ export default function PlatformPulseInviteUsers() {
     setAddEmail('');
     setAddRole('staff');
     setAddManagerInviteId('');
+  }
+
+  function openTestDataModal() {
+    setTestDataError('');
+    setTestDataStaffCount('50');
+    setTestDataManagerCount('10');
+    setTestDataOpen(true);
+  }
+
+  function closeTestDataModal() {
+    if (testDataBusy) return;
+    setTestDataOpen(false);
+    setTestDataError('');
+  }
+
+  async function submitTestData(e) {
+    e.preventDefault();
+    const staffCount = Number.parseInt(String(testDataStaffCount || '').trim(), 10);
+    const managerCount = Number.parseInt(String(testDataManagerCount || '').trim(), 10);
+    if (!Number.isInteger(staffCount) || staffCount < 0) {
+      setTestDataError('Staff count must be a non-negative whole number.');
+      return;
+    }
+    if (!Number.isInteger(managerCount) || managerCount < 0) {
+      setTestDataError('Manager count must be a non-negative whole number.');
+      return;
+    }
+    if (staffCount === 0 && managerCount === 0) {
+      setTestDataError('Enter at least one staff or manager user.');
+      return;
+    }
+    if (staffCount > 0 && managerCount === 0) {
+      setTestDataError('At least one manager is required when creating staff test users.');
+      return;
+    }
+    const parsedGroupCounts = configuredGroupLabels.map((_, index) => {
+      const parsed = Number.parseInt(String(testDataGroupCounts[index] ?? '').trim(), 10);
+      if (!Number.isInteger(parsed) || parsed < 0) return 0;
+      return parsed;
+    });
+    const groupSummary = configuredGroupLabels
+      .map((label, index) => {
+        const count = parsedGroupCounts[index];
+        return `${label}: ${count}`;
+      })
+      .join('\n');
+    const confirmed = window.confirm(
+      [
+        'Create test data now?',
+        '',
+        `Managers: ${managerCount}`,
+        `Staff: ${staffCount}`,
+        configuredGroupLabels.length > 0 ? `Group counts:\n${groupSummary}` : 'Group counts: none configured',
+        '',
+        'This will create users and completed survey responses for this timepoint.',
+      ].join('\n')
+    );
+    if (!confirmed) return;
+
+    setTestDataBusy(true);
+    setTestDataError('');
+    try {
+      const { data } = await api.post(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/test-data`,
+        {
+          staffCount,
+          managerCount,
+          groupCounts: parsedGroupCounts,
+        },
+        { params: { timepoint: inviteTimepoint } }
+      );
+      const importedUsers = Number(data?.importedUsers || 0);
+      const completedResponses = Number(data?.completedResponses || 0);
+      showToast(`Created ${importedUsers} test users and ${completedResponses} completed responses.`, {
+        variant: 'success',
+      });
+      if (Number(data?.importErrorCount || 0) > 0 || Number(data?.completionErrorCount || 0) > 0) {
+        showToast('Some test records could not be imported/completed. Check server response logs.', {
+          variant: 'error',
+        });
+      }
+      setTestDataOpen(false);
+      await load();
+    } catch (err) {
+      setTestDataError(err.response?.data?.error || 'Could not create test data.');
+    } finally {
+      setTestDataBusy(false);
+    }
   }
 
   async function submitAddRecipient(e) {
@@ -822,10 +927,18 @@ export default function PlatformPulseInviteUsers() {
             type="button"
             className="btn btn-primary"
             onClick={() => setAddOpen(true)}
-            disabled={bulkSending || busyImport || copyingFromPre}
+            disabled={bulkSending || busyImport || copyingFromPre || testDataBusy}
           >
             <UserPlus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
             Add
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={openTestDataModal}
+            disabled={bulkSending || busyImport || copyingFromPre || testDataBusy}
+          >
+            {testDataBusy ? 'Creating test data…' : 'Test Data'}
           </button>
         </div>
       </div>
@@ -839,6 +952,78 @@ export default function PlatformPulseInviteUsers() {
         disabled={busyImport || bulkSending || copyingFromPre}
         onChange={onFile}
       />
+
+      <ModalDialog
+        open={testDataOpen}
+        title="Import test users and data"
+        titleId="pulse-test-data-title"
+        onClose={closeTestDataModal}
+      >
+        <form onSubmit={submitTestData} style={{ padding: '0 0 0.25rem' }}>
+          {testDataError ? <p className="error" style={{ marginBottom: '1rem' }}>{testDataError}</p> : null}
+          <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.5 }}>
+            Create a full test dataset for this survey timepoint. This will add users and mark survey answers as
+            completed for each generated user.
+          </p>
+          <div className="field">
+            <label htmlFor="pulse-test-data-staff-count">Number of staff</label>
+            <input
+              id="pulse-test-data-staff-count"
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={testDataStaffCount}
+              onChange={(e) => setTestDataStaffCount(e.target.value)}
+              disabled={testDataBusy}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="pulse-test-data-manager-count">Number of managers</label>
+            <input
+              id="pulse-test-data-manager-count"
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={testDataManagerCount}
+              onChange={(e) => setTestDataManagerCount(e.target.value)}
+              disabled={testDataBusy}
+              required
+            />
+          </div>
+          {configuredGroupLabels.map((label, index) => (
+            <div className="field" key={`pulse-test-group-count-${index}`}>
+              <label htmlFor={`pulse-test-group-count-${index}`}>Number of groups for {label}</label>
+              <input
+                id={`pulse-test-group-count-${index}`}
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={testDataGroupCounts[index] ?? ''}
+                onChange={(e) =>
+                  setTestDataGroupCounts((prev) => {
+                    const next = [...prev];
+                    next[index] = e.target.value;
+                    return next;
+                  })}
+                disabled={testDataBusy}
+                required
+              />
+            </div>
+          ))}
+          <div className="modal-dialog__actions">
+            <button type="button" className="btn btn-ghost" onClick={closeTestDataModal} disabled={testDataBusy}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={testDataBusy}>
+              {testDataBusy ? 'Creating…' : 'Create test data'}
+            </button>
+          </div>
+        </form>
+      </ModalDialog>
 
       <ModalDialog
         open={Boolean(templateModalAudience)}
