@@ -32,6 +32,16 @@ function normalizeManagerRef(value) {
     .replace(/\s+/g, ' ');
 }
 
+function parseManagerFlagToRole(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) return null;
+  if (['yes', 'y', 'true', '1', 'manager'].includes(normalized)) return 'manager';
+  if (['no', 'n', 'false', 'faulse', '0', 'staff', 'employee'].includes(normalized)) return 'staff';
+  return null;
+}
+
 export function parseRecipientCsv(text, options = {}) {
   const groupLabels = Array.isArray(options?.groupLabels) ? options.groupLabels : [];
   const ambiguousBlankManagerRole =
@@ -55,6 +65,7 @@ export function parseRecipientCsv(text, options = {}) {
   let colEmail = -1;
   let colName = -1;
   let colRole = -1;
+  let colManagerFlag = -1;
   let colManagerId = -1;
   let dynamicGroupIndexes = [];
 
@@ -69,6 +80,14 @@ export function parseRecipientCsv(text, options = {}) {
     colRole = headerLower.indexOf('role');
     if (colRole < 0) colRole = headerLower.indexOf('survey_role');
     if (colRole < 0) colRole = headerLower.indexOf('survey role');
+    colManagerFlag = headerLower.findIndex((header) =>
+      header === 'manager'
+      || header === 'is manager'
+      || header === 'manager?'
+      || header === 'manager (yes/no)'
+      || header === 'manager yes/no'
+      || header === 'manager yes no'
+    );
     colManagerId = headerLower.indexOf('manager_id');
     if (colManagerId < 0) colManagerId = headerLower.indexOf('manager id');
     if (colManagerId < 0) colManagerId = headerLower.indexOf('manager name');
@@ -82,6 +101,7 @@ export function parseRecipientCsv(text, options = {}) {
     let name = '';
     let email = '';
     let roleRaw;
+    let managerFlagRaw;
     let managerIdRaw;
     const groupValuesRaw = [];
 
@@ -89,6 +109,7 @@ export function parseRecipientCsv(text, options = {}) {
       email = colEmail >= 0 ? cells[colEmail] || '' : '';
       name = colName >= 0 ? cells[colName] || '' : '';
       roleRaw = colRole >= 0 ? cells[colRole] : undefined;
+      managerFlagRaw = colManagerFlag >= 0 ? cells[colManagerFlag] : undefined;
       managerIdRaw = colManagerId >= 0 ? cells[colManagerId] : undefined;
       if (dynamicGroupIndexes.length > 0) {
         for (const index of dynamicGroupIndexes) {
@@ -108,13 +129,29 @@ export function parseRecipientCsv(text, options = {}) {
         email = cells[0];
         name = cells[1] || '';
         roleRaw = cells[2];
-        managerIdRaw = cells[3];
+        managerFlagRaw = cells[3];
+        managerIdRaw = cells[4];
       } else {
         name = cells[0];
         email = cells[1] || '';
         roleRaw = cells[2];
-        managerIdRaw = cells[3];
+        managerFlagRaw = cells[3];
+        managerIdRaw = cells[4];
       }
+
+      if (managerIdRaw == null || String(managerIdRaw).trim() === '') {
+        const legacyManagerRef = String(managerFlagRaw ?? '').trim();
+        const parsedFlagRole = parseManagerFlagToRole(legacyManagerRef);
+        if (legacyManagerRef && parsedFlagRole == null) {
+          managerIdRaw = legacyManagerRef;
+          managerFlagRaw = undefined;
+        }
+      }
+    }
+
+    if (managerFlagRaw != null) {
+      const roleFromFlag = parseManagerFlagToRole(managerFlagRaw);
+      if (roleFromFlag) roleRaw = roleFromFlag;
     }
 
     const em = String(email).trim().toLowerCase();

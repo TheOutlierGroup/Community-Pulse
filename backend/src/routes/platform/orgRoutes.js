@@ -346,6 +346,7 @@ function buildClientUserImportTemplateCsv(groupLevelLabels) {
     'employee preferred first name',
     'email address',
     'employent type (FT/PT/Casual)',
+    'Manager (Yes/No)',
     'Manager Name',
     'birth year',
     'Length of Service',

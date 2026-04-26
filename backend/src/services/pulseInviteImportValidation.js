@@ -4,7 +4,25 @@ export function normalizeSurveyRoleFromImport(raw) {
     .toLowerCase();
   if (s === '') return 'staff';
   if (s === 'manager') return 'manager';
+  if (s === 'yes' || s === 'y' || s === 'true' || s === '1') return 'manager';
+  if (s === 'no' || s === 'n' || s === 'false' || s === '0') return 'staff';
   if (s === 'staff' || s === 'employee') return 'staff';
+  return null;
+}
+
+function normalizeManagerFlagFromImport(raw) {
+  const normalized = String(raw ?? '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'yes' || normalized === 'y' || normalized === 'true' || normalized === '1') return 'manager';
+  if (
+    normalized === 'no'
+    || normalized === 'n'
+    || normalized === 'false'
+    || normalized === 'faulse'
+    || normalized === '0'
+  ) return 'staff';
   return null;
 }
 
@@ -15,7 +33,11 @@ function normalizeGroupValues(raw) {
 
 export function normalizeInviteImportRecipients(recipients) {
   return (recipients || []).map((r, index) => {
-    const rawRole = r?.role ?? r?.surveyRole;
+    const managerFlagRole =
+      normalizeManagerFlagFromImport(r?.manager)
+      ?? normalizeManagerFlagFromImport(r?.isManager)
+      ?? normalizeManagerFlagFromImport(r?.managerFlag);
+    const rawRole = managerFlagRole || r?.role || r?.surveyRole;
     const surveyRole = normalizeSurveyRoleFromImport(rawRole);
     return {
       index,

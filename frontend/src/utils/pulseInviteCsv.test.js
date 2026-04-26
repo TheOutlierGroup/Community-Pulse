@@ -86,3 +86,44 @@ test('parseRecipientCsv can default ambiguous blank-manager rows to manager', ()
   assert.equal(rows[0].role, 'manager');
   assert.equal(rows[0].managerId, 'Solo Lead');
 });
+
+test('parseRecipientCsv supports Manager yes/no column for survey role mapping', () => {
+  const csv = [
+    'name,email,Manager,Manager Name',
+    'Olivia,olivia@example.com,Yes,',
+    'Noah,noah@example.com,No,Olivia',
+  ].join('\n');
+
+  const rows = parseRecipientCsv(csv);
+  assert.equal(rows.length, 2);
+
+  assert.equal(rows[0].role, 'manager');
+  assert.equal(rows[0].managerId, 'Olivia');
+
+  assert.equal(rows[1].role, 'staff');
+  assert.equal(rows[1].managerId, 'Olivia');
+});
+
+test('parseRecipientCsv prioritizes Manager yes/no over role when both are present', () => {
+  const csv = [
+    'name,email,role,Manager,Manager Name',
+    'Taylor,taylor@example.com,staff,Yes,',
+    'Jordan,jordan@example.com,manager,No,Taylor',
+  ].join('\n');
+
+  const rows = parseRecipientCsv(csv);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].role, 'manager');
+  assert.equal(rows[1].role, 'staff');
+});
+
+test('parseRecipientCsv treats "faulse" manager flag as staff', () => {
+  const csv = [
+    'name,email,Manager',
+    'Sam,sam@example.com,faulse',
+  ].join('\n');
+
+  const rows = parseRecipientCsv(csv);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].role, 'staff');
+});

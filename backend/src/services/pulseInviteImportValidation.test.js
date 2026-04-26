@@ -9,8 +9,35 @@ import {
 test('normalizeSurveyRoleFromImport maps expected role strings', () => {
   assert.equal(normalizeSurveyRoleFromImport('manager'), 'manager');
   assert.equal(normalizeSurveyRoleFromImport('employee'), 'staff');
+  assert.equal(normalizeSurveyRoleFromImport('yes'), 'manager');
+  assert.equal(normalizeSurveyRoleFromImport('no'), 'staff');
   assert.equal(normalizeSurveyRoleFromImport(''), 'staff');
   assert.equal(normalizeSurveyRoleFromImport('something-else'), null);
+});
+
+test('normalizeInviteImportRecipients uses manager yes/no field when provided', () => {
+  const rows = normalizeInviteImportRecipients([
+    { email: 'a@example.com', manager: 'yes' },
+    { email: 'b@example.com', manager: 'no' },
+  ]);
+  assert.equal(rows[0].surveyRole, 'manager');
+  assert.equal(rows[1].surveyRole, 'staff');
+});
+
+test('normalizeInviteImportRecipients prioritizes manager yes/no over role', () => {
+  const rows = normalizeInviteImportRecipients([
+    { email: 'a@example.com', role: 'staff', manager: 'yes' },
+    { email: 'b@example.com', role: 'manager', manager: 'no' },
+  ]);
+  assert.equal(rows[0].surveyRole, 'manager');
+  assert.equal(rows[1].surveyRole, 'staff');
+});
+
+test('normalizeInviteImportRecipients treats "faulse" manager value as staff', () => {
+  const rows = normalizeInviteImportRecipients([
+    { email: 'sam@example.com', manager: 'faulse' },
+  ]);
+  assert.equal(rows[0].surveyRole, 'staff');
 });
 
 test('validateInviteImportRows flags duplicate manager_id for manager rows', () => {

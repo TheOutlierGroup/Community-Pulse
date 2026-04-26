@@ -19,6 +19,12 @@ function delay(ms) {
   });
 }
 
+function csvEscape(value) {
+  const source = String(value ?? '');
+  if (!/[",\n]/.test(source)) return source;
+  return `"${source.replace(/"/g, '""')}"`;
+}
+
 function formatSentAt(iso) {
   if (!iso) return null;
   try {
@@ -330,7 +336,7 @@ export default function PlatformPulseInviteUsers() {
     () => (copySourceTimepoint ? inviteTimepointLabel(copySourceTimepoint) : ''),
     [copySourceTimepoint]
   );
-  const recipientsTableColumnCount = 6 + configuredGroupLabels.length;
+  const recipientsTableColumnCount = 7 + configuredGroupLabels.length;
 
   const load = useCallback(async (options = {}) => {
     const silent = Boolean(options.silent);
@@ -392,7 +398,7 @@ export default function PlatformPulseInviteUsers() {
       const text = await file.text();
       const recipients = parseRecipientCsv(text, { groupLabels: configuredGroupLabels });
       if (recipients.length === 0) {
-        showToast('No rows found. Use a CSV with columns: name, email, role, and manager_id for staff rows.', {
+        showToast('No rows found. Use a CSV with columns: name, email, manager (yes/no), and manager_id for staff rows.', {
           variant: 'error',
         });
         return;
@@ -417,6 +423,39 @@ export default function PlatformPulseInviteUsers() {
   function openCsvPicker() {
     if (busyImport || bulkSending || copyingFromPre) return;
     fileInputRef.current?.click();
+  }
+
+  function exportRecipientsCsv() {
+    if (loading || invites.length === 0 || busyImport || bulkSending || copyingFromPre) return;
+    const headers = ['name', 'email', 'role', 'Manager (yes/no)', 'Manager Name', ...configuredGroupLabels];
+    const rows = invites.map((row) => {
+      const managerFlag = row.surveyRole === 'manager' ? 'yes' : 'no';
+      const managerName = row.surveyRole === 'staff' ? row.managerName || row.managerEmail || '' : '';
+      const groupValues = configuredGroupLabels.map((_, index) => row.groupValues?.[index] || '');
+      return [
+        row.displayName || '',
+        row.email || '',
+        row.surveyRole === 'manager' ? 'manager' : 'staff',
+        managerFlag,
+        managerName,
+        ...groupValues,
+      ];
+    });
+    const csv = [headers, ...rows].map((line) => line.map(csvEscape).join(',')).join('\n');
+    const safeOrgName = String(org?.name || 'client')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'client';
+    const filename = `${safeOrgName}-rhythm-engine-users-${inviteTimepoint}.csv`;
+    const blobUrl = window.URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const anchor = document.createElement('a');
+    anchor.href = blobUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(blobUrl);
   }
 
   async function copyRecipientsFromPre() {
@@ -772,6 +811,15 @@ export default function PlatformPulseInviteUsers() {
           </button>
           <button
             type="button"
+            className="btn btn-ghost"
+            style={{ margin: 0 }}
+            onClick={exportRecipientsCsv}
+            disabled={loading || invites.length === 0 || busyImport || bulkSending || copyingFromPre}
+          >
+            Export CSV
+          </button>
+          <button
+            type="button"
             className="btn btn-primary"
             onClick={() => setAddOpen(true)}
             disabled={bulkSending || busyImport || copyingFromPre}
@@ -1115,6 +1163,7 @@ export default function PlatformPulseInviteUsers() {
                   <th scope="col">Name</th>
                   <th scope="col">Email</th>
                   <th scope="col">Role</th>
+                  <th scope="col">Manager (yes/no)</th>
                   <th scope="col">Manager</th>
                   {configuredGroupLabels.map((label, index) => (
                     <th scope="col" key={`group-col-${index}`}>
@@ -1171,6 +1220,7 @@ export default function PlatformPulseInviteUsers() {
                       <td>{row.displayName || '—'}</td>
                       <td className="pulse-prototype-mono">{row.email}</td>
                       <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
+                      <td>{row.surveyRole === 'manager' ? 'Yes' : 'No'}</td>
                       <td>{row.surveyRole === 'staff' ? row.managerName || row.managerEmail || '—' : '—'}</td>
                       {configuredGroupLabels.map((label, index) => (
                         <td key={`${row.id}-group-${index}`}>{row.groupValues?.[index] || '—'}</td>
