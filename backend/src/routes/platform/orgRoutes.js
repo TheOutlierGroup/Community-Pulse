@@ -301,7 +301,6 @@ function buildTestRecipients({ managerCount, staffCount, groupLabels, groupCount
       name: `Test Manager ${i + 1}`,
       email,
       role: 'manager',
-      managerId: email,
       groupValues: buildTestGroupValues(groupLabels, groupCounts, absoluteIndex),
     });
     absoluteIndex += 1;
