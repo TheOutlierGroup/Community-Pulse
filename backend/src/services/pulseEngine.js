@@ -430,6 +430,9 @@ const STAGE_COPY = {
   },
 };
 
+const EMPLOYEE_QUESTION_SET_TRANSITION =
+  'These set of questions will enable us to better understand how change is supported within your organisation. Please rate each statement from 1 to 5, where 1 = Strongly Disagree and 5 = Strongly Agree.';
+
 function normalizeAudience(raw) {
   if (raw === 'manager' || raw === 'admin') return 'manager';
   return 'staff';
@@ -460,14 +463,18 @@ function questionsForAudienceAndStage(audience, stage) {
 function surveyCopyForAudienceAndStage(audience, stage) {
   const normalizedStage = normalizePulseStage(stage);
   const copy = STAGE_COPY[normalizedStage] || STAGE_COPY.pre;
+  const normalizedAudience = normalizeAudience(audience);
   return {
     stage: normalizedStage,
-    audience: normalizeAudience(audience),
+    audience: normalizedAudience,
     intro:
-      normalizeAudience(audience) === 'manager'
+      normalizedAudience === 'manager'
         ? copy.managerIntro
         : copy.employeeIntro,
-    transition: copy.transition,
+    transition:
+      normalizedAudience === 'manager'
+        ? copy.transition
+        : EMPLOYEE_QUESTION_SET_TRANSITION,
     reflection: copy.reflection,
   };
 }

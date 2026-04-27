@@ -259,10 +259,6 @@ export default function PlatformClientPulse() {
   const sponsorshipScore = Number.isFinite(kpis.sponsorshipScore) ? kpis.sponsorshipScore : null;
   const managerBreakdownRows = dashboard?.byManager || [];
   const dimensions = dashboard?.dimensions || [];
-  const trendBars = useMemo(
-    () => [...(dashboard?.trend || []).slice(0, 4)].reverse(),
-    [dashboard?.trend]
-  );
   const employeeDimensions = useMemo(
     () => dimensions.map((dimension) => ({
       id: dimension.id,
@@ -282,10 +278,6 @@ export default function PlatformClientPulse() {
     [dimensions]
   );
   const activeDimensionRows = activeDimensionTab === 'employee' ? employeeDimensions : managerDimensions;
-  const trendMax = Math.max(
-    40,
-    ...trendBars.flatMap((item) => [item?.adoptionScore || 0, item?.sponsorshipScore || 0])
-  );
   const managerLoadDistribution = useMemo(() => {
     const total = managerBreakdownRows.length;
     const bands = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
@@ -979,28 +971,6 @@ export default function PlatformClientPulse() {
         </div>
 
         <div className="pulse-clean-dimensions__right">
-          <section className="pulse-clean-trend">
-            <div className="pulse-clean-trend__head">
-              <p className="pulse-clean-trend__title">Trend</p>
-              <p className="pulse-clean-trend__meta">Rolling 4 waves</p>
-            </div>
-            <div className="pulse-clean-trend__bars">
-              {trendBars.map((item, index) => {
-                const adoptionHeight = Math.max(10, ((item?.adoptionScore || 0) / trendMax) * 100);
-                const sponsorshipHeight = Math.max(10, ((item?.sponsorshipScore || 0) / trendMax) * 100);
-                return (
-                  <div key={item.weekLabel || index} className="pulse-clean-trend__group">
-                    <div className="pulse-clean-trend__columns">
-                      <span className="pulse-clean-trend__bar pulse-clean-trend__bar--adoption" style={{ height: `${adoptionHeight}%` }} />
-                      <span className="pulse-clean-trend__bar pulse-clean-trend__bar--sponsorship" style={{ height: `${sponsorshipHeight}%` }} />
-                    </div>
-                    <p className="pulse-clean-trend__label">W{index + 1}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
           <section className="pulse-clean-alerts">
             <p className="pulse-clean-alerts__title">System Alerts</p>
             {(dashboard?.alerts || []).slice(0, 3).map((alert) => (

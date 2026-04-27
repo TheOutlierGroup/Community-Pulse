@@ -1332,54 +1332,7 @@ export function registerPlatformOrgRoutes(router) {
       };
     });
 
-    // Rolling 7-day buckets. Bucket 0 = most recent 7 days, bucket 3 = 21–28 days ago.
-    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-    const now = new Date();
-    const weekBuckets = Array.from({ length: 4 }, (_, i) => ({
-      weekLabel: `W${4 - i}`,
-      start: new Date(now.getTime() - (i + 1) * WEEK_MS),
-      end: new Date(now.getTime() - i * WEEK_MS),
-    }));
-
-    const sessionsForTrend =
-      requestedTimepoint === 'pre' || requestedTimepoint === 'completed'
-        ? sessions
-        : (candidateSessions.length > 0 ? candidateSessions : sessions);
-    const allSessionRows = sessionsForTrend.length > 0
-      ? (
-          await Promise.all(
-            sessionsForTrend.map((s) => listMergedResponsesForSession(s.id, requestedStage))
-          )
-        ).flat()
-      : [];
-    const allScopedRows = filterRowsForManagerScope(allSessionRows, selectedManagerIdSet, includeManagerSelf);
-
-    const trendScopedRowsByBucket = weekBuckets.map((bucket) => ({
-      bucket,
-      rows: allScopedRows.filter((r) => {
-        if (!r.completed_at) return false;
-        const ts = new Date(r.completed_at).getTime();
-        return ts >= bucket.start.getTime() && ts < bucket.end.getTime();
-      }),
-    }));
-
-    const trendRows = trendScopedRowsByBucket.map(({ bucket, rows }) => {
-      const scored = rows
-        .map((r) => responseScoresOutOf40(r))
-        .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
-      return {
-        weekLabel: bucket.weekLabel,
-        adoptionScore:
-          scored.length > 0
-            ? round1(scored.reduce((sum, s) => sum + s.adoption, 0) / scored.length)
-            : null,
-        sponsorshipScore:
-          scored.length > 0
-            ? round1(scored.reduce((sum, s) => sum + s.sponsorship, 0) / scored.length)
-            : null,
-        completedResponses: rows.length,
-      };
-    });
+    const trendRows = [];
 
     const managersForBreakdown = managerFilterActive
       ? managerOptions.filter((m) => selectedManagerIdSet.has(m.id))
@@ -1415,31 +1368,6 @@ export function registerPlatformOrgRoutes(router) {
         loadBand = selfScore.valid ? selfScore.managerLoadBand || null : null;
       }
 
-      const trend = trendScopedRowsByBucket.map(({ bucket, rows: bucketRows }) => {
-        const managerBucketRows = bucketRows.filter(
-          (row) =>
-            row?.manager_invite_id === manager.id ||
-            (includeManagerSelf && !row?.user_id && row?.role === 'admin' && row?.invite_id === manager.id)
-        );
-        const bucketScored = managerBucketRows
-          .map((row) => responseScoresOutOf40(row))
-          .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
-        const adoption =
-          bucketScored.length > 0
-            ? round1(bucketScored.reduce((sum, s) => sum + s.adoption, 0) / bucketScored.length)
-            : null;
-        const sponsorship =
-          bucketScored.length > 0
-            ? round1(bucketScored.reduce((sum, s) => sum + s.sponsorship, 0) / bucketScored.length)
-            : null;
-        return {
-          weekLabel: bucket.weekLabel,
-          adoptionScore: adoption,
-          sponsorshipScore: sponsorship,
-          completedResponses: managerBucketRows.length,
-        };
-      });
-
       return {
         managerId: manager.id,
         managerName: manager.displayName || manager.email,
@@ -1455,7 +1383,7 @@ export function registerPlatformOrgRoutes(router) {
         sponsorshipScore: managerSponsorship,
         quadrant: managerQuadrant,
         managerLoadBand: loadBand,
-        trend,
+        trend: [],
       };
     });
 
@@ -1870,8 +1798,6 @@ export function registerPlatformOrgRoutes(router) {
       scoreSemantics: {
         threshold: READINESS_THRESHOLD,
         averaging: 'pooled_completed_respondents',
-        period: '7_day_rolling_bucket',
-        deltaReference: 'previous_7_day_bucket',
       },
       quadrants,
       managerLoad,
