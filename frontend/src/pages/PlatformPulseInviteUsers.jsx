@@ -250,6 +250,34 @@ function apiErrorDetail(err, fallback) {
   return msg;
 }
 
+function formatInviteImportError(errorCode) {
+  if (errorCode === 'invalid_role') return 'invalid role value';
+  if (errorCode === 'manager_required') return 'staff row missing manager';
+  if (errorCode === 'manager_not_found') return 'manager not found';
+  if (errorCode === 'invalid_manager_invite') return 'invalid manager reference';
+  if (errorCode === 'self_manager_not_allowed') return 'user cannot be their own manager';
+  if (errorCode === 'duplicate_manager_id') return 'duplicate manager reference';
+  if (errorCode === 'invalid_group_levels') return 'too many group values';
+  if (errorCode === 'missing_during_session') return 'missing during session';
+  return String(errorCode || 'unknown error');
+}
+
+function summarizeInviteImportErrors(errors, limit = 3) {
+  const list = Array.isArray(errors) ? errors : [];
+  if (list.length === 0) return '';
+  const parts = list.slice(0, limit).map((entry) => {
+    const rowLabel =
+      Number.isInteger(entry?.index) && entry.index >= 0
+        ? `Row ${entry.index + 1}`
+        : 'Row ?';
+    return `${rowLabel}: ${formatInviteImportError(entry?.error)}`;
+  });
+  const remaining = Math.max(0, list.length - limit);
+  return remaining > 0
+    ? `${parts.join('; ')}; +${remaining} more`
+    : parts.join('; ');
+}
+
 function normalizeInviteTimepoint(value) {
   const v = String(value || '')
     .trim()
@@ -432,9 +460,15 @@ export default function PlatformPulseInviteUsers() {
         { recipients },
         { params: inviteRequestParams }
       );
-      showToast(`Imported ${data.upserted} row(s).`, { variant: 'success' });
+      showToast(`Parsed ${recipients.length} row(s). Imported ${data.upserted} row(s).`, { variant: 'success' });
       if (data.errorCount > 0) {
-        showToast(`${data.errorCount} row(s) skipped.`, { variant: 'error' });
+        const reasonPreview = summarizeInviteImportErrors(data.errors);
+        showToast(
+          reasonPreview
+            ? `${data.errorCount} row(s) skipped. ${reasonPreview}`
+            : `${data.errorCount} row(s) skipped.`,
+          { variant: 'error', durationMs: 14000 }
+        );
       }
       await load();
     } catch (err) {

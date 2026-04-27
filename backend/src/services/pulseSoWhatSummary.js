@@ -1,8 +1,9 @@
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_CLAUDE_MODEL =
   process.env.CLAUDE_SUMMARY_MODEL ||
+  process.env.REPORT_AI_MODEL ||
   process.env.ANTHROPIC_MODEL ||
-  'claude-3-5-sonnet-latest';
+  'claude-sonnet-4-20250514';
 
 function readPositiveIntEnv(name, fallback) {
   const parsed = Number.parseInt(process.env[name] || '', 10);
@@ -54,6 +55,20 @@ function normalizeSummary(text) {
   if (!compact) return '';
   const bounded = compact.slice(0, 320);
   return bounded.replace(/[.!?]+$/, '').trim() + '.';
+}
+
+function extractAnthropicErrorMessage(rawBody) {
+  if (typeof rawBody !== 'string') return '';
+  const body = rawBody.trim();
+  if (!body) return '';
+  try {
+    const parsed = JSON.parse(body);
+    const errorMessage = parsed?.error?.message;
+    if (typeof errorMessage === 'string' && errorMessage.trim()) return errorMessage.trim();
+  } catch {
+    // Ignore parse errors and fall back to the raw body.
+  }
+  return body.slice(0, 200);
 }
 
 function buildPrompt(snapshot) {
@@ -133,9 +148,13 @@ async function requestClaudeText({ prompt, maxOutputTokens = 120, temperature = 
       });
 
       if (!response.ok) {
-        const error = new Error(`Claude summary request failed (${response.status})`);
+        const errorBody = await response.text();
+        const anthropicMessage = extractAnthropicErrorMessage(errorBody);
+        const detail = anthropicMessage ? `: ${anthropicMessage}` : '';
+        const error = new Error(`Claude summary request failed (${response.status})${detail}`);
         error.code = 'CLAUDE_REQUEST_FAILED';
         error.status = response.status;
+        error.responseBody = errorBody;
         throw error;
       }
       const payload = await response.json();
