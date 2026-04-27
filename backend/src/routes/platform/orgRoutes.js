@@ -428,6 +428,13 @@ async function upsertPulseInviteRecipients({
       continue;
     }
     if (resolvedManagerId === invite.id) {
+      if (source.surveyRole === 'manager') {
+        await PulseLinkInvite.updateManagerInviteId(invite.id, organizationId, null, {
+          timepointPhase,
+          duringSessionId,
+        });
+        continue;
+      }
       errors.push({
         index: source.index,
         email: source.email,

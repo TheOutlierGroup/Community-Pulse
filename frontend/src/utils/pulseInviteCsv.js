@@ -211,9 +211,6 @@ export function parseRecipientCsv(text, options = {}) {
 
     if ((explicitManager && managerRefMissing) || (!entry.hasExplicitRole && managerRefMissing && referencedByOthers)) {
       entry.rec.role = 'manager';
-      if (!entry.rec.managerId) {
-        entry.rec.managerId = entry.rec.email;
-      }
       continue;
     }
 
@@ -224,9 +221,6 @@ export function parseRecipientCsv(text, options = {}) {
 
     if (!entry.hasExplicitRole && managerRefMissing && !referencedByOthers) {
       entry.rec.role = ambiguousBlankManagerRole;
-      if (entry.rec.role === 'manager' && !entry.rec.managerId) {
-        entry.rec.managerId = entry.rec.email;
-      }
     }
   }
 
