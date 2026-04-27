@@ -236,9 +236,7 @@ export default function PlatformClientPulse() {
   const pageTitle = sectionLabel(pulseFocusedSection);
   const showingFullDashboard = pulseFocusedSection == null;
   const showReadinessSection = showingFullDashboard || pulseFocusedSection === 'organisation-scores';
-  const showScoresSection = showingFullDashboard
-    || pulseFocusedSection === 'organisation-scores'
-    || pulseFocusedSection === 'sponsorship-analysis';
+  const showScoresSection = pulseFocusedSection === 'sponsorship-analysis';
   const showDimensionsSection = showingFullDashboard
     || pulseFocusedSection === 'employee-breakdown'
     || pulseFocusedSection === 'trend-analysis';
