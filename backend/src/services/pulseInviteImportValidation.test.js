@@ -40,13 +40,14 @@ test('normalizeInviteImportRecipients treats "faulse" manager value as staff', (
   assert.equal(rows[0].surveyRole, 'staff');
 });
 
-test('validateInviteImportRows flags duplicate manager_id for manager rows', () => {
+test('validateInviteImportRows allows multiple managers to reference the same manager email', () => {
   const rows = normalizeInviteImportRecipients([
-    { email: 'm1@example.com', role: 'manager', managerId: 'mgr-1' },
-    { email: 'm2@example.com', role: 'manager', managerId: 'mgr-1' },
+    { email: 'head@example.com', role: 'manager' },
+    { email: 'm1@example.com', role: 'manager', managerId: 'head@example.com' },
+    { email: 'm2@example.com', role: 'manager', managerId: 'head@example.com' },
   ]);
   const { errors } = validateInviteImportRows(rows, new Map());
-  assert.equal(errors.filter((e) => e.error === 'duplicate_manager_id').length, 2);
+  assert.equal(errors.length, 0);
 });
 
 test('validateInviteImportRows requires manager reference for staff rows', () => {
@@ -89,10 +90,19 @@ test('validateInviteImportRows rejects non-manager managerInviteId', () => {
   assert.equal(errors[0]?.error, 'invalid_manager_invite');
 });
 
-test('validateInviteImportRows accepts staff manager_id mapped to manager row in same import', () => {
+test('validateInviteImportRows accepts staff manager email mapped to manager row in same import', () => {
   const rows = normalizeInviteImportRecipients([
-    { email: 'boss@example.com', role: 'manager', managerId: 'mgr-100' },
-    { email: 'staff@example.com', role: 'staff', managerId: 'mgr-100' },
+    { email: 'boss@example.com', role: 'manager' },
+    { email: 'staff@example.com', role: 'staff', managerId: 'boss@example.com' },
+  ]);
+  const { errors } = validateInviteImportRows(rows, new Map());
+  assert.equal(errors.length, 0);
+});
+
+test('validateInviteImportRows allows staff to reference a manager listed later in CSV', () => {
+  const rows = normalizeInviteImportRecipients([
+    { email: 'staff@example.com', role: 'staff', managerId: 'boss@example.com' },
+    { email: 'boss@example.com', role: 'manager' },
   ]);
   const { errors } = validateInviteImportRows(rows, new Map());
   assert.equal(errors.length, 0);
@@ -110,8 +120,8 @@ test('normalizeInviteImportRecipients normalizes group values to max 5 entries',
 
 test('validateInviteImportRows pads group values when expectedGroupLevels configured', () => {
   const rows = normalizeInviteImportRecipients([
-    { email: 'boss@example.com', role: 'manager', managerId: 'mgr-1', groupValues: ['Leadership'] },
-    { email: 'staff@example.com', role: 'staff', managerId: 'mgr-1', groupValues: ['Engineering', 'Mobile'] },
+    { email: 'boss@example.com', role: 'manager', groupValues: ['Leadership'] },
+    { email: 'staff@example.com', role: 'staff', managerId: 'boss@example.com', groupValues: ['Engineering', 'Mobile'] },
   ]);
   const { errors } = validateInviteImportRows(rows, new Map(), { expectedGroupLevels: 3 });
   assert.equal(errors.length, 0);
@@ -121,7 +131,7 @@ test('validateInviteImportRows pads group values when expectedGroupLevels config
 
 test('validateInviteImportRows rejects rows with too many group values', () => {
   const rows = normalizeInviteImportRecipients([
-    { email: 'boss@example.com', role: 'manager', managerId: 'mgr-1', groupValues: ['A', 'B', 'C'] },
+    { email: 'boss@example.com', role: 'manager', groupValues: ['A', 'B', 'C'] },
   ]);
   const { errors } = validateInviteImportRows(rows, new Map(), { expectedGroupLevels: 2 });
   assert.equal(errors[0]?.error, 'invalid_group_levels');
@@ -131,9 +141,9 @@ test('validateInviteImportRows rejects rows with too many group values', () => {
 
 test('validateInviteImportRows keeps partial-success shape with mixed valid and invalid dynamic rows', () => {
   const rows = normalizeInviteImportRecipients([
-    { email: 'boss@example.com', role: 'manager', managerId: 'mgr-1', groupValues: ['Leadership'] },
-    { email: 'staff-valid@example.com', role: 'staff', managerId: 'mgr-1', groupValues: ['Engineering'] },
-    { email: 'staff-invalid@example.com', role: 'staff', managerId: 'mgr-1', groupValues: ['A', 'B', 'C'] },
+    { email: 'boss@example.com', role: 'manager', groupValues: ['Leadership'] },
+    { email: 'staff-valid@example.com', role: 'staff', managerId: 'boss@example.com', groupValues: ['Engineering'] },
+    { email: 'staff-invalid@example.com', role: 'staff', managerId: 'boss@example.com', groupValues: ['A', 'B', 'C'] },
   ]);
   const { errors, invalidIndices } = validateInviteImportRows(rows, new Map(), { expectedGroupLevels: 2 });
 

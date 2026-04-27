@@ -42,25 +42,25 @@ test('parseRecipientCsv keeps legacy headerless format working', () => {
 
 test('parseRecipientCsv infers manager role from Manager Name references when role is missing', () => {
   const csv = [
-    'employee preferred first name,email address,Manager Name',
+    'employee preferred first name,email address,Manager Email',
     'Olivia,olivia@example.com,',
-    'Noah,noah@example.com,Olivia',
+    'Noah,noah@example.com,olivia@example.com',
     'Ava,ava@example.com,',
-    'Liam,liam@example.com,Ava',
+    'Liam,liam@example.com,ava@example.com',
   ].join('\n');
 
   const rows = parseRecipientCsv(csv);
   assert.equal(rows.length, 4);
 
   assert.equal(rows[0].role, 'manager');
-  assert.equal(rows[0].managerId, 'Olivia');
+  assert.equal(rows[0].managerId, 'olivia@example.com');
   assert.equal(rows[1].role, 'staff');
-  assert.equal(rows[1].managerId, 'Olivia');
+  assert.equal(rows[1].managerId, 'olivia@example.com');
 
   assert.equal(rows[2].role, 'manager');
-  assert.equal(rows[2].managerId, 'Ava');
+  assert.equal(rows[2].managerId, 'ava@example.com');
   assert.equal(rows[3].role, 'staff');
-  assert.equal(rows[3].managerId, 'Ava');
+  assert.equal(rows[3].managerId, 'ava@example.com');
 });
 
 test('parseRecipientCsv defaults ambiguous blank-manager rows to staff', () => {
@@ -77,53 +77,53 @@ test('parseRecipientCsv defaults ambiguous blank-manager rows to staff', () => {
 
 test('parseRecipientCsv can default ambiguous blank-manager rows to manager', () => {
   const csv = [
-    'employee preferred first name,email address,Manager Name',
+    'employee preferred first name,email address,Manager Email',
     'Solo Lead,solo.lead@example.com,',
   ].join('\n');
 
   const rows = parseRecipientCsv(csv, { ambiguousBlankManagerRole: 'manager' });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].role, 'manager');
-  assert.equal(rows[0].managerId, 'Solo Lead');
+  assert.equal(rows[0].managerId, 'solo.lead@example.com');
 });
 
 test('parseRecipientCsv supports Manager yes/no column for survey role mapping', () => {
   const csv = [
-    'name,email,Manager,Manager Name',
+    'name,email,Manager,Manager Email',
     'Olivia,olivia@example.com,Yes,',
-    'Noah,noah@example.com,No,Olivia',
+    'Noah,noah@example.com,No,olivia@example.com',
   ].join('\n');
 
   const rows = parseRecipientCsv(csv);
   assert.equal(rows.length, 2);
 
   assert.equal(rows[0].role, 'manager');
-  assert.equal(rows[0].managerId, 'Olivia');
+  assert.equal(rows[0].managerId, 'olivia@example.com');
 
   assert.equal(rows[1].role, 'staff');
-  assert.equal(rows[1].managerId, 'Olivia');
+  assert.equal(rows[1].managerId, 'olivia@example.com');
 });
 
 test('parseRecipientCsv supports manager flag headers with slash spacing', () => {
   const csv = [
-    'name,email,Manager (Yes / No),Manager Name',
+    'name,email,Manager (Yes / No),Manager Email',
     'Olivia,olivia@example.com,Yes,',
-    'Noah,noah@example.com,No,Olivia',
+    'Noah,noah@example.com,No,olivia@example.com',
   ].join('\n');
 
   const rows = parseRecipientCsv(csv);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].role, 'manager');
-  assert.equal(rows[0].managerId, 'Olivia');
+  assert.equal(rows[0].managerId, 'olivia@example.com');
   assert.equal(rows[1].role, 'staff');
-  assert.equal(rows[1].managerId, 'Olivia');
+  assert.equal(rows[1].managerId, 'olivia@example.com');
 });
 
 test('parseRecipientCsv prioritizes Manager yes/no over role when both are present', () => {
   const csv = [
-    'name,email,role,Manager,Manager Name',
+    'name,email,role,Manager,Manager Email',
     'Taylor,taylor@example.com,staff,Yes,',
-    'Jordan,jordan@example.com,manager,No,Taylor',
+    'Jordan,jordan@example.com,manager,No,taylor@example.com',
   ].join('\n');
 
   const rows = parseRecipientCsv(csv);

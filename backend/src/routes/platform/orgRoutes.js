@@ -322,6 +322,13 @@ function buildTestRecipients({ managerCount, staffCount, groupLabels, groupCount
   return recipients;
 }
 
+function normalizeManagerReference(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
 async function upsertPulseInviteRecipients({
   organizationId,
   timepointPhase,
@@ -335,10 +342,14 @@ async function upsertPulseInviteRecipients({
     duringSessionId,
   });
   const invitesById = new Map(existingInvites.map((row) => [row.id, row]));
+  const existingManagerRefs = existingInvites
+    .filter((row) => row.survey_role === 'manager')
+    .map((row) => row.email);
   const normalizedRows = normalizeInviteImportRecipients(recipients);
   const prevalidation = validateInviteImportRows(normalizedRows, invitesById, {
     allowStaffWithoutManagerRef: allowUnassignedStaff,
     expectedGroupLevels: expectedGroupLevelLabels.length,
+    existingManagerRefs,
   });
   const errors = [...prevalidation.errors];
   const invalidIndices = new Set(prevalidation.invalidIndices);
@@ -366,15 +377,22 @@ async function upsertPulseInviteRecipients({
   }
 
   const managerRefToInviteId = new Map();
+  for (const row of existingInvites) {
+    if (row.survey_role !== 'manager') continue;
+    const normalizedRef = normalizeManagerReference(row.email);
+    if (!normalizedRef) continue;
+    managerRefToInviteId.set(normalizedRef, row.id);
+  }
   for (const item of upsertedRows) {
-    if (item.source.surveyRole === 'manager' && item.source.managerRef) {
-      managerRefToInviteId.set(item.source.managerRef, item.invite.id);
+    if (item.source.surveyRole === 'manager') {
+      const normalizedRef = normalizeManagerReference(item.source.email);
+      if (normalizedRef) managerRefToInviteId.set(normalizedRef, item.invite.id);
     }
   }
 
   for (const item of upsertedRows) {
     const { source, invite } = item;
-    if (source.surveyRole !== 'staff') {
+    if (source.surveyRole !== 'staff' && source.surveyRole !== 'manager') {
       await PulseLinkInvite.updateManagerInviteId(invite.id, organizationId, null, {
         timepointPhase,
         duringSessionId,
@@ -385,10 +403,18 @@ async function upsertPulseInviteRecipients({
     if (source.managerInviteId) {
       resolvedManagerId = source.managerInviteId;
     } else if (source.managerRef) {
-      resolvedManagerId = managerRefToInviteId.get(source.managerRef) || null;
+      const normalizedRef = normalizeManagerReference(source.managerRef);
+      resolvedManagerId = normalizedRef ? (managerRefToInviteId.get(normalizedRef) || null) : null;
     }
     if (!resolvedManagerId) {
-      if (allowUnassignedStaff) {
+      if (source.surveyRole === 'staff' && allowUnassignedStaff) {
+        await PulseLinkInvite.updateManagerInviteId(invite.id, organizationId, null, {
+          timepointPhase,
+          duringSessionId,
+        });
+        continue;
+      }
+      if (source.surveyRole === 'manager' && !source.managerRef) {
         await PulseLinkInvite.updateManagerInviteId(invite.id, organizationId, null, {
           timepointPhase,
           duringSessionId,
@@ -592,7 +618,7 @@ function buildClientUserImportTemplateCsv(groupLevelLabels) {
     'email address',
     'employent type (FT/PT/Casual)',
     'Manager (Yes/No)',
-    'Manager Name',
+    'Manager Email',
     'birth year',
     'Length of Service',
     'Primary Work Location',
@@ -1372,11 +1398,9 @@ export function registerPlatformOrgRoutes(router) {
         managerId: manager.id,
         managerName: manager.displayName || manager.email,
         managerEmail: manager.email,
-        directReportInvitedCount: inviteRows.filter(
-          (r) => r.survey_role === 'staff' && r.manager_invite_id === manager.id
-        ).length,
+        directReportInvitedCount: inviteRows.filter((r) => r.manager_invite_id === manager.id).length,
         directReportCompletedCount: completedRows.filter(
-          (row) => row.role === 'employee' && row.manager_invite_id === manager.id
+          (row) => row.manager_invite_id === manager.id && row.invite_id !== manager.id
         ).length,
         completedResponses: managerCompletedRows.length,
         adoptionScore: managerAdoption,

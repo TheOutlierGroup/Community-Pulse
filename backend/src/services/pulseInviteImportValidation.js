@@ -31,6 +31,13 @@ function normalizeGroupValues(raw) {
   return raw.slice(0, 5).map((value) => String(value ?? '').trim() || null);
 }
 
+function normalizeManagerRef(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
 export function normalizeInviteImportRecipients(recipients) {
   return (recipients || []).map((r, index) => {
     const managerFlagRole =
@@ -45,7 +52,7 @@ export function normalizeInviteImportRecipients(recipients) {
       displayName: r?.name ?? r?.displayName ?? '',
       rawRole,
       surveyRole,
-      managerRef: String(r?.managerId ?? r?.manager_id ?? '').trim() || null,
+      managerRef: String(r?.managerId ?? r?.manager_id ?? r?.managerEmail ?? r?.manager_email ?? '').trim() || null,
       managerInviteId: String(r?.managerInviteId ?? r?.manager_invite_id ?? '').trim() || null,
       groupValues: normalizeGroupValues(r?.groupValues ?? r?.group_values),
     };
@@ -54,6 +61,11 @@ export function normalizeInviteImportRecipients(recipients) {
 
 export function validateInviteImportRows(normalizedRows, existingInvitesById = new Map(), options = {}) {
   const allowStaffWithoutManagerRef = options?.allowStaffWithoutManagerRef === true;
+  const existingManagerRefs = new Set(
+    (Array.isArray(options?.existingManagerRefs) ? options.existingManagerRefs : [])
+      .map((ref) => normalizeManagerRef(ref))
+      .filter(Boolean)
+  );
   const expectedGroupLevelsRaw = Number.parseInt(String(options?.expectedGroupLevels ?? ''), 10);
   const expectedGroupLevels =
     Number.isInteger(expectedGroupLevelsRaw) && expectedGroupLevelsRaw >= 0
@@ -62,7 +74,6 @@ export function validateInviteImportRows(normalizedRows, existingInvitesById = n
   const errors = [];
   const invalidIndices = new Set();
   const managerRefToRow = new Map();
-  const duplicateManagerRefs = new Set();
 
   for (const row of normalizedRows) {
     if (row.rawRole != null && String(row.rawRole).trim() !== '' && row.surveyRole === null) {
@@ -87,28 +98,17 @@ export function validateInviteImportRows(normalizedRows, existingInvitesById = n
       row.groupValues = [...values, ...Array.from({ length: expectedGroupLevels - values.length }, () => null)];
     }
 
-    if (row.surveyRole === 'manager' && row.managerRef) {
-      if (managerRefToRow.has(row.managerRef)) {
-        duplicateManagerRefs.add(row.managerRef);
-        invalidIndices.add(row.index);
-        invalidIndices.add(managerRefToRow.get(row.managerRef).index);
-      } else {
-        managerRefToRow.set(row.managerRef, row);
-      }
-    }
-  }
-
-  for (const ref of duplicateManagerRefs) {
-    for (const row of normalizedRows) {
-      if (row.surveyRole === 'manager' && row.managerRef === ref) {
-        errors.push({ index: row.index, error: 'duplicate_manager_id', managerId: ref });
+    if (row.surveyRole === 'manager') {
+      const normalizedManagerEmail = normalizeManagerRef(row.email);
+      if (normalizedManagerEmail) {
+        managerRefToRow.set(normalizedManagerEmail, row);
       }
     }
   }
 
   for (const row of normalizedRows) {
     if (invalidIndices.has(row.index)) continue;
-    if (row.surveyRole !== 'staff') continue;
+    if (row.surveyRole !== 'staff' && row.surveyRole !== 'manager') continue;
 
     if (row.managerInviteId) {
       const manager = existingInvitesById.get(row.managerInviteId);
@@ -120,13 +120,23 @@ export function validateInviteImportRows(normalizedRows, existingInvitesById = n
     }
 
     if (!row.managerRef) {
-      if (allowStaffWithoutManagerRef) continue;
-      errors.push({ index: row.index, email: row.email, error: 'manager_required' });
-      invalidIndices.add(row.index);
+      if (row.surveyRole === 'staff' && !allowStaffWithoutManagerRef) {
+        errors.push({ index: row.index, email: row.email, error: 'manager_required' });
+        invalidIndices.add(row.index);
+      }
       continue;
     }
 
-    if (!managerRefToRow.has(row.managerRef) || duplicateManagerRefs.has(row.managerRef)) {
+    const normalizedRef = normalizeManagerRef(row.managerRef);
+    if (!normalizedRef) {
+      if (row.surveyRole === 'staff' && !allowStaffWithoutManagerRef) {
+        errors.push({ index: row.index, email: row.email, error: 'manager_required' });
+        invalidIndices.add(row.index);
+      }
+      continue;
+    }
+
+    if (!managerRefToRow.has(normalizedRef) && !existingManagerRefs.has(normalizedRef)) {
       errors.push({
         index: row.index,
         email: row.email,

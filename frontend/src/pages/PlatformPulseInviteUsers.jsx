@@ -256,7 +256,7 @@ function formatInviteImportError(errorCode) {
   if (errorCode === 'manager_not_found') return 'manager not found';
   if (errorCode === 'invalid_manager_invite') return 'invalid manager reference';
   if (errorCode === 'self_manager_not_allowed') return 'user cannot be their own manager';
-  if (errorCode === 'duplicate_manager_id') return 'duplicate manager reference';
+  if (errorCode === 'duplicate_manager_id') return 'duplicate manager email reference';
   if (errorCode === 'invalid_group_levels') return 'too many group values';
   if (errorCode === 'missing_during_session') return 'missing during session';
   return String(errorCode || 'unknown error');
@@ -450,7 +450,7 @@ export default function PlatformPulseInviteUsers() {
       const text = await file.text();
       const recipients = parseRecipientCsv(text, { groupLabels: configuredGroupLabels });
       if (recipients.length === 0) {
-        showToast('No rows found. Use a CSV with columns: name, email, manager (yes/no), and manager_id for staff rows.', {
+        showToast('No rows found. Use a CSV with columns: name, email, manager (yes/no), and manager email for staff rows.', {
           variant: 'error',
         });
         return;
@@ -485,17 +485,17 @@ export default function PlatformPulseInviteUsers() {
 
   function exportRecipientsCsv() {
     if (loading || invites.length === 0 || busyImport || bulkSending || copyingFromPre) return;
-    const headers = ['name', 'email', 'role', 'Manager (yes/no)', 'Manager Name', ...configuredGroupLabels];
+    const headers = ['name', 'email', 'role', 'Manager (yes/no)', 'Manager Email', ...configuredGroupLabels];
     const rows = invites.map((row) => {
       const managerFlag = row.surveyRole === 'manager' ? 'yes' : 'no';
-      const managerName = row.surveyRole === 'staff' ? row.managerName || row.managerEmail || '' : '';
+      const managerEmail = row.surveyRole === 'staff' ? row.managerEmail || '' : '';
       const groupValues = configuredGroupLabels.map((_, index) => row.groupValues?.[index] || '');
       return [
         row.displayName || '',
         row.email || '',
         row.surveyRole === 'manager' ? 'manager' : 'staff',
         managerFlag,
-        managerName,
+        managerEmail,
         ...groupValues,
       ];
     });

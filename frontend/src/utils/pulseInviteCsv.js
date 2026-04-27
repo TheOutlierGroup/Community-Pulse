@@ -98,7 +98,10 @@ export function parseRecipientCsv(text, options = {}) {
     if (colRole < 0) colRole = headerLower.indexOf('survey_role');
     if (colRole < 0) colRole = headerLower.indexOf('survey role');
     colManagerFlag = headerLower.findIndex((header) => isManagerFlagHeader(header));
-    colManagerId = headerLower.indexOf('manager_id');
+    colManagerId = headerLower.indexOf('manager email');
+    if (colManagerId < 0) colManagerId = headerLower.indexOf('manager_email');
+    if (colManagerId < 0) colManagerId = headerLower.indexOf('manager e-mail');
+    if (colManagerId < 0) colManagerId = headerLower.indexOf('manager_id');
     if (colManagerId < 0) colManagerId = headerLower.indexOf('manager id');
     if (colManagerId < 0) colManagerId = headerLower.indexOf('manager name');
     dynamicGroupIndexes = normalizedGroupLabels.map((label) => headerLower.indexOf(normalizeCsvHeader(label)));
@@ -209,7 +212,7 @@ export function parseRecipientCsv(text, options = {}) {
     if ((explicitManager && managerRefMissing) || (!entry.hasExplicitRole && managerRefMissing && referencedByOthers)) {
       entry.rec.role = 'manager';
       if (!entry.rec.managerId) {
-        entry.rec.managerId = entry.rec.name || entry.rec.email;
+        entry.rec.managerId = entry.rec.email;
       }
       continue;
     }
@@ -222,7 +225,7 @@ export function parseRecipientCsv(text, options = {}) {
     if (!entry.hasExplicitRole && managerRefMissing && !referencedByOthers) {
       entry.rec.role = ambiguousBlankManagerRole;
       if (entry.rec.role === 'manager' && !entry.rec.managerId) {
-        entry.rec.managerId = entry.rec.name || entry.rec.email;
+        entry.rec.managerId = entry.rec.email;
       }
     }
   }
