@@ -2227,6 +2227,43 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ ok: true, invite: PulseLinkInvite.publicInviteRow(rotated.row) });
   });
 
+  router.delete('/organizations/:id/pulse-link-invites', async (req, res) => {
+    const orgId = req.params.id;
+    const org = await assertClientOrganizationPlatformForUser(orgId, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
+    const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
+    if (duringSessionError) return res.status(400).json({ error: duringSessionError });
+
+    const inviteRows = await PulseLinkInvite.listInvitesForOrg(orgId, {
+      timepointPhase,
+      duringSessionId,
+    });
+    const completedInviteIds = new Set(
+      inviteRows
+        .filter((row) => row?.survey_completed_at)
+        .map((row) => row.id)
+    );
+    const deletableRows = inviteRows.filter((row) => !completedInviteIds.has(row.id));
+
+    let deletedCount = 0;
+    for (const invite of deletableRows) {
+      const ok = await PulseLinkInvite.deleteInviteInOrg(invite.id, orgId, {
+        timepointPhase,
+        duringSessionId,
+      });
+      if (ok) deletedCount += 1;
+    }
+
+    return res.json({
+      ok: true,
+      total: inviteRows.length,
+      deletedCount,
+      skippedCompletedCount: completedInviteIds.size,
+    });
+  });
+
   router.delete('/organizations/:id/pulse-link-invites/:inviteId', async (req, res) => {
     const orgId = req.params.id;
     const org = await assertClientOrganizationPlatformForUser(orgId, req.user);

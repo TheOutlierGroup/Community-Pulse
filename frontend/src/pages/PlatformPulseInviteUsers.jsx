@@ -310,6 +310,7 @@ export default function PlatformPulseInviteUsers() {
   const [copyingFromPre, setCopyingFromPre] = useState(false);
   const [sendingId, setSendingId] = useState(null);
   const [deleteConfirmRow, setDeleteConfirmRow] = useState(null);
+  const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
   const [deleteWorking, setDeleteWorking] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(null);
@@ -360,6 +361,14 @@ export default function PlatformPulseInviteUsers() {
 
   const sendableInviteIds = useMemo(
     () => invites.filter((r) => r.surveyStatus !== 'completed').map((r) => r.id),
+    [invites]
+  );
+  const deletableInviteIds = useMemo(
+    () => invites.filter((r) => r.surveyStatus !== 'completed').map((r) => r.id),
+    [invites]
+  );
+  const completedInviteCount = useMemo(
+    () => invites.filter((r) => r.surveyStatus === 'completed').length,
     [invites]
   );
 
@@ -902,6 +911,11 @@ export default function PlatformPulseInviteUsers() {
     setDeleteConfirmRow(null);
   }
 
+  function closeDeleteAllConfirm() {
+    if (deleteWorking) return;
+    setDeleteAllConfirmOpen(false);
+  }
+
   async function confirmDeleteRecipient() {
     if (!deleteConfirmRow) return;
     if (deleteConfirmRow.surveyStatus === 'completed') {
@@ -919,6 +933,34 @@ export default function PlatformPulseInviteUsers() {
       await load();
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not remove recipient.', { variant: 'error' });
+    } finally {
+      setDeleteWorking(false);
+    }
+  }
+
+  async function confirmDeleteAllRecipients() {
+    setDeleteWorking(true);
+    try {
+      const { data } = await api.delete(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`, {
+        params: inviteRequestParams,
+      });
+      const deletedCount = Number(data?.deletedCount || 0);
+      const skippedCompletedCount = Number(data?.skippedCompletedCount || 0);
+      if (deletedCount > 0) {
+        showToast(`Removed ${deletedCount} recipient${deletedCount === 1 ? '' : 's'}.`, { variant: 'success' });
+      } else {
+        showToast('No recipients were removed.', { variant: 'success' });
+      }
+      if (skippedCompletedCount > 0) {
+        showToast(
+          `${skippedCompletedCount} completed recipient${skippedCompletedCount === 1 ? '' : 's'} were kept.`,
+          { variant: 'error' }
+        );
+      }
+      setDeleteAllConfirmOpen(false);
+      await load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not remove recipients.', { variant: 'error' });
     } finally {
       setDeleteWorking(false);
     }
@@ -1197,6 +1239,54 @@ export default function PlatformPulseInviteUsers() {
       </ModalDialog>
 
       <ModalDialog
+        open={deleteAllConfirmOpen}
+        title="Remove all recipients?"
+        titleId="pulse-delete-all-recipients-title"
+        onClose={closeDeleteAllConfirm}
+      >
+        <div style={{ padding: '0 0 0.25rem' }}>
+          <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.55 }}>
+            This will remove all recipients who have not completed the survey for this timepoint.
+          </p>
+          <p style={{ margin: '0 0 0.4rem', fontWeight: 700 }}>
+            {deletableInviteIds.length} recipient{deletableInviteIds.length === 1 ? '' : 's'} will be removed.
+          </p>
+          {completedInviteCount > 0 ? (
+            <p className="muted" style={{ margin: '0 0 1rem' }}>
+              {completedInviteCount} completed recipient{completedInviteCount === 1 ? '' : 's'} will be kept.
+            </p>
+          ) : (
+            <p className="muted" style={{ margin: '0 0 1rem' }}>
+              No completed recipients will be kept.
+            </p>
+          )}
+          <p
+            style={{
+              margin: '0 0 1.35rem',
+              fontSize: '0.88rem',
+              fontWeight: 600,
+              color: 'var(--danger)',
+            }}
+          >
+            This cannot be undone.
+          </p>
+          <div className="modal-dialog__actions">
+            <button type="button" className="btn btn-ghost" onClick={closeDeleteAllConfirm} disabled={deleteWorking}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger modal-dialog__submit"
+              onClick={confirmDeleteAllRecipients}
+              disabled={deleteWorking}
+            >
+              {deleteWorking ? 'Removing…' : 'Delete all'}
+            </button>
+          </div>
+        </div>
+      </ModalDialog>
+
+      <ModalDialog
         open={Boolean(deleteConfirmRow)}
         title="Remove recipient?"
         titleId="pulse-delete-recipient-title"
@@ -1382,6 +1472,15 @@ export default function PlatformPulseInviteUsers() {
               {bulkSending && bulkProgress
                 ? `Sending ${bulkProgress.current}/${bulkProgress.total}…`
                 : 'Send all'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={loading || invites.length === 0 || deletableInviteIds.length === 0 || bulkSending || deleteWorking}
+              onClick={() => setDeleteAllConfirmOpen(true)}
+              style={{ fontSize: '0.9rem', color: 'var(--danger, #b91c1c)' }}
+            >
+              Delete all
             </button>
           </div>
         </div>
