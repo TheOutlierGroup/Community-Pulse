@@ -24,6 +24,8 @@ const TASK_ATTACHMENT_MIME_TO_EXT = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
   'application/vnd.ms-excel': '.xls',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'text/csv': '.csv',
+  'application/csv': '.csv',
 };
 
 const TASK_ATTACHMENT_ALLOWED_EXT = new Set(Object.values(TASK_ATTACHMENT_MIME_TO_EXT));
@@ -48,6 +50,7 @@ function taskAttachmentContentType(filename) {
     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     '.xls': 'application/vnd.ms-excel',
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.csv': 'text/csv',
   };
   return map[ext] || 'application/octet-stream';
 }
@@ -157,7 +160,7 @@ const taskImageUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (extensionForTaskAttachmentUpload(file)) cb(null, true);
-    else cb(new Error('Only JPEG, PNG, GIF, WebP, PDF, DOC, DOCX, XLS, or XLSX files are allowed'));
+    else cb(new Error('Only JPEG, PNG, GIF, WebP, PDF, DOC, DOCX, XLS, XLSX, or CSV files are allowed'));
   },
 }).single('image');
 

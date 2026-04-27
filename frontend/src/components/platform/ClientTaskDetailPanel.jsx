@@ -951,7 +951,7 @@ export default function ClientTaskDetailPanel({
           <input
             ref={taskImageInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept="image/jpeg,image/png,image/gif,image/webp,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/csv"
             className="task-card-modal__hidden-file"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -1345,7 +1345,7 @@ export default function ClientTaskDetailPanel({
                     ref={commentFileInputRef}
                     id="task-card-comment-files"
                     type="file"
-                    accept="image/jpeg,image/png,image/gif,image/webp,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    accept="image/jpeg,image/png,image/gif,image/webp,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/csv"
                     multiple
                     className="visually-hidden"
                     onChange={(e) => setCommentFiles([...(e.target.files || [])])}
