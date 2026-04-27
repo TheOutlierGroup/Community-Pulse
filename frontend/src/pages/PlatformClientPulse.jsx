@@ -566,9 +566,13 @@ export default function PlatformClientPulse() {
     (async () => {
       try {
         const timepoint = normalizeInviteTimepoint(pulseTimepoint);
+        const params = { timepoint };
+        if (timepoint === 'mid' && pulseDuringSessionId) {
+          params.duringSessionId = pulseDuringSessionId;
+        }
         const { data } = await api.get(
           `/api/platform/organizations/${orgId}/rhythm-engine-link-invites`,
-          { params: { timepoint } }
+          { params }
         );
         if (cancelled) return;
         const rows = Array.isArray(data?.invites) ? data.invites : [];
@@ -587,7 +591,7 @@ export default function PlatformClientPulse() {
     return () => {
       cancelled = true;
     };
-  }, [orgId, pulseEnabled, pulseTimepoint]);
+  }, [orgId, pulseEnabled, pulseTimepoint, pulseDuringSessionId]);
 
   const loadReports = useCallback(async () => {
     if (!pulseEnabled) {

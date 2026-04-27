@@ -271,7 +271,7 @@ function previousInviteTimepoint(timepoint) {
 }
 
 export default function PlatformPulseInviteUsers() {
-  const { orgId, org, clientLogoUrl, pulseTimepoint } = useOutletContext();
+  const { orgId, org, clientLogoUrl, pulseTimepoint, pulseDuringSessionId } = useOutletContext();
   const { user } = useAuth();
   const { showToast } = useToast();
   const fileInputRef = useRef(null);
@@ -336,6 +336,13 @@ export default function PlatformPulseInviteUsers() {
   );
 
   const inviteTimepoint = useMemo(() => normalizeInviteTimepoint(pulseTimepoint), [pulseTimepoint]);
+  const inviteRequestParams = useMemo(() => {
+    const params = { timepoint: inviteTimepoint };
+    if (inviteTimepoint === 'mid' && pulseDuringSessionId) {
+      params.duringSessionId = pulseDuringSessionId;
+    }
+    return params;
+  }, [inviteTimepoint, pulseDuringSessionId]);
   const inviteTimepointText = useMemo(() => inviteTimepointLabel(inviteTimepoint), [inviteTimepoint]);
   const copySourceTimepoint = useMemo(() => previousInviteTimepoint(inviteTimepoint), [inviteTimepoint]);
   const copySourceTimepointText = useMemo(
@@ -363,7 +370,7 @@ export default function PlatformPulseInviteUsers() {
     setError('');
     try {
       const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`, {
-        params: { timepoint: inviteTimepoint },
+        params: inviteRequestParams,
       });
       setInvites(data.invites || []);
     } catch (e) {
@@ -374,7 +381,7 @@ export default function PlatformPulseInviteUsers() {
         setLoading(false);
       }
     }
-  }, [inviteTimepoint, orgId]);
+  }, [inviteRequestParams, orgId]);
 
   const loadTemplates = useCallback(async () => {
     setTemplatesLoading(true);
@@ -423,7 +430,7 @@ export default function PlatformPulseInviteUsers() {
       const { data } = await api.post(
         `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`,
         { recipients },
-        { params: { timepoint: inviteTimepoint } }
+        { params: inviteRequestParams }
       );
       showToast(`Imported ${data.upserted} row(s).`, { variant: 'success' });
       if (data.errorCount > 0) {
@@ -514,7 +521,7 @@ export default function PlatformPulseInviteUsers() {
       const { data } = await api.post(
         `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`,
         { recipients },
-        { params: { timepoint: inviteTimepoint, allowUnassignedStaff: true } }
+        { params: { ...inviteRequestParams, allowUnassignedStaff: true } }
       );
       showToast(`Copied ${data.upserted} recipient(s) from ${copySourceTimepointText}.`, { variant: 'success' });
       if (data.errorCount > 0) {
@@ -607,7 +614,7 @@ export default function PlatformPulseInviteUsers() {
           managerCount,
           groupCounts: parsedGroupCounts,
         },
-        { params: { timepoint: inviteTimepoint } }
+        { params: inviteRequestParams }
       );
       const importedUsers = Number(data?.importedUsers || 0);
       const completedResponses = Number(data?.completedResponses || 0);
@@ -659,7 +666,7 @@ export default function PlatformPulseInviteUsers() {
       const { data } = await api.post(
         `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`,
         { recipients: [recipient] },
-        { params: { timepoint: inviteTimepoint } }
+        { params: inviteRequestParams }
       );
       if (data.errorCount > 0) {
         const first = data.errors?.[0];
@@ -790,7 +797,7 @@ export default function PlatformPulseInviteUsers() {
       await api.post(
         `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${id}/send`,
         {},
-        { params: { timepoint: inviteTimepoint } }
+        { params: inviteRequestParams }
       );
       showToast('Invite sent.', { variant: 'success' });
       await load();
@@ -825,7 +832,7 @@ export default function PlatformPulseInviteUsers() {
           await api.post(
             `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${snapshot[i]}/send`,
             {},
-            { params: { timepoint: inviteTimepoint } }
+            { params: inviteRequestParams }
           );
           success += 1;
         } catch (e) {
@@ -871,7 +878,7 @@ export default function PlatformPulseInviteUsers() {
     setDeleteWorking(true);
     try {
       await api.delete(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/${deleteConfirmRow.id}`, {
-        params: { timepoint: inviteTimepoint },
+        params: inviteRequestParams,
       });
       showToast('Recipient removed.', { variant: 'success' });
       setDeleteConfirmRow(null);

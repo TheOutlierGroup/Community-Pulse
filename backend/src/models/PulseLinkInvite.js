@@ -26,6 +26,15 @@ export function normalizeInviteTimepointPhase(raw) {
   return pulseStageToInternalTimepoint(normalizePulseStage(raw));
 }
 
+function inviteInstanceKeyForScope(timepointPhase, options = {}) {
+  if (timepointPhase === 'pre') return 'pre';
+  if (timepointPhase === 'completed') return 'post';
+  if (timepointPhase !== 'mid') return null;
+  const duringSessionId = String(options?.duringSessionId || '').trim();
+  if (!duringSessionId) return null;
+  return `session:${duringSessionId}`;
+}
+
 export function publicInviteRow(row) {
   if (!row) return null;
   const completedAt = row.survey_completed_at ?? null;
@@ -58,6 +67,7 @@ export function publicInviteRow(row) {
 
 export async function listInvitesForOrg(organizationId, options = {}) {
   const timepointPhase = normalizeInviteTimepointPhase(options?.timepointPhase);
+  const timepointInstanceKey = inviteInstanceKeyForScope(timepointPhase, options);
   const { rows } = await query(
     `SELECT pli.id,
             pli.display_name,
@@ -107,14 +117,16 @@ export async function listInvitesForOrg(organizationId, options = {}) {
       AND mgr.organization_id = pli.organization_id
      WHERE pli.organization_id = $1
        AND pli.timepoint_phase = $2
+       AND ($3::text IS NULL OR pli.timepoint_instance_key = $3)
      ORDER BY lower(pli.email)`,
-    [organizationId, timepointPhase]
+    [organizationId, timepointPhase, timepointInstanceKey]
   );
   return rows;
 }
 
 export async function listInviteRowsForOrg(organizationId, options = {}) {
   const timepointPhase = normalizeInviteTimepointPhase(options?.timepointPhase);
+  const timepointInstanceKey = inviteInstanceKeyForScope(timepointPhase, options);
   const { rows } = await query(
     `SELECT pli.id,
             pli.organization_id,
@@ -135,14 +147,16 @@ export async function listInviteRowsForOrg(organizationId, options = {}) {
       AND mgr.organization_id = pli.organization_id
      WHERE pli.organization_id = $1
        AND pli.timepoint_phase = $2
+       AND ($3::text IS NULL OR pli.timepoint_instance_key = $3)
      ORDER BY lower(pli.email)`,
-    [organizationId, timepointPhase]
+    [organizationId, timepointPhase, timepointInstanceKey]
   );
   return rows;
 }
 
 export async function listStaffInviteResponseRowsForOrg(organizationId, options = {}) {
   const timepointPhase = normalizeInviteTimepointPhase(options?.timepointPhase);
+  const timepointInstanceKey = inviteInstanceKeyForScope(timepointPhase, options);
   const { rows } = await query(
     `SELECT pli.id AS invite_id,
             pli.email,
@@ -158,9 +172,10 @@ export async function listStaffInviteResponseRowsForOrg(organizationId, options 
      JOIN pulse_link_responses plr ON plr.invite_id = pli.id
      WHERE pli.organization_id = $1
        AND pli.timepoint_phase = $2
+       AND ($3::text IS NULL OR pli.timepoint_instance_key = $3)
        AND pli.survey_role = 'staff'
      ORDER BY pli.id ASC, plr.updated_at DESC`,
-    [organizationId, timepointPhase]
+    [organizationId, timepointPhase, timepointInstanceKey]
   );
   return rows;
 }
@@ -169,6 +184,8 @@ export async function getInviteInOrg(inviteId, organizationId, options = {}) {
   const timepointPhase = options?.timepointPhase;
   const normalizedPhase =
     timepointPhase == null ? null : normalizeInviteTimepointPhase(timepointPhase);
+  const timepointInstanceKey =
+    normalizedPhase == null ? null : inviteInstanceKeyForScope(normalizedPhase, options);
   const { rows } =
     normalizedPhase == null
       ? await query(`SELECT * FROM pulse_link_invites WHERE id = $1 AND organization_id = $2`, [inviteId, organizationId])
@@ -176,8 +193,9 @@ export async function getInviteInOrg(inviteId, organizationId, options = {}) {
           `SELECT * FROM pulse_link_invites
            WHERE id = $1
              AND organization_id = $2
-             AND timepoint_phase = $3`,
-          [inviteId, organizationId, normalizedPhase]
+             AND timepoint_phase = $3
+             AND ($4::text IS NULL OR timepoint_instance_key = $4)`,
+          [inviteId, organizationId, normalizedPhase, timepointInstanceKey]
         );
   return rows[0] || null;
 }
@@ -201,6 +219,7 @@ export async function findByTokenHash(tokenHash) {
 export async function upsertInviteRow({
   organizationId,
   timepointPhase = 'pre',
+  duringSessionId = null,
   displayName,
   email,
   surveyRole = 'staff',
@@ -211,6 +230,8 @@ export async function upsertInviteRow({
   if (!em) return { row: null, error: 'invalid_email' };
   const role = surveyRole === 'manager' ? 'manager' : 'staff';
   const phase = normalizeInviteTimepointPhase(timepointPhase);
+  const timepointInstanceKey = inviteInstanceKeyForScope(phase, { duringSessionId });
+  if (phase === 'mid' && !timepointInstanceKey) return { row: null, error: 'missing_during_session' };
   const name = String(displayName || '').trim();
   const managerId = role === 'manager' ? null : managerInviteId || null;
   const normalizedGroupLevelValues = normalizeGroupLevelValues(groupLevelValues);
@@ -218,21 +239,31 @@ export async function upsertInviteRow({
     `INSERT INTO pulse_link_invites (
        organization_id,
        timepoint_phase,
+       timepoint_instance_key,
        display_name,
        email,
        survey_role,
        manager_invite_id,
        group_level_values
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-     ON CONFLICT (organization_id, timepoint_phase, email) DO UPDATE SET
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+     ON CONFLICT (organization_id, timepoint_phase, timepoint_instance_key, email) DO UPDATE SET
        display_name = EXCLUDED.display_name,
        survey_role = EXCLUDED.survey_role,
        manager_invite_id = EXCLUDED.manager_invite_id,
        group_level_values = EXCLUDED.group_level_values,
        updated_at = NOW()
      RETURNING *`,
-    [organizationId, phase, name, em, role, managerId, JSON.stringify(normalizedGroupLevelValues)]
+    [
+      organizationId,
+      phase,
+      timepointInstanceKey || (phase === 'pre' ? 'pre' : 'post'),
+      name,
+      em,
+      role,
+      managerId,
+      JSON.stringify(normalizedGroupLevelValues),
+    ]
   );
   return { row: rows[0], error: null };
 }
@@ -241,6 +272,8 @@ export async function updateManagerInviteId(inviteId, organizationId, managerInv
   const timepointPhase = options?.timepointPhase;
   const normalizedPhase =
     timepointPhase == null ? null : normalizeInviteTimepointPhase(timepointPhase);
+  const timepointInstanceKey =
+    normalizedPhase == null ? null : inviteInstanceKeyForScope(normalizedPhase, options);
   const { rows } =
     normalizedPhase == null
       ? await query(
@@ -258,8 +291,9 @@ export async function updateManagerInviteId(inviteId, organizationId, managerInv
            WHERE id = $1
              AND organization_id = $2
              AND timepoint_phase = $4
+             AND ($5::text IS NULL OR timepoint_instance_key = $5)
            RETURNING *`,
-          [inviteId, organizationId, managerInviteId || null, normalizedPhase]
+          [inviteId, organizationId, managerInviteId || null, normalizedPhase, timepointInstanceKey]
         );
   return rows[0] || null;
 }
@@ -272,6 +306,7 @@ export async function promoteInvitesToManagerInOrg(inviteIds, organizationId, op
     : [];
   if (ids.length === 0) return [];
   const timepointPhase = normalizeInviteTimepointPhase(options?.timepointPhase);
+  const timepointInstanceKey = inviteInstanceKeyForScope(timepointPhase, options);
   const { rows } = await query(
     `UPDATE pulse_link_invites
      SET survey_role = 'manager',
@@ -279,9 +314,10 @@ export async function promoteInvitesToManagerInOrg(inviteIds, organizationId, op
          updated_at = NOW()
      WHERE organization_id = $1
        AND timepoint_phase = $2
+       AND ($4::text IS NULL OR timepoint_instance_key = $4)
        AND id = ANY($3::uuid[])
      RETURNING id, email, display_name, timepoint_phase`,
-    [organizationId, timepointPhase, ids]
+    [organizationId, timepointPhase, ids, timepointInstanceKey]
   );
   return rows;
 }
@@ -320,6 +356,8 @@ export async function deleteInviteInOrg(inviteId, organizationId, options = {}) 
   const timepointPhase = options?.timepointPhase;
   const normalizedPhase =
     timepointPhase == null ? null : normalizeInviteTimepointPhase(timepointPhase);
+  const timepointInstanceKey =
+    normalizedPhase == null ? null : inviteInstanceKeyForScope(normalizedPhase, options);
   const { rowCount } =
     normalizedPhase == null
       ? await query(`DELETE FROM pulse_link_invites WHERE id = $1 AND organization_id = $2`, [inviteId, organizationId])
@@ -327,8 +365,9 @@ export async function deleteInviteInOrg(inviteId, organizationId, options = {}) 
           `DELETE FROM pulse_link_invites
            WHERE id = $1
              AND organization_id = $2
-             AND timepoint_phase = $3`,
-          [inviteId, organizationId, normalizedPhase]
+             AND timepoint_phase = $3
+             AND ($4::text IS NULL OR timepoint_instance_key = $4)`,
+          [inviteId, organizationId, normalizedPhase, timepointInstanceKey]
         );
   return rowCount > 0;
 }
