@@ -115,6 +115,97 @@ function scoreDelta(current, previous) {
   return round1(current - previous);
 }
 
+function formatScore1(value) {
+  if (value == null || Number.isNaN(value)) return '--';
+  return Number(value).toFixed(1);
+}
+
+function formatPercentInt(value) {
+  if (value == null || Number.isNaN(value)) return '0%';
+  return `${Math.round(Number(value))}%`;
+}
+
+function buildExecutiveSummaryContent({
+  adoptionScore,
+  sponsorshipScore,
+  sponsorshipDelta,
+  threshold,
+  optimalPercent,
+  highRiskPercent,
+  overloadedPercent,
+  criticalLoadPercent,
+  interventionRequired,
+  completedTotal,
+}) {
+  const headline = interventionRequired
+    ? 'This organisation has capacity to change, but not yet the conditions to sustain it.'
+    : 'This organisation is trending toward sustained change conditions if current sponsorship discipline holds.';
+  const subhead = `Only ${formatPercentInt(optimalPercent)} of respondents are currently in Optimal. The remaining ${formatPercentInt(100 - (optimalPercent || 0))} sit across readiness states that require different intervention approaches.`;
+
+  const riskChips = [
+    sponsorshipScore != null && sponsorshipScore < threshold ? 'Sponsorship gap' : null,
+    overloadedPercent >= 10 ? 'Manager overload' : null,
+    sponsorshipDelta != null && sponsorshipDelta < 0 ? 'Declining sponsorship trend' : null,
+    criticalLoadPercent >= 35 ? 'Capacity concentration risk' : null,
+    optimalPercent < 30 ? 'Low optimal readiness share' : null,
+  ].filter(Boolean);
+
+  const kpiBridgeText = sponsorshipDelta != null && sponsorshipDelta < 0
+    ? `Response volume is not the risk. Adoption is ${formatScore1(adoptionScore)}/40 while Sponsorship is ${formatScore1(sponsorshipScore)}/40 and declining ${sponsorshipDelta > 0 ? '+' : ''}${formatScore1(sponsorshipDelta)} versus the prior wave — the two signals are now pulling in opposite directions.`
+    : `Participation is strong, but launch risk depends on whether sponsorship and manager capacity keep pace with adoption movement through the next wave.`;
+
+  const scenarios = [
+    {
+      id: 'do-nothing',
+      tag: 'Scenario A · No Intervention',
+      title: 'What happens if they do nothing',
+      textA:
+        adoptionScore == null || sponsorshipScore == null
+          ? 'The current pattern remains unresolved: readiness risks persist and rollout friction accumulates in the middle of the organisation.'
+          : `The change launches with Adoption at ${formatScore1(adoptionScore)}/40 and Sponsorship at ${formatScore1(sponsorshipScore)}/40. With ${formatPercentInt(highRiskPercent)} in High Risk and ${formatPercentInt(overloadedPercent)} overloaded manager capacity, early compliance is unlikely to convert into sustained behaviour change.`,
+      textB:
+        'Momentum stalls in teams already under strain, and the absence of targeted reinforcement makes course-correction slower and more expensive.',
+      outcome:
+        'Partial, unsustained adoption with high risk of reversion over the next 6-12 months.',
+    },
+    {
+      id: 'traditional-change',
+      tag: 'Scenario B · Traditional Change',
+      title: 'What happens if they roll out traditional change',
+      textA:
+        sponsorshipScore != null && sponsorshipScore >= threshold
+          ? 'Traditional change mechanics (comms, training, stakeholder plans) can improve consistency, but they do not automatically strengthen day-to-day sponsorship behaviour.'
+          : 'Traditional change mechanics (comms, training, stakeholder plans) improve process discipline, but do not directly resolve low sponsorship credibility or manager load pressure.',
+      textB:
+        'Adoption improves where managers already have capacity; in constrained teams, extra process can add overhead without shifting the underlying conditions that determine whether change sticks.',
+      outcome:
+        'Uneven adoption, strong in pockets but fragile across the broader system.',
+    },
+    {
+      id: 'experiential-campaign',
+      tag: 'Scenario C · Experiential Campaign',
+      title: 'What happens if they do an experiential change campaign',
+      textA:
+        'An experiential campaign targets the conditions revealed by the diagnostic: visible sponsorship behaviour, manager enablement, and practical support for teams outside optimal readiness.',
+      textB:
+        optimalPercent >= 40
+          ? 'Because a meaningful base is already in Optimal, targeted reinforcement can convert existing momentum into durable adoption across more teams.'
+          : 'Because most respondents are outside Optimal, targeted interventions by readiness state can lift adoption while reducing sponsorship and load friction.',
+      outcome:
+        'Sustained, measurable adoption with stronger odds of retention after rollout.',
+    },
+  ];
+
+  return {
+    headline,
+    subhead,
+    riskChips,
+    kpiBridgeText,
+    scenarios,
+    basedOnResponsesText: `Based on ${completedTotal || 0} responses · Threshold ${threshold}/40`,
+  };
+}
+
 function sponsorshipConfigFromOrgSettings(settings) {
   const source =
     settings?.sponsorshipAnalysisConfig && typeof settings.sponsorshipAnalysisConfig === 'object'
@@ -1786,6 +1877,24 @@ export function registerPlatformOrgRoutes(router) {
       soWhatStatus = 'unavailable';
     }
 
+    const executiveSummary = buildExecutiveSummaryContent({
+      adoptionScore,
+      sponsorshipScore,
+      sponsorshipDelta,
+      threshold: READINESS_THRESHOLD,
+      optimalPercent: optimalQuadrant?.percent || 0,
+      highRiskPercent: highRiskQuadrant?.percent || 0,
+      overloadedPercent: overloadedBand?.percent || 0,
+      criticalLoadPercent: managerLoad.bands
+        .filter((band) => band.name === 'At Capacity' || band.name === 'Overloaded')
+        .reduce((sum, band) => sum + (band.percent || 0), 0),
+      interventionRequired:
+        (sponsorshipScore != null && sponsorshipScore < READINESS_THRESHOLD)
+        || ((overloadedBand?.percent || 0) >= 10)
+        || ((optimalQuadrant?.percent || 0) < 25),
+      completedTotal,
+    });
+
     schedulePulseAlertNotifications({
       clientOrgId: org.id,
       orgName: org.name,
@@ -1855,6 +1964,7 @@ export function registerPlatformOrgRoutes(router) {
       narrative: soWhat,
       soWhat,
       soWhatStatus,
+      executiveSummary,
     });
   });
 

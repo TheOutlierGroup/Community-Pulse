@@ -200,82 +200,6 @@ function managerChainStatus(quadrant) {
   return 'Failed at Both Levels';
 }
 
-function fallbackExecutiveSignal({
-  adoptionScore,
-  sponsorshipScore,
-  threshold,
-  optimalPercent,
-  highRiskPercent,
-  overloadedPercent,
-}) {
-  const adoptionReady = adoptionScore != null && adoptionScore >= threshold;
-  const sponsorshipReady = sponsorshipScore != null && sponsorshipScore >= threshold;
-  if (adoptionReady && sponsorshipReady && overloadedPercent < 10) {
-    return `Readiness is currently above threshold with ${formatPercent(optimalPercent)} in Optimal and manageable manager load; proceed with delivery while maintaining sponsorship visibility and load checks.`;
-  }
-  if (!adoptionReady && !sponsorshipReady) {
-    return `Both adoption and sponsorship are below threshold, with ${formatPercent(highRiskPercent)} in High Risk; launch now is likely to create resistance and delivery drag without targeted intervention first.`;
-  }
-  if (!sponsorshipReady) {
-    return `Adoption is stronger than sponsorship, but sponsorship remains below threshold and ${formatPercent(overloadedPercent)} of managers are overloaded; strengthen senior sponsorship and manager air cover before scaling rollout.`;
-  }
-  return `Readiness signals are mixed across the cohort; sequence targeted support before broad rollout and monitor movement by wave.`;
-}
-
-function buildMicDropScenarios({
-  adoptionScore,
-  sponsorshipScore,
-  threshold,
-  optimalPercent,
-  highRiskPercent,
-  overloadedPercent,
-}) {
-  const doNothingTextA = !Number.isFinite(adoptionScore) || !Number.isFinite(sponsorshipScore)
-    ? 'The current pattern remains unresolved: readiness risks persist and rollout friction accumulates in the middle of the organisation.'
-    : `The change launches with Adoption at ${formatScore(adoptionScore)}/40 and Sponsorship at ${formatScore(sponsorshipScore)}/40. With ${formatPercent(highRiskPercent)} in High Risk and ${formatPercent(overloadedPercent)} overloaded manager capacity, early compliance is unlikely to convert into sustained behaviour change.`;
-  const doNothingTextB = 'Momentum stalls in teams already under strain, and the absence of targeted reinforcement makes course-correction slower and more expensive.';
-  const doNothingOutcome = 'Partial, unsustained adoption with high risk of reversion over the next 6-12 months.';
-
-  const traditionalTextA = sponsorshipScore != null && sponsorshipScore >= threshold
-    ? 'Traditional change mechanics (comms, training, stakeholder plans) can improve consistency, but they do not automatically strengthen day-to-day sponsorship behaviour.'
-    : 'Traditional change mechanics (comms, training, stakeholder plans) improve process discipline, but do not directly resolve low sponsorship credibility or manager load pressure.';
-  const traditionalTextB = 'Adoption improves where managers already have capacity; in constrained teams, extra process can add overhead without shifting the underlying conditions that determine whether change sticks.';
-  const traditionalOutcome = 'Uneven adoption, strong in pockets but fragile across the broader system.';
-
-  const experientialTextA = 'An experiential campaign targets the conditions revealed by the diagnostic: visible sponsorship behaviour, manager enablement, and practical support for teams outside optimal readiness.';
-  const experientialTextB = optimalPercent >= 40
-    ? 'Because a meaningful base is already in Optimal, targeted reinforcement can convert existing momentum into durable adoption across more teams.'
-    : 'Because most respondents are outside Optimal, targeted interventions by readiness state can lift adoption while reducing sponsorship and load friction.';
-  const experientialOutcome = 'Sustained, measurable adoption with stronger odds of retention after rollout.';
-
-  return [
-    {
-      id: 'do-nothing',
-      tag: 'Scenario A · No Intervention',
-      title: 'What happens if they do nothing',
-      textA: doNothingTextA,
-      textB: doNothingTextB,
-      outcome: doNothingOutcome,
-    },
-    {
-      id: 'traditional-change',
-      tag: 'Scenario B · Traditional Change',
-      title: 'What happens if they roll out traditional change',
-      textA: traditionalTextA,
-      textB: traditionalTextB,
-      outcome: traditionalOutcome,
-    },
-    {
-      id: 'experiential-campaign',
-      tag: 'Scenario C · Experiential Campaign',
-      title: 'What happens if they do an experiential change campaign',
-      textA: experientialTextA,
-      textB: experientialTextB,
-      outcome: experientialOutcome,
-    },
-  ];
-}
-
 export default function PlatformClientPulse() {
   const {
     org,
@@ -325,14 +249,11 @@ export default function PlatformClientPulse() {
     return QUADRANT_ORDER.map((name) => source.find((q) => q.name === name) || { name, percent: 0 });
   }, [dashboard?.quadrants]);
   const optimalPercent = quadrants.find((q) => q.name === 'Optimal')?.percent ?? 0;
-  const highRiskPercent = quadrants.find((q) => q.name === 'High Risk')?.percent ?? 0;
-  const remainingPercent = Math.max(0, 100 - optimalPercent);
   const insightCards = (dashboard?.alerts || []).slice(0, 3);
   const sponsorshipSignals = dashboard?.sponsorshipAnalysis?.signals || null;
   const threshold = Number.isFinite(scoreSemantics.threshold) ? scoreSemantics.threshold : 28;
   const adoptionScore = Number.isFinite(kpis.adoptionScore) ? kpis.adoptionScore : null;
   const sponsorshipScore = Number.isFinite(kpis.sponsorshipScore) ? kpis.sponsorshipScore : null;
-  const sponsorshipDelta = Number.isFinite(kpis.sponsorshipDelta) ? kpis.sponsorshipDelta : null;
   const managerBreakdownRows = dashboard?.byManager || [];
   const dimensions = dashboard?.dimensions || [];
   const employeeDimensions = useMemo(
@@ -552,43 +473,19 @@ export default function PlatformClientPulse() {
     pulseDuringDate,
     includeSelectedDuringDate
   );
-  const overloadedManagersPercent = managerLoadDistribution.find((item) => item.band === 'Overloaded')?.percent ?? 0;
   const reportDateLabel = new Date().toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   });
-  const executiveSignalText = (dashboard?.soWhat || dashboard?.narrative || '').trim()
-    || fallbackExecutiveSignal({
-      adoptionScore,
-      sponsorshipScore,
-      threshold,
-      optimalPercent,
-      highRiskPercent,
-      overloadedPercent: overloadedManagersPercent,
-    });
-  const micDropScenarios = buildMicDropScenarios({
-    adoptionScore,
-    sponsorshipScore,
-    threshold,
-    optimalPercent,
-    highRiskPercent,
-    overloadedPercent: overloadedManagersPercent,
-  });
-  const executiveHeadline = interventionRequired
-    ? 'This organisation has capacity to change, but not yet the conditions to sustain it.'
-    : 'This organisation is trending toward sustained change conditions if current sponsorship discipline holds.';
-  const executiveSubhead = `Only ${formatPercent(optimalPercent)} of respondents are currently in Optimal. The remaining ${formatPercent(remainingPercent)} sit across readiness states that require different intervention approaches.`;
-  const riskChips = [
-    sponsorshipScore != null && sponsorshipScore < threshold ? 'Sponsorship gap' : null,
-    overloadedManagersPercent >= 10 ? 'Manager overload' : null,
-    sponsorshipDelta != null && sponsorshipDelta < 0 ? 'Declining sponsorship trend' : null,
-    criticalLoadPercent >= 35 ? 'Capacity concentration risk' : null,
-    optimalPercent < 30 ? 'Low optimal readiness share' : null,
-  ].filter(Boolean);
-  const kpiBridgeText = sponsorshipDelta != null && sponsorshipDelta < 0
-    ? `Response volume is not the risk. Adoption is ${formatScore(adoptionScore)}/40 while Sponsorship is ${formatScore(sponsorshipScore)}/40 and declining ${formatDelta(sponsorshipDelta)} versus the prior wave — the two signals are now pulling in opposite directions.`
-    : `Participation is strong, but launch risk depends on whether sponsorship and manager capacity keep pace with adoption movement through the next wave.`;
+  const executiveSummary = dashboard?.executiveSummary || null;
+  const executiveSignalText = (dashboard?.soWhat || dashboard?.narrative || '').trim();
+  const micDropScenarios = Array.isArray(executiveSummary?.scenarios) ? executiveSummary.scenarios : [];
+  const executiveHeadline = String(executiveSummary?.headline || '').trim();
+  const executiveSubhead = String(executiveSummary?.subhead || '').trim();
+  const riskChips = Array.isArray(executiveSummary?.riskChips) ? executiveSummary.riskChips.filter(Boolean) : [];
+  const kpiBridgeText = String(executiveSummary?.kpiBridgeText || '').trim();
+  const basedOnResponsesText = String(executiveSummary?.basedOnResponsesText || '').trim();
 
   useEffect(() => {
     const previous = document.title;
@@ -856,8 +753,12 @@ export default function PlatformClientPulse() {
           </div>
           <div className="pulse-clean-exec__footer">
             <p className="pulse-clean-exec__footer-note">
-              Based on <strong>{kpis.completedTotal ?? 0} responses</strong> · Threshold{' '}
-              <strong>{threshold}/40</strong>
+              {basedOnResponsesText || (
+                <>
+                  Based on <strong>{kpis.completedTotal ?? 0} responses</strong> · Threshold{' '}
+                  <strong>{threshold}/40</strong>
+                </>
+              )}
             </p>
             <div className="pulse-clean-exec__chips">
               {riskChips.length > 0 ? riskChips.map((chip) => (
@@ -868,14 +769,17 @@ export default function PlatformClientPulse() {
           <div className="pulse-clean-header__summary">
             <div>
               <p className="pulse-clean-header__summary-title">{kpis.launchHeadline || '--'}</p>
-              <p className="pulse-clean-header__summary-text">{executiveSignalText || '--'}</p>
+              {executiveSignalText ? (
+                <p className="pulse-clean-header__summary-text">{executiveSignalText}</p>
+              ) : null}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="pulse-clean-bridge card">
-        <div className="pulse-clean-bridge__text">{kpiBridgeText}</div>
+      {kpiBridgeText ? (
+        <section className="pulse-clean-bridge card">
+          <div className="pulse-clean-bridge__text">{kpiBridgeText}</div>
         <div className="pulse-clean-bridge__scores">
           <article className="pulse-clean-bridge__score pulse-clean-bridge__score--adoption">
             <p className="pulse-clean-bridge__score-label">Adoption Readiness</p>
@@ -888,7 +792,8 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-bridge__score-meta">/40 · {sponsorshipScore != null && sponsorshipScore >= threshold ? 'Above threshold' : 'Below threshold'}</p>
           </article>
         </div>
-      </section>
+        </section>
+      ) : null}
 
       {error ? <p className="error">{error}</p> : null}
       {loading ? <p className="muted">Loading dashboard data...</p> : null}
