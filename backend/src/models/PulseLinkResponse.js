@@ -69,6 +69,7 @@ export async function completeResponse({
        step4_data = $7::jsonb,
        contribution_style = $8,
        survey_started_at = COALESCE(survey_started_at, NOW()),
+       consent_recorded_at = COALESCE(consent_recorded_at, NOW()),
        completed_at = NOW(),
        updated_at = NOW()
      WHERE invite_id = $1 AND session_id = $2

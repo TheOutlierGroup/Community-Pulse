@@ -1,4 +1,5 @@
 import { query } from '../config/database.js';
+import * as PulseSessionStatusEvent from './PulseSessionStatusEvent.js';
 import {
   PULSE_STAGE_MID,
   PULSE_STAGE_POST,
@@ -40,20 +41,32 @@ export async function createSession(
   audience = 'staff',
   sessionPurpose = 'standard'
 ) {
+  const normalizedStatus = ['draft', 'active', 'paused', 'closed'].includes(status) ? status : 'draft';
   const aud = audience === 'manager' ? 'manager' : 'staff';
   const purpose = normalizeSessionPurpose(sessionPurpose);
   const { rows } = await query(
     `INSERT INTO pulse_sessions (organization_id, name, status, audience, session_purpose)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [organizationId, name, status, aud, purpose]
+    [organizationId, name, normalizedStatus, aud, purpose]
   );
+  await PulseSessionStatusEvent.createStatusEvent({
+    sessionId: rows[0].id,
+    organizationId,
+    fromStatus: null,
+    toStatus: normalizedStatus,
+    metadata: { source: 'createSession' },
+  });
   return rows[0];
 }
 
-export async function updateSessionStatus(id, organizationId, status) {
+export async function updateSessionStatus(id, organizationId, status, options = {}) {
+  const actorUserId = options?.actorUserId || null;
+  const metadata = options?.metadata || {};
   const existing = await getSessionById(id, organizationId);
   if (!existing) return null;
+  const nextStatus = ['draft', 'active', 'paused', 'closed'].includes(status) ? status : null;
+  if (!nextStatus) return null;
   if (status === 'active') {
     await query(
       `UPDATE pulse_sessions SET status = 'closed', closed_at = COALESCE(closed_at, NOW())
@@ -66,7 +79,18 @@ export async function updateSessionStatus(id, organizationId, status) {
        RETURNING *`,
       [id, organizationId]
     );
-    return rows[0] || null;
+    const updated = rows[0] || null;
+    if (updated && existing.status !== updated.status) {
+      await PulseSessionStatusEvent.createStatusEvent({
+        sessionId: updated.id,
+        organizationId,
+        actorUserId,
+        fromStatus: existing.status,
+        toStatus: updated.status,
+        metadata: { ...metadata, source: 'updateSessionStatus' },
+      });
+    }
+    return updated;
   }
   const closedAt = status === 'closed' ? new Date() : null;
   const { rows } = await query(
@@ -75,7 +99,18 @@ export async function updateSessionStatus(id, organizationId, status) {
      RETURNING *`,
     [status, closedAt, id, organizationId]
   );
-  return rows[0] || null;
+  const updated = rows[0] || null;
+  if (updated && existing.status !== updated.status) {
+    await PulseSessionStatusEvent.createStatusEvent({
+      sessionId: updated.id,
+      organizationId,
+      actorUserId,
+      fromStatus: existing.status,
+      toStatus: updated.status,
+      metadata: { ...metadata, source: 'updateSessionStatus' },
+    });
+  }
+  return updated;
 }
 
 export async function getActiveSessionForOrg(organizationId, audience = 'staff') {

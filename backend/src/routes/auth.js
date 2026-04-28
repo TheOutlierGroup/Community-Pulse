@@ -15,6 +15,12 @@ import * as Organization from '../models/Organization.js';
 import * as PasswordResetToken from '../models/PasswordResetToken.js';
 import { consumePulseHandoffToken } from '../security/pulseHandoffToken.js';
 import { sendPasswordResetEmail } from '../services/email.js';
+import { generateMfaSecret, verifyTotpCode } from '../services/mfa.js';
+import {
+  consumeDashboardLoginToken,
+  issueDashboardLoginToken,
+} from '../services/clientDashboardAuth.js';
+import { logAuditEvent } from '../services/auditLog.js';
 import {
   clientServiceCatalogFromPlatformSettings,
   enabledServicesFromOrganizationSettings,
@@ -43,6 +49,7 @@ function publicUser(u) {
     lastName: u.last_name ?? '',
     hasProfileAvatar: Boolean(u.profile_avatar_filename),
     organizationHasCompanyLogo: Boolean(u.organization_company_logo_filename),
+    mfaEnabled: Boolean(u.mfa_enabled),
     enabledServices,
   };
 }
@@ -60,17 +67,76 @@ router.post(
     const { email, password } = req.body;
     const user = await User.findUserByEmailWithOrg(email);
     if (!user || !user.login_enabled) {
+      await logAuditEvent({
+        action: 'auth.login',
+        targetType: 'user',
+        targetId: String(email || '').trim().toLowerCase(),
+        result: 'invalid_credentials',
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
+      await logAuditEvent({
+        actor: {
+          id: user.id,
+          role: user.role,
+          organizationId: user.organization_id,
+        },
+        action: 'auth.login',
+        targetType: 'user',
+        targetId: user.id,
+        targetOrganizationId: user.organization_id,
+        result: 'invalid_credentials',
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    if (user.role === 'admin' && user.mfa_enabled) {
+      const mfaCode = String(req.body?.mfaCode || '').trim();
+      const validMfa = verifyTotpCode(mfaCode, user.mfa_secret);
+      if (!validMfa) {
+        await logAuditEvent({
+          actor: {
+            id: user.id,
+            role: user.role,
+            organizationId: user.organization_id,
+          },
+          action: 'auth.login',
+          targetType: 'user',
+          targetId: user.id,
+          targetOrganizationId: user.organization_id,
+          result: 'mfa_required',
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+        return res.status(401).json({ error: 'MFA code is required' });
+      }
+      await User.updateLastMfaVerifiedAt(user.id);
     }
     const token = signToken({
       sub: user.id,
       role: user.role,
       organizationId: user.organization_id,
       organizationKind: user.organization_kind,
+      mfaVerifiedAt: user.mfa_enabled ? new Date().toISOString() : null,
+    });
+    await logAuditEvent({
+      actor: {
+        id: user.id,
+        role: user.role,
+        organizationId: user.organization_id,
+      },
+      action: 'auth.login',
+      targetType: 'user',
+      targetId: user.id,
+      targetOrganizationId: user.organization_id,
+      result: 'ok',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
     });
     res.json({
       token,
@@ -98,6 +164,86 @@ router.patch('/me', requireAuth, async (req, res) => {
   const updated = await User.updateProfileNames(req.user.id, patch);
   if (!updated) return res.status(404).json({ error: 'Not found' });
   res.json(publicUser(updated));
+});
+
+router.post('/mfa/setup', requireAuth, async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin only' });
+  }
+  const secret = generateMfaSecret();
+  const saved = await User.storeMfaSecret(req.user.id, secret);
+  if (!saved) return res.status(404).json({ error: 'User not found' });
+  await logAuditEvent({
+    actor: req.user,
+    action: 'auth.mfa_setup_started',
+    targetType: 'user',
+    targetId: req.user.id,
+    targetOrganizationId: req.user.organizationId,
+    result: 'ok',
+    ipAddress: req.ip,
+    userAgent: req.get('user-agent'),
+  });
+  res.json({ mfaSecret: secret, requiresVerification: true });
+});
+
+router.post('/mfa/verify', requireAuth, requireBodyFields(['code']), async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin only' });
+  }
+  const full = await User.findUserByIdWithOrg(req.user.id);
+  if (!full?.mfa_secret) {
+    return res.status(400).json({ error: 'MFA setup not initialized' });
+  }
+  if (!verifyTotpCode(req.body.code, full.mfa_secret)) {
+    await logAuditEvent({
+      actor: req.user,
+      action: 'auth.mfa_verify',
+      targetType: 'user',
+      targetId: req.user.id,
+      targetOrganizationId: req.user.organizationId,
+      result: 'invalid_code',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    return res.status(401).json({ error: 'Invalid MFA code' });
+  }
+  await User.enableMfaForUser(req.user.id);
+  await logAuditEvent({
+    actor: req.user,
+    action: 'auth.mfa_enabled',
+    targetType: 'user',
+    targetId: req.user.id,
+    targetOrganizationId: req.user.organizationId,
+    result: 'ok',
+    ipAddress: req.ip,
+    userAgent: req.get('user-agent'),
+  });
+  res.json({ ok: true, mfaEnabled: true });
+});
+
+router.post('/mfa/disable', requireAuth, requireBodyFields(['code']), async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin only' });
+  }
+  const full = await User.findUserByIdWithOrg(req.user.id);
+  if (!full?.mfa_secret || !full?.mfa_enabled) {
+    return res.status(400).json({ error: 'MFA is not enabled' });
+  }
+  if (!verifyTotpCode(req.body.code, full.mfa_secret)) {
+    return res.status(401).json({ error: 'Invalid MFA code' });
+  }
+  await User.disableMfaForUser(req.user.id);
+  await logAuditEvent({
+    actor: req.user,
+    action: 'auth.mfa_disabled',
+    targetType: 'user',
+    targetId: req.user.id,
+    targetOrganizationId: req.user.organizationId,
+    result: 'ok',
+    ipAddress: req.ip,
+    userAgent: req.get('user-agent'),
+  });
+  res.json({ ok: true, mfaEnabled: false });
 });
 
 router.post(
@@ -359,6 +505,96 @@ router.post(
       user: publicUser(user),
       targetOrganizationId: consumed.organization_id,
     });
+  }
+);
+
+router.post(
+  '/client-dashboard-tokens',
+  requireAuth,
+  requireBodyFields(['organizationId', 'contactEmail']),
+  async (req, res) => {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    const issued = await issueDashboardLoginToken({
+      organizationId: req.body.organizationId,
+      projectSessionId: req.body.projectSessionId || null,
+      contactEmail: req.body.contactEmail,
+      issuedByUserId: req.user.id,
+    });
+    await logAuditEvent({
+      actor: req.user,
+      action: 'auth.client_dashboard_token_issued',
+      targetType: 'client_dashboard_token',
+      targetId: issued.record.id,
+      targetOrganizationId: issued.record.organization_id,
+      result: 'ok',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: {
+        contactEmail: issued.record.contact_email,
+        expiresAt: issued.record.expires_at,
+      },
+    });
+    res.status(201).json({
+      token: issued.token,
+      expiresAt: issued.record.expires_at,
+      tokenId: issued.record.id,
+    });
+  }
+);
+
+router.post(
+  '/client-dashboard-login',
+  authLimiter,
+  requireBodyFields(['organizationId', 'contactEmail', 'token']),
+  async (req, res) => {
+    const consumed = await consumeDashboardLoginToken({
+      token: req.body.token,
+      organizationId: req.body.organizationId,
+      contactEmail: req.body.contactEmail,
+    });
+    if (!consumed) {
+      await logAuditEvent({
+        action: 'auth.client_dashboard_login',
+        targetType: 'organization',
+        targetId: req.body.organizationId,
+        targetOrganizationId: req.body.organizationId,
+        result: 'invalid_or_expired_token',
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+        metadata: { contactEmail: String(req.body.contactEmail || '').toLowerCase() },
+      });
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    const user = await User.findUserByEmailWithOrg(req.body.contactEmail);
+    if (!user || user.organization_id !== req.body.organizationId) {
+      return res.status(401).json({ error: 'No matching dashboard user account found' });
+    }
+    const token = signToken({
+      sub: user.id,
+      role: user.role,
+      organizationId: user.organization_id,
+      organizationKind: user.organization_kind,
+      dashboardScope: 'client',
+      projectSessionId: consumed.project_session_id || null,
+    });
+    await logAuditEvent({
+      actor: {
+        id: user.id,
+        role: user.role,
+        organizationId: user.organization_id,
+      },
+      action: 'auth.client_dashboard_login',
+      targetType: 'client_dashboard_token',
+      targetId: consumed.id,
+      targetOrganizationId: consumed.organization_id,
+      result: 'ok',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: { contactEmail: consumed.contact_email },
+    });
+    res.json({ token, user: publicUser(user) });
   }
 );
 

@@ -8,6 +8,7 @@ import {
 } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
 import * as PulseSession from '../models/PulseSession.js';
+import * as PulseSessionStatusEvent from '../models/PulseSessionStatusEvent.js';
 import * as Invite from '../models/Invite.js';
 import {
   listSessionResponses,
@@ -52,27 +53,28 @@ export function createAdminRoutes({
   });
 
   router.post('/sessions', requireBodyFields(['name']), async (req, res) => {
-  const { name, status = 'draft', audience = 'staff' } = req.body;
-  if (!['draft', 'active', 'closed'].includes(status)) {
-    return res.status(400).json({ error: 'Invalid status' });
-  }
-  const aud = audience === 'manager' ? 'manager' : 'staff';
-  const session = await pulseSessionModel.createSession(req.user.organizationId, name, status, aud);
-  res.status(201).json(session);
+    const { name, status = 'draft', audience = 'staff' } = req.body;
+    if (!['draft', 'active', 'paused', 'closed'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    const aud = audience === 'manager' ? 'manager' : 'staff';
+    const session = await pulseSessionModel.createSession(req.user.organizationId, name, status, aud);
+    res.status(201).json(session);
   });
 
   router.patch('/sessions/:id', async (req, res) => {
-  const { status } = req.body;
-  if (!status || !['draft', 'active', 'closed'].includes(status)) {
-    return res.status(400).json({ error: 'Invalid status' });
-  }
-  const updated = await pulseSessionModel.updateSessionStatus(
-    req.params.id,
-    req.user.organizationId,
-    status
-  );
-  if (!updated) return res.status(404).json({ error: 'Session not found' });
-  res.json(updated);
+    const { status } = req.body;
+    if (!status || !['draft', 'active', 'paused', 'closed'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    const updated = await pulseSessionModel.updateSessionStatus(
+      req.params.id,
+      req.user.organizationId,
+      status,
+      { actorUserId: req.user.id, metadata: { source: 'adminRoute' } }
+    );
+    if (!updated) return res.status(404).json({ error: 'Session not found' });
+    res.json(updated);
   });
 
   router.get('/sessions/:id/responses', async (req, res) => {
@@ -86,6 +88,13 @@ export function createAdminRoutes({
     : undefined;
   const { rows, responseContract } = await listSessionResponsesFn(session.id, { mode });
   res.json({ session, responses: rows, responseContract });
+  });
+
+  router.get('/sessions/:id/status-events', async (req, res) => {
+    const session = await pulseSessionModel.getSessionById(req.params.id, req.user.organizationId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    const events = await PulseSessionStatusEvent.listStatusEventsForSession(session.id);
+    res.json({ sessionId: session.id, events });
   });
 
   router.post('/invites', requireBodyFields(['email']), async (req, res) => {

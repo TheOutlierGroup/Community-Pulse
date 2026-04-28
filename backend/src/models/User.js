@@ -21,6 +21,7 @@ export async function findUserByEmailWithOrg(email) {
   const { rows } = await query(
     `SELECT u.id, u.email, u.password_hash, u.role, u.organization_id,
             u.first_name, u.last_name, u.profile_avatar_filename, u.login_enabled,
+            u.mfa_enabled, u.mfa_secret, u.last_mfa_verified_at,
             o.kind AS organization_kind, o.name AS organization_name,
             o.company_logo_filename AS organization_company_logo_filename,
             o.settings AS organization_settings
@@ -46,6 +47,7 @@ export async function findUserByIdWithOrg(id) {
   const { rows } = await query(
     `SELECT u.id, u.email, u.role, u.organization_id, u.created_at,
             u.first_name, u.last_name, u.profile_avatar_filename, u.deactivated_at, u.login_enabled,
+            u.mfa_enabled, u.mfa_secret, u.last_mfa_verified_at,
             o.kind AS organization_kind, o.name AS organization_name,
             o.company_logo_filename AS organization_company_logo_filename,
             o.settings AS organization_settings
@@ -284,4 +286,47 @@ export async function listPlatformAdminUsers() {
      WHERE o.kind = 'platform' AND u.role = 'admin' AND u.deactivated_at IS NULL`
   );
   return rows;
+}
+
+export async function storeMfaSecret(userId, mfaSecret) {
+  const { rows } = await query(
+    `UPDATE users
+     SET mfa_secret = $2,
+         mfa_enabled = false,
+         last_mfa_verified_at = NULL
+     WHERE id = $1
+     RETURNING id, mfa_secret, mfa_enabled`,
+    [userId, mfaSecret]
+  );
+  return rows[0] || null;
+}
+
+export async function enableMfaForUser(userId) {
+  const { rows } = await query(
+    `UPDATE users
+     SET mfa_enabled = true,
+         last_mfa_verified_at = NOW()
+     WHERE id = $1
+     RETURNING id, mfa_enabled, last_mfa_verified_at`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+export async function disableMfaForUser(userId) {
+  const { rows } = await query(
+    `UPDATE users
+     SET mfa_enabled = false,
+         mfa_secret = NULL,
+         mfa_recovery_codes = '[]'::jsonb,
+         last_mfa_verified_at = NULL
+     WHERE id = $1
+     RETURNING id, mfa_enabled`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+export async function updateLastMfaVerifiedAt(userId) {
+  await query(`UPDATE users SET last_mfa_verified_at = NOW() WHERE id = $1`, [userId]);
 }

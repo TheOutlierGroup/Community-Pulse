@@ -1087,6 +1087,7 @@ export default function PlatformPulseInviteUsers() {
               minWidth: '12rem',
               opacity: dueDateSaving ? 0.75 : 1,
               display: 'inline-flex',
+              flexDirection: 'row',
               alignItems: 'center',
               gap: '0.55rem',
             }}

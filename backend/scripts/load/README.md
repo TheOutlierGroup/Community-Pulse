@@ -14,6 +14,29 @@ These scripts map to MVP non-functional checks and are intended for staging/nigh
 - `K6_DASHBOARD_PATH` - Dashboard endpoint path
 - `K6_SLUG_PATH` - Slug resolution endpoint path
 
+### Local Render-targeted env file
+
+Use the included template and local file:
+
+- Template (committed): `backend/scripts/load/.env.render.example`
+- Local secrets file (gitignored): `backend/scripts/load/.env.render.local`
+
+Run any load script with:
+
+```bash
+cd backend
+set -a
+source scripts/load/.env.render.local
+set +a
+npm run perf:k6:dashboard
+```
+
+Or one-liner:
+
+```bash
+cd backend && set -a && source scripts/load/.env.render.local && set +a && npm run perf:k6:slug
+```
+
 ## Scripts
 
 - `npm run perf:k6:survey` - 500-concurrency survey submission profile

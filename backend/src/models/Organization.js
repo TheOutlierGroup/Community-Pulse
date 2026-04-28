@@ -131,3 +131,30 @@ export async function updateOrganizationSettings(id, settings) {
   );
   return rows[0] || null;
 }
+
+export async function markOrganizationArchived(id, { disposalYears = 7 } = {}) {
+  const years = Number.isFinite(disposalYears) && disposalYears > 0 ? Math.floor(disposalYears) : 7;
+  const { rows } = await query(
+    `UPDATE organizations
+     SET archived_at = COALESCE(archived_at, NOW()),
+         tier3_archive_at = COALESCE(tier3_archive_at, NOW()),
+         tier3_disposal_due_at = COALESCE(
+           tier3_disposal_due_at,
+           NOW() + make_interval(years => $2::int)
+         )
+     WHERE id = $1
+     RETURNING *`,
+    [id, years]
+  );
+  return rows[0] || null;
+}
+
+export async function listArchivedOrganizations() {
+  const { rows } = await query(
+    `SELECT id, name, archived_at, tier3_archive_at, tier3_disposal_due_at
+     FROM organizations
+     WHERE archived_at IS NOT NULL
+     ORDER BY tier3_disposal_due_at ASC NULLS LAST, archived_at ASC`
+  );
+  return rows;
+}

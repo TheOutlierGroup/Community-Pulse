@@ -305,6 +305,16 @@ function sessionJsonForLink(session) {
   );
 
   const body = req.body || {};
+  if (body.respondentCountryCode || body.privacyNoticeVersion) {
+    await pulseLinkInviteModel.updateInvitePrivacyMetadata(
+      req.pulseLinkInvite.id,
+      req.pulseLinkInvite.organization_id,
+      {
+        respondentCountryCode: body.respondentCountryCode || null,
+        privacyNoticeVersion: body.privacyNoticeVersion || null,
+      }
+    );
+  }
   const existing = await pulseLinkResponseModel.getResponse(req.pulseLinkInvite.id, session.id);
   const step1 = body.step1 ?? existing?.step1_data ?? {};
   const step2 = body.step2 ?? existing?.step2_data ?? {};

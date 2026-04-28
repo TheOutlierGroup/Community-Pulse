@@ -367,3 +367,50 @@ test('analytics export strips raw answer payloads (privacy guard)', async () => 
   ]);
 });
 
+test('admin session routes accept paused status lifecycle', async () => {
+  const captured = { createdStatus: null, patchedStatus: null };
+  const pulseSessionModel = {
+    async createSession(_orgId, _name, status) {
+      captured.createdStatus = status;
+      return { id: 'session-1', status };
+    },
+    async updateSessionStatus(_id, _orgId, status) {
+      captured.patchedStatus = status;
+      return { id: 'session-1', status };
+    },
+    async listSessionsForOrg() {
+      return [];
+    },
+  };
+  const app = buildApp();
+  app.use(
+    '/api/admin',
+    createAdminRoutes({
+      authMiddleware: adminAuth,
+      adminMiddleware: (_req, _res, next) => next(),
+      clientOrgMiddleware: (_req, _res, next) => next(),
+      pulseServiceMiddleware: (_req, _res, next) => next(),
+      pulseSessionModel,
+      listSessionResponsesFn: async () => ({ rows: [], responseContract: {} }),
+    })
+  );
+
+  const created = await requestJson(app, {
+    method: 'POST',
+    path: '/api/admin/sessions',
+    headers: { Authorization: 'Bearer admin' },
+    body: { name: 'Paused test', status: 'paused' },
+  });
+  assert.equal(created.status, 201);
+  assert.equal(captured.createdStatus, 'paused');
+
+  const patched = await requestJson(app, {
+    method: 'PATCH',
+    path: '/api/admin/sessions/session-1',
+    headers: { Authorization: 'Bearer admin' },
+    body: { status: 'paused' },
+  });
+  assert.equal(patched.status, 200);
+  assert.equal(captured.patchedStatus, 'paused');
+});
+

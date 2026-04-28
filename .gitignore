@@ -2,7 +2,9 @@ node_modules/
 dist/
 .env
 .env.local
+.env*.local
 *.log
 .DS_Store
 storage/
 frontend/dist/
+backend/scripts/load/.env.render.local

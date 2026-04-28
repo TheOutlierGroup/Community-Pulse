@@ -51,6 +51,7 @@ export function requireAuth(req, res, next) {
         role: decoded.role,
         organizationId: decoded.organizationId,
         organizationKind: decoded.organizationKind,
+        mfaVerifiedAt: decoded.mfaVerifiedAt || null,
       };
       next();
     } catch (e) {
@@ -62,6 +63,10 @@ export function requireAuth(req, res, next) {
 export function requireAdmin(req, res, next) {
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ error: 'Admin only' });
+  }
+  const enforceAdminMfa = String(process.env.MFA_ENFORCE_ADMIN || 'true').trim().toLowerCase() !== 'false';
+  if (enforceAdminMfa && !req.user?.mfaVerifiedAt) {
+    return res.status(403).json({ error: 'MFA required for admin actions' });
   }
   next();
 }

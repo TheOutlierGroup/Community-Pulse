@@ -225,6 +225,8 @@ export async function upsertInviteRow({
   surveyRole = 'staff',
   managerInviteId = null,
   groupLevelValues = [],
+  respondentCountryCode = null,
+  privacyNoticeVersion = null,
 }) {
   const em = normalizeEmail(email);
   if (!em) return { row: null, error: 'invalid_email' };
@@ -244,14 +246,18 @@ export async function upsertInviteRow({
        email,
        survey_role,
        manager_invite_id,
-       group_level_values
+       group_level_values,
+       respondent_country_code,
+       privacy_notice_version
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
      ON CONFLICT (organization_id, timepoint_phase, timepoint_instance_key, email) DO UPDATE SET
        display_name = EXCLUDED.display_name,
        survey_role = EXCLUDED.survey_role,
        manager_invite_id = EXCLUDED.manager_invite_id,
        group_level_values = EXCLUDED.group_level_values,
+       respondent_country_code = COALESCE(EXCLUDED.respondent_country_code, pulse_link_invites.respondent_country_code),
+       privacy_notice_version = COALESCE(EXCLUDED.privacy_notice_version, pulse_link_invites.privacy_notice_version),
        updated_at = NOW()
      RETURNING *`,
     [
@@ -263,6 +269,8 @@ export async function upsertInviteRow({
       role,
       managerId,
       JSON.stringify(normalizedGroupLevelValues),
+      respondentCountryCode ? String(respondentCountryCode).trim().toUpperCase().slice(0, 8) : null,
+      privacyNoticeVersion ? String(privacyNoticeVersion).trim().slice(0, 64) : null,
     ]
   );
   return { row: rows[0], error: null };
@@ -387,4 +395,23 @@ export async function rotateTokenAndMarkSent(inviteId, organizationId) {
   );
   if (!rows[0]) return null;
   return { row: rows[0], rawToken: raw };
+}
+
+export async function updateInvitePrivacyMetadata(
+  inviteId,
+  organizationId,
+  { respondentCountryCode = null, privacyNoticeVersion = null } = {}
+) {
+  const country = respondentCountryCode ? String(respondentCountryCode).trim().toUpperCase().slice(0, 8) : null;
+  const noticeVersion = privacyNoticeVersion ? String(privacyNoticeVersion).trim().slice(0, 64) : null;
+  const { rows } = await query(
+    `UPDATE pulse_link_invites
+     SET respondent_country_code = COALESCE($3, respondent_country_code),
+         privacy_notice_version = COALESCE($4, privacy_notice_version),
+         updated_at = NOW()
+     WHERE id = $1 AND organization_id = $2
+     RETURNING *`,
+    [inviteId, organizationId, country, noticeVersion]
+  );
+  return rows[0] || null;
 }

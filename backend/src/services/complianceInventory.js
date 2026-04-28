@@ -50,6 +50,15 @@ export function buildComplianceInventory() {
     retentionPolicy: {
       exportRetentionDays: retentionPolicy.exportRetentionDays,
       tokenRetentionDays: retentionPolicy.tokenRetentionDays,
+      projectCloseRetentionDays: retentionPolicy.projectCloseRetentionDays,
+    },
+    securityControls: {
+      mfaEnforcedForAdmins: String(process.env.MFA_ENFORCE_ADMIN || 'true').toLowerCase() !== 'false',
+      retentionAlertWebhookConfigured: Boolean(process.env.RETENTION_ALERT_WEBHOOK),
+      clientDashboardTokenMaxHours: Number.parseInt(
+        String(process.env.CLIENT_DASHBOARD_TOKEN_MAX_HOURS || '24'),
+        10
+      ),
     },
     unknowns: [
       'Physical cloud region must be confirmed in the hosting provider dashboard.',

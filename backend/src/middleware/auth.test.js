@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { buildRequireClientPulseService, requireAuth } from './auth.js';
+import { buildRequireClientPulseService, requireAdmin, requireAuth } from './auth.js';
 import { authLimiter } from '../routes/auth.js';
 
 async function runRequest(app, { path = '/probe', method = 'GET', headers = {}, body } = {}) {
@@ -135,5 +135,26 @@ test('auth limiter throttles requests after threshold', async () => {
 
   assert.ok(last);
   assert.equal(last.status, 429);
+});
+
+test('requireAdmin enforces MFA claim by default', async () => {
+  const app = express();
+  app.use(express.json());
+  app.get('/admin', (req, _res, next) => {
+    req.user = { role: 'admin', mfaVerifiedAt: null };
+    next();
+  }, requireAdmin, (_req, res) => res.json({ ok: true }));
+
+  const blocked = await runRequest(app, { path: '/admin' });
+  assert.equal(blocked.status, 403);
+
+  const appAllowed = express();
+  appAllowed.use(express.json());
+  appAllowed.get('/admin', (req, _res, next) => {
+    req.user = { role: 'admin', mfaVerifiedAt: new Date().toISOString() };
+    next();
+  }, requireAdmin, (_req, res) => res.json({ ok: true }));
+  const allowed = await runRequest(appAllowed, { path: '/admin' });
+  assert.equal(allowed.status, 200);
 });
 

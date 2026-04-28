@@ -8,7 +8,8 @@ export const options = {
   scenarios: {
     slugResolution: {
       executor: 'constant-arrival-rate',
-      rate: 1000 / 60,
+      // k6 requires integer `rate`; ~1000 req/min becomes ~17 req/s.
+      rate: 17,
       timeUnit: '1s',
       duration: '2m',
       preAllocatedVUs: 30,

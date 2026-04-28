@@ -6,6 +6,7 @@ import { registerPlatformOrgRoutes } from './platform/orgRoutes.js';
 import { registerPlatformStaffRoutes } from './platform/staffRoutes.js';
 import platformComplianceRoutes from './platform/complianceRoutes.js';
 import platformTaskRoutes from './platform/taskRoutes.js';
+import platformPrivacyRoutes from './platform/privacyRoutes.js';
 import { checkPulseSoWhatSummaryHealth } from '../services/pulseSoWhatSummary.js';
 
 const router = Router();
@@ -63,6 +64,7 @@ router.get('/health/ai-summary', async (req, res) => {
   return res.status(health.ok ? 200 : 503).json(health);
 });
 router.use(platformComplianceRoutes);
+router.use(platformPrivacyRoutes);
 router.use(platformTaskRoutes);
 
 export default router;

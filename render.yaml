@@ -109,6 +109,46 @@ services:
       mountPath: /var/pulse-storage
       sizeGB: 1
 
+  - type: cron
+    name: pulse-retention-sweep
+    runtime: node
+    plan: starter
+    rootDir: .
+    schedule: "0 20 * * *"
+    buildCommand: chmod +x build.sh && ./build.sh
+    startCommand: cd backend && npm run retention:sweep
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pulse-db
+          property: connectionString
+      - key: STORAGE_PATH
+        value: /var/pulse-storage
+      - key: RETENTION_PROJECT_CLOSE_DAYS
+        value: "90"
+      - key: RETENTION_DRY_RUN
+        value: "false"
+      - key: RETENTION_ALERT_WEBHOOK
+        sync: false
+
+  - type: cron
+    name: pulse-archive-quarterly-review
+    runtime: node
+    plan: starter
+    rootDir: .
+    schedule: "0 21 1 */3 *"
+    buildCommand: chmod +x build.sh && ./build.sh
+    startCommand: cd backend && npm run archive:review
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pulse-db
+          property: connectionString
+
 databases:
   - name: pulse-db
     plan: basic
