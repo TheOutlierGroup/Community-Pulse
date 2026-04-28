@@ -71,6 +71,18 @@ function applyTemplatePlaceholders(template, replacements) {
   return out;
 }
 
+function formatDueDatePreview(value) {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return '';
+  const parsed = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 function EmailTemplateRichEditor({ value, onChange, disabled }) {
   const editor = useEditor(
     {
@@ -82,7 +94,7 @@ function EmailTemplateRichEditor({ value, onChange, disabled }) {
           horizontalRule: false,
         }),
         Placeholder.configure({
-          placeholder: 'Write email body. Use {{name}} and {{link}} placeholders.',
+          placeholder: 'Write email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders.',
         }),
       ],
       content: value || '<p></p>',
@@ -307,6 +319,8 @@ export default function PlatformPulseInviteUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyImport, setBusyImport] = useState(false);
+  const [dueDate, setDueDate] = useState('');
+  const [dueDateSaving, setDueDateSaving] = useState(false);
   const [copyingFromPre, setCopyingFromPre] = useState(false);
   const [sendingId, setSendingId] = useState(null);
   const [deleteConfirmRow, setDeleteConfirmRow] = useState(null);
@@ -410,9 +424,11 @@ export default function PlatformPulseInviteUsers() {
         params: inviteRequestParams,
       });
       setInvites(data.invites || []);
+      setDueDate(typeof data?.dueDate === 'string' ? data.dueDate : '');
     } catch (e) {
       setError(e.response?.data?.error || 'Could not load invite list.');
       setInvites([]);
+      setDueDate('');
     } finally {
       if (!silent) {
         setLoading(false);
@@ -821,7 +837,8 @@ export default function PlatformPulseInviteUsers() {
           audience: templateModalAudience,
           subject,
           bodyHtml,
-        }
+        },
+        { params: inviteRequestParams }
       );
       const sentTo = String(data?.to || user?.email || '').trim();
       showToast(sentTo ? `Test email sent to ${sentTo}.` : 'Test email sent.', {
@@ -851,6 +868,25 @@ export default function PlatformPulseInviteUsers() {
       });
     } finally {
       setSendingId(null);
+    }
+  }
+
+  async function saveDueDate(nextDueDate) {
+    setDueDateSaving(true);
+    try {
+      const normalized = String(nextDueDate || '').trim();
+      const { data } = await api.put(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/due-date`,
+        { dueDate: normalized || null },
+        { params: inviteRequestParams }
+      );
+      setDueDate(typeof data?.dueDate === 'string' ? data.dueDate : '');
+      showToast(normalized ? 'Due date saved.' : 'Due date cleared.', { variant: 'success' });
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not save due date.', { variant: 'error' });
+      await load({ silent: true });
+    } finally {
+      setDueDateSaving(false);
     }
   }
 
@@ -973,10 +1009,18 @@ export default function PlatformPulseInviteUsers() {
   const previewSubject = applyTemplatePlaceholders(editingTemplateSubject, {
     name: previewName,
     link: previewLink,
+    clientName: String(org?.name || ''),
+    clientname: String(org?.name || ''),
+    dueDate: formatDueDatePreview(dueDate) || dueDate || '',
+    duedate: formatDueDatePreview(dueDate) || dueDate || '',
   });
   const previewBodyHtml = applyTemplatePlaceholders(editingTemplateBodyHtml, {
     name: previewName,
     link: previewLink,
+    clientName: String(org?.name || ''),
+    clientname: String(org?.name || ''),
+    dueDate: formatDueDatePreview(dueDate) || dueDate || '',
+    duedate: formatDueDatePreview(dueDate) || dueDate || '',
   });
 
   return (
@@ -990,6 +1034,26 @@ export default function PlatformPulseInviteUsers() {
           </p>
         </div>
         <div className="pulse-platform-header__right" style={{ flexWrap: 'wrap' }}>
+          <label
+            htmlFor="pulse-invite-due-date"
+            className="field"
+            style={{ margin: 0, minWidth: '12rem', opacity: dueDateSaving ? 0.75 : 1 }}
+          >
+            <span style={{ display: 'block', fontSize: '0.78rem', marginBottom: '0.25rem' }}>
+              Due date (link viewable until)
+            </span>
+            <input
+              id="pulse-invite-due-date"
+              type="date"
+              value={dueDate}
+              disabled={dueDateSaving || busyImport || bulkSending || copyingFromPre}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                setDueDate(nextValue);
+                saveDueDate(nextValue);
+              }}
+            />
+          </label>
           <button
             type="button"
             className="btn btn-primary"
@@ -1202,7 +1266,8 @@ export default function PlatformPulseInviteUsers() {
                 </div>
               )}
               <p className="muted" style={{ marginTop: '0.45rem' }}>
-                Use placeholders: <code>{'{{name}}'}</code> and <code>{'{{link}}'}</code>.
+                Use placeholders: <code>{'{{name}}'}</code>, <code>{'{{link}}'}</code>, <code>{'{{dueDate}}'}</code>,
+                and <code>{'{{clientname}}'}</code>.
               </p>
             </div>
             <p className="muted" style={{ margin: '0 0 0.75rem' }}>

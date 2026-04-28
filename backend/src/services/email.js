@@ -71,6 +71,19 @@ function applyTemplatePlaceholders(template, replacements, { escapeValues = fals
   return out;
 }
 
+function formatDueDateForEmail(value) {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return '';
+  const iso = `${raw}T00:00:00.000Z`;
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleDateString('en-AU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 export function getPulseInviteDefaultTemplate(audience, organizationName) {
   const role = audience === 'manager' ? 'manager' : 'staff';
   const orgPlain = organizationName ? String(organizationName).trim() : 'your organization';
@@ -245,12 +258,20 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     typeof options?.bodyTemplateHtml === 'string' && options.bodyTemplateHtml.trim()
       ? options.bodyTemplateHtml
       : defaultTemplate.bodyHtml;
+  const dueDateRaw = String(options?.dueDate || '').trim();
+  const dueDateFormatted = formatDueDateForEmail(dueDateRaw);
+  const clientName = orgPlain;
+  const templateReplacements = {
+    name: name || 'there',
+    link: safePulseUrl,
+    clientName,
+    clientname: clientName,
+    dueDate: dueDateFormatted || dueDateRaw,
+    duedate: dueDateFormatted || dueDateRaw,
+  };
   const subjectPlain = applyTemplatePlaceholders(
     subjectTemplate,
-    {
-      name: name || 'there',
-      link: safePulseUrl,
-    },
+    templateReplacements,
     { escapeValues: false }
   )
     .replace(/<[^>]+>/g, ' ')
@@ -260,10 +281,7 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     .slice(0, 200) || defaultTemplate.subject;
   const renderedBodyHtml = applyTemplatePlaceholders(
     bodyTemplateHtml,
-    {
-      name: name || 'there',
-      link: safePulseUrl,
-    },
+    templateReplacements,
     { escapeValues: true }
   );
   const { logoBlock, attachments } = buildClientEmailLogoParts(

@@ -14,6 +14,8 @@ import {
 import { organizationHasService, CLIENT_SERVICE_PULSE } from '../services/clientServices.js';
 import { internalTimepointToPulseStage, parsePulseStageFromRequest } from '../services/pulseStage.js';
 
+const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function createPulseLinkRoutes({
   organizationModel = Organization,
   pulseSessionModel = PulseSession,
@@ -53,6 +55,35 @@ function getLinkToken(req) {
     return true;
   }
 
+  function pulseInviteDueDateScopeKey(invite) {
+    if (!invite) return null;
+    if (invite.timepoint_phase === 'pre') return 'pre';
+    if (invite.timepoint_phase === 'post') return 'post';
+    if (invite.timepoint_phase === 'mid') {
+      const key = String(invite.timepoint_instance_key || '').trim();
+      return key || null;
+    }
+    return null;
+  }
+
+  function pulseInviteDueDateForInvite(settings, invite) {
+    const scopeKey = pulseInviteDueDateScopeKey(invite);
+    if (!scopeKey) return null;
+    const dueDates = settings?.pulseInviteDueDates;
+    if (!dueDates || typeof dueDates !== 'object' || Array.isArray(dueDates)) return null;
+    const value = String(dueDates[scopeKey] || '').trim();
+    if (!ISO_DATE_ONLY_RE.test(value)) return null;
+    return value;
+  }
+
+  function inviteIsPastDueDate(invite, settings) {
+    const dueDate = pulseInviteDueDateForInvite(settings, invite);
+    if (!dueDate) return false;
+    const dueEndMs = new Date(`${dueDate}T23:59:59.999Z`).getTime();
+    if (Number.isNaN(dueEndMs)) return false;
+    return Date.now() > dueEndMs;
+  }
+
   async function requirePulseLink(req, res, next) {
     try {
       const raw = getLinkToken(req);
@@ -70,6 +101,9 @@ function getLinkToken(req) {
       }
       if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
         return res.status(403).json({ error: 'Rhythm Engine is not available' });
+      }
+      if (inviteIsPastDueDate(invite, org.settings)) {
+        return res.status(401).json({ error: 'Invalid or expired link' });
       }
       req.pulseLinkInvite = invite;
       req.pulseLinkOrganization = org;

@@ -62,7 +62,8 @@ function EmailTemplateRichEditor({ value, onChange, disabled, placeholder }) {
           horizontalRule: false,
         }),
         Placeholder.configure({
-          placeholder: placeholder || 'Write email body. Use {{name}} and {{link}} placeholders.',
+          placeholder:
+            placeholder || 'Write email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders.',
         }),
       ],
       content: value || '<p></p>',
@@ -195,22 +196,40 @@ export default function PlatformSettings() {
   });
 
   const previewName = 'Alex';
+  const previewClientName = 'Acme Co';
+  const previewDueDate = '30 Apr 2026';
   const previewLink = 'https://app.employeepulse.app/rhythm-engine/pre/link/your-personal-token';
   const staffPreviewSubject = applyTemplatePlaceholders(defaultTemplates.staff.subject, {
     name: previewName,
     link: previewLink,
+    dueDate: previewDueDate,
+    duedate: previewDueDate,
+    clientname: previewClientName,
+    clientName: previewClientName,
   });
   const managerPreviewSubject = applyTemplatePlaceholders(defaultTemplates.manager.subject, {
     name: previewName,
     link: previewLink,
+    dueDate: previewDueDate,
+    duedate: previewDueDate,
+    clientname: previewClientName,
+    clientName: previewClientName,
   });
   const staffPreviewBodyHtml = applyTemplatePlaceholders(defaultTemplates.staff.bodyHtml, {
     name: previewName,
     link: previewLink,
+    dueDate: previewDueDate,
+    duedate: previewDueDate,
+    clientname: previewClientName,
+    clientName: previewClientName,
   });
   const managerPreviewBodyHtml = applyTemplatePlaceholders(defaultTemplates.manager.bodyHtml, {
     name: previewName,
     link: previewLink,
+    dueDate: previewDueDate,
+    duedate: previewDueDate,
+    clientname: previewClientName,
+    clientName: previewClientName,
   });
 
   useEffect(() => {
@@ -559,7 +578,7 @@ export default function PlatformSettings() {
                   value={defaultTemplates.staff.bodyHtml}
                   onChange={(nextBodyHtml) => updateDefaultTemplateField('staff', 'bodyHtml', nextBodyHtml)}
                   disabled={loadingDefaultTemplates || savingDefaultTemplates}
-                  placeholder="Write staff email body. Use {{name}} and {{link}} placeholders."
+                  placeholder="Write staff email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders."
                 />
               )}
             </div>
@@ -632,7 +651,7 @@ export default function PlatformSettings() {
                   value={defaultTemplates.manager.bodyHtml}
                   onChange={(nextBodyHtml) => updateDefaultTemplateField('manager', 'bodyHtml', nextBodyHtml)}
                   disabled={loadingDefaultTemplates || savingDefaultTemplates}
-                  placeholder="Write manager email body. Use {{name}} and {{link}} placeholders."
+                  placeholder="Write manager email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders."
                 />
               )}
             </div>
@@ -647,7 +666,8 @@ export default function PlatformSettings() {
           </section>
         </div>
         <p className="muted" style={{ margin: '0.95rem 0 0' }}>
-          Placeholders available in subject and body: <code>{'{{name}}'}</code>, <code>{'{{link}}'}</code>.
+          Placeholders available in subject and body: <code>{'{{name}}'}</code>, <code>{'{{link}}'}</code>,{' '}
+          <code>{'{{dueDate}}'}</code>, <code>{'{{clientname}}'}</code>.
         </p>
       </div>
     </Layout>

@@ -638,7 +638,44 @@ const CLIENT_STATUS_LEGACY_MAP = new Map([
 const PULSE_INVITE_TEMPLATE_AUDIENCES = new Set(['staff', 'manager']);
 const PULSE_INVITE_TEMPLATE_MAX_SUBJECT_LENGTH = 200;
 const PULSE_INVITE_TEMPLATE_MAX_BODY_LENGTH = 20000;
-const PULSE_INVITE_TEMPLATE_PLACEHOLDERS = ['{{name}}', '{{link}}'];
+const PULSE_INVITE_TEMPLATE_PLACEHOLDERS = ['{{name}}', '{{link}}', '{{dueDate}}', '{{clientname}}'];
+const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function normalizeDateOnly(value) {
+  if (value == null || value === '') return null;
+  const raw = String(value).trim();
+  if (!ISO_DATE_ONLY_RE.test(raw)) return null;
+  const parsed = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return raw;
+}
+
+function pulseInviteScopeKey(timepointPhase, duringSessionId) {
+  if (timepointPhase === 'pre') return 'pre';
+  if (timepointPhase === 'post') return 'post';
+  if (timepointPhase !== 'mid') return null;
+  const sessionId = String(duringSessionId || '').trim();
+  if (!sessionId) return null;
+  return `session:${sessionId}`;
+}
+
+function pulseInviteDueDatesFromSettings(settings) {
+  const raw = settings?.pulseInviteDueDates;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const normalized = normalizeDateOnly(value);
+    if (normalized) out[key] = normalized;
+  }
+  return out;
+}
+
+function pulseInviteDueDateForScope(settings, timepointPhase, duringSessionId) {
+  const scopeKey = pulseInviteScopeKey(timepointPhase, duringSessionId);
+  if (!scopeKey) return null;
+  const dueDates = pulseInviteDueDatesFromSettings(settings);
+  return dueDates[scopeKey] || null;
+}
 
 function pulseInviteDefaultTemplateFromSettings(settings, audience, organizationName) {
   const role = audience === 'manager' ? 'manager' : 'staff';
@@ -1999,7 +2036,8 @@ export function registerPlatformOrgRoutes(router) {
     const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
     if (duringSessionError) return res.status(400).json({ error: duringSessionError });
     const rows = await PulseLinkInvite.listInvitesForOrg(req.params.id, { timepointPhase, duringSessionId });
-    res.json({ invites: rows.map(PulseLinkInvite.publicInviteRow) });
+    const dueDate = pulseInviteDueDateForScope(org.settings, timepointPhase, duringSessionId);
+    res.json({ invites: rows.map(PulseLinkInvite.publicInviteRow), dueDate });
   });
 
   router.get('/organizations/:id/pulse-link-invites/templates', async (req, res) => {
@@ -2105,15 +2143,22 @@ export function registerPlatformOrgRoutes(router) {
       .map((value) => String(value || '').trim())
       .filter(Boolean)
       .join(' ');
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
+    const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
+    if (duringSessionError) return res.status(400).json({ error: duringSessionError });
     const pulseBaseUrl = resolvePulseAppBaseUrl();
+    const inviteStage = internalTimepointToPulseStage(timepointPhase);
     const testLink = pulseBaseUrl
-      ? `${pulseBaseUrl}/rhythm-engine/pre/link/test-link`
-      : 'https://app.employeepulse.app/rhythm-engine/pre/link/test-link';
+      ? `${pulseBaseUrl}/rhythm-engine/${inviteStage}/link/test-link`
+      : `https://app.employeepulse.app/rhythm-engine/${inviteStage}/link/test-link`;
+    const dueDate = pulseInviteDueDateForScope(org.settings, timepointPhase, duringSessionId);
     try {
       await sendPulseInviteEmail(targetEmail, displayName || 'Test recipient', testLink, org.name, {
         audience,
         subjectTemplate: subject,
         bodyTemplateHtml: bodyHtml,
+        dueDate,
         clientLogoFilename: org.company_logo_filename,
         clientLogoAlt: org.name,
       });
@@ -2127,6 +2172,34 @@ export function registerPlatformOrgRoutes(router) {
       });
     }
     return res.json({ ok: true, to: targetEmail });
+  });
+
+  router.put('/organizations/:id/pulse-link-invites/due-date', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
+    const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
+    if (duringSessionError) return res.status(400).json({ error: duringSessionError });
+    const dueDateValue = req.body?.dueDate;
+    const dueDate = normalizeDateOnly(dueDateValue);
+    if (dueDateValue != null && dueDateValue !== '' && !dueDate) {
+      return res.status(400).json({ error: 'dueDate must be YYYY-MM-DD or empty' });
+    }
+    const scopeKey = pulseInviteScopeKey(timepointPhase, duringSessionId);
+    if (!scopeKey) {
+      return res.status(400).json({ error: 'Could not resolve due date scope' });
+    }
+    const dueDates = pulseInviteDueDatesFromSettings(org.settings);
+    if (dueDate) dueDates[scopeKey] = dueDate;
+    else delete dueDates[scopeKey];
+    const updated = await Organization.updateOrganizationSettings(org.id, {
+      pulseInviteDueDates: dueDates,
+    });
+    if (!updated) return res.status(404).json({ error: 'Organization not found' });
+    return res.json({
+      dueDate: pulseInviteDueDateForScope(updated.settings, timepointPhase, duringSessionId),
+    });
   });
 
   router.post('/organizations/:id/pulse-link-invites/import', async (req, res) => {
@@ -2323,11 +2396,13 @@ export function registerPlatformOrgRoutes(router) {
     const audience = invite.survey_role === 'manager' ? 'manager' : 'staff';
     const platformOrg = await Organization.getOrganization(req.user.organizationId);
     const template = pulseInviteTemplateFromSettings(org.settings, audience, org.name, platformOrg?.settings);
+    const dueDate = pulseInviteDueDateForScope(org.settings, timepointPhase, duringSessionId);
     try {
       await sendPulseInviteEmail(invite.email, invite.display_name, linkUrl, org.name, {
         audience,
         subjectTemplate: template.subject,
         bodyTemplateHtml: template.bodyHtml,
+        dueDate,
         clientLogoFilename: org.company_logo_filename,
         clientLogoAlt: org.name,
       });
