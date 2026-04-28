@@ -332,6 +332,7 @@ export default function PlatformClientPulse() {
   const threshold = Number.isFinite(scoreSemantics.threshold) ? scoreSemantics.threshold : 28;
   const adoptionScore = Number.isFinite(kpis.adoptionScore) ? kpis.adoptionScore : null;
   const sponsorshipScore = Number.isFinite(kpis.sponsorshipScore) ? kpis.sponsorshipScore : null;
+  const sponsorshipDelta = Number.isFinite(kpis.sponsorshipDelta) ? kpis.sponsorshipDelta : null;
   const managerBreakdownRows = dashboard?.byManager || [];
   const dimensions = dashboard?.dimensions || [];
   const employeeDimensions = useMemo(
