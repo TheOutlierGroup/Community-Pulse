@@ -1082,10 +1082,17 @@ export default function PlatformPulseInviteUsers() {
           <label
             htmlFor="pulse-invite-due-date"
             className="field"
-            style={{ margin: 0, minWidth: '12rem', opacity: dueDateSaving ? 0.75 : 1 }}
+            style={{
+              margin: 0,
+              minWidth: '12rem',
+              opacity: dueDateSaving ? 0.75 : 1,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.55rem',
+            }}
           >
-            <span style={{ display: 'block', fontSize: '0.78rem', marginBottom: '0.25rem' }}>
-              Due date (link viewable until)
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              Due Date
             </span>
             <input
               id="pulse-invite-due-date"
@@ -1334,7 +1341,7 @@ export default function PlatformPulseInviteUsers() {
                 onClick={resetTemplateToTimepointDefault}
                 disabled={templateSaving || templateResetting || templateTestSending}
               >
-                {templateResetting ? 'Resetting…' : 'Reset to timepoint default'}
+                {templateResetting ? 'Resetting…' : 'Reset to default'}
               </button>
               <button
                 type="button"
