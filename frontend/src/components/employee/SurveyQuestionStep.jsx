@@ -6,7 +6,14 @@ const SCALE = [
   { value: 5, label: 'Strongly Agree' },
 ];
 
-export default function SurveyQuestionStep({ title, subtitle, questions, answers, onAnswer }) {
+export default function SurveyQuestionStep({
+  title,
+  subtitle,
+  questions,
+  answers,
+  onAnswer,
+  startQuestionNumber = 1,
+}) {
   return (
     <div>
       <div className="step1-intro">
@@ -14,10 +21,12 @@ export default function SurveyQuestionStep({ title, subtitle, questions, answers
         {subtitle ? <p className="step1-intro-hint muted">{subtitle}</p> : null}
       </div>
 
-      {questions.map((question) => (
+      {questions.map((question, index) => (
         <div key={question.id} className="theme-row">
           <header>
-            <span className="label">{question.text}</span>
+            <span className="label">
+              {startQuestionNumber + index}. {question.text}
+            </span>
             <span className="value">{answers[question.id] ? SCALE[answers[question.id] - 1]?.label : 'Unanswered'}</span>
           </header>
           <div

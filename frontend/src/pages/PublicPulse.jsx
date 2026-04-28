@@ -280,6 +280,7 @@ export default function PublicPulse() {
                 title={`${surveyAudience === 'manager' ? 'Manager' : 'Staff'} survey · Section ${step} of 4`}
                 subtitle={surveyCopy?.transition || 'Rate each statement using the 1-5 scale.'}
                 questions={questions.slice((step - 1) * 4, step * 4)}
+                startQuestionNumber={(step - 1) * 4 + 1}
                 answers={answers}
                 onAnswer={(id, value) => setAnswers((current) => ({ ...current, [id]: value }))}
               />
