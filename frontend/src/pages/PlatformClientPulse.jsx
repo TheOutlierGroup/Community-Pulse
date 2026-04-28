@@ -312,7 +312,7 @@ export default function PlatformClientPulse() {
   const pageTitle = sectionLabel(pulseFocusedSection);
   const showingFullDashboard = pulseFocusedSection == null;
   const showReadinessSection = showingFullDashboard || pulseFocusedSection === 'organisation-scores';
-  const showScoresSection = pulseFocusedSection === 'sponsorship-analysis';
+  const showScoresSection = showingFullDashboard || pulseFocusedSection === 'sponsorship-analysis';
   const showDimensionsSection = showingFullDashboard
     || pulseFocusedSection === 'employee-breakdown'
     || pulseFocusedSection === 'trend-analysis';
@@ -895,25 +895,6 @@ export default function PlatformClientPulse() {
 
       {showReadinessSection ? (
         <section className="pulse-clean-readiness card">
-        <div className="pulse-clean-readiness__top">
-          <div className="pulse-clean-readiness__quadrants">
-            {quadrants.map((quadrant) => (
-              <div
-                key={quadrant.name}
-                className={`pulse-clean-readiness__quadrant pulse-clean-readiness__quadrant--${quadrantTone(quadrant.name)}`}
-              >
-                <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
-                <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
-              </div>
-            ))}
-          </div>
-          <p className="pulse-clean-readiness__statement">
-            Only {formatPercent(optimalPercent)} of respondents are in a position to absorb and sustain this change
-            without additional intervention. The remaining {formatPercent(remainingPercent)} are distributed across
-            three readiness states.
-          </p>
-        </div>
-
         <div className="pulse-clean-readiness__cards">
           {insightCards.length > 0 ? (
             insightCards.map((card) => (
