@@ -17,6 +17,11 @@ import {
 
 const LOCKED_SERVICE_IDS = new Set([CLIENT_SERVICE_PULSE, CLIENT_SERVICE_OTHER]);
 const TEMPLATE_MAX_SUBJECT_LENGTH = 200;
+const TEMPLATE_TIMEPOINT_OPTIONS = [
+  { value: 'pre', label: 'Pre' },
+  { value: 'during', label: 'During' },
+  { value: 'post', label: 'Post' },
+];
 
 function stripHtmlToText(html) {
   return String(html || '')
@@ -49,6 +54,13 @@ function defaultTemplateForAudience(audience) {
     bodyHtml:
       '<p>Hi {{name}},</p><p>You have been invited to complete a short Rhythm Engine questionnaire.</p><p><a href="{{link}}">Open Rhythm Engine</a></p>',
   };
+}
+
+function templateTimepointLabel(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'during' || normalized === 'mid') return 'During';
+  if (normalized === 'post' || normalized === 'completed') return 'Post';
+  return 'Pre';
 }
 
 function EmailTemplateRichEditor({ value, onChange, disabled, placeholder }) {
@@ -189,6 +201,7 @@ export default function PlatformSettings() {
   const [savingDefaultTemplates, setSavingDefaultTemplates] = useState(false);
   const [defaultTemplateMessage, setDefaultTemplateMessage] = useState('');
   const [defaultTemplateError, setDefaultTemplateError] = useState('');
+  const [defaultTemplateTimepoint, setDefaultTemplateTimepoint] = useState('pre');
   const [defaultTemplates, setDefaultTemplates] = useState(() => normalizeDefaultTemplates(null));
   const [templateEditorMode, setTemplateEditorMode] = useState({
     staff: 'edit',
@@ -198,7 +211,8 @@ export default function PlatformSettings() {
   const previewName = 'Alex';
   const previewClientName = 'Acme Co';
   const previewDueDate = '30 Apr 2026';
-  const previewLink = 'https://app.employeepulse.app/rhythm-engine/pre/link/your-personal-token';
+  const previewStage = defaultTemplateTimepoint === 'during' ? 'during' : defaultTemplateTimepoint === 'post' ? 'post' : 'pre';
+  const previewLink = `https://app.employeepulse.app/rhythm-engine/${previewStage}/link/your-personal-token`;
   const staffPreviewSubject = applyTemplatePlaceholders(defaultTemplates.staff.subject, {
     name: previewName,
     link: previewLink,
@@ -259,7 +273,9 @@ export default function PlatformSettings() {
       setLoadingDefaultTemplates(true);
       setDefaultTemplateError('');
       try {
-        const { data } = await api.get('/api/platform/rhythm-engine-link-invites/default-templates');
+        const { data } = await api.get('/api/platform/rhythm-engine-link-invites/default-templates', {
+          params: { timepoint: defaultTemplateTimepoint },
+        });
         setDefaultTemplates(normalizeDefaultTemplates(data?.templates));
       } catch (err) {
         setDefaultTemplateError(err.response?.data?.error || 'Could not load default email templates.');
@@ -267,7 +283,7 @@ export default function PlatformSettings() {
         setLoadingDefaultTemplates(false);
       }
     })();
-  }, [isPlatformAdmin]);
+  }, [defaultTemplateTimepoint, isPlatformAdmin]);
 
   useEffect(() => {
     if (!loading && ok && user?.role !== 'admin') {
@@ -381,9 +397,13 @@ export default function PlatformSettings() {
         audience: role,
         subject,
         bodyHtml,
+      }, {
+        params: { timepoint: defaultTemplateTimepoint },
       });
       setDefaultTemplates(normalizeDefaultTemplates(data?.templates));
-      setDefaultTemplateMessage(`${role === 'manager' ? 'Manager' : 'Staff'} default template saved.`);
+      setDefaultTemplateMessage(
+        `${templateTimepointLabel(defaultTemplateTimepoint)} ${role === 'manager' ? 'manager' : 'staff'} default template saved.`
+      );
     } catch (err) {
       setDefaultTemplateError(err.response?.data?.error || 'Could not save default email template.');
     } finally {
@@ -507,6 +527,28 @@ export default function PlatformSettings() {
         <p className="muted" style={{ margin: '0.45rem 0 0.95rem' }}>
           These are the system-wide defaults used for every client. Teams can still edit templates per client in Rhythm Engine.
         </p>
+        <div
+          className="pulse-template-mode-switch"
+          role="tablist"
+          aria-label="Default template survey stage"
+          style={{ marginBottom: '0.9rem' }}
+        >
+          {TEMPLATE_TIMEPOINT_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="tab"
+              aria-selected={defaultTemplateTimepoint === option.value}
+              className={`pulse-template-mode-switch__pill${
+                defaultTemplateTimepoint === option.value ? ' pulse-template-mode-switch__pill--active' : ''
+              }`}
+              onClick={() => setDefaultTemplateTimepoint(option.value)}
+              disabled={loadingDefaultTemplates || savingDefaultTemplates}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         {defaultTemplateError ? (
           <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
             {defaultTemplateError}

@@ -338,6 +338,7 @@ export default function PlatformPulseInviteUsers() {
   const [templateModalAudience, setTemplateModalAudience] = useState(null);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateResetting, setTemplateResetting] = useState(false);
   const [templateTestSending, setTemplateTestSending] = useState(false);
   const [templateError, setTemplateError] = useState('');
   const [emailTemplates, setEmailTemplates] = useState({
@@ -439,7 +440,9 @@ export default function PlatformPulseInviteUsers() {
   const loadTemplates = useCallback(async () => {
     setTemplatesLoading(true);
     try {
-      const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates`);
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates`, {
+        params: inviteRequestParams,
+      });
       const templates = data?.templates || {};
       setEmailTemplates({
         staff: {
@@ -456,7 +459,7 @@ export default function PlatformPulseInviteUsers() {
     } finally {
       setTemplatesLoading(false);
     }
-  }, [orgId, showToast]);
+  }, [inviteRequestParams, orgId, showToast]);
 
   useEffect(() => {
     load();
@@ -759,7 +762,7 @@ export default function PlatformPulseInviteUsers() {
   }
 
   function closeTemplateModal() {
-    if (templateSaving) return;
+    if (templateSaving || templateResetting) return;
     setTemplateModalAudience(null);
     setTemplateError('');
   }
@@ -785,11 +788,15 @@ export default function PlatformPulseInviteUsers() {
     setTemplateSaving(true);
     setTemplateError('');
     try {
-      const { data } = await api.put(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates`, {
-        audience: templateModalAudience,
-        subject,
-        bodyHtml,
-      });
+      const { data } = await api.put(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates`,
+        {
+          audience: templateModalAudience,
+          subject,
+          bodyHtml,
+        },
+        { params: inviteRequestParams }
+      );
       const templates = data?.templates || {};
       setEmailTemplates({
         staff: {
@@ -848,6 +855,44 @@ export default function PlatformPulseInviteUsers() {
       setTemplateError(apiErrorDetail(err, 'Could not send test email.'));
     } finally {
       setTemplateTestSending(false);
+    }
+  }
+
+  async function resetTemplateToTimepointDefault() {
+    if (!templateModalAudience) return;
+    const confirmed = window.confirm('Reset this template to the default for the current survey timepoint?');
+    if (!confirmed) return;
+    setTemplateError('');
+    setTemplateResetting(true);
+    try {
+      const { data } = await api.post(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates/reset-default`,
+        { audience: templateModalAudience },
+        { params: inviteRequestParams }
+      );
+      const templates = data?.templates || {};
+      const nextTemplates = {
+        staff: {
+          ...defaultTemplateForAudience('staff'),
+          ...(templates.staff || {}),
+        },
+        manager: {
+          ...defaultTemplateForAudience('manager'),
+          ...(templates.manager || {}),
+        },
+      };
+      setEmailTemplates(nextTemplates);
+      const resetTemplate = nextTemplates[templateModalAudience] || defaultTemplateForAudience(templateModalAudience);
+      setEditingTemplateSubject(String(resetTemplate.subject || ''));
+      setEditingTemplateBodyHtml(String(resetTemplate.bodyHtml || '<p></p>'));
+      showToast(
+        `${templateModalAudience === 'manager' ? 'Manager' : 'Staff'} template reset to timepoint default.`,
+        { variant: 'success' }
+      );
+    } catch (err) {
+      setTemplateError(err.response?.data?.error || 'Could not reset template to default.');
+    } finally {
+      setTemplateResetting(false);
     }
   }
 
@@ -1278,7 +1323,7 @@ export default function PlatformPulseInviteUsers() {
                 type="button"
                 className="btn btn-ghost"
                 onClick={sendTemplateTestEmail}
-                disabled={templateSaving || templateTestSending}
+                disabled={templateSaving || templateResetting || templateTestSending}
                 title={user?.email ? `Send to ${user.email}` : 'Send to your account email'}
               >
                 {templateTestSending ? 'Sending test…' : 'Send test'}
@@ -1286,15 +1331,23 @@ export default function PlatformPulseInviteUsers() {
               <button
                 type="button"
                 className="btn btn-ghost"
+                onClick={resetTemplateToTimepointDefault}
+                disabled={templateSaving || templateResetting || templateTestSending}
+              >
+                {templateResetting ? 'Resetting…' : 'Reset to timepoint default'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
                 onClick={closeTemplateModal}
-                disabled={templateSaving || templateTestSending}
+                disabled={templateSaving || templateResetting || templateTestSending}
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 className="btn btn-primary modal-dialog__submit"
-                disabled={templateSaving || templateTestSending}
+                disabled={templateSaving || templateResetting || templateTestSending}
               >
                 {templateSaving ? 'Saving…' : 'Save template'}
               </button>
