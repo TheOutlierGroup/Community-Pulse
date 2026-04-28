@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SlidersHorizontal } from 'lucide-react';
+import { EditorContent, useEditor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import { Bold, Italic, Link2, List, ListOrdered, SlidersHorizontal } from 'lucide-react';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
@@ -15,6 +18,24 @@ import {
 const LOCKED_SERVICE_IDS = new Set([CLIENT_SERVICE_PULSE, CLIENT_SERVICE_OTHER]);
 const TEMPLATE_MAX_SUBJECT_LENGTH = 200;
 
+function stripHtmlToText(html) {
+  return String(html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function applyTemplatePlaceholders(template, replacements) {
+  let out = String(template || '');
+  const map = replacements && typeof replacements === 'object' ? replacements : {};
+  for (const [key, value] of Object.entries(map)) {
+    const tokenPattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
+    out = out.replace(tokenPattern, String(value ?? ''));
+  }
+  return out;
+}
+
 function defaultTemplateForAudience(audience) {
   if (audience === 'manager') {
     return {
@@ -28,6 +49,114 @@ function defaultTemplateForAudience(audience) {
     bodyHtml:
       '<p>Hi {{name}},</p><p>You have been invited to complete a short Rhythm Engine questionnaire.</p><p><a href="{{link}}">Open Rhythm Engine</a></p>',
   };
+}
+
+function EmailTemplateRichEditor({ value, onChange, disabled, placeholder }) {
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit.configure({
+          heading: false,
+          codeBlock: false,
+          blockquote: false,
+          horizontalRule: false,
+        }),
+        Placeholder.configure({
+          placeholder: placeholder || 'Write email body. Use {{name}} and {{link}} placeholders.',
+        }),
+      ],
+      content: value || '<p></p>',
+      editable: !disabled,
+      onUpdate: ({ editor: nextEditor }) => {
+        onChange(nextEditor.getHTML());
+      },
+    },
+    [disabled, placeholder]
+  );
+
+  useEffect(() => {
+    if (!editor) return;
+    const next = value || '<p></p>';
+    if (next !== editor.getHTML()) {
+      editor.commands.setContent(next, false);
+    }
+  }, [editor, value]);
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(!disabled);
+  }, [editor, disabled]);
+
+  if (!editor) {
+    return <div className="task-card-modal__rte task-card-modal__rte--loading muted">Loading editor...</div>;
+  }
+
+  function setLink() {
+    const previous = editor.getAttributes('link').href;
+    const url = window.prompt('Link URL', previous || 'https://');
+    if (url === null) return;
+    const trimmed = url.trim();
+    if (!trimmed) {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      return;
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: trimmed }).run();
+  }
+
+  return (
+    <div className={`task-card-modal__rte${disabled ? ' task-card-modal__rte--disabled' : ''}`}>
+      <div className="task-card-modal__rte-toolbar" role="toolbar" aria-label="Email template formatting">
+        <div className="task-card-modal__rte-toolbar-group">
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('bold') ? ' is-active' : ''}`}
+            onClick={() => editor.chain().focus().toggleBold().run()}
+            disabled={disabled}
+            aria-label="Bold"
+          >
+            <Bold size={16} strokeWidth={2} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('italic') ? ' is-active' : ''}`}
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+            disabled={disabled}
+            aria-label="Italic"
+          >
+            <Italic size={16} strokeWidth={2} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('bulletList') ? ' is-active' : ''}`}
+            onClick={() => editor.chain().focus().toggleBulletList().run()}
+            disabled={disabled}
+            aria-label="Bullet list"
+          >
+            <List size={16} strokeWidth={2} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('orderedList') ? ' is-active' : ''}`}
+            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+            disabled={disabled}
+            aria-label="Numbered list"
+          >
+            <ListOrdered size={16} strokeWidth={2} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={`task-card-modal__rte-tool${editor.isActive('link') ? ' is-active' : ''}`}
+            onClick={setLink}
+            disabled={disabled}
+            aria-label="Insert link"
+          >
+            <Link2 size={16} strokeWidth={2} aria-hidden />
+          </button>
+        </div>
+      </div>
+      <EditorContent editor={editor} className="task-card-modal__rte-content" />
+    </div>
+  );
 }
 
 function normalizeDefaultTemplates(rawTemplates) {
@@ -60,6 +189,29 @@ export default function PlatformSettings() {
   const [defaultTemplateMessage, setDefaultTemplateMessage] = useState('');
   const [defaultTemplateError, setDefaultTemplateError] = useState('');
   const [defaultTemplates, setDefaultTemplates] = useState(() => normalizeDefaultTemplates(null));
+  const [templateEditorMode, setTemplateEditorMode] = useState({
+    staff: 'edit',
+    manager: 'edit',
+  });
+
+  const previewName = 'Alex';
+  const previewLink = 'https://app.employeepulse.app/rhythm-engine/pre/link/your-personal-token';
+  const staffPreviewSubject = applyTemplatePlaceholders(defaultTemplates.staff.subject, {
+    name: previewName,
+    link: previewLink,
+  });
+  const managerPreviewSubject = applyTemplatePlaceholders(defaultTemplates.manager.subject, {
+    name: previewName,
+    link: previewLink,
+  });
+  const staffPreviewBodyHtml = applyTemplatePlaceholders(defaultTemplates.staff.bodyHtml, {
+    name: previewName,
+    link: previewLink,
+  });
+  const managerPreviewBodyHtml = applyTemplatePlaceholders(defaultTemplates.manager.bodyHtml, {
+    name: previewName,
+    link: previewLink,
+  });
 
   useEffect(() => {
     if (!isPlatformAdmin) return;
@@ -197,7 +349,7 @@ export default function PlatformSettings() {
     const template = defaultTemplates[role] || defaultTemplateForAudience(role);
     const subject = String(template.subject || '').trim();
     const bodyHtml = String(template.bodyHtml || '').trim();
-    if (!subject || !bodyHtml) {
+    if (!subject || !stripHtmlToText(bodyHtml)) {
       setDefaultTemplateError('Each default template needs both a subject and body.');
       setDefaultTemplateMessage('');
       return;
@@ -359,15 +511,57 @@ export default function PlatformSettings() {
                 disabled={loadingDefaultTemplates || savingDefaultTemplates}
               />
             </div>
-            <div className="field">
-              <label htmlFor="settings-staff-template-body">Body (HTML supported)</label>
-              <textarea
-                id="settings-staff-template-body"
-                value={defaultTemplates.staff.bodyHtml}
-                onChange={(e) => updateDefaultTemplateField('staff', 'bodyHtml', e.target.value)}
+            <div className="pulse-template-mode-switch" role="tablist" aria-label="Staff template editor mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={templateEditorMode.staff === 'edit'}
+                className={`pulse-template-mode-switch__pill${
+                  templateEditorMode.staff === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
+                }`}
+                onClick={() => setTemplateEditorMode((current) => ({ ...current, staff: 'edit' }))}
                 disabled={loadingDefaultTemplates || savingDefaultTemplates}
-                rows={6}
-              />
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={templateEditorMode.staff === 'view'}
+                className={`pulse-template-mode-switch__pill${
+                  templateEditorMode.staff === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
+                }`}
+                onClick={() => setTemplateEditorMode((current) => ({ ...current, staff: 'view' }))}
+                disabled={loadingDefaultTemplates || savingDefaultTemplates}
+              >
+                View
+              </button>
+            </div>
+            <div className="field">
+              <label>{templateEditorMode.staff === 'view' ? 'Preview' : 'Body'}</label>
+              {templateEditorMode.staff === 'view' ? (
+                <div className="pulse-template-preview">
+                  <div className="pulse-template-preview__subject">{staffPreviewSubject || '(No subject)'}</div>
+                  <div className="pulse-template-preview__canvas">
+                    <div
+                      className="pulse-template-preview__body"
+                      dangerouslySetInnerHTML={{ __html: staffPreviewBodyHtml || '<p></p>' }}
+                    />
+                    <p className="pulse-template-preview__footer">
+                      If the button does not work, copy and paste this URL into your browser:
+                      <br />
+                      <span>{previewLink}</span>
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <EmailTemplateRichEditor
+                  value={defaultTemplates.staff.bodyHtml}
+                  onChange={(nextBodyHtml) => updateDefaultTemplateField('staff', 'bodyHtml', nextBodyHtml)}
+                  disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                  placeholder="Write staff email body. Use {{name}} and {{link}} placeholders."
+                />
+              )}
             </div>
             <button
               type="button"
@@ -390,15 +584,57 @@ export default function PlatformSettings() {
                 disabled={loadingDefaultTemplates || savingDefaultTemplates}
               />
             </div>
-            <div className="field">
-              <label htmlFor="settings-manager-template-body">Body (HTML supported)</label>
-              <textarea
-                id="settings-manager-template-body"
-                value={defaultTemplates.manager.bodyHtml}
-                onChange={(e) => updateDefaultTemplateField('manager', 'bodyHtml', e.target.value)}
+            <div className="pulse-template-mode-switch" role="tablist" aria-label="Manager template editor mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={templateEditorMode.manager === 'edit'}
+                className={`pulse-template-mode-switch__pill${
+                  templateEditorMode.manager === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
+                }`}
+                onClick={() => setTemplateEditorMode((current) => ({ ...current, manager: 'edit' }))}
                 disabled={loadingDefaultTemplates || savingDefaultTemplates}
-                rows={6}
-              />
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={templateEditorMode.manager === 'view'}
+                className={`pulse-template-mode-switch__pill${
+                  templateEditorMode.manager === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
+                }`}
+                onClick={() => setTemplateEditorMode((current) => ({ ...current, manager: 'view' }))}
+                disabled={loadingDefaultTemplates || savingDefaultTemplates}
+              >
+                View
+              </button>
+            </div>
+            <div className="field">
+              <label>{templateEditorMode.manager === 'view' ? 'Preview' : 'Body'}</label>
+              {templateEditorMode.manager === 'view' ? (
+                <div className="pulse-template-preview">
+                  <div className="pulse-template-preview__subject">{managerPreviewSubject || '(No subject)'}</div>
+                  <div className="pulse-template-preview__canvas">
+                    <div
+                      className="pulse-template-preview__body"
+                      dangerouslySetInnerHTML={{ __html: managerPreviewBodyHtml || '<p></p>' }}
+                    />
+                    <p className="pulse-template-preview__footer">
+                      If the button does not work, copy and paste this URL into your browser:
+                      <br />
+                      <span>{previewLink}</span>
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <EmailTemplateRichEditor
+                  value={defaultTemplates.manager.bodyHtml}
+                  onChange={(nextBodyHtml) => updateDefaultTemplateField('manager', 'bodyHtml', nextBodyHtml)}
+                  disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                  placeholder="Write manager email body. Use {{name}} and {{link}} placeholders."
+                />
+              )}
             </div>
             <button
               type="button"
