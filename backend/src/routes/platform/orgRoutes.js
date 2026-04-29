@@ -642,10 +642,6 @@ const PULSE_INVITE_TEMPLATE_MAX_SUBJECT_LENGTH = 200;
 const PULSE_INVITE_TEMPLATE_MAX_BODY_LENGTH = 20000;
 const PULSE_INVITE_TEMPLATE_PLACEHOLDERS = ['{{name}}', '{{link}}', '{{dueDate}}', '{{clientname}}'];
 const PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH = 4000;
-const PULSE_SURVEY_START_DEFAULT_CONTEXT = {
-  staff: 'Your answers help leaders understand what’s working and what might need attention.',
-  manager: 'Your perspective as a manager helps leaders see what’s working and what might need attention.',
-};
 const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function normalizeDateOnly(value) {
@@ -655,6 +651,23 @@ function normalizeDateOnly(value) {
   const parsed = new Date(`${raw}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) return null;
   return raw;
+}
+
+function stripHtmlToText(html) {
+  return String(html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function surveyStartBodyHtmlFromRequest(body = {}) {
+  const rawBodyHtml = String(body?.bodyHtml || '').trim();
+  if (rawBodyHtml) return rawBodyHtml;
+  const intro = String(body?.intro || '').trim();
+  const context = String(body?.context || '').trim();
+  if (!intro) return '';
+  return `<p>${intro}</p>${context ? `<p>${context}</p>` : ''}`;
 }
 
 function normalizePulseInviteTemplateTimepointKey(timepointPhase) {
@@ -718,11 +731,12 @@ function pulseSurveyStartFallbackTemplate(audience, timepointPhase = 'pre') {
   const stage = internalTimepointToPulseStage(normalizePulseInviteTemplateTimepointKey(timepointPhase));
   const defaultCopy = getSurveyCopyForAudience(role, stage);
   const intro = String(defaultCopy?.intro || '').trim();
+  const context = role === 'manager'
+    ? 'Your perspective as a manager helps leaders see what’s working and what might need attention.'
+    : 'Your answers help leaders understand what’s working and what might need attention.';
+  const bodyHtml = `<p>${intro || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.'}</p><p>${context}</p>`;
   return {
-    intro:
-      intro
-      || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
-    context: PULSE_SURVEY_START_DEFAULT_CONTEXT[role],
+    bodyHtml,
   };
 }
 
@@ -735,11 +749,11 @@ function pulseSurveyStartDefaultTemplateFromSettings(settings, audience, timepoi
   );
   const raw = defaults && typeof defaults === 'object' ? defaults[role] : null;
   if (!raw || typeof raw !== 'object') return fallback;
+  const bodyHtml = typeof raw.bodyHtml === 'string' ? raw.bodyHtml.trim() : '';
   const intro = typeof raw.intro === 'string' ? raw.intro.trim() : '';
   const context = typeof raw.context === 'string' ? raw.context.trim() : '';
   return {
-    intro: intro || fallback.intro,
-    context: context || fallback.context,
+    bodyHtml: bodyHtml || (intro ? `<p>${intro}</p>${context ? `<p>${context}</p>` : ''}` : fallback.bodyHtml),
   };
 }
 
@@ -749,11 +763,11 @@ function pulseSurveyStartTemplateFromSettings(settings, audience, platformSettin
   const templates = pulseInviteTemplateBucketByTimepoint(settings?.pulseInviteSurveyStartTemplates, timepointPhase);
   const raw = templates && typeof templates === 'object' ? templates[role] : null;
   if (!raw || typeof raw !== 'object') return fallback;
+  const bodyHtml = typeof raw.bodyHtml === 'string' ? raw.bodyHtml.trim() : '';
   const intro = typeof raw.intro === 'string' ? raw.intro.trim() : '';
   const context = typeof raw.context === 'string' ? raw.context.trim() : '';
   return {
-    intro: intro || fallback.intro,
-    context: context || fallback.context,
+    bodyHtml: bodyHtml || (intro ? `<p>${intro}</p>${context ? `<p>${context}</p>` : ''}` : fallback.bodyHtml),
   };
 }
 
@@ -1025,18 +1039,11 @@ export function registerPlatformOrgRoutes(router) {
     if (!PULSE_INVITE_TEMPLATE_AUDIENCES.has(audience)) {
       return res.status(400).json({ error: 'audience must be staff or manager' });
     }
-    const intro = String(req.body?.intro || '').trim();
-    if (!intro) return res.status(400).json({ error: 'intro is required' });
-    if (intro.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
+    const bodyHtml = surveyStartBodyHtmlFromRequest(req.body);
+    if (!stripHtmlToText(bodyHtml)) return res.status(400).json({ error: 'bodyHtml is required' });
+    if (bodyHtml.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
       return res.status(400).json({
-        error: `intro must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
-      });
-    }
-    const context = String(req.body?.context || '').trim();
-    if (!context) return res.status(400).json({ error: 'context is required' });
-    if (context.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
-      return res.status(400).json({
-        error: `context must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
+        error: `bodyHtml must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
       });
     }
     const existingDefaults =
@@ -1051,8 +1058,7 @@ export function registerPlatformOrgRoutes(router) {
         [templateTimepointKey]: {
           ...scopedDefaults,
           [audience]: {
-            intro,
-            context,
+            bodyHtml,
             updatedAt: new Date().toISOString(),
             updatedByUserId: req.user.id,
           },
@@ -2380,18 +2386,11 @@ export function registerPlatformOrgRoutes(router) {
     if (!PULSE_INVITE_TEMPLATE_AUDIENCES.has(audience)) {
       return res.status(400).json({ error: 'audience must be staff or manager' });
     }
-    const intro = String(req.body?.intro || '').trim();
-    if (!intro) return res.status(400).json({ error: 'intro is required' });
-    if (intro.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
+    const bodyHtml = surveyStartBodyHtmlFromRequest(req.body);
+    if (!stripHtmlToText(bodyHtml)) return res.status(400).json({ error: 'bodyHtml is required' });
+    if (bodyHtml.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
       return res.status(400).json({
-        error: `intro must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
-      });
-    }
-    const context = String(req.body?.context || '').trim();
-    if (!context) return res.status(400).json({ error: 'context is required' });
-    if (context.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
-      return res.status(400).json({
-        error: `context must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
+        error: `bodyHtml must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
       });
     }
     const existingTemplates =
@@ -2406,8 +2405,7 @@ export function registerPlatformOrgRoutes(router) {
         [templateTimepointKey]: {
           ...scopedTemplates,
           [audience]: {
-            intro,
-            context,
+            bodyHtml,
             updatedAt: new Date().toISOString(),
             updatedByUserId: req.user.id,
           },
@@ -2454,8 +2452,7 @@ export function registerPlatformOrgRoutes(router) {
         [templateTimepointKey]: {
           ...scopedTemplates,
           [audience]: {
-            intro: resetTemplate.intro,
-            context: resetTemplate.context,
+            bodyHtml: resetTemplate.bodyHtml,
             updatedAt: new Date().toISOString(),
             updatedByUserId: req.user.id,
           },

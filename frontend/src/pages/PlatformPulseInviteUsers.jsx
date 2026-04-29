@@ -65,29 +65,33 @@ function defaultTemplateForAudience(audience) {
 function defaultWelcomeTemplateForAudience(audience) {
   if (audience === 'manager') {
     return {
-      intro:
-        'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
-      context: 'Your perspective as a manager helps leaders see what’s working and what might need attention.',
+      bodyHtml:
+        '<p>You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.</p><p>Your perspective as a manager helps leaders see what’s working and what might need attention.</p>',
     };
   }
   return {
-    intro:
-      'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
-    context: 'Your answers help leaders understand what’s working and what might need attention.',
+    bodyHtml:
+      '<p>You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.</p><p>Your answers help leaders understand what’s working and what might need attention.</p>',
   };
 }
 
 function normalizeWelcomeTemplates(rawTemplates) {
   const templates = rawTemplates && typeof rawTemplates === 'object' ? rawTemplates : {};
+  const normalizeRole = (role) => {
+    const fallback = defaultWelcomeTemplateForAudience(role);
+    const raw = templates[role] && typeof templates[role] === 'object' ? templates[role] : {};
+    const bodyHtml = String(raw.bodyHtml || '').trim();
+    const intro = String(raw.intro || '').trim();
+    const context = String(raw.context || '').trim();
+    return {
+      ...fallback,
+      ...raw,
+      bodyHtml: bodyHtml || (intro ? `<p>${intro}</p>${context ? `<p>${context}</p>` : ''}` : fallback.bodyHtml),
+    };
+  };
   return {
-    staff: {
-      ...defaultWelcomeTemplateForAudience('staff'),
-      ...(templates.staff && typeof templates.staff === 'object' ? templates.staff : {}),
-    },
-    manager: {
-      ...defaultWelcomeTemplateForAudience('manager'),
-      ...(templates.manager && typeof templates.manager === 'object' ? templates.manager : {}),
-    },
+    staff: normalizeRole('staff'),
+    manager: normalizeRole('manager'),
   };
 }
 
@@ -384,8 +388,7 @@ export default function PlatformPulseInviteUsers() {
   const [welcomeTemplateResetting, setWelcomeTemplateResetting] = useState(false);
   const [welcomeTemplateError, setWelcomeTemplateError] = useState('');
   const [welcomeTemplates, setWelcomeTemplates] = useState(() => normalizeWelcomeTemplates(null));
-  const [editingWelcomeTemplateIntro, setEditingWelcomeTemplateIntro] = useState('');
-  const [editingWelcomeTemplateContext, setEditingWelcomeTemplateContext] = useState('');
+  const [editingWelcomeTemplateBodyHtml, setEditingWelcomeTemplateBodyHtml] = useState('<p></p>');
   const [welcomeTemplateEditorMode, setWelcomeTemplateEditorMode] = useState('edit');
   const [testDataOpen, setTestDataOpen] = useState(false);
   const [testDataBusy, setTestDataBusy] = useState(false);
@@ -959,8 +962,7 @@ export default function PlatformPulseInviteUsers() {
     const template = welcomeTemplates[role] || defaultWelcomeTemplateForAudience(role);
     setWelcomeTemplateModalAudience(role);
     setWelcomeTemplateError('');
-    setEditingWelcomeTemplateIntro(String(template.intro || ''));
-    setEditingWelcomeTemplateContext(String(template.context || ''));
+    setEditingWelcomeTemplateBodyHtml(String(template.bodyHtml || '<p></p>'));
     setWelcomeTemplateEditorMode('edit');
   }
 
@@ -973,22 +975,13 @@ export default function PlatformPulseInviteUsers() {
   async function saveWelcomeTemplate(e) {
     e.preventDefault();
     if (!welcomeTemplateModalAudience) return;
-    const intro = String(editingWelcomeTemplateIntro || '').trim();
-    if (!intro) {
-      setWelcomeTemplateError('Intro text is required.');
+    const bodyHtml = String(editingWelcomeTemplateBodyHtml || '').trim();
+    if (!stripHtmlToText(bodyHtml)) {
+      setWelcomeTemplateError('Body text is required.');
       return;
     }
-    if (intro.length > WELCOME_TEMPLATE_MAX_TEXT_LENGTH) {
-      setWelcomeTemplateError(`Intro text must be ${WELCOME_TEMPLATE_MAX_TEXT_LENGTH} characters or less.`);
-      return;
-    }
-    const context = String(editingWelcomeTemplateContext || '').trim();
-    if (!context) {
-      setWelcomeTemplateError('Context text is required.');
-      return;
-    }
-    if (context.length > WELCOME_TEMPLATE_MAX_TEXT_LENGTH) {
-      setWelcomeTemplateError(`Context text must be ${WELCOME_TEMPLATE_MAX_TEXT_LENGTH} characters or less.`);
+    if (bodyHtml.length > WELCOME_TEMPLATE_MAX_TEXT_LENGTH) {
+      setWelcomeTemplateError(`Body text must be ${WELCOME_TEMPLATE_MAX_TEXT_LENGTH} characters or less.`);
       return;
     }
     setWelcomeTemplateSaving(true);
@@ -998,8 +991,7 @@ export default function PlatformPulseInviteUsers() {
         `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/survey-start-templates`,
         {
           audience: welcomeTemplateModalAudience,
-          intro,
-          context,
+          bodyHtml,
         },
         { params: inviteRequestParams }
       );
@@ -1030,8 +1022,7 @@ export default function PlatformPulseInviteUsers() {
       const nextTemplates = normalizeWelcomeTemplates(data?.templates);
       setWelcomeTemplates(nextTemplates);
       const resetTemplate = nextTemplates[welcomeTemplateModalAudience] || defaultWelcomeTemplateForAudience(welcomeTemplateModalAudience);
-      setEditingWelcomeTemplateIntro(String(resetTemplate.intro || ''));
-      setEditingWelcomeTemplateContext(String(resetTemplate.context || ''));
+      setEditingWelcomeTemplateBodyHtml(String(resetTemplate.bodyHtml || '<p></p>'));
       showToast(
         `${welcomeTemplateModalAudience === 'manager' ? 'Manager' : 'Staff'} welcome template reset to timepoint default.`,
         { variant: 'success' }
@@ -1214,11 +1205,7 @@ export default function PlatformPulseInviteUsers() {
     dueDate: formatDueDatePreview(dueDate) || dueDate || '',
     duedate: formatDueDatePreview(dueDate) || dueDate || '',
   });
-  const previewWelcomeIntro = applyTemplatePlaceholders(editingWelcomeTemplateIntro, {
-    clientName: String(org?.name || ''),
-    clientname: String(org?.name || ''),
-  });
-  const previewWelcomeContext = applyTemplatePlaceholders(editingWelcomeTemplateContext, {
+  const previewWelcomeBodyHtml = applyTemplatePlaceholders(editingWelcomeTemplateBodyHtml, {
     clientName: String(org?.name || ''),
     clientname: String(org?.name || ''),
   });
@@ -1560,52 +1547,21 @@ export default function PlatformPulseInviteUsers() {
               </button>
             </div>
             {welcomeTemplateEditorMode === 'edit' ? (
-              <>
-                <div className="field">
-                  <label htmlFor="pulse-welcome-template-intro">Intro text</label>
-                  <textarea
-                    id="pulse-welcome-template-intro"
-                    value={editingWelcomeTemplateIntro}
-                    rows={4}
-                    maxLength={WELCOME_TEMPLATE_MAX_TEXT_LENGTH}
-                    onChange={(e) => setEditingWelcomeTemplateIntro(e.target.value)}
-                    disabled={welcomeTemplateSaving || welcomeTemplateResetting}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="pulse-welcome-template-context">Context text</label>
-                  <textarea
-                    id="pulse-welcome-template-context"
-                    value={editingWelcomeTemplateContext}
-                    rows={3}
-                    maxLength={WELCOME_TEMPLATE_MAX_TEXT_LENGTH}
-                    onChange={(e) => setEditingWelcomeTemplateContext(e.target.value)}
-                    disabled={welcomeTemplateSaving || welcomeTemplateResetting}
-                  />
-                </div>
-              </>
+              <div className="field">
+                <label>Body</label>
+                <EmailTemplateRichEditor
+                  value={editingWelcomeTemplateBodyHtml}
+                  onChange={setEditingWelcomeTemplateBodyHtml}
+                  disabled={welcomeTemplateSaving || welcomeTemplateResetting}
+                />
+              </div>
             ) : (
               <div className="pulse-template-preview">
                 <div className="pulse-template-preview__canvas" style={{ textAlign: 'center' }}>
-                  <p
-                    className="muted"
-                    style={{
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      letterSpacing: '0.08em',
-                      textTransform: 'uppercase',
-                      margin: '0 0 0.5rem',
-                    }}
-                  >
-                    Rhythm Engine questionnaire
-                  </p>
-                  <h3 style={{ margin: '0 0 1rem' }}>Welcome</h3>
-                  <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1rem' }}>
-                    {previewWelcomeIntro}
-                  </p>
-                  <p className="muted" style={{ lineHeight: 1.65, margin: '0' }}>
-                    {previewWelcomeContext}
-                  </p>
+                  <div
+                    className="pulse-template-preview__body"
+                    dangerouslySetInnerHTML={{ __html: previewWelcomeBodyHtml || '<p></p>' }}
+                  />
                 </div>
               </div>
             )}

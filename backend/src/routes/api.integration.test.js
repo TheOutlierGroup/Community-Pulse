@@ -244,8 +244,7 @@ test('pulse-link themes uses client survey start template over platform default'
       pulseInviteSurveyStartTemplates: {
         pre: {
           staff: {
-            intro: 'Client override intro',
-            context: 'Client override context',
+            bodyHtml: '<p>Client override intro</p><p>Client override context</p>',
           },
         },
       },
@@ -254,8 +253,7 @@ test('pulse-link themes uses client survey start template over platform default'
       pulseInviteDefaultSurveyStartTemplates: {
         pre: {
           staff: {
-            intro: 'Platform default intro',
-            context: 'Platform default context',
+            bodyHtml: '<p>Platform default intro</p><p>Platform default context</p>',
           },
         },
       },
@@ -266,8 +264,7 @@ test('pulse-link themes uses client survey start template over platform default'
     path: '/api/pulse-link/themes?token=demo-token&stage=pre',
   });
   assert.equal(response.status, 200);
-  assert.equal(response.body.copy?.intro, 'Client override intro');
-  assert.equal(response.body.copy?.welcomeContext, 'Client override context');
+  assert.equal(response.body.copy?.welcomeHtml, '<p>Client override intro</p><p>Client override context</p>');
 });
 
 test('pulse-link themes falls back to platform default survey start template', async () => {
@@ -279,8 +276,7 @@ test('pulse-link themes falls back to platform default survey start template', a
       pulseInviteDefaultSurveyStartTemplates: {
         pre: {
           staff: {
-            intro: 'Platform default intro',
-            context: 'Platform default context',
+            bodyHtml: '<p>Platform default intro</p><p>Platform default context</p>',
           },
         },
       },
@@ -291,8 +287,7 @@ test('pulse-link themes falls back to platform default survey start template', a
     path: '/api/pulse-link/themes?token=demo-token&stage=pre',
   });
   assert.equal(response.status, 200);
-  assert.equal(response.body.copy?.intro, 'Platform default intro');
-  assert.equal(response.body.copy?.welcomeContext, 'Platform default context');
+  assert.equal(response.body.copy?.welcomeHtml, '<p>Platform default intro</p><p>Platform default context</p>');
 });
 
 test('pulse-link themes falls back to built-in survey copy when no templates exist', async () => {
@@ -308,12 +303,8 @@ test('pulse-link themes falls back to built-in survey copy when no templates exi
   });
   assert.equal(response.status, 200);
   assert.equal(
-    response.body.copy?.intro,
-    'Before this change starts, we want to understand how ready the organisation is. Your honest responses are anonymous and help identify where support is needed.'
-  );
-  assert.equal(
-    response.body.copy?.welcomeContext,
-    'Your answers help leaders understand what’s working and what might need attention.'
+    response.body.copy?.welcomeHtml,
+    '<p>Before this change starts, we want to understand how ready the organisation is. Your honest responses are anonymous and help identify where support is needed.</p><p>Your answers help leaders understand what’s working and what might need attention.</p>'
   );
 });
 

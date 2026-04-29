@@ -17,7 +17,6 @@ import {
 
 const LOCKED_SERVICE_IDS = new Set([CLIENT_SERVICE_PULSE, CLIENT_SERVICE_OTHER]);
 const TEMPLATE_MAX_SUBJECT_LENGTH = 200;
-const WELCOME_TEMPLATE_MAX_TEXT_LENGTH = 4000;
 const TEMPLATE_TIMEPOINT_OPTIONS = [
   { value: 'pre', label: 'Pre' },
   { value: 'during', label: 'During' },
@@ -60,15 +59,13 @@ function defaultTemplateForAudience(audience) {
 function defaultWelcomeTemplateForAudience(audience) {
   if (audience === 'manager') {
     return {
-      intro:
-        'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
-      context: 'Your perspective as a manager helps leaders see what’s working and what might need attention.',
+      bodyHtml:
+        '<p>You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.</p><p>Your perspective as a manager helps leaders see what’s working and what might need attention.</p>',
     };
   }
   return {
-    intro:
-      'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
-    context: 'Your answers help leaders understand what’s working and what might need attention.',
+    bodyHtml:
+      '<p>You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.</p><p>Your answers help leaders understand what’s working and what might need attention.</p>',
   };
 }
 
@@ -204,15 +201,21 @@ function normalizeDefaultTemplates(rawTemplates) {
 
 function normalizeDefaultWelcomeTemplates(rawTemplates) {
   const templates = rawTemplates && typeof rawTemplates === 'object' ? rawTemplates : {};
+  const normalizeRole = (role) => {
+    const fallback = defaultWelcomeTemplateForAudience(role);
+    const raw = templates[role] && typeof templates[role] === 'object' ? templates[role] : {};
+    const bodyHtml = String(raw.bodyHtml || '').trim();
+    const intro = String(raw.intro || '').trim();
+    const context = String(raw.context || '').trim();
+    return {
+      ...fallback,
+      ...raw,
+      bodyHtml: bodyHtml || (intro ? `<p>${intro}</p>${context ? `<p>${context}</p>` : ''}` : fallback.bodyHtml),
+    };
+  };
   return {
-    staff: {
-      ...defaultWelcomeTemplateForAudience('staff'),
-      ...(templates.staff && typeof templates.staff === 'object' ? templates.staff : {}),
-    },
-    manager: {
-      ...defaultWelcomeTemplateForAudience('manager'),
-      ...(templates.manager && typeof templates.manager === 'object' ? templates.manager : {}),
-    },
+    staff: normalizeRole('staff'),
+    manager: normalizeRole('manager'),
   };
 }
 
@@ -239,6 +242,10 @@ export default function PlatformSettings() {
   const [defaultTemplates, setDefaultTemplates] = useState(() => normalizeDefaultTemplates(null));
   const [defaultWelcomeTemplates, setDefaultWelcomeTemplates] = useState(() => normalizeDefaultWelcomeTemplates(null));
   const [templateEditorMode, setTemplateEditorMode] = useState({
+    staff: 'edit',
+    manager: 'edit',
+  });
+  const [welcomeTemplateEditorMode, setWelcomeTemplateEditorMode] = useState({
     staff: 'edit',
     manager: 'edit',
   });
@@ -464,13 +471,13 @@ export default function PlatformSettings() {
     }
   }
 
-  function updateDefaultWelcomeTemplateField(audience, field, value) {
+  function updateDefaultWelcomeTemplateField(audience, value) {
     const role = audience === 'manager' ? 'manager' : 'staff';
     setDefaultWelcomeTemplates((current) => ({
       ...current,
       [role]: {
         ...(current[role] || defaultWelcomeTemplateForAudience(role)),
-        [field]: value,
+        bodyHtml: value,
       },
     }));
   }
@@ -478,10 +485,9 @@ export default function PlatformSettings() {
   async function saveDefaultWelcomeTemplate(audience) {
     const role = audience === 'manager' ? 'manager' : 'staff';
     const template = defaultWelcomeTemplates[role] || defaultWelcomeTemplateForAudience(role);
-    const intro = String(template.intro || '').trim();
-    const context = String(template.context || '').trim();
-    if (!intro || !context) {
-      setDefaultWelcomeTemplateError('Each welcome template needs both intro and context text.');
+    const bodyHtml = String(template.bodyHtml || '').trim();
+    if (!stripHtmlToText(bodyHtml)) {
+      setDefaultWelcomeTemplateError('Each welcome template needs body copy.');
       setDefaultWelcomeTemplateMessage('');
       return;
     }
@@ -491,8 +497,7 @@ export default function PlatformSettings() {
     try {
       const { data } = await api.put('/api/platform/rhythm-engine-link-invites/default-survey-start-templates', {
         audience: role,
-        intro,
-        context,
+        bodyHtml,
       }, {
         params: { timepoint: defaultTemplateTimepoint },
       });
@@ -855,27 +860,51 @@ export default function PlatformSettings() {
               <h3 id={`settings-${role}-welcome-template`} style={{ margin: 0 }}>
                 {role === 'manager' ? 'Manager' : 'Staff'} default welcome template
               </h3>
-              <div className="field" style={{ marginTop: '0.65rem' }}>
-                <label htmlFor={`settings-${role}-welcome-intro`}>Intro text</label>
-                <textarea
-                  id={`settings-${role}-welcome-intro`}
-                  value={defaultWelcomeTemplates[role]?.intro || ''}
-                  maxLength={WELCOME_TEMPLATE_MAX_TEXT_LENGTH}
-                  rows={4}
-                  onChange={(e) => updateDefaultWelcomeTemplateField(role, 'intro', e.target.value)}
+              <div className="pulse-template-mode-switch" role="tablist" aria-label={`${role} welcome template editor mode`}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={welcomeTemplateEditorMode[role] === 'edit'}
+                  className={`pulse-template-mode-switch__pill${
+                    welcomeTemplateEditorMode[role] === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
+                  }`}
+                  onClick={() => setWelcomeTemplateEditorMode((current) => ({ ...current, [role]: 'edit' }))}
                   disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
-                />
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={welcomeTemplateEditorMode[role] === 'view'}
+                  className={`pulse-template-mode-switch__pill${
+                    welcomeTemplateEditorMode[role] === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
+                  }`}
+                  onClick={() => setWelcomeTemplateEditorMode((current) => ({ ...current, [role]: 'view' }))}
+                  disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+                >
+                  View
+                </button>
               </div>
-              <div className="field">
-                <label htmlFor={`settings-${role}-welcome-context`}>Context text</label>
-                <textarea
-                  id={`settings-${role}-welcome-context`}
-                  value={defaultWelcomeTemplates[role]?.context || ''}
-                  maxLength={WELCOME_TEMPLATE_MAX_TEXT_LENGTH}
-                  rows={3}
-                  onChange={(e) => updateDefaultWelcomeTemplateField(role, 'context', e.target.value)}
-                  disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
-                />
+              <div className="field" style={{ marginTop: '0.65rem' }}>
+                <label>{welcomeTemplateEditorMode[role] === 'view' ? 'Preview' : 'Body'}</label>
+                {welcomeTemplateEditorMode[role] === 'view' ? (
+                  <div className="pulse-template-preview">
+                    <div className="pulse-template-preview__canvas">
+                      <div
+                        className="pulse-template-preview__body"
+                        dangerouslySetInnerHTML={{ __html: defaultWelcomeTemplates[role]?.bodyHtml || '<p></p>' }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <EmailTemplateRichEditor
+                    value={defaultWelcomeTemplates[role]?.bodyHtml || '<p></p>'}
+                    onChange={(nextBodyHtml) => updateDefaultWelcomeTemplateField(role, nextBodyHtml)}
+                    disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+                    placeholder="Write welcome page copy. This appears on the first survey screen."
+                  />
+                )}
               </div>
               <button
                 type="button"

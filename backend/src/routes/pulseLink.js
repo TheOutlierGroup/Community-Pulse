@@ -15,10 +15,6 @@ import { organizationHasService, CLIENT_SERVICE_PULSE } from '../services/client
 import { internalTimepointToPulseStage, parsePulseStageFromRequest } from '../services/pulseStage.js';
 
 const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const PULSE_SURVEY_START_DEFAULT_CONTEXT = {
-  staff: 'Your answers help leaders understand what’s working and what might need attention.',
-  manager: 'Your perspective as a manager helps leaders see what’s working and what might need attention.',
-};
 
 export function createPulseLinkRoutes({
   organizationModel = Organization,
@@ -120,11 +116,12 @@ function getLinkToken(req) {
     const role = audience === 'manager' ? 'manager' : 'staff';
     const defaultCopy = getSurveyCopyForAudienceFn(role, stage);
     const intro = String(defaultCopy?.intro || '').trim();
+    const context = role === 'manager'
+      ? 'Your perspective as a manager helps leaders see what’s working and what might need attention.'
+      : 'Your answers help leaders understand what’s working and what might need attention.';
+    const bodyHtml = `<p>${intro || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.'}</p><p>${context}</p>`;
     return {
-      intro:
-        intro
-        || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
-      context: PULSE_SURVEY_START_DEFAULT_CONTEXT[role],
+      bodyHtml,
     };
   }
 
@@ -137,11 +134,11 @@ function getLinkToken(req) {
     );
     const raw = defaults && typeof defaults === 'object' ? defaults[role] : null;
     if (!raw || typeof raw !== 'object') return fallback;
+    const bodyHtml = typeof raw.bodyHtml === 'string' ? raw.bodyHtml.trim() : '';
     const intro = typeof raw.intro === 'string' ? raw.intro.trim() : '';
     const context = typeof raw.context === 'string' ? raw.context.trim() : '';
     return {
-      intro: intro || fallback.intro,
-      context: context || fallback.context,
+      bodyHtml: bodyHtml || (intro ? `<p>${intro}</p>${context ? `<p>${context}</p>` : ''}` : fallback.bodyHtml),
     };
   }
 
@@ -151,11 +148,11 @@ function getLinkToken(req) {
     const templates = pulseInviteTemplateBucketByTimepoint(settings?.pulseInviteSurveyStartTemplates, stage);
     const raw = templates && typeof templates === 'object' ? templates[role] : null;
     if (!raw || typeof raw !== 'object') return fallback;
+    const bodyHtml = typeof raw.bodyHtml === 'string' ? raw.bodyHtml.trim() : '';
     const intro = typeof raw.intro === 'string' ? raw.intro.trim() : '';
     const context = typeof raw.context === 'string' ? raw.context.trim() : '';
     return {
-      intro: intro || fallback.intro,
-      context: context || fallback.context,
+      bodyHtml: bodyHtml || (intro ? `<p>${intro}</p>${context ? `<p>${context}</p>` : ''}` : fallback.bodyHtml),
     };
   }
 
@@ -174,8 +171,7 @@ function getLinkToken(req) {
     );
     return {
       ...baseCopy,
-      intro: surveyStart.intro,
-      welcomeContext: surveyStart.context,
+      welcomeHtml: surveyStart.bodyHtml,
     };
   }
 
