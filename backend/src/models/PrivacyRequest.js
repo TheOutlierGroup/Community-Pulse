@@ -34,10 +34,11 @@ export async function createPrivacyRequest({
        subject_email,
        subject_name,
        request_details,
+       status,
        created_by_user_id,
        updated_by_user_id,
        metadata
-     ) VALUES ($1, $2, lower($3), $4, $5, $6, $6, $7::jsonb)
+     ) VALUES ($1, $2, lower($3), $4, $5, 'received', $6, $6, $7::jsonb)
      RETURNING *`,
     [
       organizationId,
