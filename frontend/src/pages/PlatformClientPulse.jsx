@@ -236,6 +236,9 @@ export default function PlatformClientPulse() {
   const normalizedPulseHash = useMemo(() => normalizePulseHash(location.hash), [location.hash]);
   const pageTitle = sectionLabel(pulseFocusedSection);
   const showingFullDashboard = !normalizedPulseHash || normalizedPulseHash === 'organisation-dashboard';
+  const showingSponsorshipOnly = !showingFullDashboard && pulseFocusedSection === 'sponsorship-analysis';
+  const showTopSummaryCard = showingFullDashboard || showingSponsorshipOnly;
+  const managerFocusedTopCard = showingSponsorshipOnly;
   const showReadinessSection = showingFullDashboard || pulseFocusedSection === 'organisation-scores';
   const showScoresSection = showingFullDashboard || pulseFocusedSection === 'sponsorship-analysis';
   const showDimensionsSection = showingFullDashboard
@@ -256,6 +259,23 @@ export default function PlatformClientPulse() {
   const adoptionScore = Number.isFinite(kpis.adoptionScore) ? kpis.adoptionScore : null;
   const sponsorshipScore = Number.isFinite(kpis.sponsorshipScore) ? kpis.sponsorshipScore : null;
   const managerBreakdownRows = dashboard?.byManager || [];
+  const managerScoreAverages = useMemo(() => {
+    if (!managerBreakdownRows.length) return { adoption: null, sponsorship: null };
+    const adoptionValues = managerBreakdownRows
+      .map((row) => row?.adoptionScore)
+      .filter((value) => Number.isFinite(value));
+    const sponsorshipValues = managerBreakdownRows
+      .map((row) => row?.sponsorshipScore)
+      .filter((value) => Number.isFinite(value));
+    const average = (values) => {
+      if (!values.length) return null;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    };
+    return {
+      adoption: average(adoptionValues),
+      sponsorship: average(sponsorshipValues),
+    };
+  }, [managerBreakdownRows]);
   const dimensions = dashboard?.dimensions || [];
   const employeeDimensions = useMemo(
     () => dimensions.map((dimension) => ({
@@ -535,6 +555,17 @@ export default function PlatformClientPulse() {
   const riskChips = Array.isArray(executiveSummary?.riskChips) ? executiveSummary.riskChips.filter(Boolean) : [];
   const kpiBridgeText = String(executiveSummary?.kpiBridgeText || '').trim();
   const basedOnResponsesText = String(executiveSummary?.basedOnResponsesText || '').trim();
+  const topCardTotalResponses = managerFocusedTopCard ? (kpis.completedManagers ?? 0) : (kpis.completedTotal ?? 0);
+  const topCardInvitedTotal = managerFocusedTopCard ? (kpis.invitedManagers ?? 0) : (kpis.invitedTotal ?? 0);
+  const topCardParticipationRate = managerFocusedTopCard ? kpis.managerParticipationRate : kpis.participationRate;
+  const topCardEmployeeResponses = managerFocusedTopCard ? (kpis.completedManagers ?? 0) : (kpis.completedEmployees ?? 0);
+  const topCardInvitedEmployees = managerFocusedTopCard ? (kpis.invitedManagers ?? 0) : (kpis.invitedEmployees ?? 0);
+  const topCardManagerResponses = kpis.completedManagers ?? 0;
+  const topCardInvitedManagers = kpis.invitedManagers ?? 0;
+  const topCardAdoptionScore = managerFocusedTopCard ? managerScoreAverages.adoption : kpis.adoptionScore;
+  const topCardSponsorshipScore = managerFocusedTopCard ? managerScoreAverages.sponsorship : kpis.sponsorshipScore;
+  const topCardAdoptionDelta = managerFocusedTopCard ? null : kpis.adoptionDelta;
+  const topCardSponsorshipDelta = managerFocusedTopCard ? null : kpis.sponsorshipDelta;
 
   useEffect(() => {
     const previous = document.title;
@@ -706,7 +737,7 @@ export default function PlatformClientPulse() {
 
   return (
     <>
-      {showingFullDashboard ? (
+      {showTopSummaryCard ? (
         <section className="pulse-clean-header card">
         <div className="pulse-clean-header__top">
           <div>
@@ -728,39 +759,39 @@ export default function PlatformClientPulse() {
         <div className="pulse-clean-header__kpis">
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Total Responses</p>
-            <p className="pulse-clean-header__kpi-value">{kpis.completedManagers ?? 0}</p>
-            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedManagers ?? 0} invited</p>
-            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.managerParticipationRate)}`}>
-              {formatPercent(kpis.managerParticipationRate)}
+            <p className="pulse-clean-header__kpi-value">{topCardTotalResponses}</p>
+            <p className="pulse-clean-header__kpi-meta">of {topCardInvitedTotal} invited</p>
+            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardParticipationRate)}`}>
+              {formatPercent(topCardParticipationRate)}
             </p>
           </div>
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Employee Responses</p>
-            <p className="pulse-clean-header__kpi-value">{kpis.completedManagers ?? 0}</p>
-            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedManagers ?? 0}</p>
+            <p className="pulse-clean-header__kpi-value">{topCardEmployeeResponses}</p>
+            <p className="pulse-clean-header__kpi-meta">of {topCardInvitedEmployees ?? 0}</p>
           </div>
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Manager Responses</p>
-            <p className="pulse-clean-header__kpi-value">{kpis.completedManagers ?? 0}</p>
-            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedManagers ?? 0}</p>
+            <p className="pulse-clean-header__kpi-value">{topCardManagerResponses}</p>
+            <p className="pulse-clean-header__kpi-meta">of {topCardInvitedManagers} invited</p>
             <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.managerParticipationRate)}`}>
               {formatPercent(kpis.managerParticipationRate)}
             </p>
           </div>
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Avg Adoption Score</p>
-            <p className="pulse-clean-header__kpi-value">{formatScore(kpis.adoptionScore)}</p>
+            <p className="pulse-clean-header__kpi-value">{formatScore(topCardAdoptionScore)}</p>
             <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
-            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.adoptionDelta)}`}>
-              {formatDelta(kpis.adoptionDelta)}
+            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardAdoptionDelta)}`}>
+              {formatDelta(topCardAdoptionDelta)}
             </p>
           </div>
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Avg Sponsorship Score</p>
-            <p className="pulse-clean-header__kpi-value">{formatScore(kpis.sponsorshipScore)}</p>
+            <p className="pulse-clean-header__kpi-value">{formatScore(topCardSponsorshipScore)}</p>
             <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
-            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.sponsorshipDelta)}`}>
-              {formatDelta(kpis.sponsorshipDelta)}
+            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardSponsorshipDelta)}`}>
+              {formatDelta(topCardSponsorshipDelta)}
             </p>
           </div>
         </div>
@@ -808,7 +839,7 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-exec__footer-note">
               {basedOnResponsesText || (
                 <>
-                  Based on <strong>{kpis.completedTotal ?? 0} responses</strong> · Threshold{' '}
+                  Based on <strong>{managerFocusedTopCard ? (kpis.completedManagers ?? 0) : (kpis.completedTotal ?? 0)} responses</strong> · Threshold{' '}
                   <strong>{threshold}/40</strong>
                 </>
               )}
