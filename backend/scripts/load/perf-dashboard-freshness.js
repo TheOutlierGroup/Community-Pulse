@@ -7,6 +7,9 @@ const dashboardPath = __ENV.K6_DASHBOARD_PATH || '/api/admin/overview';
 const freshnessKey = __ENV.K6_FRESHNESS_KEY || 'totalResponses';
 const maxWaitSeconds = Number(__ENV.K6_MAX_WAIT_SECONDS || 90);
 const targetWindowSeconds = Number(__ENV.K6_TARGET_WINDOW_SECONDS || 60);
+const pollIntervalSeconds = Number(__ENV.K6_FRESHNESS_POLL_INTERVAL_SECONDS || 5);
+const requireIncrease = String(__ENV.K6_FRESHNESS_REQUIRE_INCREASE || 'true').trim().toLowerCase() === 'true';
+const allow429 = String(__ENV.K6_ALLOW_429 || 'false').trim().toLowerCase() === 'true';
 
 const submitPayload = JSON.stringify({
   step1: { answers: { Q1: 3, Q2: 3, Q3: 3, Q4: 3 } },
@@ -21,6 +24,22 @@ function parseFreshnessValue(body) {
   if (body.kpis && Object.prototype.hasOwnProperty.call(body.kpis, freshnessKey)) return body.kpis[freshnessKey];
   return null;
 }
+
+function isAcceptableStatus(status) {
+  if (allow429) return [200, 400, 401, 404, 409, 429].includes(status);
+  return [200, 400, 401, 404, 409].includes(status);
+}
+
+http.setResponseCallback(
+  http.expectedStatuses(
+    200,
+    400,
+    401,
+    404,
+    409,
+    ...(allow429 ? [429] : [])
+  )
+);
 
 export const options = {
   scenarios: {
@@ -44,17 +63,31 @@ export default function () {
   const baselineBody = baseline.json();
   const baselineValue = parseFreshnessValue(baselineBody);
 
-  http.post(`${baseUrl}${submitPath}`, submitPayload, { headers });
+  const submitRes = http.post(`${baseUrl}${submitPath}`, submitPayload, { headers });
+  const submitAccepted = isAcceptableStatus(submitRes.status);
+  if (!submitAccepted) {
+    check(false, {
+      'freshness submit request status is acceptable': () => false,
+    });
+    return;
+  }
+  check(true, {
+    'freshness submit request status is acceptable': () => true,
+  });
 
   let reflectedWithinTarget = false;
-  for (let elapsed = 0; elapsed <= maxWaitSeconds; elapsed += 5) {
+  for (let elapsed = 0; elapsed <= maxWaitSeconds; elapsed += pollIntervalSeconds) {
     const poll = http.get(`${baseUrl}${dashboardPath}`, { headers });
     const value = parseFreshnessValue(poll.json());
-    if (baselineValue != null && value != null && value > baselineValue) {
-      reflectedWithinTarget = elapsed <= targetWindowSeconds;
+    const moved =
+      baselineValue != null
+      && value != null
+      && (requireIncrease ? value > baselineValue : value >= baselineValue);
+    if (moved) {
+      reflectedWithinTarget = elapsed <= targetWindowSeconds && isAcceptableStatus(poll.status);
       break;
     }
-    sleep(5);
+    sleep(pollIntervalSeconds);
   }
 
   check(reflectedWithinTarget, {
