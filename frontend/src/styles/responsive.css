@@ -7465,6 +7465,53 @@ input[type='range'] {
   white-space: nowrap;
 }
 
+.pulse-clean-groups__name-content {
+  display: inline-flex;
+  align-items: center;
+}
+
+.pulse-clean-groups__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.pulse-clean-groups__toggle:hover {
+  opacity: 0.72;
+}
+
+.pulse-clean-groups__toggle:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.pulse-clean-groups__chevron {
+  display: inline-flex;
+  width: 0.6rem;
+  justify-content: center;
+  color: var(--muted);
+  transform: rotate(0deg);
+  transition: transform 0.2s ease;
+}
+
+.pulse-clean-groups__chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.pulse-clean-groups__leaf {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+}
+
 .pulse-clean-groups__spark {
   height: 20px;
   display: inline-flex;

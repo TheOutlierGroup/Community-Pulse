@@ -353,7 +353,9 @@ export default function PlatformClientPulse() {
   const groupedTeamRows = useMemo(() => {
     if (!managerBreakdownRows.length) return [];
 
-    const createNode = (name, depth = 0) => ({
+    const createNode = (name, depth = 0, key = 'root', parentKey = null) => ({
+      key,
+      parentKey,
       name,
       depth,
       children: new Map(),
@@ -374,7 +376,9 @@ export default function PlatformClientPulse() {
       let cursor = root;
       normalizedPath.forEach((segment, index) => {
         if (!cursor.children.has(segment)) {
-          cursor.children.set(segment, createNode(segment, index));
+          const parentKey = cursor.depth >= 0 ? cursor.key : null;
+          const childKey = `${cursor.key}:${segment}`;
+          cursor.children.set(segment, createNode(segment, index, childKey, parentKey));
         }
         cursor = cursor.children.get(segment);
       });
@@ -433,9 +437,11 @@ export default function PlatformClientPulse() {
       const children = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
       children.forEach((child) => {
         flattened.push({
-          key: `${child.depth}-${child.name}`,
+          key: child.key,
+          parentKey: child.parentKey,
           depth: child.depth,
           name: child.name,
+          hasChildren: child.children.size > 0,
           ...child.aggregate,
         });
         walk(child);
@@ -444,6 +450,48 @@ export default function PlatformClientPulse() {
     walk(root);
     return flattened;
   }, [groupInviteMap, managerBreakdownRows]);
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState({});
+  const visibleGroupedTeamRows = useMemo(() => {
+    if (!groupedTeamRows.length) return [];
+    const byKey = new Map(groupedTeamRows.map((row) => [row.key, row]));
+    return groupedTeamRows.filter((row) => {
+      let parentKey = row.parentKey;
+      while (parentKey) {
+        if (!expandedGroupKeys[parentKey]) return false;
+        const parentRow = byKey.get(parentKey);
+        parentKey = parentRow?.parentKey || null;
+      }
+      return true;
+    });
+  }, [expandedGroupKeys, groupedTeamRows]);
+
+  useEffect(() => {
+    setExpandedGroupKeys((prev) => {
+      const groupedKeySet = new Set(groupedTeamRows.map((row) => row.key));
+      let changed = false;
+      const next = {};
+      Object.entries(prev).forEach(([key, isExpanded]) => {
+        if (isExpanded && groupedKeySet.has(key)) {
+          next[key] = true;
+        } else if (isExpanded && !groupedKeySet.has(key)) {
+          changed = true;
+        }
+      });
+      if (!changed && Object.keys(next).length === Object.keys(prev).length) return prev;
+      return next;
+    });
+  }, [groupedTeamRows]);
+
+  const toggleGroupRow = useCallback((rowKey) => {
+    setExpandedGroupKeys((prev) => {
+      if (prev[rowKey]) {
+        const next = { ...prev };
+        delete next[rowKey];
+        return next;
+      }
+      return { ...prev, [rowKey]: true };
+    });
+  }, []);
   const todayLabel = new Date().toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
@@ -1074,10 +1122,30 @@ export default function PlatformClientPulse() {
               </tr>
             </thead>
             <tbody>
-              {groupedTeamRows.map((row) => (
+              {visibleGroupedTeamRows.map((row) => (
                 <tr key={row.key}>
                   <td className="pulse-clean-groups__name">
-                    {`${row.depth > 0 ? `${'- '.repeat(row.depth)}` : ''}${row.name}`}
+                    <div className="pulse-clean-groups__name-content" style={{ paddingLeft: `${row.depth * 1.1}rem` }}>
+                      {row.hasChildren ? (
+                        <button
+                          type="button"
+                          className="pulse-clean-groups__toggle"
+                          onClick={() => toggleGroupRow(row.key)}
+                          aria-expanded={Boolean(expandedGroupKeys[row.key])}
+                          aria-label={`${expandedGroupKeys[row.key] ? 'Collapse' : 'Expand'} ${row.name}`}
+                        >
+                          <span
+                            className={`pulse-clean-groups__chevron${expandedGroupKeys[row.key] ? ' is-open' : ''}`}
+                            aria-hidden="true"
+                          >
+                            {'>'}
+                          </span>
+                          <span>{row.name}</span>
+                        </button>
+                      ) : (
+                        <span className="pulse-clean-groups__leaf">{`${row.depth > 0 ? '- ' : ''}${row.name}`}</span>
+                      )}
+                    </div>
                   </td>
                   <td>{row.responses || 0}</td>
                   <td>{formatScore(row.adoption)}</td>
@@ -1106,9 +1174,6 @@ export default function PlatformClientPulse() {
             </tbody>
           </table>
         </div>
-        <p className="pulse-clean-groups__footnote">
-          Nested groups are shown with a leading <strong>-</strong> so sub-groups stay visibly linked to their parent group.
-        </p>
         </section>
       ) : null}
 
