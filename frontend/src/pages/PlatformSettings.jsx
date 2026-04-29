@@ -238,7 +238,8 @@ export default function PlatformSettings() {
   const [savingDefaultWelcomeTemplates, setSavingDefaultWelcomeTemplates] = useState(false);
   const [defaultWelcomeTemplateMessage, setDefaultWelcomeTemplateMessage] = useState('');
   const [defaultWelcomeTemplateError, setDefaultWelcomeTemplateError] = useState('');
-  const [defaultTemplateTimepoint, setDefaultTemplateTimepoint] = useState('pre');
+  const [defaultEmailTemplateTimepoint, setDefaultEmailTemplateTimepoint] = useState('pre');
+  const [defaultWelcomeTemplateTimepoint, setDefaultWelcomeTemplateTimepoint] = useState('pre');
   const [defaultTemplates, setDefaultTemplates] = useState(() => normalizeDefaultTemplates(null));
   const [defaultWelcomeTemplates, setDefaultWelcomeTemplates] = useState(() => normalizeDefaultWelcomeTemplates(null));
   const [templateEditorMode, setTemplateEditorMode] = useState({
@@ -253,7 +254,11 @@ export default function PlatformSettings() {
   const previewName = 'Alex';
   const previewClientName = 'Acme Co';
   const previewDueDate = '30 Apr 2026';
-  const previewStage = defaultTemplateTimepoint === 'during' ? 'during' : defaultTemplateTimepoint === 'post' ? 'post' : 'pre';
+  const previewStage = defaultEmailTemplateTimepoint === 'during'
+    ? 'during'
+    : defaultEmailTemplateTimepoint === 'post'
+      ? 'post'
+      : 'pre';
   const previewLink = `https://app.employeepulse.app/rhythm-engine/${previewStage}/link/your-personal-token`;
   const staffPreviewSubject = applyTemplatePlaceholders(defaultTemplates.staff.subject, {
     name: previewName,
@@ -316,7 +321,7 @@ export default function PlatformSettings() {
       setDefaultTemplateError('');
       try {
         const { data } = await api.get('/api/platform/rhythm-engine-link-invites/default-templates', {
-          params: { timepoint: defaultTemplateTimepoint },
+          params: { timepoint: defaultEmailTemplateTimepoint },
         });
         setDefaultTemplates(normalizeDefaultTemplates(data?.templates));
       } catch (err) {
@@ -325,7 +330,7 @@ export default function PlatformSettings() {
         setLoadingDefaultTemplates(false);
       }
     })();
-  }, [defaultTemplateTimepoint, isPlatformAdmin]);
+  }, [defaultEmailTemplateTimepoint, isPlatformAdmin]);
 
   useEffect(() => {
     if (!isPlatformAdmin) return;
@@ -334,7 +339,7 @@ export default function PlatformSettings() {
       setDefaultWelcomeTemplateError('');
       try {
         const { data } = await api.get('/api/platform/rhythm-engine-link-invites/default-survey-start-templates', {
-          params: { timepoint: defaultTemplateTimepoint },
+          params: { timepoint: defaultWelcomeTemplateTimepoint },
         });
         setDefaultWelcomeTemplates(normalizeDefaultWelcomeTemplates(data?.templates));
       } catch (err) {
@@ -343,7 +348,7 @@ export default function PlatformSettings() {
         setLoadingDefaultWelcomeTemplates(false);
       }
     })();
-  }, [defaultTemplateTimepoint, isPlatformAdmin]);
+  }, [defaultWelcomeTemplateTimepoint, isPlatformAdmin]);
 
   useEffect(() => {
     if (!loading && ok && user?.role !== 'admin') {
@@ -458,11 +463,11 @@ export default function PlatformSettings() {
         subject,
         bodyHtml,
       }, {
-        params: { timepoint: defaultTemplateTimepoint },
+        params: { timepoint: defaultEmailTemplateTimepoint },
       });
       setDefaultTemplates(normalizeDefaultTemplates(data?.templates));
       setDefaultTemplateMessage(
-        `${templateTimepointLabel(defaultTemplateTimepoint)} ${role === 'manager' ? 'manager' : 'staff'} default template saved.`
+        `${templateTimepointLabel(defaultEmailTemplateTimepoint)} ${role === 'manager' ? 'manager' : 'staff'} default template saved.`
       );
     } catch (err) {
       setDefaultTemplateError(err.response?.data?.error || 'Could not save default email template.');
@@ -499,11 +504,11 @@ export default function PlatformSettings() {
         audience: role,
         bodyHtml,
       }, {
-        params: { timepoint: defaultTemplateTimepoint },
+        params: { timepoint: defaultWelcomeTemplateTimepoint },
       });
       setDefaultWelcomeTemplates(normalizeDefaultWelcomeTemplates(data?.templates));
       setDefaultWelcomeTemplateMessage(
-        `${templateTimepointLabel(defaultTemplateTimepoint)} ${role === 'manager' ? 'manager' : 'staff'} default welcome template saved.`
+        `${templateTimepointLabel(defaultWelcomeTemplateTimepoint)} ${role === 'manager' ? 'manager' : 'staff'} default welcome template saved.`
       );
     } catch (err) {
       setDefaultWelcomeTemplateError(err.response?.data?.error || 'Could not save default welcome template.');
@@ -639,11 +644,11 @@ export default function PlatformSettings() {
               key={option.value}
               type="button"
               role="tab"
-              aria-selected={defaultTemplateTimepoint === option.value}
+              aria-selected={defaultEmailTemplateTimepoint === option.value}
               className={`pulse-template-mode-switch__pill${
-                defaultTemplateTimepoint === option.value ? ' pulse-template-mode-switch__pill--active' : ''
+                defaultEmailTemplateTimepoint === option.value ? ' pulse-template-mode-switch__pill--active' : ''
               }`}
-              onClick={() => setDefaultTemplateTimepoint(option.value)}
+              onClick={() => setDefaultEmailTemplateTimepoint(option.value)}
               disabled={loadingDefaultTemplates || savingDefaultTemplates}
             >
               {option.label}
@@ -830,11 +835,11 @@ export default function PlatformSettings() {
               key={`welcome-${option.value}`}
               type="button"
               role="tab"
-              aria-selected={defaultTemplateTimepoint === option.value}
+              aria-selected={defaultWelcomeTemplateTimepoint === option.value}
               className={`pulse-template-mode-switch__pill${
-                defaultTemplateTimepoint === option.value ? ' pulse-template-mode-switch__pill--active' : ''
+                defaultWelcomeTemplateTimepoint === option.value ? ' pulse-template-mode-switch__pill--active' : ''
               }`}
-              onClick={() => setDefaultTemplateTimepoint(option.value)}
+              onClick={() => setDefaultWelcomeTemplateTimepoint(option.value)}
               disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
             >
               {option.label}
