@@ -9,6 +9,17 @@ Scope: Q5, Q6, Q7, Q8, Q9, Q10, Q14, Q15, Q18, Q21, Q22, Q27, Q28
 - Frontend tests: `20 passed, 0 failed`
 - Last local verification run date: 2026-04-29
 
+## Runtime verification checks (2026-04-29)
+
+- Deployed API health check: `GET /api/health` -> `200` (`{"ok":true,"surface":"all"}`)
+- Deployed privacy archive endpoint: `GET /api/platform/privacy/archive/review-report` -> `200`
+- Deployed audit endpoint: `GET /api/platform/privacy/audit-events?limit=5` -> `200`
+- Deployed org list endpoint (auth check): `GET /api/platform/organizations?limit=5` -> `200`
+- Deployed DSAR create endpoint:
+  - `POST /api/platform/privacy/requests` -> `500`
+  - Follow-up list call returned `200` with empty set for queried org
+  - Action: investigate backend runtime logs for `privacy/requests` create path before production sign-off
+
 ## Requirement traceability
 
 | Requirement | Implementation Evidence | Verification Evidence | Status |
@@ -48,6 +59,7 @@ Scope: Q5, Q6, Q7, Q8, Q9, Q10, Q14, Q15, Q18, Q21, Q22, Q27, Q28
 3. Confirm cloud storage encryption and access-policy evidence for Tier-3 archive.
 4. Complete legal/privacy approval for overseas transfer policy wording and disclosure.
 5. Run and archive one full staging retention job report and one archive quarterly report output.
+6. Resolve deployed `POST /api/platform/privacy/requests` runtime `500` before go-live sign-off.
 
 ## Recommended next verification runbook
 
@@ -57,3 +69,4 @@ Scope: Q5, Q6, Q7, Q8, Q9, Q10, Q14, Q15, Q18, Q21, Q22, Q27, Q28
 4. Execute one manual permanent delete with and without legal hold.
 5. Generate archive review report and capture output.
 6. Export audit event samples for all above actions.
+7. Re-test DSAR create/update flow in deployed environment and attach successful traces.

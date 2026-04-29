@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query } from '../../config/database.js';
 import { requireBodyFields } from '../../middleware/validation.js';
 import * as PrivacyRequest from '../../models/PrivacyRequest.js';
+import { assertClientOrganizationPlatformForUser } from './shared.js';
 import { logAuditEvent, listRecentAuditEvents } from '../../services/auditLog.js';
 import {
   completeDeletionRequest,
@@ -17,6 +18,25 @@ function requirePlatformAdmin(req, res, next) {
     return res.status(403).json({ error: 'Admin only' });
   }
   return next();
+}
+
+async function safeLogAudit(event) {
+  try {
+    await logAuditEvent(event);
+  } catch (error) {
+    // Never fail the main privacy operation due to audit sink issues.
+    console.error('privacy audit log failed:', error);
+  }
+}
+
+function handleDbError(error, res, next) {
+  if (!error?.code) return next(error);
+  if (error.code === '22P02') return res.status(400).json({ error: 'Invalid identifier format' });
+  if (error.code === '23503') return res.status(404).json({ error: 'Related record not found' });
+  if (error.code === '42P01') {
+    return res.status(503).json({ error: 'Privacy storage is not initialized. Run migrations.' });
+  }
+  return next(error);
 }
 
 router.get('/privacy/audit-events', async (req, res, next) => {
@@ -35,6 +55,12 @@ router.get('/privacy/audit-events', async (req, res, next) => {
 
 router.get('/privacy/requests', async (req, res, next) => {
   try {
+    const organizationId = String(req.query.organizationId || '').trim();
+    if (!organizationId) {
+      return res.status(400).json({ error: 'organizationId is required' });
+    }
+    const org = await assertClientOrganizationPlatformForUser(organizationId, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
     const requests = await PrivacyRequest.listPrivacyRequestsForOrg(req.query.organizationId, {
       status: req.query.status || null,
       limit: Number.parseInt(String(req.query.limit || '200'), 10),
@@ -51,8 +77,10 @@ router.post(
   requireBodyFields(['organizationId', 'requestType', 'subjectEmail']),
   async (req, res, next) => {
     try {
+      const org = await assertClientOrganizationPlatformForUser(req.body.organizationId, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
       const request = await PrivacyRequest.createPrivacyRequest({
-        organizationId: req.body.organizationId,
+        organizationId: org.id,
         requestType: req.body.requestType,
         subjectEmail: req.body.subjectEmail,
         subjectName: req.body.subjectName || null,
@@ -63,7 +91,7 @@ router.post(
           privacyNoticeVersion: req.body.privacyNoticeVersion || null,
         },
       });
-      await logAuditEvent({
+      await safeLogAudit({
         actor: req.user,
         action: 'privacy.request.created',
         targetType: 'privacy_request',
@@ -79,7 +107,7 @@ router.post(
       });
       if (request.request_type === 'deletion' && req.body.triggerImmediatePurge === true) {
         const purge = await anonymizeClosedProjectIdentifiers({ dryRun: false });
-        await logAuditEvent({
+        await safeLogAudit({
           actor: req.user,
           action: 'privacy.request.immediate_purge',
           targetType: 'organization',
@@ -96,16 +124,18 @@ router.post(
       }
       res.status(201).json({ request });
     } catch (error) {
-      next(error);
+      handleDbError(error, res, next);
     }
   }
 );
 
 router.patch('/privacy/requests/:id', requireBodyFields(['organizationId']), async (req, res, next) => {
   try {
+    const org = await assertClientOrganizationPlatformForUser(req.body.organizationId, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
     const request = await PrivacyRequest.updatePrivacyRequest(
       req.params.id,
-      req.body.organizationId,
+      org.id,
       {
         status: req.body.status,
         identityVerified: req.body.identityVerified,
@@ -115,7 +145,7 @@ router.patch('/privacy/requests/:id', requireBodyFields(['organizationId']), asy
       req.user.id
     );
     if (!request) return res.status(404).json({ error: 'Request not found' });
-    await logAuditEvent({
+    await safeLogAudit({
       actor: req.user,
       action: 'privacy.request.updated',
       targetType: 'privacy_request',
@@ -128,7 +158,7 @@ router.patch('/privacy/requests/:id', requireBodyFields(['organizationId']), asy
     });
     res.json({ request });
   } catch (error) {
-    next(error);
+    handleDbError(error, res, next);
   }
 });
 
@@ -138,18 +168,20 @@ router.post(
   requireBodyFields(['organizationId', 'targetType', 'targetId', 'reason', 'confirmation']),
   async (req, res, next) => {
     try {
+      const org = await assertClientOrganizationPlatformForUser(req.body.organizationId, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
       if (req.body.confirmation !== 'PERMANENT_DELETE') {
         return res.status(400).json({ error: 'confirmation must be PERMANENT_DELETE' });
       }
       const deletionRequest = await createDeletionRequest({
-        organizationId: req.body.organizationId,
+        organizationId: org.id,
         requestedByUserId: req.user.id,
         reason: req.body.reason,
         targetType: req.body.targetType,
         targetId: req.body.targetId,
       });
       const result = await runManualDeletion({
-        organizationId: req.body.organizationId,
+        organizationId: org.id,
         targetType: req.body.targetType,
         targetId: req.body.targetId,
         legalHold: Boolean(req.body.legalHold),
@@ -158,12 +190,12 @@ router.post(
         status: result.status,
         summary: result.summary,
       });
-      await logAuditEvent({
+      await safeLogAudit({
         actor: req.user,
         action: 'privacy.permanent_delete',
         targetType: req.body.targetType,
         targetId: req.body.targetId,
-        targetOrganizationId: req.body.organizationId,
+        targetOrganizationId: org.id,
         result: result.status,
         ipAddress: req.ip,
         userAgent: req.get('user-agent'),
@@ -175,7 +207,7 @@ router.post(
       });
       res.json({ deletionRequest: completed, result });
     } catch (error) {
-      next(error);
+      handleDbError(error, res, next);
     }
   }
 );
@@ -186,6 +218,8 @@ router.post(
   requireBodyFields(['organizationId']),
   async (req, res, next) => {
     try {
+      const org = await assertClientOrganizationPlatformForUser(req.body.organizationId, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
       const dueYears = Number.parseInt(String(process.env.TIER3_DISPOSAL_YEARS || '7'), 10);
       const disposalYears = Number.isFinite(dueYears) && dueYears > 0 ? dueYears : 7;
       const { rows } = await query(
@@ -198,10 +232,10 @@ router.post(
              )
          WHERE id = $1
          RETURNING id, archived_at, tier3_archive_at, tier3_disposal_due_at`,
-        [req.body.organizationId, disposalYears]
+        [org.id, disposalYears]
       );
       if (!rows[0]) return res.status(404).json({ error: 'Organization not found' });
-      await logAuditEvent({
+      await safeLogAudit({
         actor: req.user,
         action: 'privacy.archive.marked',
         targetType: 'organization',
@@ -213,7 +247,7 @@ router.post(
       });
       res.json({ archive: rows[0] });
     } catch (error) {
-      next(error);
+      handleDbError(error, res, next);
     }
   }
 );
