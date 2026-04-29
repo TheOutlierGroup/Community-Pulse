@@ -125,6 +125,17 @@ export function getPulseInviteDefaultTemplate(audience, organizationName) {
   };
 }
 
+function ensureInviteCtaButton(bodyHtml) {
+  const source = String(bodyHtml || '');
+  const firstAnchorRe = /<a\b([^>]*)>([\s\S]*?)<\/a>/i;
+  const ctaStyle =
+    'display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;';
+  return source.replace(firstAnchorRe, (match, attrs, text) => {
+    if (/\bstyle\s*=/.test(attrs)) return match;
+    return `<a${attrs} style="${ctaStyle}">${text}</a>`;
+  });
+}
+
 /** Public HTTPS URL fallback when the logo file is not on disk (e.g. minimal backend-only deploy). */
 function resolvePulseEmailLogoUrl() {
   const custom = String(process.env.PULSE_EMAIL_LOGO_URL || '').trim();
@@ -284,6 +295,7 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     templateReplacements,
     { escapeValues: true }
   );
+  const renderedBodyWithButton = ensureInviteCtaButton(renderedBodyHtml);
   const { logoBlock, attachments } = buildClientEmailLogoParts(
     options?.clientLogoFilename,
     options?.clientLogoAlt || orgPlain
@@ -296,7 +308,7 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     html: `
       <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
         ${logoBlock}
-        ${renderedBodyHtml}
+        ${renderedBodyWithButton}
         <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
           If the button does not work, copy and paste this URL into your browser:<br />
           <span style="word-break: break-all;">${escapeHtml(safePulseUrl)}</span>

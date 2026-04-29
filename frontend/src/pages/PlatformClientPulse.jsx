@@ -728,21 +728,24 @@ export default function PlatformClientPulse() {
         <div className="pulse-clean-header__kpis">
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Total Responses</p>
-            <p className="pulse-clean-header__kpi-value">{kpis.completedTotal ?? 0}</p>
-            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedTotal ?? 0} invited</p>
-            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.participationRate)}`}>
-              {formatPercent(kpis.participationRate)}
+            <p className="pulse-clean-header__kpi-value">{kpis.completedManagers ?? 0}</p>
+            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedManagers ?? 0} invited</p>
+            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.managerParticipationRate)}`}>
+              {formatPercent(kpis.managerParticipationRate)}
             </p>
           </div>
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Employee Responses</p>
-            <p className="pulse-clean-header__kpi-value">{kpis.completedEmployees ?? 0}</p>
-            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedEmployees ?? 0}</p>
+            <p className="pulse-clean-header__kpi-value">{kpis.completedManagers ?? 0}</p>
+            <p className="pulse-clean-header__kpi-meta">of {kpis.invitedManagers ?? 0}</p>
           </div>
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Manager Responses</p>
             <p className="pulse-clean-header__kpi-value">{kpis.completedManagers ?? 0}</p>
             <p className="pulse-clean-header__kpi-meta">of {kpis.invitedManagers ?? 0}</p>
+            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(kpis.managerParticipationRate)}`}>
+              {formatPercent(kpis.managerParticipationRate)}
+            </p>
           </div>
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Avg Adoption Score</p>

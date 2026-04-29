@@ -46,13 +46,13 @@ function defaultTemplateForAudience(audience) {
     return {
       subject: 'Rhythm Engine manager questionnaire',
       bodyHtml:
-        '<p>Hi {{name}},</p><p>You have been invited to complete the manager Rhythm Engine questionnaire.</p><p><a href="{{link}}">Open Rhythm Engine</a></p>',
+        '<p>Hi {{name}},</p><p>You have been invited to complete the manager Rhythm Engine questionnaire.</p><p style="margin: 1.2rem 0;"><a href="{{link}}" style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">Open Rhythm Engine</a></p>',
     };
   }
   return {
     subject: 'Rhythm Engine questionnaire',
     bodyHtml:
-      '<p>Hi {{name}},</p><p>You have been invited to complete a short Rhythm Engine questionnaire.</p><p><a href="{{link}}">Open Rhythm Engine</a></p>',
+      '<p>Hi {{name}},</p><p>You have been invited to complete a short Rhythm Engine questionnaire.</p><p style="margin: 1.2rem 0;"><a href="{{link}}" style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">Open Rhythm Engine</a></p>',
   };
 }
 
