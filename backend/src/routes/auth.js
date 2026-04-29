@@ -15,7 +15,14 @@ import * as Organization from '../models/Organization.js';
 import * as PasswordResetToken from '../models/PasswordResetToken.js';
 import { consumePulseHandoffToken } from '../security/pulseHandoffToken.js';
 import { sendPasswordResetEmail } from '../services/email.js';
-import { generateMfaSecret, verifyTotpCode } from '../services/mfa.js';
+import {
+  buildTotpUri,
+  consumeRecoveryCode,
+  generateMfaSecret,
+  generateRecoveryCodes,
+  qrCodeDataUrlForUri,
+  verifyTotpCode,
+} from '../services/mfa.js';
 import {
   consumeDashboardLoginToken,
   issueDashboardLoginToken,
@@ -97,8 +104,10 @@ router.post(
     }
     if (user.role === 'admin' && user.mfa_enabled) {
       const mfaCode = String(req.body?.mfaCode || '').trim();
-      const validMfa = verifyTotpCode(mfaCode, user.mfa_secret);
-      if (!validMfa) {
+      const validTotp = verifyTotpCode(mfaCode, user.mfa_secret);
+      const recoveryCodeHashes = Array.isArray(user.mfa_recovery_codes) ? user.mfa_recovery_codes : [];
+      const { consumed, remainingCodeHashes } = consumeRecoveryCode(mfaCode, recoveryCodeHashes);
+      if (!validTotp && !consumed) {
         await logAuditEvent({
           actor: {
             id: user.id,
@@ -114,6 +123,9 @@ router.post(
           userAgent: req.get('user-agent'),
         });
         return res.status(401).json({ error: 'MFA code is required' });
+      }
+      if (consumed) {
+        await User.replaceMfaRecoveryCodeHashes(user.id, remainingCodeHashes);
       }
       await User.updateLastMfaVerifiedAt(user.id);
     }
@@ -171,8 +183,15 @@ router.post('/mfa/setup', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Admin only' });
   }
   const secret = generateMfaSecret();
-  const saved = await User.storeMfaSecret(req.user.id, secret);
+  const { codes: recoveryCodes, codeHashes: recoveryCodeHashes } = generateRecoveryCodes();
+  const saved = await User.storeMfaSecret(req.user.id, secret, recoveryCodeHashes);
   if (!saved) return res.status(404).json({ error: 'User not found' });
+  const full = await User.findUserByIdWithOrg(req.user.id);
+  const otpauthUri = buildTotpUri(secret, {
+    email: full?.email || req.user.id,
+    issuer: process.env.MFA_ISSUER,
+  });
+  const qrCodeDataUrl = await qrCodeDataUrlForUri(otpauthUri);
   await logAuditEvent({
     actor: req.user,
     action: 'auth.mfa_setup_started',
@@ -183,7 +202,13 @@ router.post('/mfa/setup', requireAuth, async (req, res) => {
     ipAddress: req.ip,
     userAgent: req.get('user-agent'),
   });
-  res.json({ mfaSecret: secret, requiresVerification: true });
+  res.json({
+    mfaSecret: secret,
+    otpauthUri,
+    qrCodeDataUrl,
+    recoveryCodes,
+    requiresVerification: true,
+  });
 });
 
 router.post('/mfa/verify', requireAuth, requireBodyFields(['code']), async (req, res) => {

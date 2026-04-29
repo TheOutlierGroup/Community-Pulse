@@ -42,7 +42,9 @@ export default function Login() {
         typeof err.response?.data?.error === 'string' ? err.response.data.error : '';
       if (status === 401 && serverMsg === 'MFA code is required') {
         setMfaRequired(true);
-        showToast('Enter your authenticator app code to finish signing in.', { variant: 'error' });
+        showToast('Enter your authenticator code or a recovery key to finish signing in.', {
+          variant: 'error',
+        });
         return;
       }
       showToast(getLoginErrorMessage(err), { variant: 'error' });
@@ -93,13 +95,12 @@ export default function Login() {
           </div>
           {mfaRequired ? (
             <div className="field">
-              <label htmlFor="mfa-code">Authenticator code</label>
+              <label htmlFor="mfa-code">Authenticator code or recovery key</label>
               <input
                 ref={mfaCodeInputRef}
                 id="mfa-code"
-                inputMode="numeric"
                 autoComplete="one-time-code"
-                placeholder="Enter 6-digit code"
+                placeholder="Enter 6-digit code or XXXX-XXXX key"
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value)}
                 required

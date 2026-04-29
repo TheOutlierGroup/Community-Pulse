@@ -32,6 +32,8 @@ export default function AccountPage() {
   const [passwordMessage, setPasswordMessage] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [mfaSecret, setMfaSecret] = useState('');
+  const [mfaQrCodeDataUrl, setMfaQrCodeDataUrl] = useState('');
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState([]);
   const [mfaCode, setMfaCode] = useState('');
   const [mfaBusy, setMfaBusy] = useState(false);
   const [mfaMessage, setMfaMessage] = useState('');
@@ -61,6 +63,8 @@ export default function AccountPage() {
 
   useEffect(() => {
     setMfaSecret('');
+    setMfaQrCodeDataUrl('');
+    setMfaRecoveryCodes([]);
     setMfaCode('');
     setMfaMessage('');
     setMfaError('');
@@ -360,7 +364,11 @@ export default function AccountPage() {
         return;
       }
       setMfaSecret(data.mfaSecret);
-      setMfaMessage('MFA setup started. Add this secret to your authenticator app, then verify.');
+      setMfaQrCodeDataUrl(data.qrCodeDataUrl || '');
+      setMfaRecoveryCodes(Array.isArray(data.recoveryCodes) ? data.recoveryCodes : []);
+      setMfaMessage(
+        'MFA setup started. Scan the QR code (or add the secret manually), then download your recovery keys.'
+      );
     } catch (err) {
       setMfaError(err.response?.data?.error || 'Could not start MFA setup.');
     } finally {
@@ -382,6 +390,8 @@ export default function AccountPage() {
       await api.post('/api/auth/mfa/verify', { code });
       setCurrentUser({ ...user, mfaEnabled: true });
       setMfaSecret('');
+      setMfaQrCodeDataUrl('');
+      setMfaRecoveryCodes([]);
       setMfaCode('');
       setMfaMessage('MFA enabled.');
     } catch (err) {
@@ -405,6 +415,8 @@ export default function AccountPage() {
       await api.post('/api/auth/mfa/disable', { code });
       setCurrentUser({ ...user, mfaEnabled: false });
       setMfaSecret('');
+      setMfaQrCodeDataUrl('');
+      setMfaRecoveryCodes([]);
       setMfaCode('');
       setMfaMessage('MFA disabled.');
     } catch (err) {
@@ -416,9 +428,37 @@ export default function AccountPage() {
 
   function cancelMfaSetup() {
     setMfaSecret('');
+    setMfaQrCodeDataUrl('');
+    setMfaRecoveryCodes([]);
     setMfaCode('');
     setMfaMessage('');
     setMfaError('');
+  }
+
+  function downloadMfaRecoveryKeys() {
+    if (!Array.isArray(mfaRecoveryCodes) || mfaRecoveryCodes.length === 0) return;
+    const timestamp = new Date().toISOString();
+    const lines = [
+      'Employee Pulse MFA recovery keys',
+      `Generated: ${timestamp}`,
+      `Account: ${user.email}`,
+      '',
+      'Each key can be used once if you lose authenticator app access.',
+      'Store these keys in a secure location.',
+      '',
+      ...mfaRecoveryCodes.map((code, idx) => `${idx + 1}. ${code}`),
+      '',
+    ];
+    const blob = new Blob([`${lines.join('\n')}`], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `employee-pulse-mfa-recovery-keys-${user.email.replace(/[^a-z0-9]/gi, '-')}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setMfaMessage('Recovery keys downloaded. Keep them somewhere safe.');
   }
 
   async function onCompanyLogoFile(e) {
@@ -540,6 +580,8 @@ export default function AccountPage() {
           <MfaCard
             user={user}
             mfaSecret={mfaSecret}
+            mfaQrCodeDataUrl={mfaQrCodeDataUrl}
+            mfaRecoveryCodes={mfaRecoveryCodes}
             mfaCode={mfaCode}
             setMfaCode={setMfaCode}
             mfaBusy={mfaBusy}
@@ -549,6 +591,7 @@ export default function AccountPage() {
             verifyMfaSetup={verifyMfaSetup}
             disableMfa={disableMfa}
             cancelMfaSetup={cancelMfaSetup}
+            downloadMfaRecoveryKeys={downloadMfaRecoveryKeys}
           />
         ) : null}
         <CompanyLogoCard

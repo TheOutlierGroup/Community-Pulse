@@ -1,6 +1,8 @@
 export default function MfaCard({
   user,
   mfaSecret,
+  mfaQrCodeDataUrl,
+  mfaRecoveryCodes,
   mfaCode,
   setMfaCode,
   mfaBusy,
@@ -10,6 +12,7 @@ export default function MfaCard({
   verifyMfaSetup,
   disableMfa,
   cancelMfaSetup,
+  downloadMfaRecoveryKeys,
 }) {
   const setupInProgress = Boolean(mfaSecret) && !user.mfaEnabled;
 
@@ -30,10 +33,41 @@ export default function MfaCard({
 
       {setupInProgress ? (
         <form onSubmit={verifyMfaSetup}>
+          {mfaQrCodeDataUrl ? (
+            <div className="field">
+              <label>Scan QR code</label>
+              <img
+                src={mfaQrCodeDataUrl}
+                alt="Authenticator app QR code"
+                style={{ width: 200, height: 200, borderRadius: 10, border: '1px solid var(--border)' }}
+              />
+            </div>
+          ) : null}
           <div className="field">
             <label htmlFor="settings-mfa-secret">Authenticator secret</label>
             <input id="settings-mfa-secret" value={mfaSecret} readOnly />
           </div>
+          {Array.isArray(mfaRecoveryCodes) && mfaRecoveryCodes.length > 0 ? (
+            <div className="field">
+              <label htmlFor="settings-mfa-recovery-codes">Recovery keys (save now)</label>
+              <textarea
+                id="settings-mfa-recovery-codes"
+                value={mfaRecoveryCodes.join('\n')}
+                readOnly
+                rows={8}
+                style={{ fontFamily: 'var(--font-mono, monospace)' }}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={mfaBusy}
+                onClick={downloadMfaRecoveryKeys}
+                style={{ marginTop: '0.5rem' }}
+              >
+                Download recovery keys
+              </button>
+            </div>
+          ) : null}
           <div className="field">
             <label htmlFor="settings-mfa-verify-code">Authenticator code</label>
             <input

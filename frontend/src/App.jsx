@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './components/shared/Auth.jsx';
 import { ToastProvider } from './components/shared/ToastProvider.jsx';
 import { IS_RHYTHM_ENGINE_SURFACE } from './config/appSurface.js';
+import { lazyWithReload } from './utils/lazyWithReload.js';
 
 const Login = lazy(() => import('./pages/Login.jsx'));
 const RhythmEngineLanding = lazy(() => import('./pages/RhythmEngineLanding.jsx'));
@@ -28,7 +29,10 @@ const PlatformClientAccount = lazy(() => import('./pages/PlatformClientAccount.j
 const PlatformUsers = lazy(() => import('./pages/PlatformUsers.jsx'));
 const PlatformSettings = lazy(() => import('./pages/PlatformSettings.jsx'));
 const ClientHome = lazy(() => import('./pages/ClientHome.jsx'));
-const AccountPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const AccountPage = lazyWithReload(
+  () => import('./pages/SettingsPage.jsx'),
+  'settings-page'
+);
 
 export default function App() {
   const publicEntry = IS_RHYTHM_ENGINE_SURFACE ? <RhythmEngineLanding /> : <Login />;
