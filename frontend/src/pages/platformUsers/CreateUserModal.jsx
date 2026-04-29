@@ -69,9 +69,7 @@ export default function CreateUserModal({
             autoComplete="new-password"
           />
           <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
-            Leave blank to email them a link to create their password (requires Resend and APP_URL or FRONTEND_ORIGIN).
-            Otherwise use at least 8 characters; they still get a welcome email with sign-in and password links when
-            email is configured.
+            Leave blank to email them a link to create their password. Otherwise use at least 8 characters.
           </p>
         </div>
         <div className="field">

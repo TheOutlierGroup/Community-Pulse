@@ -387,3 +387,45 @@ export async function sendPlatformWelcomeEmail(
     throw new Error(detail || 'Failed to send welcome email');
   }
 }
+
+function parseEmailRecipients(raw) {
+  return String(raw || '')
+    .split(/[,\n;]+/)
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export async function sendRetentionAlertEmail({ subject, bodyText, payload }) {
+  const resend = requireResend();
+  const recipients = parseEmailRecipients(process.env.RETENTION_ALERT_EMAIL);
+  if (recipients.length === 0) return false;
+
+  const title = String(subject || 'Retention job alert').trim();
+  const detail = String(bodyText || '').trim();
+  const payloadJson = payload ? JSON.stringify(payload, null, 2) : '';
+  const html = `
+    <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 0 auto; padding: 1.25rem 0;">
+      <h2 style="margin: 0 0 1rem;">${escapeHtml(title)}</h2>
+      <p style="color: #555; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(detail)}</p>
+      ${
+        payloadJson
+          ? `<pre style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; overflow: auto;">${escapeHtml(payloadJson)}</pre>`
+          : ''
+      }
+    </div>
+  `;
+  const text = [title, '', detail, payloadJson ? `Payload:\n${payloadJson}` : ''].join('\n');
+  const { error } = await resend.emails.send({
+    from: getResendFromAddress(),
+    to: recipients,
+    subject: title,
+    html,
+    text,
+  });
+
+  if (error) {
+    console.error('Resend retention alert error:', error);
+    return false;
+  }
+  return true;
+}

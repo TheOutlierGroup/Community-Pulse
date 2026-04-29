@@ -16,7 +16,8 @@ This runbook defines the operational steps for:
 Set in production environment:
 - `RETENTION_PROJECT_CLOSE_DAYS=90`
 - `RETENTION_DRY_RUN=false`
-- `RETENTION_ALERT_WEBHOOK=<slack_or_ops_webhook>`
+- `RETENTION_ALERT_EMAIL=<comma-separated recipient list>`
+- `RETENTION_ALERT_WEBHOOK=<optional fallback webhook>`
 - `MFA_ENFORCE_ADMIN=true`
 - `CLIENT_DASHBOARD_TOKEN_MAX_HOURS=24`
 - `TIER3_DISPOSAL_YEARS=7`
@@ -25,9 +26,8 @@ Set in production environment:
 
 Configured in `render.yaml`:
 - `pulse-retention-sweep` (daily)
-  - command: `cd backend && npm run retention:sweep`
-- `pulse-archive-quarterly-review` (quarterly)
-  - command: `cd backend && npm run archive:review`
+  - command: `cd backend && npm run privacy:maintenance`
+  - includes quarterly archive review on quarter-start day
 
 ## 1) Nightly retention/anonymization operations
 
@@ -43,7 +43,7 @@ Anonymize identifier fields for eligible closed-project records and archive inac
 ### Execution
 
 1. Run job:
-   - `cd backend && npm run retention:sweep`
+   - `cd backend && npm run privacy:maintenance`
 2. Confirm output includes:
    - `policy`
    - `fields`
@@ -57,7 +57,7 @@ Anonymize identifier fields for eligible closed-project records and archive inac
 ### Failure handling
 
 If job fails:
-1. Confirm alert delivered to `RETENTION_ALERT_WEBHOOK`.
+1. Confirm alert delivered to `RETENTION_ALERT_EMAIL` (or webhook fallback if email is not configured).
 2. Query latest run:
    - check `error_code`, `error_message`, `details`.
 3. Resolve data/config issue.
@@ -164,7 +164,7 @@ Verify events for:
 
 - [ ] Env vars configured in production
 - [ ] Daily retention cron active
-- [ ] Quarterly archive cron active
-- [ ] Alert webhook tested
+- [ ] Quarterly archive review path confirmed from same cron job
+- [ ] Alert email tested
 - [ ] DSAR queue review cadence assigned
 - [ ] Evidence snapshots stored for compliance sign-off

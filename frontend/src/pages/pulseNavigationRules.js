@@ -27,8 +27,17 @@ export function trendAnalysisVisibleFromOptions(pulseTimepointOptions) {
   return timepoints.size >= 2;
 }
 
+export function normalizePulseHash(rawHash) {
+  const normalized = String(rawHash || '')
+    .replace(/^#/, '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) return '';
+  return normalized.split('?')[0].replace(/\/+$/, '');
+}
+
 export function resolvePulseFocusedSection(rawHash, trendAnalysisVisible) {
-  const normalizedHash = String(rawHash || '').replace(/^#/, '').trim();
+  const normalizedHash = normalizePulseHash(rawHash);
   const fullOverview = !normalizedHash || normalizedHash === 'organisation-dashboard';
   if (fullOverview) return null;
   if (normalizedHash === 'trend-analysis' && !trendAnalysisVisible) return null;

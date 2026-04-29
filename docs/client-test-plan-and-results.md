@@ -257,3 +257,41 @@ Recorded policy decision:
 ### 10.8 Client-facing conclusion for load/performance scope
 
 Load/performance script validation is complete for the agreed scope and environment profile, with reproducible evidence captured and all configured thresholds passing.
+
+### 10.9 Security baseline rerun update (2026-04-29)
+
+Security baseline rerun results:
+- Backend auth/token suite rerun: pass (`19 passed, 0 failed`)
+- Invalid-token browser abuse-path rerun: pass (`3 passed, 0 failed`)
+- Backend dependency audit rerun: `4 vulnerabilities` (3 moderate, 1 high)
+- Frontend dependency audit rerun: `4 vulnerabilities` (3 moderate, 1 high)
+- Scripted security abuse baseline (cross-org IDOR + token misuse smoke): pass (`5/5 checks`)
+
+Evidence artifacts:
+- `docs/security-results-2026-04-29/backend-auth-token-tests.log`
+- `docs/security-results-2026-04-29/invalid-token-e2e.log`
+- `docs/security-results-2026-04-29/backend-audit.log`
+- `docs/security-results-2026-04-29/frontend-audit.log`
+- `docs/security-results-2026-04-29/security-abuse-baseline.log`
+
+Security completion status:
+- Automated security baseline and scripted abuse smoke checks are completed and passing.
+- Remaining work to fully close penetration testing: role-boundary privilege escalation checks with non-admin identities, authenticated DAST run, and final risk acceptance sign-off.
+
+### 10.10 Extended security abuse checks update (2026-04-29)
+
+Additional scripted security checks were executed against Render with the same test credentials:
+- IDOR/privilege route smoke (`security:idor-privilege-smoke`): pass (`6/6`)
+  - Includes cross-org checks for tasks and report endpoints (blocked with controlled statuses).
+- Token misuse + input abuse smoke (`security:token-input-smoke`): pass (`6/6`)
+  - Includes missing/malformed/tampered auth handling and abusive survey payload handling.
+- Full one-command automated security baseline (`security:baseline`): pass
+  - Runs auth/token tests, invalid-token browser test, dependency audits, and scripted abuse checks with evidence output.
+
+Risk and acceptance documentation:
+- `docs/security-risk-acceptance-2026-04-29.md` created with current unresolved dependency advisories, mitigations, owners, and review triggers.
+- `docs/security-penetration-closeout-runbook.md` documents end-to-end closure steps and remaining manual/DAST tasks.
+
+Remaining closure blockers:
+- Role-boundary privilege escalation validation needs additional non-admin test identities.
+- Authenticated DAST tooling is not currently installed in this local environment.

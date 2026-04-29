@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
-import { resolvePulseFocusedSection } from './pulseNavigationRules.js';
+import { normalizePulseHash, resolvePulseFocusedSection } from './pulseNavigationRules.js';
 import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
 
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
@@ -233,8 +233,9 @@ export default function PlatformClientPulse() {
     () => resolvePulseFocusedSection(location.hash, trendAnalysisVisible),
     [location.hash, trendAnalysisVisible]
   );
+  const normalizedPulseHash = useMemo(() => normalizePulseHash(location.hash), [location.hash]);
   const pageTitle = sectionLabel(pulseFocusedSection);
-  const showingFullDashboard = pulseFocusedSection == null;
+  const showingFullDashboard = !normalizedPulseHash || normalizedPulseHash === 'organisation-dashboard';
   const showReadinessSection = showingFullDashboard || pulseFocusedSection === 'organisation-scores';
   const showScoresSection = showingFullDashboard || pulseFocusedSection === 'sponsorship-analysis';
   const showDimensionsSection = showingFullDashboard
@@ -657,7 +658,8 @@ export default function PlatformClientPulse() {
 
   return (
     <>
-      <section className="pulse-clean-header card">
+      {showingFullDashboard ? (
+        <section className="pulse-clean-header card">
         <div className="pulse-clean-header__top">
           <div>
             <p className="pulse-clean-header__eyebrow">Client Administration</p>
@@ -775,9 +777,10 @@ export default function PlatformClientPulse() {
             </div>
           </div>
         </div>
-      </section>
+        </section>
+      ) : null}
 
-      {kpiBridgeText ? (
+      {showingFullDashboard && kpiBridgeText ? (
         <section className="pulse-clean-bridge card">
           <div className="pulse-clean-bridge__text">{kpiBridgeText}</div>
         <div className="pulse-clean-bridge__scores">

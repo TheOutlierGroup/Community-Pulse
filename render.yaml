@@ -130,6 +130,8 @@ services:
         value: "90"
       - key: RETENTION_DRY_RUN
         value: "false"
+      - key: RETENTION_ALERT_EMAIL
+        sync: false
       - key: RETENTION_ALERT_WEBHOOK
         sync: false
 

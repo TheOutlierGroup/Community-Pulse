@@ -8,6 +8,7 @@ import { jsonErrorFromBuffer, sniffImageMime } from '../utils/imageResponseHelpe
 import ProfileCard from './settingsPage/ProfileCard.jsx';
 import CompanyLogoCard from './settingsPage/CompanyLogoCard.jsx';
 import PasswordCard from './settingsPage/PasswordCard.jsx';
+import MfaCard from './settingsPage/MfaCard.jsx';
 import AccountCard from './settingsPage/AccountCard.jsx';
 import { normalizeServices } from '../utils/clientServices.js';
 
@@ -30,6 +31,11 @@ export default function AccountPage() {
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [mfaSecret, setMfaSecret] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaMessage, setMfaMessage] = useState('');
+  const [mfaError, setMfaError] = useState('');
   const [avatarLoadError, setAvatarLoadError] = useState('');
   const companyLogoInputRef = useRef(null);
   const companyLogoBlobRef = useRef(null);
@@ -52,6 +58,13 @@ export default function AccountPage() {
     setFirstName(user.firstName ?? '');
     setLastName(user.lastName ?? '');
   }, [user?.id, user?.firstName, user?.lastName]);
+
+  useEffect(() => {
+    setMfaSecret('');
+    setMfaCode('');
+    setMfaMessage('');
+    setMfaError('');
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user || user.organizationKind !== 'client') {
@@ -335,6 +348,79 @@ export default function AccountPage() {
     }
   }
 
+  async function startMfaSetup() {
+    setMfaError('');
+    setMfaMessage('');
+    setMfaCode('');
+    setMfaBusy(true);
+    try {
+      const { data } = await api.post('/api/auth/mfa/setup');
+      if (!data?.mfaSecret) {
+        setMfaError('Could not start MFA setup.');
+        return;
+      }
+      setMfaSecret(data.mfaSecret);
+      setMfaMessage('MFA setup started. Add this secret to your authenticator app, then verify.');
+    } catch (err) {
+      setMfaError(err.response?.data?.error || 'Could not start MFA setup.');
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  async function verifyMfaSetup(e) {
+    e.preventDefault();
+    const code = mfaCode.trim();
+    if (!code) {
+      setMfaError('Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    setMfaError('');
+    setMfaMessage('');
+    setMfaBusy(true);
+    try {
+      await api.post('/api/auth/mfa/verify', { code });
+      setCurrentUser({ ...user, mfaEnabled: true });
+      setMfaSecret('');
+      setMfaCode('');
+      setMfaMessage('MFA enabled.');
+    } catch (err) {
+      setMfaError(err.response?.data?.error || 'Could not verify MFA code.');
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  async function disableMfa(e) {
+    e.preventDefault();
+    const code = mfaCode.trim();
+    if (!code) {
+      setMfaError('Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    setMfaError('');
+    setMfaMessage('');
+    setMfaBusy(true);
+    try {
+      await api.post('/api/auth/mfa/disable', { code });
+      setCurrentUser({ ...user, mfaEnabled: false });
+      setMfaSecret('');
+      setMfaCode('');
+      setMfaMessage('MFA disabled.');
+    } catch (err) {
+      setMfaError(err.response?.data?.error || 'Could not disable MFA.');
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  function cancelMfaSetup() {
+    setMfaSecret('');
+    setMfaCode('');
+    setMfaMessage('');
+    setMfaError('');
+  }
+
   async function onCompanyLogoFile(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -450,6 +536,21 @@ export default function AccountPage() {
           setConfirmPassword={setConfirmPassword}
           passwordBusy={passwordBusy}
         />
+        {user.role === 'admin' ? (
+          <MfaCard
+            user={user}
+            mfaSecret={mfaSecret}
+            mfaCode={mfaCode}
+            setMfaCode={setMfaCode}
+            mfaBusy={mfaBusy}
+            mfaError={mfaError}
+            mfaMessage={mfaMessage}
+            startMfaSetup={startMfaSetup}
+            verifyMfaSetup={verifyMfaSetup}
+            disableMfa={disableMfa}
+            cancelMfaSetup={cancelMfaSetup}
+          />
+        ) : null}
         <CompanyLogoCard
           user={user}
           companyLogoLoadError={companyLogoLoadError}

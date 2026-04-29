@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolvePulseFocusedSection, trendAnalysisVisibleFromOptions } from './pulseNavigationRules.js';
+import {
+  normalizePulseHash,
+  resolvePulseFocusedSection,
+  trendAnalysisVisibleFromOptions,
+} from './pulseNavigationRules.js';
 
 test('trendAnalysisVisibleFromOptions requires at least two unique stage families', () => {
   assert.equal(trendAnalysisVisibleFromOptions([]), false);
@@ -23,4 +27,14 @@ test('resolvePulseFocusedSection maps aliases and guards trend-analysis visibili
   assert.equal(resolvePulseFocusedSection('#trend-analysis', true), 'trend-analysis');
   assert.equal(resolvePulseFocusedSection('#team-level-view', true), 'team-level-view');
   assert.equal(resolvePulseFocusedSection('#reports', true), 'reports');
+  assert.equal(resolvePulseFocusedSection('#Reports', true), 'reports');
+  assert.equal(resolvePulseFocusedSection('#reports/', true), 'reports');
+  assert.equal(resolvePulseFocusedSection('#reports?tab=history', true), 'reports');
+});
+
+test('normalizePulseHash handles case, trailing slash, and hash params', () => {
+  assert.equal(normalizePulseHash(''), '');
+  assert.equal(normalizePulseHash('#Reports'), 'reports');
+  assert.equal(normalizePulseHash('#sponsorship-analysis/'), 'sponsorship-analysis');
+  assert.equal(normalizePulseHash('#reports?tab=history'), 'reports');
 });

@@ -3,6 +3,7 @@ import path from 'path';
 import { query } from '../config/database.js';
 import { ensureStorageDirs } from '../config/storage.js';
 import { logAuditEvent } from './auditLog.js';
+import { sendRetentionAlertEmail } from './email.js';
 
 function parseDays(raw, fallbackDays) {
   const value = Number.parseInt(String(raw ?? ''), 10);
@@ -95,6 +96,18 @@ async function finishRetentionJobRun(runId, status, details) {
 }
 
 async function sendRetentionAlert(payload) {
+  const emailRecipients = String(process.env.RETENTION_ALERT_EMAIL || '').trim();
+  if (emailRecipients) {
+    const emailSent = await sendRetentionAlertEmail({
+      subject: `Retention alert: ${payload?.kind || 'job failure'}`,
+      bodyText: `Retention job "${payload?.jobName || 'retention_sweep'}" reported an issue.\n\nError: ${
+        payload?.error || 'unknown'
+      }\nRun ID: ${payload?.runId || 'n/a'}`,
+      payload,
+    });
+    if (emailSent) return true;
+  }
+
   const webhook = String(process.env.RETENTION_ALERT_WEBHOOK || '').trim();
   if (!webhook) return false;
   try {
