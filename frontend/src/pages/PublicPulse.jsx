@@ -249,9 +249,10 @@ export default function PublicPulse() {
                 || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.'}
             </p>
             <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1.5rem' }}>
-              {surveyAudience === 'manager'
-                ? 'Your perspective as a manager helps leaders see what’s working and what might need attention.'
-                : 'Your answers help leaders understand what’s working and what might need attention.'}
+              {surveyCopy?.welcomeContext
+                || (surveyAudience === 'manager'
+                  ? 'Your perspective as a manager helps leaders see what’s working and what might need attention.'
+                  : 'Your answers help leaders understand what’s working and what might need attention.')}
             </p>
             {error ? <p className="error" style={{ marginBottom: '1rem' }}>{error}</p> : null}
             <div className="btn-row" style={{ justifyContent: 'center', marginTop: '0.25rem' }}>

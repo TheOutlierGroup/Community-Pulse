@@ -23,6 +23,7 @@ import {
   classifySponsorshipChainState,
   DIMENSIONS,
   READINESS_THRESHOLD,
+  getSurveyCopyForAudience,
   scoreBandForSponsorshipLoad,
   scoreResponseFromSteps,
   SPONSORSHIP_LOAD_BAND_DEFAULTS,
@@ -640,6 +641,11 @@ const PULSE_INVITE_TEMPLATE_TIMEPOINTS = new Set(['pre', 'mid', 'post']);
 const PULSE_INVITE_TEMPLATE_MAX_SUBJECT_LENGTH = 200;
 const PULSE_INVITE_TEMPLATE_MAX_BODY_LENGTH = 20000;
 const PULSE_INVITE_TEMPLATE_PLACEHOLDERS = ['{{name}}', '{{link}}', '{{dueDate}}', '{{clientname}}'];
+const PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH = 4000;
+const PULSE_SURVEY_START_DEFAULT_CONTEXT = {
+  staff: 'Your answers help leaders understand what’s working and what might need attention.',
+  manager: 'Your perspective as a manager helps leaders see what’s working and what might need attention.',
+};
 const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function normalizeDateOnly(value) {
@@ -705,6 +711,74 @@ function pulseInviteTemplateBucketByTimepoint(settingsValue, timepointPhase) {
     return scoped && typeof scoped === 'object' && !Array.isArray(scoped) ? scoped : {};
   }
   return templates;
+}
+
+function pulseSurveyStartFallbackTemplate(audience, timepointPhase = 'pre') {
+  const role = audience === 'manager' ? 'manager' : 'staff';
+  const stage = internalTimepointToPulseStage(normalizePulseInviteTemplateTimepointKey(timepointPhase));
+  const defaultCopy = getSurveyCopyForAudience(role, stage);
+  const intro = String(defaultCopy?.intro || '').trim();
+  return {
+    intro:
+      intro
+      || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
+    context: PULSE_SURVEY_START_DEFAULT_CONTEXT[role],
+  };
+}
+
+function pulseSurveyStartDefaultTemplateFromSettings(settings, audience, timepointPhase = 'pre') {
+  const role = audience === 'manager' ? 'manager' : 'staff';
+  const fallback = pulseSurveyStartFallbackTemplate(role, timepointPhase);
+  const defaults = pulseInviteTemplateBucketByTimepoint(
+    settings?.pulseInviteDefaultSurveyStartTemplates,
+    timepointPhase
+  );
+  const raw = defaults && typeof defaults === 'object' ? defaults[role] : null;
+  if (!raw || typeof raw !== 'object') return fallback;
+  const intro = typeof raw.intro === 'string' ? raw.intro.trim() : '';
+  const context = typeof raw.context === 'string' ? raw.context.trim() : '';
+  return {
+    intro: intro || fallback.intro,
+    context: context || fallback.context,
+  };
+}
+
+function pulseSurveyStartTemplateFromSettings(settings, audience, platformSettings = null, timepointPhase = 'pre') {
+  const role = audience === 'manager' ? 'manager' : 'staff';
+  const fallback = pulseSurveyStartDefaultTemplateFromSettings(platformSettings, role, timepointPhase);
+  const templates = pulseInviteTemplateBucketByTimepoint(settings?.pulseInviteSurveyStartTemplates, timepointPhase);
+  const raw = templates && typeof templates === 'object' ? templates[role] : null;
+  if (!raw || typeof raw !== 'object') return fallback;
+  const intro = typeof raw.intro === 'string' ? raw.intro.trim() : '';
+  const context = typeof raw.context === 'string' ? raw.context.trim() : '';
+  return {
+    intro: intro || fallback.intro,
+    context: context || fallback.context,
+  };
+}
+
+function pulseSurveyStartTemplatesPayload(org, platformSettings = null, timepointPhase = 'pre') {
+  return {
+    staff: pulseSurveyStartTemplateFromSettings(
+      org?.settings,
+      'staff',
+      platformSettings,
+      timepointPhase
+    ),
+    manager: pulseSurveyStartTemplateFromSettings(
+      org?.settings,
+      'manager',
+      platformSettings,
+      timepointPhase
+    ),
+  };
+}
+
+function pulseSurveyStartDefaultTemplatesPayload(platformOrg, timepointPhase = 'pre') {
+  return {
+    staff: pulseSurveyStartDefaultTemplateFromSettings(platformOrg?.settings, 'staff', timepointPhase),
+    manager: pulseSurveyStartDefaultTemplateFromSettings(platformOrg?.settings, 'manager', timepointPhase),
+  };
 }
 
 function pulseInviteDefaultTemplateFromSettings(settings, audience, organizationName, timepointPhase = 'pre') {
@@ -922,6 +996,75 @@ export function registerPlatformOrgRoutes(router) {
       templates: pulseInviteDefaultTemplatesPayload(updated, templateTimepointKey),
       timepoint: internalTimepointToPulseStage(templateTimepointKey),
       placeholders: PULSE_INVITE_TEMPLATE_PLACEHOLDERS,
+    });
+  });
+
+  router.get('/pulse-link-invites/default-survey-start-templates', requirePlatformAdminRole, async (req, res) => {
+    const platformOrg = await Organization.getOrganization(req.user.organizationId);
+    if (!platformOrg || platformOrg.kind !== 'platform') {
+      return res.status(404).json({ error: 'Platform organization not found' });
+    }
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const templateTimepointKey = normalizePulseInviteTemplateTimepointKey(timepointPhase);
+    return res.json({
+      templates: pulseSurveyStartDefaultTemplatesPayload(platformOrg, templateTimepointKey),
+      timepoint: internalTimepointToPulseStage(templateTimepointKey),
+    });
+  });
+
+  router.put('/pulse-link-invites/default-survey-start-templates', requirePlatformAdminRole, async (req, res) => {
+    const platformOrg = await Organization.getOrganization(req.user.organizationId);
+    if (!platformOrg || platformOrg.kind !== 'platform') {
+      return res.status(404).json({ error: 'Platform organization not found' });
+    }
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const templateTimepointKey = normalizePulseInviteTemplateTimepointKey(timepointPhase);
+    const audience = String(req.body?.audience || '')
+      .trim()
+      .toLowerCase();
+    if (!PULSE_INVITE_TEMPLATE_AUDIENCES.has(audience)) {
+      return res.status(400).json({ error: 'audience must be staff or manager' });
+    }
+    const intro = String(req.body?.intro || '').trim();
+    if (!intro) return res.status(400).json({ error: 'intro is required' });
+    if (intro.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
+      return res.status(400).json({
+        error: `intro must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
+      });
+    }
+    const context = String(req.body?.context || '').trim();
+    if (!context) return res.status(400).json({ error: 'context is required' });
+    if (context.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
+      return res.status(400).json({
+        error: `context must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
+      });
+    }
+    const existingDefaults =
+      platformOrg.settings?.pulseInviteDefaultSurveyStartTemplates
+      && typeof platformOrg.settings.pulseInviteDefaultSurveyStartTemplates === 'object'
+        ? platformOrg.settings.pulseInviteDefaultSurveyStartTemplates
+        : {};
+    const scopedDefaults = pulseInviteTemplateBucketByTimepoint(existingDefaults, templateTimepointKey);
+    const updated = await Organization.updateOrganizationSettings(platformOrg.id, {
+      pulseInviteDefaultSurveyStartTemplates: {
+        ...existingDefaults,
+        [templateTimepointKey]: {
+          ...scopedDefaults,
+          [audience]: {
+            intro,
+            context,
+            updatedAt: new Date().toISOString(),
+            updatedByUserId: req.user.id,
+          },
+        },
+      },
+    });
+    if (!updated || updated.kind !== 'platform') {
+      return res.status(404).json({ error: 'Platform organization not found' });
+    }
+    return res.json({
+      templates: pulseSurveyStartDefaultTemplatesPayload(updated, templateTimepointKey),
+      timepoint: internalTimepointToPulseStage(templateTimepointKey),
     });
   });
 
@@ -2205,6 +2348,124 @@ export function registerPlatformOrgRoutes(router) {
       templates: pulseInviteTemplatesPayload(updated, platformOrg?.settings, templateTimepointKey),
       timepoint: internalTimepointToPulseStage(templateTimepointKey),
       placeholders: PULSE_INVITE_TEMPLATE_PLACEHOLDERS,
+    });
+  });
+
+  router.get('/organizations/:id/pulse-link-invites/survey-start-templates', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const templateTimepointKey = normalizePulseInviteTemplateTimepointKey(timepointPhase);
+    const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
+    const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
+    if (duringSessionError) return res.status(400).json({ error: duringSessionError });
+    const platformOrg = await Organization.getOrganization(req.user.organizationId);
+    return res.json({
+      templates: pulseSurveyStartTemplatesPayload(org, platformOrg?.settings, templateTimepointKey),
+      timepoint: internalTimepointToPulseStage(templateTimepointKey),
+    });
+  });
+
+  router.put('/organizations/:id/pulse-link-invites/survey-start-templates', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const templateTimepointKey = normalizePulseInviteTemplateTimepointKey(timepointPhase);
+    const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
+    const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
+    if (duringSessionError) return res.status(400).json({ error: duringSessionError });
+    const audience = String(req.body?.audience || '')
+      .trim()
+      .toLowerCase();
+    if (!PULSE_INVITE_TEMPLATE_AUDIENCES.has(audience)) {
+      return res.status(400).json({ error: 'audience must be staff or manager' });
+    }
+    const intro = String(req.body?.intro || '').trim();
+    if (!intro) return res.status(400).json({ error: 'intro is required' });
+    if (intro.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
+      return res.status(400).json({
+        error: `intro must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
+      });
+    }
+    const context = String(req.body?.context || '').trim();
+    if (!context) return res.status(400).json({ error: 'context is required' });
+    if (context.length > PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH) {
+      return res.status(400).json({
+        error: `context must be ${PULSE_SURVEY_START_TEMPLATE_MAX_TEXT_LENGTH} characters or less`,
+      });
+    }
+    const existingTemplates =
+      org.settings?.pulseInviteSurveyStartTemplates
+      && typeof org.settings.pulseInviteSurveyStartTemplates === 'object'
+        ? org.settings.pulseInviteSurveyStartTemplates
+        : {};
+    const scopedTemplates = pulseInviteTemplateBucketByTimepoint(existingTemplates, templateTimepointKey);
+    const updated = await Organization.updateOrganizationSettings(org.id, {
+      pulseInviteSurveyStartTemplates: {
+        ...existingTemplates,
+        [templateTimepointKey]: {
+          ...scopedTemplates,
+          [audience]: {
+            intro,
+            context,
+            updatedAt: new Date().toISOString(),
+            updatedByUserId: req.user.id,
+          },
+        },
+      },
+    });
+    if (!updated) return res.status(404).json({ error: 'Organization not found' });
+    const platformOrg = await Organization.getOrganization(req.user.organizationId);
+    return res.json({
+      templates: pulseSurveyStartTemplatesPayload(updated, platformOrg?.settings, templateTimepointKey),
+      timepoint: internalTimepointToPulseStage(templateTimepointKey),
+    });
+  });
+
+  router.post('/organizations/:id/pulse-link-invites/survey-start-templates/reset-default', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+    const templateTimepointKey = normalizePulseInviteTemplateTimepointKey(timepointPhase);
+    const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
+    const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
+    if (duringSessionError) return res.status(400).json({ error: duringSessionError });
+    const audience = String(req.body?.audience || '')
+      .trim()
+      .toLowerCase();
+    if (!PULSE_INVITE_TEMPLATE_AUDIENCES.has(audience)) {
+      return res.status(400).json({ error: 'audience must be staff or manager' });
+    }
+    const platformOrg = await Organization.getOrganization(req.user.organizationId);
+    const resetTemplate = pulseSurveyStartDefaultTemplateFromSettings(
+      platformOrg?.settings,
+      audience,
+      templateTimepointKey
+    );
+    const existingTemplates =
+      org.settings?.pulseInviteSurveyStartTemplates
+      && typeof org.settings.pulseInviteSurveyStartTemplates === 'object'
+        ? org.settings.pulseInviteSurveyStartTemplates
+        : {};
+    const scopedTemplates = pulseInviteTemplateBucketByTimepoint(existingTemplates, templateTimepointKey);
+    const updated = await Organization.updateOrganizationSettings(org.id, {
+      pulseInviteSurveyStartTemplates: {
+        ...existingTemplates,
+        [templateTimepointKey]: {
+          ...scopedTemplates,
+          [audience]: {
+            intro: resetTemplate.intro,
+            context: resetTemplate.context,
+            updatedAt: new Date().toISOString(),
+            updatedByUserId: req.user.id,
+          },
+        },
+      },
+    });
+    if (!updated) return res.status(404).json({ error: 'Organization not found' });
+    return res.json({
+      templates: pulseSurveyStartTemplatesPayload(updated, platformOrg?.settings, templateTimepointKey),
+      timepoint: internalTimepointToPulseStage(templateTimepointKey),
     });
   });
 

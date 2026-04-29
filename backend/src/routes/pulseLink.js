@@ -15,6 +15,10 @@ import { organizationHasService, CLIENT_SERVICE_PULSE } from '../services/client
 import { internalTimepointToPulseStage, parsePulseStageFromRequest } from '../services/pulseStage.js';
 
 const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PULSE_SURVEY_START_DEFAULT_CONTEXT = {
+  staff: 'Your answers help leaders understand what’s working and what might need attention.',
+  manager: 'Your perspective as a manager helps leaders see what’s working and what might need attention.',
+};
 
 export function createPulseLinkRoutes({
   organizationModel = Organization,
@@ -84,6 +88,97 @@ function getLinkToken(req) {
     return Date.now() > dueEndMs;
   }
 
+  function normalizePulseInviteTemplateTimepointKey(timepointPhase) {
+    const raw = String(timepointPhase || '')
+      .trim()
+      .toLowerCase();
+    if (raw === 'mid' || raw === 'during') return 'mid';
+    if (raw === 'post' || raw === 'completed') return 'post';
+    return 'pre';
+  }
+
+  function pulseInviteTemplateBucketByTimepoint(settingsValue, timepointPhase) {
+    const normalizedTimepoint = normalizePulseInviteTemplateTimepointKey(timepointPhase);
+    const templates = settingsValue && typeof settingsValue === 'object' && !Array.isArray(settingsValue)
+      ? settingsValue
+      : {};
+    const scopedKeys = ['pre', 'mid', 'post', 'during', 'completed'];
+    const hasScopedTimepoints = scopedKeys.some((key) => {
+      const value = templates[key];
+      return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+    });
+    if (hasScopedTimepoints) {
+      const legacyKey = normalizedTimepoint === 'mid' ? 'during' : normalizedTimepoint === 'post' ? 'completed' : null;
+      const scoped = templates[normalizedTimepoint]
+        || (legacyKey ? templates[legacyKey] : null);
+      return scoped && typeof scoped === 'object' && !Array.isArray(scoped) ? scoped : {};
+    }
+    return templates;
+  }
+
+  function pulseSurveyStartFallbackTemplate(audience, stage) {
+    const role = audience === 'manager' ? 'manager' : 'staff';
+    const defaultCopy = getSurveyCopyForAudienceFn(role, stage);
+    const intro = String(defaultCopy?.intro || '').trim();
+    return {
+      intro:
+        intro
+        || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
+      context: PULSE_SURVEY_START_DEFAULT_CONTEXT[role],
+    };
+  }
+
+  function pulseSurveyStartDefaultTemplateFromSettings(settings, audience, stage) {
+    const role = audience === 'manager' ? 'manager' : 'staff';
+    const fallback = pulseSurveyStartFallbackTemplate(role, stage);
+    const defaults = pulseInviteTemplateBucketByTimepoint(
+      settings?.pulseInviteDefaultSurveyStartTemplates,
+      stage
+    );
+    const raw = defaults && typeof defaults === 'object' ? defaults[role] : null;
+    if (!raw || typeof raw !== 'object') return fallback;
+    const intro = typeof raw.intro === 'string' ? raw.intro.trim() : '';
+    const context = typeof raw.context === 'string' ? raw.context.trim() : '';
+    return {
+      intro: intro || fallback.intro,
+      context: context || fallback.context,
+    };
+  }
+
+  function pulseSurveyStartTemplateFromSettings(settings, audience, stage, platformSettings = null) {
+    const role = audience === 'manager' ? 'manager' : 'staff';
+    const fallback = pulseSurveyStartDefaultTemplateFromSettings(platformSettings, role, stage);
+    const templates = pulseInviteTemplateBucketByTimepoint(settings?.pulseInviteSurveyStartTemplates, stage);
+    const raw = templates && typeof templates === 'object' ? templates[role] : null;
+    if (!raw || typeof raw !== 'object') return fallback;
+    const intro = typeof raw.intro === 'string' ? raw.intro.trim() : '';
+    const context = typeof raw.context === 'string' ? raw.context.trim() : '';
+    return {
+      intro: intro || fallback.intro,
+      context: context || fallback.context,
+    };
+  }
+
+  async function resolveSurveyCopyWithTemplate(invite, audience, stage) {
+    const baseCopy = getSurveyCopyForAudienceFn(audience, stage);
+    let platformSettings = null;
+    if (typeof organizationModel.getFirstOrganizationByKind === 'function') {
+      const platformOrg = await organizationModel.getFirstOrganizationByKind('platform');
+      platformSettings = platformOrg?.settings || null;
+    }
+    const surveyStart = pulseSurveyStartTemplateFromSettings(
+      invite?.settings || {},
+      audience,
+      stage,
+      platformSettings
+    );
+    return {
+      ...baseCopy,
+      intro: surveyStart.intro,
+      welcomeContext: surveyStart.context,
+    };
+  }
+
   async function requirePulseLink(req, res, next) {
     try {
       const raw = getLinkToken(req);
@@ -113,14 +208,19 @@ function getLinkToken(req) {
     }
   }
 
-  router.get('/themes', requirePulseLink, (_req, res) => {
-    const audience = audienceForInvite(_req.pulseLinkInvite);
-    const stage = stageForInvite(_req.pulseLinkInvite);
-    if (!validateRequestedStage(_req, stage)) {
+  router.get('/themes', requirePulseLink, async (req, res) => {
+    const audience = audienceForInvite(req.pulseLinkInvite);
+    const stage = stageForInvite(req.pulseLinkInvite);
+    if (!validateRequestedStage(req, stage)) {
       return res.status(400).json({ error: `Invite is for ${stage} stage` });
     }
     const questions = getQuestionsForAudienceFn(audience, stage);
-    const copy = getSurveyCopyForAudienceFn(audience, stage);
+    let copy = getSurveyCopyForAudienceFn(audience, stage);
+    try {
+      copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage);
+    } catch (error) {
+      console.error('Could not resolve survey copy template:', error);
+    }
     res.json({ questions, copy, stage });
   });
 
@@ -164,11 +264,12 @@ function sessionJsonForLink(session) {
       audience,
       stage
     );
+    const copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage);
     res.json({
       session: sessionJsonForLink(session),
       surveyAudience: audience,
       stage,
-      copy: getSurveyCopyForAudienceFn(audience, stage),
+      copy,
     });
   });
 
@@ -189,10 +290,11 @@ function sessionJsonForLink(session) {
       await pulseLinkResponseModel.markSurveyStarted(req.pulseLinkInvite.id, session.id);
       row = await pulseLinkResponseModel.getResponse(req.pulseLinkInvite.id, session.id);
     }
+    const copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage);
     res.json({
       session: sessionJsonForLink(session),
       stage,
-      copy: getSurveyCopyForAudienceFn(audience, stage),
+      copy,
       response: {
         currentStep: row.current_step,
         stage: row.stage || stage,

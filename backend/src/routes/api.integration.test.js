@@ -12,6 +12,58 @@ function buildApp() {
   return app;
 }
 
+function buildPulseLinkApp({
+  invite = null,
+  clientOrgSettings = { services: ['pulse'] },
+  platformOrgSettings = null,
+} = {}) {
+  const organizationModel = {
+    async getOrganization() {
+      return { kind: 'client', settings: clientOrgSettings };
+    },
+    async getFirstOrganizationByKind(kind) {
+      if (kind !== 'platform' || !platformOrgSettings) return null;
+      return { kind: 'platform', settings: platformOrgSettings };
+    },
+  };
+  const pulseLinkInviteModel = {
+    async findByTokenHash() {
+      return invite || {
+        id: 'invite-1',
+        token_hash: 'stub-hash',
+        organization_id: 'org-a',
+        survey_role: 'staff',
+        timepoint_phase: 'pre',
+      };
+    },
+  };
+  const pulseSessionModel = {
+    async resolveSessionForPulseLink() {
+      return { id: 'session-staff-1', name: 'Staff Wave', status: 'active', audience: 'staff' };
+    },
+  };
+  const pulseLinkResponseModel = {
+    async getResponse() {
+      return null;
+    },
+    async ensureResponseRow() {},
+    async markSurveyStarted() {
+      return { id: 'link-resp-1' };
+    },
+  };
+  const app = buildApp();
+  app.use(
+    '/api/pulse-link',
+    createPulseLinkRoutes({
+      organizationModel,
+      pulseSessionModel,
+      pulseLinkInviteModel,
+      pulseLinkResponseModel,
+    })
+  );
+  return app;
+}
+
 async function requestJson(app, { method = 'GET', path, headers = {}, body }) {
   const server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
@@ -183,6 +235,86 @@ test('pulse-link complete integration: token flow and write guard', async () => 
     path: '/api/pulse-link/themes?token=demo-token&stage=pre',
   });
   assert.equal(mismatchedStage.status, 400);
+});
+
+test('pulse-link themes uses client survey start template over platform default', async () => {
+  const app = buildPulseLinkApp({
+    clientOrgSettings: {
+      services: ['pulse'],
+      pulseInviteSurveyStartTemplates: {
+        pre: {
+          staff: {
+            intro: 'Client override intro',
+            context: 'Client override context',
+          },
+        },
+      },
+    },
+    platformOrgSettings: {
+      pulseInviteDefaultSurveyStartTemplates: {
+        pre: {
+          staff: {
+            intro: 'Platform default intro',
+            context: 'Platform default context',
+          },
+        },
+      },
+    },
+  });
+
+  const response = await requestJson(app, {
+    path: '/api/pulse-link/themes?token=demo-token&stage=pre',
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.copy?.intro, 'Client override intro');
+  assert.equal(response.body.copy?.welcomeContext, 'Client override context');
+});
+
+test('pulse-link themes falls back to platform default survey start template', async () => {
+  const app = buildPulseLinkApp({
+    clientOrgSettings: {
+      services: ['pulse'],
+    },
+    platformOrgSettings: {
+      pulseInviteDefaultSurveyStartTemplates: {
+        pre: {
+          staff: {
+            intro: 'Platform default intro',
+            context: 'Platform default context',
+          },
+        },
+      },
+    },
+  });
+
+  const response = await requestJson(app, {
+    path: '/api/pulse-link/themes?token=demo-token&stage=pre',
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.copy?.intro, 'Platform default intro');
+  assert.equal(response.body.copy?.welcomeContext, 'Platform default context');
+});
+
+test('pulse-link themes falls back to built-in survey copy when no templates exist', async () => {
+  const app = buildPulseLinkApp({
+    clientOrgSettings: {
+      services: ['pulse'],
+    },
+    platformOrgSettings: null,
+  });
+
+  const response = await requestJson(app, {
+    path: '/api/pulse-link/themes?token=demo-token&stage=pre',
+  });
+  assert.equal(response.status, 200);
+  assert.equal(
+    response.body.copy?.intro,
+    'Before this change starts, we want to understand how ready the organisation is. Your honest responses are anonymous and help identify where support is needed.'
+  );
+  assert.equal(
+    response.body.copy?.welcomeContext,
+    'Your answers help leaders understand what’s working and what might need attention.'
+  );
 });
 
 test('admin and analytics integration endpoints return scoped payloads', async () => {

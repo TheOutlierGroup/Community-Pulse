@@ -12,6 +12,7 @@ import { Bold, Italic, Link2, List, ListOrdered, Mail, Trash2, Upload, UserPlus 
 
 /** Minimum gap between each send request to stay under typical email API rate limits (e.g. Resend ~2 rps). */
 const BULK_SEND_INTERVAL_MS = 700;
+const WELCOME_TEMPLATE_MAX_TEXT_LENGTH = 4000;
 
 function delay(ms) {
   return new Promise((resolve) => {
@@ -58,6 +59,35 @@ function defaultTemplateForAudience(audience) {
     subject: 'Rhythm Engine questionnaire — {{name}}',
     bodyHtml:
       '<p>Hi {{name}},</p><p>You have been invited to complete a short Rhythm Engine questionnaire.</p><p><a href="{{link}}">Open Rhythm Engine</a></p>',
+  };
+}
+
+function defaultWelcomeTemplateForAudience(audience) {
+  if (audience === 'manager') {
+    return {
+      intro:
+        'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
+      context: 'Your perspective as a manager helps leaders see what’s working and what might need attention.',
+    };
+  }
+  return {
+    intro:
+      'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
+    context: 'Your answers help leaders understand what’s working and what might need attention.',
+  };
+}
+
+function normalizeWelcomeTemplates(rawTemplates) {
+  const templates = rawTemplates && typeof rawTemplates === 'object' ? rawTemplates : {};
+  return {
+    staff: {
+      ...defaultWelcomeTemplateForAudience('staff'),
+      ...(templates.staff && typeof templates.staff === 'object' ? templates.staff : {}),
+    },
+    manager: {
+      ...defaultWelcomeTemplateForAudience('manager'),
+      ...(templates.manager && typeof templates.manager === 'object' ? templates.manager : {}),
+    },
   };
 }
 
@@ -348,6 +378,15 @@ export default function PlatformPulseInviteUsers() {
   const [editingTemplateSubject, setEditingTemplateSubject] = useState('');
   const [editingTemplateBodyHtml, setEditingTemplateBodyHtml] = useState('<p></p>');
   const [templateEditorMode, setTemplateEditorMode] = useState('edit');
+  const [welcomeTemplateModalAudience, setWelcomeTemplateModalAudience] = useState(null);
+  const [welcomeTemplatesLoading, setWelcomeTemplatesLoading] = useState(false);
+  const [welcomeTemplateSaving, setWelcomeTemplateSaving] = useState(false);
+  const [welcomeTemplateResetting, setWelcomeTemplateResetting] = useState(false);
+  const [welcomeTemplateError, setWelcomeTemplateError] = useState('');
+  const [welcomeTemplates, setWelcomeTemplates] = useState(() => normalizeWelcomeTemplates(null));
+  const [editingWelcomeTemplateIntro, setEditingWelcomeTemplateIntro] = useState('');
+  const [editingWelcomeTemplateContext, setEditingWelcomeTemplateContext] = useState('');
+  const [welcomeTemplateEditorMode, setWelcomeTemplateEditorMode] = useState('edit');
   const [testDataOpen, setTestDataOpen] = useState(false);
   const [testDataBusy, setTestDataBusy] = useState(false);
   const [testDataError, setTestDataError] = useState('');
@@ -461,6 +500,21 @@ export default function PlatformPulseInviteUsers() {
     }
   }, [inviteRequestParams, orgId, showToast]);
 
+  const loadWelcomeTemplates = useCallback(async () => {
+    setWelcomeTemplatesLoading(true);
+    try {
+      const { data } = await api.get(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/survey-start-templates`,
+        { params: inviteRequestParams }
+      );
+      setWelcomeTemplates(normalizeWelcomeTemplates(data?.templates));
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not load welcome templates.', { variant: 'error' });
+    } finally {
+      setWelcomeTemplatesLoading(false);
+    }
+  }, [inviteRequestParams, orgId, showToast]);
+
   useEffect(() => {
     load();
   }, [load]);
@@ -468,6 +522,10 @@ export default function PlatformPulseInviteUsers() {
   useEffect(() => {
     loadTemplates();
   }, [loadTemplates]);
+
+  useEffect(() => {
+    loadWelcomeTemplates();
+  }, [loadWelcomeTemplates]);
 
   async function onFile(e) {
     const file = e.target.files?.[0];
@@ -896,6 +954,95 @@ export default function PlatformPulseInviteUsers() {
     }
   }
 
+  function openWelcomeTemplateModal(audience) {
+    const role = audience === 'manager' ? 'manager' : 'staff';
+    const template = welcomeTemplates[role] || defaultWelcomeTemplateForAudience(role);
+    setWelcomeTemplateModalAudience(role);
+    setWelcomeTemplateError('');
+    setEditingWelcomeTemplateIntro(String(template.intro || ''));
+    setEditingWelcomeTemplateContext(String(template.context || ''));
+    setWelcomeTemplateEditorMode('edit');
+  }
+
+  function closeWelcomeTemplateModal() {
+    if (welcomeTemplateSaving || welcomeTemplateResetting) return;
+    setWelcomeTemplateModalAudience(null);
+    setWelcomeTemplateError('');
+  }
+
+  async function saveWelcomeTemplate(e) {
+    e.preventDefault();
+    if (!welcomeTemplateModalAudience) return;
+    const intro = String(editingWelcomeTemplateIntro || '').trim();
+    if (!intro) {
+      setWelcomeTemplateError('Intro text is required.');
+      return;
+    }
+    if (intro.length > WELCOME_TEMPLATE_MAX_TEXT_LENGTH) {
+      setWelcomeTemplateError(`Intro text must be ${WELCOME_TEMPLATE_MAX_TEXT_LENGTH} characters or less.`);
+      return;
+    }
+    const context = String(editingWelcomeTemplateContext || '').trim();
+    if (!context) {
+      setWelcomeTemplateError('Context text is required.');
+      return;
+    }
+    if (context.length > WELCOME_TEMPLATE_MAX_TEXT_LENGTH) {
+      setWelcomeTemplateError(`Context text must be ${WELCOME_TEMPLATE_MAX_TEXT_LENGTH} characters or less.`);
+      return;
+    }
+    setWelcomeTemplateSaving(true);
+    setWelcomeTemplateError('');
+    try {
+      const { data } = await api.put(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/survey-start-templates`,
+        {
+          audience: welcomeTemplateModalAudience,
+          intro,
+          context,
+        },
+        { params: inviteRequestParams }
+      );
+      setWelcomeTemplates(normalizeWelcomeTemplates(data?.templates));
+      showToast(`${welcomeTemplateModalAudience === 'manager' ? 'Manager' : 'Staff'} welcome template saved.`, {
+        variant: 'success',
+      });
+      setWelcomeTemplateModalAudience(null);
+    } catch (err) {
+      setWelcomeTemplateError(err.response?.data?.error || 'Could not save welcome template.');
+    } finally {
+      setWelcomeTemplateSaving(false);
+    }
+  }
+
+  async function resetWelcomeTemplateToTimepointDefault() {
+    if (!welcomeTemplateModalAudience) return;
+    const confirmed = window.confirm('Reset this welcome template to the default for the current survey timepoint?');
+    if (!confirmed) return;
+    setWelcomeTemplateError('');
+    setWelcomeTemplateResetting(true);
+    try {
+      const { data } = await api.post(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/survey-start-templates/reset-default`,
+        { audience: welcomeTemplateModalAudience },
+        { params: inviteRequestParams }
+      );
+      const nextTemplates = normalizeWelcomeTemplates(data?.templates);
+      setWelcomeTemplates(nextTemplates);
+      const resetTemplate = nextTemplates[welcomeTemplateModalAudience] || defaultWelcomeTemplateForAudience(welcomeTemplateModalAudience);
+      setEditingWelcomeTemplateIntro(String(resetTemplate.intro || ''));
+      setEditingWelcomeTemplateContext(String(resetTemplate.context || ''));
+      showToast(
+        `${welcomeTemplateModalAudience === 'manager' ? 'Manager' : 'Staff'} welcome template reset to timepoint default.`,
+        { variant: 'success' }
+      );
+    } catch (err) {
+      setWelcomeTemplateError(err.response?.data?.error || 'Could not reset welcome template to default.');
+    } finally {
+      setWelcomeTemplateResetting(false);
+    }
+  }
+
   async function sendInvite(id) {
     setSendingId(id);
     try {
@@ -1066,6 +1213,14 @@ export default function PlatformPulseInviteUsers() {
     clientname: String(org?.name || ''),
     dueDate: formatDueDatePreview(dueDate) || dueDate || '',
     duedate: formatDueDatePreview(dueDate) || dueDate || '',
+  });
+  const previewWelcomeIntro = applyTemplatePlaceholders(editingWelcomeTemplateIntro, {
+    clientName: String(org?.name || ''),
+    clientname: String(org?.name || ''),
+  });
+  const previewWelcomeContext = applyTemplatePlaceholders(editingWelcomeTemplateContext, {
+    clientName: String(org?.name || ''),
+    clientname: String(org?.name || ''),
   });
 
   return (
@@ -1365,6 +1520,128 @@ export default function PlatformPulseInviteUsers() {
       </ModalDialog>
 
       <ModalDialog
+        open={Boolean(welcomeTemplateModalAudience)}
+        title={welcomeTemplateModalAudience === 'manager' ? 'Manager welcome template' : 'Staff welcome template'}
+        titleId="pulse-welcome-template-title"
+        onClose={closeWelcomeTemplateModal}
+        dialogClassName="modal-dialog--pulse-template"
+      >
+        {welcomeTemplateModalAudience ? (
+          <form
+            onSubmit={saveWelcomeTemplate}
+            className="pulse-template-form"
+            style={{ padding: '0 0 0.25rem' }}
+          >
+            {welcomeTemplateError ? <p className="error" style={{ marginBottom: '1rem' }}>{welcomeTemplateError}</p> : null}
+            <div className="pulse-template-mode-switch" role="tablist" aria-label="Welcome template editor mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={welcomeTemplateEditorMode === 'edit'}
+                className={`pulse-template-mode-switch__pill${
+                  welcomeTemplateEditorMode === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
+                }`}
+                onClick={() => setWelcomeTemplateEditorMode('edit')}
+                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={welcomeTemplateEditorMode === 'view'}
+                className={`pulse-template-mode-switch__pill${
+                  welcomeTemplateEditorMode === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
+                }`}
+                onClick={() => setWelcomeTemplateEditorMode('view')}
+                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
+              >
+                View
+              </button>
+            </div>
+            {welcomeTemplateEditorMode === 'edit' ? (
+              <>
+                <div className="field">
+                  <label htmlFor="pulse-welcome-template-intro">Intro text</label>
+                  <textarea
+                    id="pulse-welcome-template-intro"
+                    value={editingWelcomeTemplateIntro}
+                    rows={4}
+                    maxLength={WELCOME_TEMPLATE_MAX_TEXT_LENGTH}
+                    onChange={(e) => setEditingWelcomeTemplateIntro(e.target.value)}
+                    disabled={welcomeTemplateSaving || welcomeTemplateResetting}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="pulse-welcome-template-context">Context text</label>
+                  <textarea
+                    id="pulse-welcome-template-context"
+                    value={editingWelcomeTemplateContext}
+                    rows={3}
+                    maxLength={WELCOME_TEMPLATE_MAX_TEXT_LENGTH}
+                    onChange={(e) => setEditingWelcomeTemplateContext(e.target.value)}
+                    disabled={welcomeTemplateSaving || welcomeTemplateResetting}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="pulse-template-preview">
+                <div className="pulse-template-preview__canvas" style={{ textAlign: 'center' }}>
+                  <p
+                    className="muted"
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      margin: '0 0 0.5rem',
+                    }}
+                  >
+                    Rhythm Engine questionnaire
+                  </p>
+                  <h3 style={{ margin: '0 0 1rem' }}>Welcome</h3>
+                  <p className="muted" style={{ lineHeight: 1.65, margin: '0 0 1rem' }}>
+                    {previewWelcomeIntro}
+                  </p>
+                  <p className="muted" style={{ lineHeight: 1.65, margin: '0' }}>
+                    {previewWelcomeContext}
+                  </p>
+                </div>
+              </div>
+            )}
+            <p className="muted" style={{ margin: '0.45rem 0 0.75rem' }}>
+              Optional placeholder: <code>{'{{clientname}}'}</code>
+            </p>
+            <div className="modal-dialog__actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={resetWelcomeTemplateToTimepointDefault}
+                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
+              >
+                {welcomeTemplateResetting ? 'Resetting…' : 'Reset to default'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={closeWelcomeTemplateModal}
+                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary modal-dialog__submit"
+                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
+              >
+                {welcomeTemplateSaving ? 'Saving…' : 'Save template'}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </ModalDialog>
+
+      <ModalDialog
         open={deleteAllConfirmOpen}
         title="Remove all recipients?"
         titleId="pulse-delete-all-recipients-title"
@@ -1570,7 +1847,7 @@ export default function PlatformPulseInviteUsers() {
             <button
               type="button"
               className="btn btn-ghost"
-              disabled={templatesLoading || templateSaving || bulkSending}
+              disabled={templatesLoading || templateSaving || bulkSending || welcomeTemplateSaving}
               onClick={() => openTemplateModal('staff')}
               style={{ fontSize: '0.9rem' }}
             >
@@ -1579,11 +1856,29 @@ export default function PlatformPulseInviteUsers() {
             <button
               type="button"
               className="btn btn-ghost"
-              disabled={templatesLoading || templateSaving || bulkSending}
+              disabled={templatesLoading || templateSaving || bulkSending || welcomeTemplateSaving}
               onClick={() => openTemplateModal('manager')}
               style={{ fontSize: '0.9rem' }}
             >
               Manager email template
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={welcomeTemplatesLoading || welcomeTemplateSaving || bulkSending || templateSaving}
+              onClick={() => openWelcomeTemplateModal('staff')}
+              style={{ fontSize: '0.9rem' }}
+            >
+              Staff welcome template
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={welcomeTemplatesLoading || welcomeTemplateSaving || bulkSending || templateSaving}
+              onClick={() => openWelcomeTemplateModal('manager')}
+              style={{ fontSize: '0.9rem' }}
+            >
+              Manager welcome template
             </button>
             <button
               type="button"

@@ -17,6 +17,7 @@ import {
 
 const LOCKED_SERVICE_IDS = new Set([CLIENT_SERVICE_PULSE, CLIENT_SERVICE_OTHER]);
 const TEMPLATE_MAX_SUBJECT_LENGTH = 200;
+const WELCOME_TEMPLATE_MAX_TEXT_LENGTH = 4000;
 const TEMPLATE_TIMEPOINT_OPTIONS = [
   { value: 'pre', label: 'Pre' },
   { value: 'during', label: 'During' },
@@ -53,6 +54,21 @@ function defaultTemplateForAudience(audience) {
     subject: 'Rhythm Engine questionnaire',
     bodyHtml:
       '<p>Hi {{name}},</p><p>You have been invited to complete a short Rhythm Engine questionnaire.</p><p><a href="{{link}}">Open Rhythm Engine</a></p>',
+  };
+}
+
+function defaultWelcomeTemplateForAudience(audience) {
+  if (audience === 'manager') {
+    return {
+      intro:
+        'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
+      context: 'Your perspective as a manager helps leaders see what’s working and what might need attention.',
+    };
+  }
+  return {
+    intro:
+      'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.',
+    context: 'Your answers help leaders understand what’s working and what might need attention.',
   };
 }
 
@@ -186,6 +202,20 @@ function normalizeDefaultTemplates(rawTemplates) {
   };
 }
 
+function normalizeDefaultWelcomeTemplates(rawTemplates) {
+  const templates = rawTemplates && typeof rawTemplates === 'object' ? rawTemplates : {};
+  return {
+    staff: {
+      ...defaultWelcomeTemplateForAudience('staff'),
+      ...(templates.staff && typeof templates.staff === 'object' ? templates.staff : {}),
+    },
+    manager: {
+      ...defaultWelcomeTemplateForAudience('manager'),
+      ...(templates.manager && typeof templates.manager === 'object' ? templates.manager : {}),
+    },
+  };
+}
+
 export default function PlatformSettings() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
@@ -201,8 +231,13 @@ export default function PlatformSettings() {
   const [savingDefaultTemplates, setSavingDefaultTemplates] = useState(false);
   const [defaultTemplateMessage, setDefaultTemplateMessage] = useState('');
   const [defaultTemplateError, setDefaultTemplateError] = useState('');
+  const [loadingDefaultWelcomeTemplates, setLoadingDefaultWelcomeTemplates] = useState(false);
+  const [savingDefaultWelcomeTemplates, setSavingDefaultWelcomeTemplates] = useState(false);
+  const [defaultWelcomeTemplateMessage, setDefaultWelcomeTemplateMessage] = useState('');
+  const [defaultWelcomeTemplateError, setDefaultWelcomeTemplateError] = useState('');
   const [defaultTemplateTimepoint, setDefaultTemplateTimepoint] = useState('pre');
   const [defaultTemplates, setDefaultTemplates] = useState(() => normalizeDefaultTemplates(null));
+  const [defaultWelcomeTemplates, setDefaultWelcomeTemplates] = useState(() => normalizeDefaultWelcomeTemplates(null));
   const [templateEditorMode, setTemplateEditorMode] = useState({
     staff: 'edit',
     manager: 'edit',
@@ -281,6 +316,24 @@ export default function PlatformSettings() {
         setDefaultTemplateError(err.response?.data?.error || 'Could not load default email templates.');
       } finally {
         setLoadingDefaultTemplates(false);
+      }
+    })();
+  }, [defaultTemplateTimepoint, isPlatformAdmin]);
+
+  useEffect(() => {
+    if (!isPlatformAdmin) return;
+    (async () => {
+      setLoadingDefaultWelcomeTemplates(true);
+      setDefaultWelcomeTemplateError('');
+      try {
+        const { data } = await api.get('/api/platform/rhythm-engine-link-invites/default-survey-start-templates', {
+          params: { timepoint: defaultTemplateTimepoint },
+        });
+        setDefaultWelcomeTemplates(normalizeDefaultWelcomeTemplates(data?.templates));
+      } catch (err) {
+        setDefaultWelcomeTemplateError(err.response?.data?.error || 'Could not load default welcome templates.');
+      } finally {
+        setLoadingDefaultWelcomeTemplates(false);
       }
     })();
   }, [defaultTemplateTimepoint, isPlatformAdmin]);
@@ -408,6 +461,49 @@ export default function PlatformSettings() {
       setDefaultTemplateError(err.response?.data?.error || 'Could not save default email template.');
     } finally {
       setSavingDefaultTemplates(false);
+    }
+  }
+
+  function updateDefaultWelcomeTemplateField(audience, field, value) {
+    const role = audience === 'manager' ? 'manager' : 'staff';
+    setDefaultWelcomeTemplates((current) => ({
+      ...current,
+      [role]: {
+        ...(current[role] || defaultWelcomeTemplateForAudience(role)),
+        [field]: value,
+      },
+    }));
+  }
+
+  async function saveDefaultWelcomeTemplate(audience) {
+    const role = audience === 'manager' ? 'manager' : 'staff';
+    const template = defaultWelcomeTemplates[role] || defaultWelcomeTemplateForAudience(role);
+    const intro = String(template.intro || '').trim();
+    const context = String(template.context || '').trim();
+    if (!intro || !context) {
+      setDefaultWelcomeTemplateError('Each welcome template needs both intro and context text.');
+      setDefaultWelcomeTemplateMessage('');
+      return;
+    }
+    setSavingDefaultWelcomeTemplates(true);
+    setDefaultWelcomeTemplateError('');
+    setDefaultWelcomeTemplateMessage('');
+    try {
+      const { data } = await api.put('/api/platform/rhythm-engine-link-invites/default-survey-start-templates', {
+        audience: role,
+        intro,
+        context,
+      }, {
+        params: { timepoint: defaultTemplateTimepoint },
+      });
+      setDefaultWelcomeTemplates(normalizeDefaultWelcomeTemplates(data?.templates));
+      setDefaultWelcomeTemplateMessage(
+        `${templateTimepointLabel(defaultTemplateTimepoint)} ${role === 'manager' ? 'manager' : 'staff'} default welcome template saved.`
+      );
+    } catch (err) {
+      setDefaultWelcomeTemplateError(err.response?.data?.error || 'Could not save default welcome template.');
+    } finally {
+      setSavingDefaultWelcomeTemplates(false);
     }
   }
 
@@ -711,6 +807,87 @@ export default function PlatformSettings() {
           Placeholders available in subject and body: <code>{'{{name}}'}</code>, <code>{'{{link}}'}</code>,{' '}
           <code>{'{{dueDate}}'}</code>, <code>{'{{clientname}}'}</code>.
         </p>
+      </div>
+      <div className="card" style={{ marginTop: '1rem' }}>
+        <h2 className="settings-section-title">Rhythm Engine default welcome templates</h2>
+        <p className="muted" style={{ margin: '0.45rem 0 0.95rem' }}>
+          This controls the first page users see when they open a Rhythm Engine survey link. Teams can still override
+          these per client and per survey timepoint.
+        </p>
+        <div
+          className="pulse-template-mode-switch"
+          role="tablist"
+          aria-label="Default welcome template survey stage"
+          style={{ marginBottom: '0.9rem' }}
+        >
+          {TEMPLATE_TIMEPOINT_OPTIONS.map((option) => (
+            <button
+              key={`welcome-${option.value}`}
+              type="button"
+              role="tab"
+              aria-selected={defaultTemplateTimepoint === option.value}
+              className={`pulse-template-mode-switch__pill${
+                defaultTemplateTimepoint === option.value ? ' pulse-template-mode-switch__pill--active' : ''
+              }`}
+              onClick={() => setDefaultTemplateTimepoint(option.value)}
+              disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        {defaultWelcomeTemplateError ? (
+          <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+            {defaultWelcomeTemplateError}
+          </p>
+        ) : null}
+        {defaultWelcomeTemplateMessage ? (
+          <p className="muted" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+            {defaultWelcomeTemplateMessage}
+          </p>
+        ) : null}
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          {(['staff', 'manager']).map((role) => (
+            <section
+              key={`welcome-template-${role}`}
+              aria-labelledby={`settings-${role}-welcome-template`}
+            >
+              <h3 id={`settings-${role}-welcome-template`} style={{ margin: 0 }}>
+                {role === 'manager' ? 'Manager' : 'Staff'} default welcome template
+              </h3>
+              <div className="field" style={{ marginTop: '0.65rem' }}>
+                <label htmlFor={`settings-${role}-welcome-intro`}>Intro text</label>
+                <textarea
+                  id={`settings-${role}-welcome-intro`}
+                  value={defaultWelcomeTemplates[role]?.intro || ''}
+                  maxLength={WELCOME_TEMPLATE_MAX_TEXT_LENGTH}
+                  rows={4}
+                  onChange={(e) => updateDefaultWelcomeTemplateField(role, 'intro', e.target.value)}
+                  disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={`settings-${role}-welcome-context`}>Context text</label>
+                <textarea
+                  id={`settings-${role}-welcome-context`}
+                  value={defaultWelcomeTemplates[role]?.context || ''}
+                  maxLength={WELCOME_TEMPLATE_MAX_TEXT_LENGTH}
+                  rows={3}
+                  onChange={(e) => updateDefaultWelcomeTemplateField(role, 'context', e.target.value)}
+                  disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+                onClick={() => saveDefaultWelcomeTemplate(role)}
+              >
+                {savingDefaultWelcomeTemplates ? 'Saving…' : `Save ${role === 'manager' ? 'manager' : 'staff'} default`}
+              </button>
+            </section>
+          ))}
+        </div>
       </div>
     </Layout>
   );
