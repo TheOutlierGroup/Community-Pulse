@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
+    "privacy:maintenance": "node src/jobs/privacyMaintenance.js",
     "retention:sweep": "node src/jobs/retentionSweep.js",
     "archive:review": "node src/jobs/archiveReviewReport.js",
     "perf:platform-tasks": "node scripts/bench-platform-tasks.js",

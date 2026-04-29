@@ -116,7 +116,7 @@ services:
     rootDir: .
     schedule: "0 20 * * *"
     buildCommand: chmod +x build.sh && ./build.sh
-    startCommand: cd backend && npm run retention:sweep
+    startCommand: cd backend && npm run privacy:maintenance
     envVars:
       - key: NODE_ENV
         value: production
@@ -132,22 +132,6 @@ services:
         value: "false"
       - key: RETENTION_ALERT_WEBHOOK
         sync: false
-
-  - type: cron
-    name: pulse-archive-quarterly-review
-    runtime: node
-    plan: starter
-    rootDir: .
-    schedule: "0 21 1 */3 *"
-    buildCommand: chmod +x build.sh && ./build.sh
-    startCommand: cd backend && npm run archive:review
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pulse-db
-          property: connectionString
 
 databases:
   - name: pulse-db
