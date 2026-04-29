@@ -796,69 +796,71 @@ export default function PlatformClientPulse() {
           </div>
         </div>
 
-        <div className="pulse-clean-exec">
-          <div className="pulse-clean-exec__header">
-            <div>
-              <p className="pulse-clean-exec__eyebrow">
-                Executive Summary · {org?.name || 'Client'} · {reportDateLabel}
-              </p>
-              <h3 className="pulse-clean-exec__title">{executiveHeadline}</h3>
+        {showingFullDashboard ? (
+          <div className="pulse-clean-exec">
+            <div className="pulse-clean-exec__header">
+              <div>
+                <p className="pulse-clean-exec__eyebrow">
+                  Executive Summary · {org?.name || 'Client'} · {reportDateLabel}
+                </p>
+                <h3 className="pulse-clean-exec__title">{executiveHeadline}</h3>
+              </div>
+              <span className="pulse-clean-header__badge">
+                {kpis.launchVerdict === 'cleared' ? 'Cleared for launch' : 'Not Cleared for Launch'}
+              </span>
             </div>
-            <span className="pulse-clean-header__badge">
-              {kpis.launchVerdict === 'cleared' ? 'Cleared for launch' : 'Not Cleared for Launch'}
-            </span>
-          </div>
-          <div className="pulse-clean-exec__overview">
-            <div className="pulse-clean-exec__quadrants">
-              {quadrants.map((quadrant) => (
-                <div
-                  key={`exec-${quadrant.name}`}
-                  className={`pulse-clean-readiness__quadrant pulse-clean-readiness__quadrant--${quadrantTone(quadrant.name)}`}
-                >
-                  <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
-                  <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
-                </div>
+            <div className="pulse-clean-exec__overview">
+              <div className="pulse-clean-exec__quadrants">
+                {quadrants.map((quadrant) => (
+                  <div
+                    key={`exec-${quadrant.name}`}
+                    className={`pulse-clean-readiness__quadrant pulse-clean-readiness__quadrant--${quadrantTone(quadrant.name)}`}
+                  >
+                    <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
+                    <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="pulse-clean-exec__overview-text">{executiveSubhead}</p>
+            </div>
+            <div className="pulse-clean-exec__scenarios">
+              {micDropScenarios.map((scenario) => (
+                <article key={scenario.id} className="pulse-clean-exec__scenario">
+                  <p className="pulse-clean-exec__scenario-tag">{scenario.tag}</p>
+                  <h4 className="pulse-clean-exec__scenario-title">{scenario.title}</h4>
+                  <p className="pulse-clean-exec__scenario-text">{scenario.textA}</p>
+                  <p className="pulse-clean-exec__scenario-text">{scenario.textB}</p>
+                  <p className="pulse-clean-exec__scenario-outcome">
+                    <strong>Projected outcome:</strong> {scenario.outcome}
+                  </p>
+                </article>
               ))}
             </div>
-            <p className="pulse-clean-exec__overview-text">{executiveSubhead}</p>
-          </div>
-          <div className="pulse-clean-exec__scenarios">
-            {micDropScenarios.map((scenario) => (
-              <article key={scenario.id} className="pulse-clean-exec__scenario">
-                <p className="pulse-clean-exec__scenario-tag">{scenario.tag}</p>
-                <h4 className="pulse-clean-exec__scenario-title">{scenario.title}</h4>
-                <p className="pulse-clean-exec__scenario-text">{scenario.textA}</p>
-                <p className="pulse-clean-exec__scenario-text">{scenario.textB}</p>
-                <p className="pulse-clean-exec__scenario-outcome">
-                  <strong>Projected outcome:</strong> {scenario.outcome}
-                </p>
-              </article>
-            ))}
-          </div>
-          <div className="pulse-clean-exec__footer">
-            <p className="pulse-clean-exec__footer-note">
-              {basedOnResponsesText || (
-                <>
-                  Based on <strong>{managerFocusedTopCard ? (kpis.completedManagers ?? 0) : (kpis.completedTotal ?? 0)} responses</strong> · Threshold{' '}
-                  <strong>{threshold}/40</strong>
-                </>
-              )}
-            </p>
-            <div className="pulse-clean-exec__chips">
-              {riskChips.length > 0 ? riskChips.map((chip) => (
-                <span key={chip} className="pulse-clean-exec__chip">{chip}</span>
-              )) : <span className="pulse-clean-exec__chip">No elevated risk flags</span>}
+            <div className="pulse-clean-exec__footer">
+              <p className="pulse-clean-exec__footer-note">
+                {basedOnResponsesText || (
+                  <>
+                    Based on <strong>{managerFocusedTopCard ? (kpis.completedManagers ?? 0) : (kpis.completedTotal ?? 0)} responses</strong> · Threshold{' '}
+                    <strong>{threshold}/40</strong>
+                  </>
+                )}
+              </p>
+              <div className="pulse-clean-exec__chips">
+                {riskChips.length > 0 ? riskChips.map((chip) => (
+                  <span key={chip} className="pulse-clean-exec__chip">{chip}</span>
+                )) : <span className="pulse-clean-exec__chip">No elevated risk flags</span>}
+              </div>
+            </div>
+            <div className="pulse-clean-header__summary">
+              <div>
+                <p className="pulse-clean-header__summary-title">{kpis.launchHeadline || '--'}</p>
+                {executiveSignalText ? (
+                  <p className="pulse-clean-header__summary-text">{executiveSignalText}</p>
+                ) : null}
+              </div>
             </div>
           </div>
-          <div className="pulse-clean-header__summary">
-            <div>
-              <p className="pulse-clean-header__summary-title">{kpis.launchHeadline || '--'}</p>
-              {executiveSignalText ? (
-                <p className="pulse-clean-header__summary-text">{executiveSignalText}</p>
-              ) : null}
-            </div>
-          </div>
-        </div>
+        ) : null}
         </section>
       ) : null}
 
