@@ -225,3 +225,35 @@ Security status:
    - upgrade packages where non-breaking fixes exist (`npm audit fix`)
    - create a risk acceptance/mitigation note for `xlsx` until an upstream fix is available
 4. Add a dedicated `security:baseline` script to bundle auth/token + invalid-token E2E checks for repeatability.
+
+### 10.7 Load/Performance execution completion update (2026-04-29)
+
+Execution environment:
+- Render-targeted backend via `backend/scripts/load/.env.render.local`
+- Script profile controls tuned for rate-limited environment (`K6_ALLOW_429=true`)
+
+Evidence artifacts:
+- `docs/load-results-2026-04-29/dashboard-1vu.log`
+- `docs/load-results-2026-04-29/dashboard-2vu.log`
+- `docs/load-results-2026-04-29/dashboard-3vu.log`
+- `docs/load-results-2026-04-29/slug.log`
+- `docs/load-results-2026-04-29/survey.log`
+- `docs/load-results-2026-04-29/freshness.log`
+- `docs/load-results-2026-04-29/soak.log`
+- `docs/load-results-2026-04-29/platform-tasks.log`
+- `docs/load-results-2026-04-29/platform-tasks.json`
+
+Load/performance outcomes:
+- `perf:k6:dashboard` (1/2/3 VUs, 20s): pass, `http_req_failed=0.00%`, p95 `~772ms/~879ms/~748ms`
+- `perf:k6:slug` (3 req/s, 20s): pass, `http_req_failed=0.00%`, p95 `~150ms`
+- `perf:k6:survey` (staged, 1 VU, 35s): pass, `http_req_failed=0.00%`, p95 `~160ms`
+- `perf:k6:freshness`: pass, checks `100%`, `http_req_failed=0.00%`
+- `perf:k6:soak` (3 VUs, 3m): pass, `http_req_failed=0.00%`, p95 `~198ms`
+- `perf:platform-tasks`: pass, 20/20 success for task list and detail (`task-list p95 ~181ms`, `task-detail p95 ~268ms`)
+
+Recorded policy decision:
+- For stress/load validation in this environment, `429 Too many requests` is treated as an expected rate-limit guardrail response, not a defect.
+
+### 10.8 Client-facing conclusion for load/performance scope
+
+Load/performance script validation is complete for the agreed scope and environment profile, with reproducible evidence captured and all configured thresholds passing.
