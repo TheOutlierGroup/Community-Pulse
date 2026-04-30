@@ -231,11 +231,17 @@ export default function PlatformSettings() {
   const [serviceMessage, setServiceMessage] = useState('');
   const [serviceError, setServiceError] = useState('');
   const [loadingDefaultTemplates, setLoadingDefaultTemplates] = useState(false);
-  const [savingDefaultTemplates, setSavingDefaultTemplates] = useState(false);
+  const [savingDefaultTemplates, setSavingDefaultTemplates] = useState({
+    staff: false,
+    manager: false,
+  });
   const [defaultTemplateMessage, setDefaultTemplateMessage] = useState('');
   const [defaultTemplateError, setDefaultTemplateError] = useState('');
   const [loadingDefaultWelcomeTemplates, setLoadingDefaultWelcomeTemplates] = useState(false);
-  const [savingDefaultWelcomeTemplates, setSavingDefaultWelcomeTemplates] = useState(false);
+  const [savingDefaultWelcomeTemplates, setSavingDefaultWelcomeTemplates] = useState({
+    staff: false,
+    manager: false,
+  });
   const [defaultWelcomeTemplateMessage, setDefaultWelcomeTemplateMessage] = useState('');
   const [defaultWelcomeTemplateError, setDefaultWelcomeTemplateError] = useState('');
   const [defaultEmailTemplateTimepoint, setDefaultEmailTemplateTimepoint] = useState('pre');
@@ -250,6 +256,9 @@ export default function PlatformSettings() {
     staff: 'edit',
     manager: 'edit',
   });
+  const anySavingDefaultTemplates = savingDefaultTemplates.staff || savingDefaultTemplates.manager;
+  const anySavingDefaultWelcomeTemplates =
+    savingDefaultWelcomeTemplates.staff || savingDefaultWelcomeTemplates.manager;
 
   const previewName = 'Alex';
   const previewClientName = 'Acme Co';
@@ -454,7 +463,7 @@ export default function PlatformSettings() {
       setDefaultTemplateMessage('');
       return;
     }
-    setSavingDefaultTemplates(true);
+    setSavingDefaultTemplates((current) => ({ ...current, [role]: true }));
     setDefaultTemplateError('');
     setDefaultTemplateMessage('');
     try {
@@ -472,7 +481,7 @@ export default function PlatformSettings() {
     } catch (err) {
       setDefaultTemplateError(err.response?.data?.error || 'Could not save default email template.');
     } finally {
-      setSavingDefaultTemplates(false);
+      setSavingDefaultTemplates((current) => ({ ...current, [role]: false }));
     }
   }
 
@@ -496,7 +505,7 @@ export default function PlatformSettings() {
       setDefaultWelcomeTemplateMessage('');
       return;
     }
-    setSavingDefaultWelcomeTemplates(true);
+    setSavingDefaultWelcomeTemplates((current) => ({ ...current, [role]: true }));
     setDefaultWelcomeTemplateError('');
     setDefaultWelcomeTemplateMessage('');
     try {
@@ -513,7 +522,7 @@ export default function PlatformSettings() {
     } catch (err) {
       setDefaultWelcomeTemplateError(err.response?.data?.error || 'Could not save default welcome template.');
     } finally {
-      setSavingDefaultWelcomeTemplates(false);
+      setSavingDefaultWelcomeTemplates((current) => ({ ...current, [role]: false }));
     }
   }
 
@@ -649,7 +658,7 @@ export default function PlatformSettings() {
                 defaultEmailTemplateTimepoint === option.value ? ' pulse-template-mode-switch__pill--active' : ''
               }`}
               onClick={() => setDefaultEmailTemplateTimepoint(option.value)}
-              disabled={loadingDefaultTemplates || savingDefaultTemplates}
+              disabled={loadingDefaultTemplates || anySavingDefaultTemplates}
             >
               {option.label}
             </button>
@@ -675,7 +684,7 @@ export default function PlatformSettings() {
                 value={defaultTemplates.staff.subject}
                 maxLength={TEMPLATE_MAX_SUBJECT_LENGTH}
                 onChange={(e) => updateDefaultTemplateField('staff', 'subject', e.target.value)}
-                disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                disabled={loadingDefaultTemplates || savingDefaultTemplates.staff}
               />
             </div>
             <div className="pulse-template-mode-switch" role="tablist" aria-label="Staff template editor mode">
@@ -687,7 +696,7 @@ export default function PlatformSettings() {
                   templateEditorMode.staff === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
                 }`}
                 onClick={() => setTemplateEditorMode((current) => ({ ...current, staff: 'edit' }))}
-                disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                disabled={loadingDefaultTemplates || savingDefaultTemplates.staff}
               >
                 Edit
               </button>
@@ -699,7 +708,7 @@ export default function PlatformSettings() {
                   templateEditorMode.staff === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
                 }`}
                 onClick={() => setTemplateEditorMode((current) => ({ ...current, staff: 'view' }))}
-                disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                disabled={loadingDefaultTemplates || savingDefaultTemplates.staff}
               >
                 View
               </button>
@@ -725,7 +734,7 @@ export default function PlatformSettings() {
                 <EmailTemplateRichEditor
                   value={defaultTemplates.staff.bodyHtml}
                   onChange={(nextBodyHtml) => updateDefaultTemplateField('staff', 'bodyHtml', nextBodyHtml)}
-                  disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                  disabled={loadingDefaultTemplates || savingDefaultTemplates.staff}
                   placeholder="Write staff email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders."
                 />
               )}
@@ -733,10 +742,10 @@ export default function PlatformSettings() {
             <button
               type="button"
               className="btn btn-ghost"
-              disabled={loadingDefaultTemplates || savingDefaultTemplates}
+              disabled={loadingDefaultTemplates || savingDefaultTemplates.staff}
               onClick={() => saveDefaultTemplate('staff')}
             >
-              {savingDefaultTemplates ? 'Saving…' : 'Save staff default'}
+              {savingDefaultTemplates.staff ? 'Saving…' : 'Save staff default'}
             </button>
           </section>
           <section aria-labelledby="settings-manager-default-template">
@@ -748,7 +757,7 @@ export default function PlatformSettings() {
                 value={defaultTemplates.manager.subject}
                 maxLength={TEMPLATE_MAX_SUBJECT_LENGTH}
                 onChange={(e) => updateDefaultTemplateField('manager', 'subject', e.target.value)}
-                disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                disabled={loadingDefaultTemplates || savingDefaultTemplates.manager}
               />
             </div>
             <div className="pulse-template-mode-switch" role="tablist" aria-label="Manager template editor mode">
@@ -760,7 +769,7 @@ export default function PlatformSettings() {
                   templateEditorMode.manager === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
                 }`}
                 onClick={() => setTemplateEditorMode((current) => ({ ...current, manager: 'edit' }))}
-                disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                disabled={loadingDefaultTemplates || savingDefaultTemplates.manager}
               >
                 Edit
               </button>
@@ -772,7 +781,7 @@ export default function PlatformSettings() {
                   templateEditorMode.manager === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
                 }`}
                 onClick={() => setTemplateEditorMode((current) => ({ ...current, manager: 'view' }))}
-                disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                disabled={loadingDefaultTemplates || savingDefaultTemplates.manager}
               >
                 View
               </button>
@@ -798,7 +807,7 @@ export default function PlatformSettings() {
                 <EmailTemplateRichEditor
                   value={defaultTemplates.manager.bodyHtml}
                   onChange={(nextBodyHtml) => updateDefaultTemplateField('manager', 'bodyHtml', nextBodyHtml)}
-                  disabled={loadingDefaultTemplates || savingDefaultTemplates}
+                  disabled={loadingDefaultTemplates || savingDefaultTemplates.manager}
                   placeholder="Write manager email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders."
                 />
               )}
@@ -806,10 +815,10 @@ export default function PlatformSettings() {
             <button
               type="button"
               className="btn btn-ghost"
-              disabled={loadingDefaultTemplates || savingDefaultTemplates}
+              disabled={loadingDefaultTemplates || savingDefaultTemplates.manager}
               onClick={() => saveDefaultTemplate('manager')}
             >
-              {savingDefaultTemplates ? 'Saving…' : 'Save manager default'}
+              {savingDefaultTemplates.manager ? 'Saving…' : 'Save manager default'}
             </button>
           </section>
         </div>
@@ -840,7 +849,7 @@ export default function PlatformSettings() {
                 defaultWelcomeTemplateTimepoint === option.value ? ' pulse-template-mode-switch__pill--active' : ''
               }`}
               onClick={() => setDefaultWelcomeTemplateTimepoint(option.value)}
-              disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+              disabled={loadingDefaultWelcomeTemplates || anySavingDefaultWelcomeTemplates}
             >
               {option.label}
             </button>
@@ -874,7 +883,7 @@ export default function PlatformSettings() {
                     welcomeTemplateEditorMode[role] === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
                   }`}
                   onClick={() => setWelcomeTemplateEditorMode((current) => ({ ...current, [role]: 'edit' }))}
-                  disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+                  disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates[role]}
                 >
                   Edit
                 </button>
@@ -886,7 +895,7 @@ export default function PlatformSettings() {
                     welcomeTemplateEditorMode[role] === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
                   }`}
                   onClick={() => setWelcomeTemplateEditorMode((current) => ({ ...current, [role]: 'view' }))}
-                  disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+                  disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates[role]}
                 >
                   View
                 </button>
@@ -906,7 +915,7 @@ export default function PlatformSettings() {
                   <EmailTemplateRichEditor
                     value={defaultWelcomeTemplates[role]?.bodyHtml || '<p></p>'}
                     onChange={(nextBodyHtml) => updateDefaultWelcomeTemplateField(role, nextBodyHtml)}
-                    disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+                    disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates[role]}
                     placeholder="Write welcome page copy. This appears on the first survey screen."
                   />
                 )}
@@ -914,10 +923,12 @@ export default function PlatformSettings() {
               <button
                 type="button"
                 className="btn btn-ghost"
-                disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates}
+                disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates[role]}
                 onClick={() => saveDefaultWelcomeTemplate(role)}
               >
-                {savingDefaultWelcomeTemplates ? 'Saving…' : `Save ${role === 'manager' ? 'manager' : 'staff'} default`}
+                {savingDefaultWelcomeTemplates[role]
+                  ? 'Saving…'
+                  : `Save ${role === 'manager' ? 'manager' : 'staff'} default`}
               </button>
             </section>
           ))}
