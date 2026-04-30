@@ -823,6 +823,7 @@ router.post('/organizations/:id/tasks/:taskId/comments', async (req, res) => {
   if (!(await assertAssignableUserIds(req.params.id, mentionIds))) {
     return res.status(400).json({ error: 'Invalid mentions' });
   }
+  const commentBody = ClientWorkTask.trimCommentBody(body.body ?? '');
   const commentId = await ClientWorkTask.createComment(
     req.params.taskId,
     req.params.id,
@@ -839,6 +840,7 @@ router.post('/organizations/:id/tasks/:taskId/comments', async (req, res) => {
     authorId: req.user.id,
     mentionUserIds: mentionIds,
     taskTitle: taskRow?.title || 'Task',
+    commentBody,
   });
   const detail = await buildTaskDetail(req.params.id, req.params.taskId, req.user.id);
   res.status(201).json({ comment: { id: commentId }, task: detail });

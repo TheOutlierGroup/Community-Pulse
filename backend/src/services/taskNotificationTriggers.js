@@ -1,6 +1,7 @@
 import { query } from '../config/database.js';
 import * as InAppNotification from '../models/InAppNotification.js';
 import * as ClientWorkTask from '../models/ClientWorkTask.js';
+import * as email from './email.js';
 
 const TYPES = InAppNotification.NOTIFICATION_TYPES;
 
@@ -20,9 +21,29 @@ async function displayName(userId) {
   return n || r.email || 'Someone';
 }
 
-async function notifyNewComment({ organizationId, taskId, commentId, authorId, mentionUserIds, taskTitle }) {
+async function notifyNewComment({
+  organizationId,
+  taskId,
+  commentId,
+  authorId,
+  mentionUserIds,
+  taskTitle,
+  commentBody,
+}) {
   const author = await displayName(authorId);
   const mentions = [...new Set((mentionUserIds || []).map(String))].filter((id) => id && id !== String(authorId));
+
+  const commentPlain = email.commentBodyToEmailPlain(commentBody ?? '');
+  const taskUrl = email.buildPlatformClientTaskUrl(organizationId, taskId);
+
+  let mentionUsersById = new Map();
+  if (mentions.length > 0 && email.isResendConfigured()) {
+    const { rows } = await query(
+      `SELECT id, email, first_name, last_name FROM users WHERE id = ANY($1::uuid[])`,
+      [mentions]
+    );
+    mentionUsersById = new Map(rows.map((r) => [String(r.id), r]));
+  }
 
   for (const uid of mentions) {
     await InAppNotification.createNotification({
@@ -36,6 +57,21 @@ async function notifyNewComment({ organizationId, taskId, commentId, authorId, m
       body: null,
       metadata: {},
     });
+
+    const row = mentionUsersById.get(String(uid));
+    const addr = row?.email && String(row.email).trim();
+    if (!addr || !email.isResendConfigured()) continue;
+    const recipientName = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
+    void email
+      .sendTaskCommentMentionEmail({
+        to: addr,
+        recipientName,
+        authorName: author,
+        taskTitle,
+        commentPlain,
+        taskUrl,
+      })
+      .catch((e) => console.error('[task mention email]', e));
   }
 
   const mentionSet = new Set(mentions);

@@ -407,6 +407,122 @@ function parseEmailRecipients(raw) {
     .filter(Boolean);
 }
 
+/** Strip rich-text HTML to plain text for safe inclusion in email bodies. */
+export function commentBodyToEmailPlain(htmlOrText) {
+  let s = String(htmlOrText ?? '').trim();
+  if (!s) return '';
+  s = s.replace(/<script\b[\s\S]*?<\/script>/gi, '');
+  s = s.replace(/<style\b[\s\S]*?<\/style>/gi, '');
+  s = s.replace(/<br\s*\/?>/gi, '\n');
+  s = s.replace(/<\/p>/gi, '\n');
+  s = s.replace(/<\/div>/gi, '\n');
+  s = s.replace(/<\/li>/gi, '\n');
+  s = s.replace(/<[^>]+>/g, '');
+  s = s
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  s = s.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return s.slice(0, 8000);
+}
+
+function resolvePlatformAppBaseUrl() {
+  const raw = process.env.APP_URL || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
+  return raw ? raw.replace(/\/$/, '') : '';
+}
+
+/** Deep link to platform client tasks with task drawer (matches in-app notification routes). */
+export function buildPlatformClientTaskUrl(organizationId, taskId) {
+  const base = resolvePlatformAppBaseUrl();
+  if (!base || !organizationId || !taskId) return '';
+  return `${base}/platform/clients/${encodeURIComponent(String(organizationId))}/tasks?task=${encodeURIComponent(String(taskId))}`;
+}
+
+export async function sendTaskCommentMentionEmail({
+  to,
+  recipientName,
+  authorName,
+  taskTitle,
+  commentPlain,
+  taskUrl,
+}) {
+  const resend = requireResend();
+  const safeTo = String(to || '').trim().toLowerCase();
+  if (!safeTo) throw new Error('Missing recipient email');
+
+  const author = String(authorName || 'Someone').trim() || 'Someone';
+  const titleRaw = String(taskTitle || 'Task').trim() || 'Task';
+  const titleShort = titleRaw.length > 120 ? `${titleRaw.slice(0, 119)}…` : titleRaw;
+  const subject = `${author} mentioned you in "${titleShort}"`;
+
+  const greetingName = String(recipientName || '').trim();
+  const greetingLine = greetingName ? `Hi ${escapeHtml(greetingName)},` : 'Hi,';
+
+  const preview = String(commentPlain || '').trim() || '(No text in this comment.)';
+  const safeUrl = String(taskUrl || '').trim();
+  const { logoBlock, attachments } = buildOutlierEmailLogoParts();
+
+  const html = `
+    <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
+      ${logoBlock}
+      <p style="color: #555; line-height: 1.6; margin: 0 0 1rem;">${greetingLine}</p>
+      <p style="color: #555; line-height: 1.6; margin: 0 0 1rem;">
+        <strong>${escapeHtml(author)}</strong> mentioned you in <strong>${escapeHtml(titleRaw)}</strong>.
+      </p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin: 0 0 1.25rem;">
+        <p style="margin: 0; color: #334155; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(preview)}</p>
+      </div>
+      ${
+        safeUrl
+          ? `<p style="margin: 0 0 1rem;">
+        <a href="${escapeHtmlAttr(safeUrl)}"
+           style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">
+          View task
+        </a>
+      </p>`
+          : ''
+      }
+      <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
+        You received this because you were @mentioned in a task comment.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    greetingName ? `Hi ${greetingName},` : 'Hi,',
+    '',
+    `${author} mentioned you in "${titleRaw}".`,
+    '',
+    preview,
+    ...(safeUrl ? ['', `Open task: ${safeUrl}`] : []),
+    '',
+    'You received this because you were @mentioned in a task comment.',
+  ].join('\n');
+
+  const { error } = await resend.emails.send({
+    from: getResendFromAddress(),
+    to: safeTo,
+    subject,
+    ...(attachments ? { attachments } : {}),
+    html,
+    text,
+  });
+
+  if (error) {
+    console.error('Resend task comment mention error:', error);
+    throw new Error(
+      error && typeof error.message === 'string'
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Failed to send mention email'
+    );
+  }
+}
+
 export async function sendRetentionAlertEmail({ subject, bodyText, payload }) {
   const resend = requireResend();
   const recipients = parseEmailRecipients(process.env.RETENTION_ALERT_EMAIL);

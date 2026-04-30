@@ -31,7 +31,7 @@ function trimBody(v) {
   return String(v).trim().slice(0, BODY_MAX);
 }
 
-function trimCommentBody(v) {
+export function trimCommentBody(v) {
   if (v == null) return '';
   return String(v).trim().slice(0, COMMENT_BODY_MAX);
 }
