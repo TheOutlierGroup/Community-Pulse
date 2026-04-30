@@ -14,7 +14,60 @@ import {
   WidthType,
   convertInchesToTwip,
 } from 'docx';
+import JSZip from 'jszip';
 import { NEXT_STEPS_STATIC_BLOCKS, NEXT_STEPS_DEFAULT_ORDER } from './reportConfig.js';
+
+const THEME_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">
+  <a:themeElements>
+    <a:clrScheme name="Office">
+      <a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1>
+      <a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1>
+      <a:dk2><a:srgbClr val="1F3864"/></a:dk2>
+      <a:lt2><a:srgbClr val="E7E6E6"/></a:lt2>
+      <a:accent1><a:srgbClr val="4472C4"/></a:accent1>
+      <a:accent2><a:srgbClr val="ED7D31"/></a:accent2>
+      <a:accent3><a:srgbClr val="A5A5A5"/></a:accent3>
+      <a:accent4><a:srgbClr val="FFC000"/></a:accent4>
+      <a:accent5><a:srgbClr val="5B9BD5"/></a:accent5>
+      <a:accent6><a:srgbClr val="70AD47"/></a:accent6>
+      <a:hlink><a:srgbClr val="0563C1"/></a:hlink>
+      <a:folHlink><a:srgbClr val="954F72"/></a:folHlink>
+    </a:clrScheme>
+    <a:fontScheme name="Office">
+      <a:majorFont><a:latin typeface="Calibri Light"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont>
+      <a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont>
+    </a:fontScheme>
+    <a:fmtScheme name="Office">
+      <a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst>
+      <a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="12700"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst>
+      <a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>
+      <a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst>
+    </a:fmtScheme>
+  </a:themeElements>
+</a:theme>`;
+
+async function injectTheme(docxBuffer) {
+  const zip = await JSZip.loadAsync(docxBuffer);
+
+  zip.file('word/theme/theme1.xml', THEME_XML);
+
+  const relsXml = await zip.file('word/_rels/document.xml.rels').async('string');
+  const existingIds = [...relsXml.matchAll(/Id="rId(\d+)"/g)].map((m) => parseInt(m[1], 10));
+  const nextId = Math.max(...existingIds) + 1;
+  const themeRel = `<Relationship Id="rId${nextId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>`;
+  const updatedRels = relsXml.replace('</Relationships>', `${themeRel}</Relationships>`);
+  zip.file('word/_rels/document.xml.rels', updatedRels);
+
+  const ctXml = await zip.file('[Content_Types].xml').async('string');
+  if (!ctXml.includes('theme/theme1.xml')) {
+    const themeOverride = '<Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>';
+    const updatedCt = ctXml.replace('</Types>', `${themeOverride}</Types>`);
+    zip.file('[Content_Types].xml', updatedCt);
+  }
+
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
 
 const COLOUR = {
   navy: '1F3864',
@@ -304,8 +357,11 @@ function singleScoreCard(label, score, max, status) {
 
 function verdictBox(verdictText, quadrantLabel) {
   const isPassed = verdictText === 'CLEARED FOR LAUNCH';
-  const bg = isPassed ? COLOUR.verdictPassBg : COLOUR.verdictFailBg;
+  const bg = isPassed ? COLOUR.verdictPassBg : COLOUR.navy;
   const verdictColor = isPassed ? COLOUR.scoreGreen : COLOUR.scoreRed;
+  const textColor = isPassed ? COLOUR.black : COLOUR.white;
+  const subtitleColor = isPassed ? '666666' : 'CCCCCC';
+  const quadColor = isPassed ? COLOUR.navy : COLOUR.white;
   const desc = isPassed
     ? 'This organisation has the conditions required to proceed with the change programme.'
     : 'This organisation has the motivation to change. It does not yet have the sponsorship conditions to sustain it.';
@@ -328,7 +384,7 @@ function verdictBox(verdictText, quadrantLabel) {
               spacing: { after: 80 },
             }),
             new Paragraph({
-              children: [new TextRun({ text: desc, font: FONT.body, size: 20 })],
+              children: [new TextRun({ text: desc, font: FONT.body, size: 20, color: textColor })],
             }),
           ],
         }),
@@ -340,12 +396,12 @@ function verdictBox(verdictText, quadrantLabel) {
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'Quadrant:', font: FONT.body, size: 18, color: '666666' })],
+              children: [new TextRun({ text: 'Quadrant:', font: FONT.body, size: 18, color: subtitleColor })],
               spacing: { after: 40 },
             }),
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: quadrantLabel.toUpperCase(), font: FONT.heading, size: 22, bold: true, color: COLOUR.navy })],
+              children: [new TextRun({ text: quadrantLabel.toUpperCase(), font: FONT.heading, size: 22, bold: true, color: quadColor })],
             }),
           ],
         }),
@@ -958,5 +1014,6 @@ export async function buildReportDocx({ reportData, signals, context = {} }) {
     ],
   });
 
-  return Packer.toBuffer(doc);
+  const rawBuffer = await Packer.toBuffer(doc);
+  return injectTheme(rawBuffer);
 }
