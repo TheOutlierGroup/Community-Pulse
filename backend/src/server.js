@@ -20,6 +20,7 @@ import adminRoutes from './routes/admin.js';
 import analyticsRoutes from './routes/analytics.js';
 import platformRoutes from './routes/platformRouter.js';
 import reportRoutes from './routes/reports.js';
+import internalMaintenanceRoutes from './routes/internalMaintenance.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -119,6 +120,8 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'pulse-api', surface: APP_SURFACE });
 });
 
+app.use('/api/internal', internalMaintenanceRoutes);
+
 app.use('/api/auth', authRoutes);
 if (!isCrmSurface) {
   app.use('/api/pulse', employeeRoutes);
@@ -126,28 +129,27 @@ if (!isCrmSurface) {
   app.use('/api/pulse-link', pulseLinkRoutes);
   app.use('/api/rhythm-engine-link', pulseLinkRoutes);
   app.use('/api/admin', adminRoutes);
-  app.use('/api/analytics', analyticsRoutes);
 }
+// Session analytics + CSV/JSON exports (admin). Available on CRM and Pulse backends so admins on
+// the CRM domain hit disk-backed STORAGE_PATH; Rhythm-only servers without a disk retain ephemeral writes.
+app.use('/api/analytics', analyticsRoutes);
+app.get(
+  '/api/exports/:filename',
+  requireAuth,
+  requireAdmin,
+  requireClientOrganization,
+  requireClientPulseService,
+  (req, res) => {
+    const safe = path.basename(req.params.filename);
+    const full = exportFilePath(safe);
+    if (!fs.existsSync(full)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    res.download(full, safe);
+  }
+);
 app.use('/api/platform', platformRoutes);
 app.use('/api/reports', reportRoutes);
-
-if (!isCrmSurface) {
-  app.get(
-    '/api/exports/:filename',
-    requireAuth,
-    requireAdmin,
-    requireClientOrganization,
-    requireClientPulseService,
-    (req, res) => {
-      const safe = path.basename(req.params.filename);
-      const full = exportFilePath(safe);
-      if (!fs.existsSync(full)) {
-        return res.status(404).json({ error: 'File not found' });
-      }
-      res.download(full, safe);
-    }
-  );
-}
 
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 if (isPulseSurface) {
