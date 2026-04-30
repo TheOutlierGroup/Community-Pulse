@@ -70,7 +70,7 @@ export async function generateReport({
 
   try {
     const signals = await generateReportSignals(reportData, context);
-    const docxBuffer = await buildReportDocx({ reportData, signals });
+    const docxBuffer = await buildReportDocx({ reportData, signals, context });
 
     const reportId = pending.id;
     const dateStamp = isoDay();
