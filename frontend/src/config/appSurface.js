@@ -11,8 +11,12 @@ function normalizeBaseUrl(value) {
   return v.replace(/\/$/, '');
 }
 
+export function crmAppBaseUrl() {
+  return normalizeBaseUrl(import.meta.env.VITE_CRM_APP_URL);
+}
+
 export function crmLoginUrl() {
-  const configured = normalizeBaseUrl(import.meta.env.VITE_CRM_APP_URL);
+  const configured = crmAppBaseUrl();
   if (configured) return `${configured}/login`;
   return '/login';
 }

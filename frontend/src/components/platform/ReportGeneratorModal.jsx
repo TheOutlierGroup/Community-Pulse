@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import api from '../../services/api.js';
+import { crmAppBaseUrl } from '../../config/appSurface.js';
 import {
   buildReportDownloadFilename,
   buildReportGeneratePayload,
@@ -49,7 +50,8 @@ export default function ReportGeneratorModal({ open, onClose, organization }) {
         programmeTimeline,
         consultantNotes,
       });
-      const { data } = await api.post('/api/reports/generate', payload);
+      const base = crmAppBaseUrl();
+      const { data } = await api.post(`${base}/api/reports/generate`, payload);
       setResult(data);
     } catch (requestError) {
       setError(requestError?.response?.data?.error || 'Could not generate report.');
@@ -63,14 +65,15 @@ export default function ReportGeneratorModal({ open, onClose, organization }) {
     setDownloading(true);
     setError('');
     try {
+      const base = crmAppBaseUrl();
       let downloadUrl = result?.download_url || '';
       if (result?.report_id) {
-        const { data } = await api.get(`/api/reports/${result.report_id}/download-link`);
+        const { data } = await api.get(`${base}/api/reports/${result.report_id}/download-link`);
         downloadUrl = data?.download_url || downloadUrl;
       }
       if (!downloadUrl) throw new Error('Missing download URL');
 
-      const response = await api.get(downloadUrl, { responseType: 'blob' });
+      const response = await api.get(`${base}${downloadUrl}`, { responseType: 'blob' });
       const contentType = response?.headers?.['content-type'] || 'application/octet-stream';
       const blob = new Blob([response.data], { type: contentType });
       const url = URL.createObjectURL(blob);

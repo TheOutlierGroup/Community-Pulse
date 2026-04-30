@@ -149,7 +149,9 @@ app.get(
   }
 );
 app.use('/api/platform', platformRoutes);
-app.use('/api/reports', reportRoutes);
+if (!isPulseSurface) {
+  app.use('/api/reports', reportRoutes);
+}
 
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 if (isPulseSurface) {

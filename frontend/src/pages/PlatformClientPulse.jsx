@@ -4,6 +4,7 @@ import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
 import { normalizePulseHash, resolvePulseFocusedSection } from './pulseNavigationRules.js';
 import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
+import { crmAppBaseUrl } from '../config/appSurface.js';
 
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
@@ -686,7 +687,8 @@ export default function PlatformClientPulse() {
     setReportsLoading(true);
     setReportsError('');
     try {
-      const { data } = await api.get('/api/reports', {
+      const base = crmAppBaseUrl();
+      const { data } = await api.get(`${base}/api/reports`, {
         params: { org_id: orgId, limit: 50 },
       });
       setReports(Array.isArray(data?.reports) ? data.reports : []);
@@ -705,7 +707,8 @@ export default function PlatformClientPulse() {
   async function downloadPastReport(reportId) {
     setReportsError('');
     try {
-      const response = await api.get(`/api/reports/${reportId}`, {
+      const base = crmAppBaseUrl();
+      const response = await api.get(`${base}/api/reports/${reportId}`, {
         responseType: 'blob',
       });
       const blob = new Blob([response.data], {
