@@ -590,12 +590,14 @@ export default function ClientTaskDetailPanel({
     if (!taskId) return;
     const text = commentEditorRef.current?.getText?.() ?? '';
     const html = commentEditorRef.current?.getHTML?.() ?? '';
-    if (!text.trim()) return;
+    const trimmedText = text.trim();
+    const hasFiles = commentFiles.length > 0;
+    if (!trimmedText && !hasFiles) return;
     setSaving(true);
     setError('');
     try {
       const { data } = await api.post(`/api/platform/organizations/${orgId}/tasks/${taskId}/comments`, {
-        body: html.trim() ? html : text.trim(),
+        body: html.trim() ? html : trimmedText,
         mentionUserIds: taggedUserIdsFromMentionText(text, assignableUsers),
       });
       const newCommentId = data.comment?.id;
@@ -616,7 +618,7 @@ export default function ClientTaskDetailPanel({
         const refreshed = await api.get(`/api/platform/organizations/${orgId}/tasks/${taskId}`);
         syncTask(refreshed.data.task);
       }
-      showToast('Comment added.', { variant: 'success' });
+      showToast(trimmedText ? 'Comment added.' : 'Attachment added.', { variant: 'success' });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not add comment.');
     } finally {
@@ -1353,7 +1355,11 @@ export default function ClientTaskDetailPanel({
                   {commentFiles.length > 0 ? (
                     <p className="muted task-card-modal__file-hint">{commentFiles.length} file(s) will attach when you save.</p>
                   ) : null}
-                  <button type="submit" className="task-card-modal__rte-save" disabled={saving || commentEditorEmpty}>
+                  <button
+                    type="submit"
+                    className="task-card-modal__rte-save"
+                    disabled={saving || (commentEditorEmpty && commentFiles.length === 0)}
+                  >
                     {saving ? 'Saving…' : 'Save'}
                   </button>
                 </form>
