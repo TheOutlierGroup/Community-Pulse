@@ -68,8 +68,15 @@ function parseAllowedOrigins(raw) {
     .filter(Boolean);
 }
 
-// Default Helmet CSP allows img-src 'self' data: only — <img src={blob URL}> from createObjectURL is blocked.
-// Opening that blob in a new tab still works; embedded avatars need blob: in img-src.
+function buildCspConnectSources() {
+  const sources = ["'self'"];
+  for (const key of ['CRM_APP_URL', 'PULSE_APP_URL', 'APP_URL']) {
+    const val = String(process.env[key] || '').trim().replace(/\/$/, '');
+    if (val && !sources.includes(val)) sources.push(val);
+  }
+  return sources;
+}
+
 app.use(
   helmet({
     referrerPolicy: { policy: 'no-referrer' },
@@ -77,6 +84,7 @@ app.use(
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
         'img-src': ["'self'", 'data:', 'blob:'],
+        'connect-src': buildCspConnectSources(),
       },
     },
   })
