@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
+import ModalDialog from '../components/shared/ModalDialog.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
-import { Building2, Sparkles } from 'lucide-react';
+import { Building2, Sparkles, Trash2 } from 'lucide-react';
 import {
   CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
@@ -55,7 +56,11 @@ function readGroupLevelLabels(settings) {
 export default function PlatformClientAccount() {
   const { org, orgId, refreshOrg, clientLogoUrl, bumpClientLogo } = useOutletContext();
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const logoInputRef = useRef(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const initialStatus = normalizeClientStatus(org.client_status);
   const initialStatusParent = clientStatusParent(initialStatus);
   const [editName, setEditName] = useState(org.name);
@@ -245,6 +250,20 @@ export default function PlatformClientAccount() {
       setError(err.response?.data?.error || 'Could not remove logo.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function deleteClient() {
+    if (deleteConfirmText.trim().toLowerCase() !== 'delete') return;
+    setDeleting(true);
+    try {
+      await api.delete(`/api/platform/organizations/${orgId}`);
+      showToast('Client deleted.', { variant: 'success' });
+      navigate('/platform/clients', { replace: true });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not delete client.');
+      setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   }
 
@@ -543,6 +562,101 @@ export default function PlatformClientAccount() {
         </div>
 
       </div>
+
+      <div
+        className="card"
+        style={{
+          marginTop: '2rem',
+          borderColor: 'var(--danger, #dc3545)',
+          borderWidth: '1px',
+          borderStyle: 'solid',
+        }}
+      >
+        <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0, color: 'var(--danger, #dc3545)' }}>
+          Danger zone
+        </h2>
+        <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+          Permanently delete this client and all associated data including users, pulse sessions, tasks, and invites. This action cannot be undone.
+        </p>
+        <button
+          type="button"
+          className="btn"
+          style={{
+            backgroundColor: 'var(--danger, #dc3545)',
+            color: '#fff',
+            border: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+          }}
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={busy}
+        >
+          <Trash2 size={16} strokeWidth={1.75} aria-hidden />
+          Delete client
+        </button>
+      </div>
+
+      <ModalDialog
+        open={showDeleteConfirm}
+        title="Delete client"
+        titleId="delete-client-modal-title"
+        onClose={() => {
+          if (!deleting) {
+            setShowDeleteConfirm(false);
+            setDeleteConfirmText('');
+          }
+        }}
+        dialogClassName=""
+      >
+        <div style={{ padding: '1rem 1.25rem' }}>
+          <p style={{ margin: '0 0 0.75rem' }}>
+            This will permanently delete <strong>{org.name}</strong> and all linked data including users, pulse sessions, tasks, comments, invites, and reports.
+          </p>
+          <p style={{ margin: '0 0 1rem', fontWeight: 600, color: 'var(--danger, #dc3545)' }}>
+            This action cannot be undone.
+          </p>
+          <div className="field">
+            <label htmlFor="delete-confirm-input">
+              Type <strong>delete</strong> to confirm
+            </label>
+            <input
+              id="delete-confirm-input"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="delete"
+              autoComplete="off"
+              disabled={deleting}
+            />
+          </div>
+          <div className="btn-row" style={{ marginTop: '1rem' }}>
+            <button
+              type="button"
+              className="btn"
+              style={{
+                backgroundColor: 'var(--danger, #dc3545)',
+                color: '#fff',
+                border: 'none',
+              }}
+              disabled={deleting || deleteConfirmText.trim().toLowerCase() !== 'delete'}
+              onClick={deleteClient}
+            >
+              {deleting ? 'Deleting…' : 'Permanently delete'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                setDeleteConfirmText('');
+              }}
+              disabled={deleting}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </ModalDialog>
     </>
   );
 }

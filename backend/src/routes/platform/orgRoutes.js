@@ -1234,6 +1234,22 @@ export function registerPlatformOrgRoutes(router) {
     res.json(updated);
   });
 
+  router.delete('/organizations/:id', requirePlatformAdminRole, async (req, res) => {
+    const org = await Organization.getOrganization(req.params.id);
+    if (!org || org.kind !== 'client') {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    if (org.company_logo_filename) {
+      const logoPath = orgLogoFilePath(req.params.id, org.company_logo_filename);
+      try {
+        fs.unlinkSync(logoPath);
+      } catch { /* file may already be gone */ }
+    }
+    const deleted = await Organization.deleteOrganization(req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Organization not found' });
+    res.status(204).end();
+  });
+
   router.get('/organizations/:id/users', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) {

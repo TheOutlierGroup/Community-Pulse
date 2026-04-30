@@ -149,6 +149,13 @@ export async function markOrganizationArchived(id, { disposalYears = 7 } = {}) {
   return rows[0] || null;
 }
 
+export async function deleteOrganization(id) {
+  const org = await getOrganization(id);
+  if (!org || org.kind !== 'client') return null;
+  await query(`DELETE FROM organizations WHERE id = $1 AND kind = 'client'`, [id]);
+  return org;
+}
+
 export async function listArchivedOrganizations() {
   const { rows } = await query(
     `SELECT id, name, archived_at, tier3_archive_at, tier3_disposal_due_at
