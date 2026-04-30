@@ -205,7 +205,7 @@ export default function EmployeePulse() {
                   disabled={busy}
                   onClick={complete}
                 >
-                  {busy ? 'Finishing…' : 'Finish & see reflection'}
+                  {busy ? 'Finishing…' : 'Finished'}
                 </button>
               )}
             </div>

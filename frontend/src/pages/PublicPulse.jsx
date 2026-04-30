@@ -315,7 +315,7 @@ export default function PublicPulse() {
               )}
               {step === 4 && (
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={complete}>
-                  {busy ? 'Finishing…' : 'Finish & see reflection'}
+                  {busy ? 'Finishing…' : 'Finished'}
                 </button>
               )}
             </div>

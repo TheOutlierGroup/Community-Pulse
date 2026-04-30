@@ -432,6 +432,8 @@ const STAGE_COPY = {
 
 const EMPLOYEE_QUESTION_SET_TRANSITION =
   'These set of questions will enable us to better understand how change is supported within your organisation. Please rate each statement from 1 to 5, where 1 = Strongly Disagree and 5 = Strongly Agree.';
+const MANAGER_QUESTION_SET_TRANSITION =
+  'As a manager, your perspective is invaluable. These questions explore your experience of leading through change and the conditions that enable you to do so effectively. Please rate each statement from 1 to 5, where 1 = Strongly Disagree and 5 = Strongly Agree.';
 
 function normalizeAudience(raw) {
   if (raw === 'manager' || raw === 'admin') return 'manager';
@@ -473,7 +475,7 @@ function surveyCopyForAudienceAndStage(audience, stage) {
         : copy.employeeIntro,
     transition:
       normalizedAudience === 'manager'
-        ? copy.transition
+        ? MANAGER_QUESTION_SET_TRANSITION
         : EMPLOYEE_QUESTION_SET_TRANSITION,
     reflection: copy.reflection,
   };
