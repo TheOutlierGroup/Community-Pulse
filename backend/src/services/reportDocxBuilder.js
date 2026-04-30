@@ -231,7 +231,7 @@ function styledCell(text, opts = {}) {
       children: [new TextRun({ text: String(text ?? '—'), font, size, bold, color })],
     })],
   };
-  if (shading) cellOpts.shading = { type: ShadingType.CLEAR, fill: shading };
+  if (shading) cellOpts.shading = { type: ShadingType.CLEAR, color: 'auto', fill: shading };
   if (width) cellOpts.width = width;
   if (verticalAlign) cellOpts.verticalAlign = verticalAlign;
   return new TableCell(cellOpts);
@@ -283,7 +283,7 @@ function scoreCardPair(leftLabel, leftScore, leftMax, leftStatus, rightLabel, ri
   function cardCell(label, score, max, status, color, bg) {
     return new TableCell({
       width: { size: 50, type: WidthType.PERCENTAGE },
-      shading: { type: ShadingType.CLEAR, fill: bg },
+      shading: { type: ShadingType.CLEAR, color: 'auto', fill: bg },
       margins: { top: 120, bottom: 120, left: 160, right: 160 },
       children: [
         new Paragraph({
@@ -332,7 +332,7 @@ function singleScoreCard(label, score, max, status) {
     },
     rows: [new TableRow({
       children: [new TableCell({
-        shading: { type: ShadingType.CLEAR, fill: bg },
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: bg },
         margins: { top: 120, bottom: 120, left: 160, right: 160 },
         children: [
           new Paragraph({
@@ -376,7 +376,7 @@ function verdictBox(verdictText, quadrantLabel) {
       children: [
         new TableCell({
           width: { size: 70, type: WidthType.PERCENTAGE },
-          shading: { type: ShadingType.CLEAR, fill: bg },
+          shading: { type: ShadingType.CLEAR, color: 'auto', fill: bg },
           margins: { top: 140, bottom: 140, left: 200, right: 100 },
           children: [
             new Paragraph({
@@ -390,7 +390,7 @@ function verdictBox(verdictText, quadrantLabel) {
         }),
         new TableCell({
           width: { size: 30, type: WidthType.PERCENTAGE },
-          shading: { type: ShadingType.CLEAR, fill: bg },
+          shading: { type: ShadingType.CLEAR, color: 'auto', fill: bg },
           margins: { top: 140, bottom: 140, left: 100, right: 200 },
           verticalAlign: 'center',
           children: [
@@ -418,7 +418,7 @@ function quadrantMatrix(activeCode) {
     const bg = isHighlighted ? COLOUR.quadHighlight : COLOUR.white;
     return new TableCell({
       borders,
-      shading: { type: ShadingType.CLEAR, fill: bg },
+      shading: { type: ShadingType.CLEAR, color: 'auto', fill: bg },
       margins: { top: 80, bottom: 80, left: 100, right: 100 },
       children: [
         new Paragraph({
@@ -499,7 +499,7 @@ function signalBox(title, text, borderColor = COLOUR.signalBorderBlue) {
     },
     rows: [new TableRow({
       children: [new TableCell({
-        shading: { type: ShadingType.CLEAR, fill: COLOUR.signalBg },
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: COLOUR.signalBg },
         margins: { top: 120, bottom: 120, left: 180, right: 180 },
         borders: {
           top: BORDER_NONE, bottom: BORDER_NONE, right: BORDER_NONE, left: BORDER_NONE,
@@ -536,7 +536,7 @@ function alertBlock(severity, title, description) {
     },
     rows: [new TableRow({
       children: [new TableCell({
-        shading: { type: ShadingType.CLEAR, fill: style.bg },
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: style.bg },
         margins: { top: 100, bottom: 100, left: 180, right: 180 },
         borders: { top: BORDER_NONE, bottom: BORDER_NONE, right: BORDER_NONE, left: BORDER_NONE },
         children: [
@@ -568,7 +568,7 @@ function loadBandCards(distribution) {
     const cfg = bandConfig[band.name] || bandConfig.Stretched;
     return new TableCell({
       width: { size: 25, type: WidthType.PERCENTAGE },
-      shading: { type: ShadingType.CLEAR, fill: cfg.bg },
+      shading: { type: ShadingType.CLEAR, color: 'auto', fill: cfg.bg },
       margins: { top: 100, bottom: 100, left: 100, right: 100 },
       children: [
         new Paragraph({
@@ -617,7 +617,7 @@ function sponsorshipChainMatrix(distribution) {
     const cfg = stateConfig[name] || { bg: COLOUR.white };
     return new TableCell({
       borders,
-      shading: { type: ShadingType.CLEAR, fill: cfg.bg },
+      shading: { type: ShadingType.CLEAR, color: 'auto', fill: cfg.bg },
       margins: { top: 80, bottom: 80, left: 80, right: 80 },
       children: [
         new Paragraph({
@@ -977,7 +977,7 @@ export async function buildReportDocx({ reportData, signals, context = {} }) {
             borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE, insideHorizontal: BORDER_NONE, insideVertical: BORDER_NONE },
             rows: [new TableRow({
               children: [new TableCell({
-                shading: { type: ShadingType.CLEAR, fill: COLOUR.navy },
+                shading: { type: ShadingType.CLEAR, color: 'auto', fill: COLOUR.navy },
                 margins: { top: 200, bottom: 200, left: 200, right: 200 },
                 children: [
                   new Paragraph({
