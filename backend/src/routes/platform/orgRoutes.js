@@ -1612,12 +1612,15 @@ export function registerPlatformOrgRoutes(router) {
       pulseLinkManager = includeManagerSelf ? selectedManagerIds.length : 0;
       invitedEmployees = pulseLinkStaff;
       invitedManagers = pulseLinkManager;
+    } else {
+      invitedEmployees += pulseLinkStaff;
+      invitedManagers += pulseLinkManager;
     }
     const pulseLinkInvitedCount = pulseLinkStaff + pulseLinkManager;
-    const invitedTotal = managerFilterActive
-      ? pulseLinkInvitedCount
-      : invitedEmployees + invitedManagers + pulseLinkInvitedCount;
     const completedTotal = completedRows.length;
+    invitedEmployees = Math.max(invitedEmployees, completedEmployeeResponses);
+    invitedManagers = Math.max(invitedManagers, completedManagerResponses);
+    const invitedTotal = invitedEmployees + invitedManagers;
 
     const quadrantBuckets = {
       'Motivated but Lost': 0,
@@ -2168,10 +2171,10 @@ export function registerPlatformOrgRoutes(router) {
         completedManagers: completedManagerResponses,
         participationRate: round1(ratio(completedTotal, invitedTotal) * 100),
         employeeParticipationRate: round1(
-          ratio(completedEmployeeResponses, invitedEmployees + pulseLinkStaff) * 100
+          ratio(completedEmployeeResponses, invitedEmployees) * 100
         ),
         managerParticipationRate: round1(
-          ratio(completedManagerResponses, invitedManagers + pulseLinkManager) * 100
+          ratio(completedManagerResponses, invitedManagers) * 100
         ),
         pulseLinkInvitedStaff: pulseLinkStaff,
         pulseLinkInvitedManager: pulseLinkManager,
