@@ -568,6 +568,37 @@ async function upsertPulseInviteRecipients({
   };
 }
 
+const DEFAULT_PULSE_SESSION_PURPOSES = ['pre_project', 'during_project', 'completed_project'];
+const DEFAULT_PULSE_SESSION_AUDIENCES = ['staff', 'manager'];
+
+async function ensureDefaultPulseSessionsForOrg(organizationId) {
+  const existing = await PulseSession.listSessionsForOrg(organizationId);
+  const existingPurposes = new Set(
+    existing.map((s) => `${s.session_purpose}:${s.audience || 'staff'}`)
+  );
+  const created = [];
+  for (const purpose of DEFAULT_PULSE_SESSION_PURPOSES) {
+    for (const audience of DEFAULT_PULSE_SESSION_AUDIENCES) {
+      if (existingPurposes.has(`${purpose}:${audience}`)) continue;
+      const name =
+        purpose === 'pre_project'
+          ? 'Pre'
+          : purpose === 'during_project'
+            ? 'During'
+            : 'Post';
+      const session = await PulseSession.createSession(
+        organizationId,
+        name,
+        'active',
+        audience,
+        purpose
+      );
+      created.push(session);
+    }
+  }
+  return created;
+}
+
 function createDuringPulseCheckpointName(now = new Date()) {
   return `During checkpoint · ${now.toLocaleDateString('en-GB', {
     day: '2-digit',
@@ -1086,6 +1117,11 @@ export function registerPlatformOrgRoutes(router) {
       initialSettings.companyAddress = String(addrRaw).trim();
     }
     let org = await Organization.createOrganization(name.trim(), initialSettings, 'client');
+    try {
+      await ensureDefaultPulseSessionsForOrg(org.id);
+    } catch (e) {
+      console.error('Failed to create default pulse sessions for new org:', e);
+    }
     if (req.file) {
       const ext = extensionForUpload(req.file);
       const base = `org-${org.id}${ext || '.png'}`;
@@ -1231,6 +1267,16 @@ export function registerPlatformOrgRoutes(router) {
       clientStatus: normalizedClientStatus,
     });
     if (!updated) return res.status(404).json({ error: 'Organization not found' });
+    if (
+      settingsPatch?.services &&
+      organizationHasService(updated.settings, CLIENT_SERVICE_PULSE)
+    ) {
+      try {
+        await ensureDefaultPulseSessionsForOrg(req.params.id);
+      } catch (e) {
+        console.error('Failed to create default pulse sessions on service enable:', e);
+      }
+    }
     res.json(updated);
   });
 
@@ -1472,7 +1518,15 @@ export function registerPlatformOrgRoutes(router) {
   router.get('/organizations/:id/pulse-sessions', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
-    const sessions = await PulseSession.listSessionsForOrg(req.params.id);
+    let sessions = await PulseSession.listSessionsForOrg(req.params.id);
+    if (!sessions.some((s) => DEFAULT_PULSE_SESSION_PURPOSES.includes(s.session_purpose))) {
+      try {
+        await ensureDefaultPulseSessionsForOrg(req.params.id);
+        sessions = await PulseSession.listSessionsForOrg(req.params.id);
+      } catch (e) {
+        console.error('Failed to lazy-init default pulse sessions:', e);
+      }
+    }
     res.json({ sessions: sessions.map(publicPulseSessionRow) });
   });
 
