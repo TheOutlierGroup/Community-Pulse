@@ -252,6 +252,15 @@ function managerChainStatus(quadrant) {
   return 'Failed at Both Levels';
 }
 
+function chainStatePillClass(state) {
+  const s = String(state || '').trim();
+  if (s === 'Chain Functioning') return 'cp-fn';
+  if (s === 'Breaking at Manager Level' || s === 'At-Risk Leadership') return 'cp-bm';
+  if (s === 'Managers Resilient, Under-Supported' || s === 'Resilient, Under-supported') return 'cp-ru';
+  if (s === 'Sponsorship Failed at Both Levels' || s === 'Failed at Both Levels') return 'cp-fb';
+  return '';
+}
+
 export default function PlatformClientPulse() {
   const {
     org,
@@ -1191,6 +1200,64 @@ export default function PlatformClientPulse() {
               </div>
             ) : null}
           </div>
+
+          {/* ─── SECTION 5: TEAM-LEVEL SPONSORSHIP CHAIN ─── */}
+          {(dashboard?.sponsorshipAnalysis?.section5?.rows?.length > 0) ? (
+            <div className="pulse-sa-card">
+              <p className="pulse-sa-card__label">
+                {dashboard.sponsorshipAnalysis.section5.cardLabel || 'Section 5 — Team-Level Sponsorship Chain Breakdown'}
+              </p>
+              <p className="pulse-sa-card__explainer">
+                {dashboard.sponsorshipAnalysis.section5.explainer
+                  || 'Maps the sponsorship chain state to each team — distinguishing teams with local failure from those experiencing the broader organisational pattern, and identifying which teams require targeted pre-launch engagement.'}
+              </p>
+              <div className="pulse-sa-table-wrap">
+                <table className="pulse-sa-matrix">
+                  <thead>
+                    <tr>
+                      <th>Team</th>
+                      <th>Responses</th>
+                      <th>Chain State</th>
+                      <th>Load Band</th>
+                      <th>Received Avg</th>
+                      <th>Capacity Avg</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dashboard.sponsorshipAnalysis.section5.rows.map((row) => (
+                      <tr key={row.managerId}>
+                        <td style={{ textAlign: 'left', fontWeight: 600 }}>{row.teamName}</td>
+                        <td>{row.responses || 0}</td>
+                        <td>
+                          <span className={`pulse-sa-chain-pill ${chainStatePillClass(row.chainState)}`}>
+                            {row.chainState}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ color: loadBandColor(row.loadBand), fontWeight: 600 }}>
+                            {row.loadBand}
+                          </span>
+                        </td>
+                        <td>{formatScore(row.receivedAvg)}</td>
+                        <td>{formatScore(row.capacityAvg)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {dashboard.sponsorshipAnalysis.section5.totalRows > dashboard.sponsorshipAnalysis.section5.rows.length ? (
+                <p className="pulse-sa-card__explainer" style={{ marginTop: '0.5rem', fontStyle: 'italic' }}>
+                  Showing {dashboard.sponsorshipAnalysis.section5.rows.length} of {dashboard.sponsorshipAnalysis.section5.totalRows} teams
+                </p>
+              ) : null}
+              {sponsorshipSignals?.teams?.text ? (
+                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.teams.variant === 'red' ? 'red' : 'amber'}`}>
+                  <span className="pulse-sa-signal__label">Signal</span>
+                  {sponsorshipSignals.teams.text}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </section>
       ) : null}
 
