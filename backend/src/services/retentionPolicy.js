@@ -11,6 +11,10 @@ function parseDays(raw, fallbackDays) {
   return value;
 }
 
+function isStorageAccessError(error) {
+  return ['EACCES', 'EPERM', 'EROFS'].includes(error?.code);
+}
+
 export function getRetentionPolicy() {
   return {
     exportRetentionDays: parseDays(process.env.EXPORT_RETENTION_DAYS, 30),
@@ -21,7 +25,15 @@ export function getRetentionPolicy() {
 
 export async function sweepExpiredExports({ now = Date.now() } = {}) {
   const { exportRetentionDays } = getRetentionPolicy();
-  const { exportsDir } = ensureStorageDirs();
+  let exportsDir;
+  try {
+    ({ exportsDir } = ensureStorageDirs());
+  } catch (error) {
+    if (isStorageAccessError(error)) {
+      return { deleted: 0, skipped: true, reason: 'storage_unwritable' };
+    }
+    throw error;
+  }
   const cutoffMs = now - exportRetentionDays * 24 * 60 * 60 * 1000;
   const entries = await fs.promises.readdir(exportsDir, { withFileTypes: true });
   let deleted = 0;
