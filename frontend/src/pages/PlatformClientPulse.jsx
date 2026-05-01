@@ -1196,7 +1196,6 @@ export default function PlatformClientPulse() {
 
       {showDimensionsSection ? (
         <section className="pulse-clean-dimensions card">
-        <div className="pulse-clean-dimensions__left">
           <div className="pulse-clean-dimensions__tabs">
             <button
               type="button"
@@ -1243,27 +1242,6 @@ export default function PlatformClientPulse() {
               </tbody>
             </table>
           </div>
-        </div>
-
-        <div className="pulse-clean-dimensions__right">
-          <section className="pulse-clean-alerts">
-            <p className="pulse-clean-alerts__title">System Alerts</p>
-            {(dashboard?.alerts || []).slice(0, 3).map((alert) => (
-              <article key={`system-${alert.title}`} className={`pulse-clean-alerts__item pulse-clean-alerts__item--${alert.level || 'info'}`}>
-                <p className="pulse-clean-alerts__item-title">{alert.title}</p>
-                <p className="pulse-clean-alerts__item-body">{alert.body}</p>
-              </article>
-            ))}
-            {(dashboard?.alerts || []).length === 0 ? (
-              <article className="pulse-clean-alerts__item pulse-clean-alerts__item--info">
-                <p className="pulse-clean-alerts__item-title">No active alerts</p>
-                <p className="pulse-clean-alerts__item-body">
-                  Alerts will appear here when thresholds indicate elevated delivery risk.
-                </p>
-              </article>
-            ) : null}
-          </section>
-        </div>
         </section>
       ) : null}
 
