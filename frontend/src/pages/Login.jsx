@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
@@ -8,10 +8,17 @@ import { getPostLoginPath } from '../utils/postLogin.js';
 import { getLoginErrorMessage } from '../utils/loginErrors.js';
 import outlierLogo from '../images/outlier-logo.png';
 
+function resolvePostLoginDest(user, searchParams) {
+  const returnTo = searchParams.get('returnTo');
+  if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) return returnTo;
+  return getPostLoginPath(user);
+}
+
 export default function Login() {
   const { user, setUserFromLogin, logout, loading } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const mfaCodeInputRef = useRef(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,8 +27,8 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!loading && user) navigate(getPostLoginPath(user), { replace: true });
-  }, [user, loading, navigate]);
+    if (!loading && user) navigate(resolvePostLoginDest(user, searchParams), { replace: true });
+  }, [user, loading, navigate, searchParams]);
 
   useEffect(() => {
     if (mfaRequired) mfaCodeInputRef.current?.focus();
@@ -35,7 +42,7 @@ export default function Login() {
       if (mfaRequired || mfaCode.trim()) payload.mfaCode = mfaCode.trim();
       const { data } = await api.post('/api/auth/login', payload);
       setUserFromLogin(data);
-      navigate(getPostLoginPath(data.user), { replace: true });
+      navigate(resolvePostLoginDest(data.user, searchParams), { replace: true });
     } catch (err) {
       const status = err.response?.status;
       const serverMsg =
