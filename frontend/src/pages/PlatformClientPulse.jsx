@@ -708,7 +708,11 @@ export default function PlatformClientPulse() {
     setReportsError('');
     try {
       const base = crmAppBaseUrl();
-      const response = await api.get(`${base}/api/reports/${reportId}`, {
+      const { data } = await api.get(`${base}/api/reports/${reportId}/download-link`);
+      const downloadUrl = data?.download_url;
+      if (!downloadUrl) throw new Error('Missing download URL');
+
+      const response = await api.get(`${base}${downloadUrl}`, {
         responseType: 'blob',
       });
       const blob = new Blob([response.data], {
