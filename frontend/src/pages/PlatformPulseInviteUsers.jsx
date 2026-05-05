@@ -432,6 +432,7 @@ export default function PlatformPulseInviteUsers() {
   );
 
   const inviteTimepoint = useMemo(() => normalizeInviteTimepoint(pulseTimepoint), [pulseTimepoint]);
+  const missingDuringSession = inviteTimepoint === 'mid' && !pulseDuringSessionId;
   const inviteRequestParams = useMemo(() => {
     const params = { timepoint: inviteTimepoint };
     if (inviteTimepoint === 'mid' && pulseDuringSessionId) {
@@ -464,6 +465,15 @@ export default function PlatformPulseInviteUsers() {
       setLoading(true);
     }
     setError('');
+    if (missingDuringSession) {
+      setInvites([]);
+      setDueDate('');
+      setError('Select or create a During checkpoint before managing During recipients.');
+      if (!silent) {
+        setLoading(false);
+      }
+      return;
+    }
     try {
       const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`, {
         params: inviteRequestParams,
@@ -479,10 +489,18 @@ export default function PlatformPulseInviteUsers() {
         setLoading(false);
       }
     }
-  }, [inviteRequestParams, orgId]);
+  }, [inviteRequestParams, missingDuringSession, orgId]);
 
   const loadTemplates = useCallback(async () => {
     setTemplatesLoading(true);
+    if (missingDuringSession) {
+      setEmailTemplates({
+        staff: defaultTemplateForAudience('staff'),
+        manager: defaultTemplateForAudience('manager'),
+      });
+      setTemplatesLoading(false);
+      return;
+    }
     try {
       const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates`, {
         params: inviteRequestParams,
@@ -503,10 +521,15 @@ export default function PlatformPulseInviteUsers() {
     } finally {
       setTemplatesLoading(false);
     }
-  }, [inviteRequestParams, orgId, showToast]);
+  }, [inviteRequestParams, missingDuringSession, orgId, showToast]);
 
   const loadWelcomeTemplates = useCallback(async () => {
     setWelcomeTemplatesLoading(true);
+    if (missingDuringSession) {
+      setWelcomeTemplates(normalizeWelcomeTemplates(null));
+      setWelcomeTemplatesLoading(false);
+      return;
+    }
     try {
       const { data } = await api.get(
         `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/survey-start-templates`,
@@ -518,7 +541,7 @@ export default function PlatformPulseInviteUsers() {
     } finally {
       setWelcomeTemplatesLoading(false);
     }
-  }, [inviteRequestParams, orgId, showToast]);
+  }, [inviteRequestParams, missingDuringSession, orgId, showToast]);
 
   useEffect(() => {
     load();
