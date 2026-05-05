@@ -1,0 +1,160 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import JSZip from 'jszip';
+import { parseHumanTestDocx, parseHumanTestLines } from './pulseTestDataDocImport.js';
+
+function buildMinimalHumanTestLines() {
+  return [
+    'RHYTHMENGINE',
+    '2.  Employee Survey Answers - All 1 Respondents',
+    'Employee',
+    'Q1',
+    'Q2',
+    'Q3',
+    'Q4',
+    'Q5',
+    'Q6',
+    'Q7',
+    'Q8',
+    'Q9',
+    'Q10',
+    'Q11',
+    'Q12',
+    'Q13',
+    'Q14',
+    'Q15',
+    'Q16',
+    'Adopt',
+    'Sponsor',
+    'Quadrant',
+    'Taylor Employee',
+    '5',
+    '4',
+    '3',
+    '2',
+    '4',
+    '5',
+    '4',
+    '3',
+    '2',
+    '3',
+    '4',
+    '5',
+    '4',
+    '3',
+    '2',
+    '1',
+    '30',
+    '24',
+    'Capable but Wary',
+    '3.  Manager Survey Answers - All 1 Managers',
+    'Name',
+    'Role',
+    'MQ1',
+    'MQ2',
+    'MQ3',
+    'MQ4',
+    '*MQ5',
+    '*MQ6',
+    'MQ7',
+    'MQ8',
+    'MQ9',
+    'MQ10',
+    'MQ11',
+    'MQ12',
+    'MQ13',
+    'MQ14',
+    '*MQ15',
+    '*MQ16',
+    'Adopt',
+    'Spons',
+    'Load',
+    'Band',
+    'Quadrant',
+    'Chain Quadrant',
+    'Jordan Manager',
+    'TM - Product',
+    '4',
+    '4',
+    '4',
+    '4',
+    '5',
+    '4',
+    '5',
+    '4',
+    '4',
+    '4',
+    '3',
+    '4',
+    '5',
+    '4',
+    '4',
+    '3',
+    '34',
+    '30',
+    '16',
+    'Sustainable',
+    'Optimal',
+    'Chain Functioning',
+  ];
+}
+
+test('parseHumanTestLines parses employee and manager responses', () => {
+  const parsed = parseHumanTestLines(buildMinimalHumanTestLines());
+  assert.equal(parsed.employeeRows.length, 1);
+  assert.equal(parsed.managerRows.length, 1);
+  assert.deepEqual(parsed.employeeRows[0].answers, {
+    Q1: 5,
+    Q2: 4,
+    Q3: 3,
+    Q4: 2,
+    Q5: 4,
+    Q6: 5,
+    Q7: 4,
+    Q8: 3,
+    Q9: 2,
+    Q10: 3,
+    Q11: 4,
+    Q12: 5,
+    Q13: 4,
+    Q14: 3,
+    Q15: 2,
+    Q16: 1,
+  });
+  assert.deepEqual(parsed.managerRows[0].answers, {
+    MQ1: 4,
+    MQ2: 4,
+    MQ3: 4,
+    MQ4: 4,
+    MQ5: 5,
+    MQ6: 4,
+    MQ7: 5,
+    MQ8: 4,
+    MQ9: 4,
+    MQ10: 4,
+    MQ11: 3,
+    MQ12: 4,
+    MQ13: 5,
+    MQ14: 4,
+    MQ15: 4,
+    MQ16: 3,
+  });
+});
+
+test('parseHumanTestDocx reads document.xml and parses rows', async () => {
+  const lines = buildMinimalHumanTestLines();
+  const paragraphXml = lines.map((line) => `<w:p><w:r><w:t>${line}</w:t></w:r></w:p>`).join('');
+  const xml =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + `<w:body>${paragraphXml}</w:body>`
+    + '</w:document>';
+  const zip = new JSZip();
+  zip.file('word/document.xml', xml);
+  const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+  const parsed = await parseHumanTestDocx(buffer);
+  assert.equal(parsed.totalRows, 2);
+  assert.equal(parsed.employeeRows[0].name, 'Taylor Employee');
+  assert.equal(parsed.managerRows[0].name, 'Jordan Manager');
+});

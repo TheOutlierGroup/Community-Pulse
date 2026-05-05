@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { randomBytes, randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
 import { requireBodyFields } from '../../middleware/validation.js';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath, orgLogoFilePath } from '../../config/storage.js';
@@ -85,6 +86,7 @@ import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
 } from '../../services/pulseInviteImportValidation.js';
+import { parseHumanTestDocx } from '../../services/pulseTestDataDocImport.js';
 import { collectStaffInvitesNeedingManagerRole } from '../../services/pulseLinkRoleRepair.js';
 import {
   internalTimepointToPulseStage,
@@ -436,6 +438,38 @@ function buildTestRecipients({ managerCount, staffCount, groupLabels, groupCount
   }
 
   return recipients;
+}
+
+function normalizeDisplayName(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildDocImportInviteLookup(invites) {
+  const map = new Map();
+  for (const invite of invites) {
+    const role = invite?.survey_role === 'manager' ? 'manager' : 'staff';
+    const normalizedName = normalizeDisplayName(invite?.display_name || '');
+    if (!normalizedName) continue;
+    const key = `${role}:${normalizedName}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(invite);
+  }
+  return map;
+}
+
+function consumeInviteMatch(lookup, role, name) {
+  const normalizedName = normalizeDisplayName(name);
+  if (!normalizedName) return null;
+  const key = `${role}:${normalizedName}`;
+  const bucket = lookup.get(key);
+  if (!Array.isArray(bucket) || bucket.length === 0) return null;
+  const match = bucket.shift();
+  if (bucket.length === 0) lookup.delete(key);
+  return match;
 }
 
 function normalizeManagerReference(value) {
@@ -975,6 +1009,11 @@ function normalizedGroupLevelLabelsFromSettings(settings) {
 }
 
 export function registerPlatformOrgRoutes(router) {
+  const testDataDocUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  });
+
   const requirePlatformAdminRole = (req, res, next) => {
     if (req.user?.role !== 'admin') {
       return res.status(403).json({ error: 'Admin only' });
@@ -3446,6 +3485,125 @@ export function registerPlatformOrgRoutes(router) {
       timepoint: stage,
     });
   });
+
+  router.post(
+    '/organizations/:id/pulse-link-invites/test-data/import-docx',
+    testDataDocUpload.single('file'),
+    async (req, res) => {
+      const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+      if (!req.file?.buffer) return res.status(400).json({ error: 'Attach a DOCX file first.' });
+
+      const fileName = String(req.file?.originalname || '').toLowerCase();
+      const mimeType = String(req.file?.mimetype || '').toLowerCase();
+      const validMime = mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      if (!fileName.endsWith('.docx') && !validMime) {
+        return res.status(400).json({ error: 'Only .docx files are supported for test-data import.' });
+      }
+
+      const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
+      const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
+      const dryRun = parseQueryBool(req.query?.dryRun, false);
+      const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
+      if (duringSessionError) return res.status(400).json({ error: duringSessionError });
+
+      let parsed;
+      try {
+        parsed = await parseHumanTestDocx(req.file.buffer);
+      } catch (error) {
+        return res.status(400).json({
+          error: String(error?.message || 'Could not parse DOCX file.').slice(0, 300),
+        });
+      }
+
+      const allRows = [...parsed.employeeRows, ...parsed.managerRows];
+      const stage = internalTimepointToPulseStage(timepointPhase);
+      const existingInvites = await PulseLinkInvite.listInviteRowsForOrg(req.params.id, {
+        timepointPhase,
+        duringSessionId,
+      });
+      const inviteLookup = buildDocImportInviteLookup(existingInvites);
+      const sessionsByRole = new Map();
+
+      const matchedRows = [];
+      const unmatchedRows = [];
+      for (const row of allRows) {
+        const invite = consumeInviteMatch(inviteLookup, row.role, row.name);
+        if (!invite) {
+          unmatchedRows.push({ name: row.name, role: row.role });
+          continue;
+        }
+        matchedRows.push({ row, invite });
+      }
+      if (dryRun) {
+        return res.json({
+          ok: true,
+          dryRun: true,
+          canImport: unmatchedRows.length === 0,
+          parsedEmployees: parsed.employeeRows.length,
+          parsedManagers: parsed.managerRows.length,
+          parsedTotal: parsed.totalRows,
+          matchedRows: matchedRows.length,
+          unmatchedCount: unmatchedRows.length,
+          unmatchedRows: unmatchedRows.slice(0, 50),
+          timepoint: stage,
+        });
+      }
+      if (unmatchedRows.length > 0) {
+        return res.status(400).json({
+          error: `${unmatchedRows.length} recipient(s) in the DOCX were not found in this client/timepoint.`,
+          unmatchedCount: unmatchedRows.length,
+          unmatchedRows: unmatchedRows.slice(0, 50),
+        });
+      }
+
+      let completedResponses = 0;
+      const completionErrors = [];
+
+      for (const { row, invite } of matchedRows) {
+        try {
+          let session = sessionsByRole.get(row.role);
+          if (!session) {
+            session = await PulseSession.resolveSessionForPulseLink(req.params.id, row.role, stage);
+            sessionsByRole.set(row.role, session);
+          }
+          await PulseLinkResponse.ensureResponseRow(invite.id, session.id, stage);
+          const completed = await PulseLinkResponse.completeResponse({
+            inviteId: invite.id,
+            sessionId: session.id,
+            stage,
+            step1: { answers: row.answers },
+            step2: {},
+            step3: {},
+            step4: {},
+            contributionStyle: null,
+          });
+          if (completed) completedResponses += 1;
+        } catch (error) {
+          completionErrors.push({
+            name: row.name,
+            role: row.role,
+            inviteId: invite.id,
+            error: String(error?.message || 'response_completion_failed').slice(0, 200),
+          });
+        }
+      }
+
+      return res.json({
+        ok: true,
+        parsedEmployees: parsed.employeeRows.length,
+        parsedManagers: parsed.managerRows.length,
+        parsedTotal: parsed.totalRows,
+        matchedRows: matchedRows.length,
+        completedResponses,
+        unmatchedCount: 0,
+        unmatchedRows: [],
+        completionErrorCount: completionErrors.length,
+        completionErrors: completionErrors.slice(0, 20),
+        timepoint: stage,
+      });
+    }
+  );
 
   router.post('/organizations/:id/pulse-link-invites/repair-manager-role', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);

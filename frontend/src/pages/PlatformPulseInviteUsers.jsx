@@ -396,6 +396,8 @@ export default function PlatformPulseInviteUsers() {
   const [testDataStaffCount, setTestDataStaffCount] = useState('0');
   const [testDataManagerCount, setTestDataManagerCount] = useState('0');
   const [testDataGroupCounts, setTestDataGroupCounts] = useState([]);
+  const [testDataMode, setTestDataMode] = useState('generate');
+  const [testDataDocFile, setTestDataDocFile] = useState(null);
 
   const configuredGroupLabels = useMemo(() => {
     const labels = Array.isArray(org?.settings?.groupLevelLabels) ? org.settings.groupLevelLabels : [];
@@ -674,6 +676,8 @@ export default function PlatformPulseInviteUsers() {
     setTestDataError('');
     setTestDataStaffCount('0');
     setTestDataManagerCount('0');
+    setTestDataMode('generate');
+    setTestDataDocFile(null);
     setTestDataOpen(true);
   }
 
@@ -681,10 +685,97 @@ export default function PlatformPulseInviteUsers() {
     if (testDataBusy) return;
     setTestDataOpen(false);
     setTestDataError('');
+    setTestDataDocFile(null);
+  }
+
+  async function runDocxImport({ dryRun }) {
+    if (!testDataDocFile) {
+      setTestDataError('Select a DOCX file to import.');
+      return null;
+    }
+    const fileName = String(testDataDocFile.name || '').toLowerCase();
+    if (!fileName.endsWith('.docx')) {
+      setTestDataError('Only .docx files are supported.');
+      return null;
+    }
+    setTestDataBusy(true);
+    setTestDataError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', testDataDocFile);
+      const { data } = await api.post(
+        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/test-data/import-docx`,
+        formData,
+        {
+          params: {
+            ...inviteRequestParams,
+            dryRun: dryRun ? '1' : '0',
+          },
+          headers: { 'Content-Type': 'multipart/form-data' },
+        }
+      );
+      return data;
+    } catch (err) {
+      const payload = err.response?.data;
+      const unmatchedRows = Array.isArray(payload?.unmatchedRows) ? payload.unmatchedRows : [];
+      const unmatchedPreview = unmatchedRows
+        .slice(0, 5)
+        .map((entry) => `${entry.name} (${entry.role})`)
+        .join(', ');
+      const baseMessage = payload?.error || 'Could not import DOCX test data.';
+      setTestDataError(unmatchedPreview ? `${baseMessage} Missing: ${unmatchedPreview}.` : baseMessage);
+      return null;
+    } finally {
+      setTestDataBusy(false);
+    }
+  }
+
+  async function runDocxPrecheck() {
+    const data = await runDocxImport({ dryRun: true });
+    if (!data) return;
+    const parsedTotal = Number(data?.parsedTotal || 0);
+    const matchedRows = Number(data?.matchedRows || 0);
+    const unmatchedCount = Number(data?.unmatchedCount || 0);
+    if (unmatchedCount > 0) {
+      showToast(
+        `Pre-check found ${unmatchedCount} missing recipient(s). Matched ${matchedRows}/${parsedTotal}.`,
+        { variant: 'error' }
+      );
+      return;
+    }
+    showToast(`Pre-check passed. All ${matchedRows}/${parsedTotal} recipients are present.`, {
+      variant: 'success',
+    });
   }
 
   async function submitTestData(e) {
     e.preventDefault();
+    if (testDataMode === 'import-docx') {
+      const confirmed = window.confirm(
+        [
+          `Import "${testDataDocFile.name}" now?`,
+          '',
+          'This applies survey answers to existing recipients for this timepoint.',
+          'Rows with no matching recipient name will be skipped.',
+        ].join('\n')
+      );
+      if (!confirmed) return;
+      const data = await runDocxImport({ dryRun: false });
+      if (!data) return;
+      const parsedTotal = Number(data?.parsedTotal || 0);
+      const completedResponses = Number(data?.completedResponses || 0);
+      const unmatchedCount = Number(data?.unmatchedCount || 0);
+      const errorCount = Number(data?.completionErrorCount || 0);
+      showToast(
+        `Imported ${completedResponses}/${parsedTotal} responses (${unmatchedCount} unmatched, ${errorCount} errors).`,
+        { variant: errorCount > 0 ? 'error' : 'success' }
+      );
+      setTestDataOpen(false);
+      setTestDataDocFile(null);
+      await load();
+      return;
+    }
+
     const staffCount = Number.parseInt(String(testDataStaffCount || '').trim(), 10);
     const managerCount = Number.parseInt(String(testDataManagerCount || '').trim(), 10);
     if (!Number.isInteger(staffCount) || staffCount < 0) {
@@ -1306,68 +1397,121 @@ export default function PlatformPulseInviteUsers() {
       >
         <form onSubmit={submitTestData} style={{ padding: '0 0 0.25rem' }}>
           {testDataError ? <p className="error" style={{ marginBottom: '1rem' }}>{testDataError}</p> : null}
-          <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.5 }}>
-            Create a full test dataset for this survey timepoint. This will add users and mark survey answers as
-            completed for each generated user.
-          </p>
           <div className="field">
-            <label htmlFor="pulse-test-data-staff-count">Number of staff</label>
-            <input
-              id="pulse-test-data-staff-count"
-              type="number"
-              min="0"
-              step="1"
-              inputMode="numeric"
-              value={testDataStaffCount}
-              onChange={(e) => setTestDataStaffCount(e.target.value)}
+            <label htmlFor="pulse-test-data-mode">Import mode</label>
+            <select
+              id="pulse-test-data-mode"
+              value={testDataMode}
+              onChange={(e) => {
+                setTestDataMode(e.target.value === 'import-docx' ? 'import-docx' : 'generate');
+                setTestDataError('');
+              }}
               disabled={testDataBusy}
-              required
-            />
+            >
+              <option value="generate">Generate synthetic test data</option>
+              <option value="import-docx">Import client DOCX answers</option>
+            </select>
           </div>
-          <div className="field">
-            <label htmlFor="pulse-test-data-manager-count">Number of managers</label>
-            <input
-              id="pulse-test-data-manager-count"
-              type="number"
-              min="0"
-              step="1"
-              inputMode="numeric"
-              value={testDataManagerCount}
-              onChange={(e) => setTestDataManagerCount(e.target.value)}
-              disabled={testDataBusy}
-              required
-            />
-            <p className="muted" style={{ marginTop: '0.4rem' }}>
-              Total users created = staff + managers.
-            </p>
-          </div>
-          {configuredGroupLabels.map((label, index) => (
-            <div className="field" key={`pulse-test-group-count-${index}`}>
-              <label htmlFor={`pulse-test-group-count-${index}`}>Number of groups for {label}</label>
-              <input
-                id={`pulse-test-group-count-${index}`}
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                value={testDataGroupCounts[index] ?? ''}
-                onChange={(e) =>
-                  setTestDataGroupCounts((prev) => {
-                    const next = [...prev];
-                    next[index] = e.target.value;
-                    return next;
-                  })}
-                disabled={testDataBusy}
-                required
-              />
-            </div>
-          ))}
+          {testDataMode === 'import-docx' ? (
+            <>
+              <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.5 }}>
+                Upload a client-provided Human Testing DOCX. The import matches names against existing recipients in this
+                timepoint and writes completed survey answers.
+              </p>
+              <div className="field">
+                <label htmlFor="pulse-test-data-docx-file">Human testing DOCX</label>
+                <input
+                  id="pulse-test-data-docx-file"
+                  type="file"
+                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  disabled={testDataBusy}
+                  onChange={(e) => {
+                    const nextFile = e.target.files?.[0] || null;
+                    setTestDataDocFile(nextFile);
+                    setTestDataError('');
+                  }}
+                />
+                <p className="muted" style={{ marginTop: '0.4rem' }}>
+                  Existing recipients only. Missing name matches are skipped.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.5 }}>
+                Create a full test dataset for this survey timepoint. This will add users and mark survey answers as
+                completed for each generated user.
+              </p>
+              <div className="field">
+                <label htmlFor="pulse-test-data-staff-count">Number of staff</label>
+                <input
+                  id="pulse-test-data-staff-count"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={testDataStaffCount}
+                  onChange={(e) => setTestDataStaffCount(e.target.value)}
+                  disabled={testDataBusy}
+                  required={testDataMode === 'generate'}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="pulse-test-data-manager-count">Number of managers</label>
+                <input
+                  id="pulse-test-data-manager-count"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={testDataManagerCount}
+                  onChange={(e) => setTestDataManagerCount(e.target.value)}
+                  disabled={testDataBusy}
+                  required={testDataMode === 'generate'}
+                />
+                <p className="muted" style={{ marginTop: '0.4rem' }}>
+                  Total users created = staff + managers.
+                </p>
+              </div>
+              {configuredGroupLabels.map((label, index) => (
+                <div className="field" key={`pulse-test-group-count-${index}`}>
+                  <label htmlFor={`pulse-test-group-count-${index}`}>Number of groups for {label}</label>
+                  <input
+                    id={`pulse-test-group-count-${index}`}
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    value={testDataGroupCounts[index] ?? ''}
+                    onChange={(e) =>
+                      setTestDataGroupCounts((prev) => {
+                        const next = [...prev];
+                        next[index] = e.target.value;
+                        return next;
+                      })}
+                    disabled={testDataBusy}
+                    required={testDataMode === 'generate'}
+                  />
+                </div>
+              ))}
+            </>
+          )}
           <div className="modal-dialog__actions">
             <button type="button" className="btn btn-ghost" onClick={closeTestDataModal} disabled={testDataBusy}>
               Cancel
             </button>
+            {testDataMode === 'import-docx' ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={runDocxPrecheck}
+                disabled={testDataBusy}
+              >
+                Run pre-check
+              </button>
+            ) : null}
             <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={testDataBusy}>
-              {testDataBusy ? 'Creating…' : 'Create test data'}
+              {testDataBusy ? 'Working…' : testDataMode === 'import-docx' ? 'Import DOCX' : 'Create test data'}
             </button>
           </div>
         </form>
