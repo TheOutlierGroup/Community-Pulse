@@ -449,27 +449,46 @@ function normalizeDisplayName(value) {
 }
 
 function buildDocImportInviteLookup(invites) {
-  const map = new Map();
+  const buckets = new Map();
+  const consumedInviteIds = new Set();
+  const pushKey = (role, normalizedName, invite) => {
+    if (!normalizedName) return;
+    const key = `${role}:${normalizedName}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(invite);
+  };
   for (const invite of invites) {
     const role = invite?.survey_role === 'manager' ? 'manager' : 'staff';
     const normalizedName = normalizeDisplayName(invite?.display_name || '');
-    if (!normalizedName) continue;
-    const key = `${role}:${normalizedName}`;
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(invite);
+    pushKey(role, normalizedName, invite);
+    const emailLocalPart = String(invite?.email || '').split('@')[0];
+    const normalizedEmailAlias = normalizeDisplayName(emailLocalPart);
+    if (normalizedEmailAlias && normalizedEmailAlias !== normalizedName) {
+      pushKey(role, normalizedEmailAlias, invite);
+    }
   }
-  return map;
+  return { buckets, consumedInviteIds };
 }
 
 function consumeInviteMatch(lookup, role, name) {
+  if (!lookup || typeof lookup !== 'object') return null;
+  const buckets = lookup.buckets instanceof Map ? lookup.buckets : null;
+  const consumedInviteIds = lookup.consumedInviteIds instanceof Set ? lookup.consumedInviteIds : null;
+  if (!buckets || !consumedInviteIds) return null;
   const normalizedName = normalizeDisplayName(name);
   if (!normalizedName) return null;
   const key = `${role}:${normalizedName}`;
-  const bucket = lookup.get(key);
+  const bucket = buckets.get(key);
   if (!Array.isArray(bucket) || bucket.length === 0) return null;
-  const match = bucket.shift();
-  if (bucket.length === 0) lookup.delete(key);
-  return match;
+  while (bucket.length > 0) {
+    const match = bucket.shift();
+    if (!match?.id || consumedInviteIds.has(match.id)) continue;
+    consumedInviteIds.add(match.id);
+    if (bucket.length === 0) buckets.delete(key);
+    return match;
+  }
+  buckets.delete(key);
+  return null;
 }
 
 function normalizeManagerReference(value) {
