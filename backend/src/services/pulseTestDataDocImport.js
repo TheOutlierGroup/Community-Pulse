@@ -57,6 +57,29 @@ function parseInteger(value) {
   return parsed;
 }
 
+function isLikelyPersonName(value) {
+  const name = String(value || '').trim();
+  if (!name) return false;
+  if (name.length < 2 || name.length > 80) return false;
+  if (name.includes(':')) return false;
+  const tokenCount = name.split(/\s+/).filter(Boolean).length;
+  if (tokenCount > 8) return false;
+  if (!/[a-z]/i.test(name)) return false;
+  if (/\b(q\d+|mq\d+|adopt|sponsor|quadrant|chain|load|band)\b/i.test(name)) return false;
+  if (/[.?!;]{2,}/.test(name)) return false;
+  return true;
+}
+
+function isLikelyRoleLabel(value) {
+  const label = String(value || '').trim();
+  if (!label) return false;
+  if (label.length > 80) return false;
+  if (label.includes(':')) return false;
+  if (!/[a-z]/i.test(label)) return false;
+  if (/\b(mq\d+|adopt|sponsor|quadrant|chain|load|band)\b/i.test(label)) return false;
+  return true;
+}
+
 function findLineIndex(lines, pattern, fromIndex = 0) {
   for (let i = Math.max(0, fromIndex); i < lines.length; i += 1) {
     if (pattern.test(lines[i])) return i;
@@ -77,8 +100,7 @@ function parseEmployeeRows(lines, startIndex, endIndex) {
     const sponsor = parseScore40(lines[i + 18]);
     const quadrant = lines[i + 19];
     const isValidRow =
-      name &&
-      !name.includes(':') &&
+      isLikelyPersonName(name) &&
       answerValues.every((value) => value != null) &&
       adopt != null &&
       sponsor != null &&
@@ -114,9 +136,8 @@ function parseManagerRows(lines, startIndex, endIndex) {
     const quadrant = lines[i + 22];
     const chainQuadrant = lines[i + 23];
     const isValidRow =
-      name &&
-      roleLabel &&
-      !name.includes(':') &&
+      isLikelyPersonName(name) &&
+      isLikelyRoleLabel(roleLabel) &&
       answerValues.every((value) => value != null) &&
       adopt != null &&
       sponsor != null &&
