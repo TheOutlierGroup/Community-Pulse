@@ -769,6 +769,42 @@ async function resolvePulseImportSessionForScope({
   return resolved;
 }
 
+function pairedDuringSessionsForSelection(sessions, selectedSessionId) {
+  const selectedId = String(selectedSessionId || '').trim();
+  if (!selectedId) return [];
+  const duringSessions = (Array.isArray(sessions) ? sessions : []).filter(
+    (session) => String(session?.session_purpose || '').trim().toLowerCase() === 'during_project'
+  );
+  const selected = duringSessions.find((session) => String(session?.id) === selectedId);
+  if (!selected) return [];
+
+  const selectedAudience = String(selected?.audience || 'staff').trim().toLowerCase() === 'manager' ? 'manager' : 'staff';
+  const targetAudience = selectedAudience === 'manager' ? 'staff' : 'manager';
+  const selectedCreatedAt = new Date(selected?.created_at || 0).getTime();
+
+  const pickClosest = (rows) => rows
+    .map((session) => {
+      const createdAt = new Date(session?.created_at || 0).getTime();
+      const distance = Number.isFinite(createdAt) && Number.isFinite(selectedCreatedAt)
+        ? Math.abs(createdAt - selectedCreatedAt)
+        : Number.MAX_SAFE_INTEGER;
+      return { session, distance };
+    })
+    .sort((a, b) => a.distance - b.distance)[0]?.session || null;
+
+  const sameNameRows = duringSessions.filter(
+    (session) =>
+      String(session?.audience || '').trim().toLowerCase() === targetAudience
+      && String(session?.name || '').trim() === String(selected?.name || '').trim()
+  );
+  const targetRows = sameNameRows.length > 0
+    ? sameNameRows
+    : duringSessions.filter((session) => String(session?.audience || '').trim().toLowerCase() === targetAudience);
+  const pair = targetRows.length > 0 ? pickClosest(targetRows) : null;
+
+  return pair ? [selected, pair] : [selected];
+}
+
 async function listMergedResponsesForSession(sessionId, stage = null) {
   const { rows } = await listSessionResponses(sessionId, { stage });
   return rows;
@@ -2415,7 +2451,12 @@ export function registerPlatformOrgRoutes(router) {
       ? timepointFiltered.filter((s) => pulseSessionDateKey(s) === requestedDuringDate)
       : timepointFiltered;
     const sessionFiltered = requestedTimepoint === 'during' && requestedDuringSessionId
-      ? timepointFiltered.filter((s) => String(s.id) === requestedDuringSessionId)
+      ? (() => {
+          const paired = pairedDuringSessionsForSelection(timepointFiltered, requestedDuringSessionId);
+          return paired.length > 0
+            ? paired
+            : timepointFiltered.filter((s) => String(s.id) === requestedDuringSessionId);
+        })()
       : dateFiltered;
     const candidateSessions =
       sessionFiltered.length > 0
