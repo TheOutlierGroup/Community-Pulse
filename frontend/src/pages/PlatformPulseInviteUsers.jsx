@@ -345,7 +345,7 @@ function previousInviteTimepoint(timepoint) {
 }
 
 export default function PlatformPulseInviteUsers() {
-  const { orgId, org, clientLogoUrl, pulseTimepoint, pulseDuringSessionId } = useOutletContext();
+  const { orgId, org, clientLogoUrl, pulseTimepoint, pulseDuringSessionId, pulseTimepointOptions } = useOutletContext();
   const { user } = useAuth();
   const { showToast } = useToast();
   const fileInputRef = useRef(null);
@@ -442,6 +442,23 @@ export default function PlatformPulseInviteUsers() {
   }, [inviteTimepoint, pulseDuringSessionId]);
   const inviteTimepointText = useMemo(() => inviteTimepointLabel(inviteTimepoint), [inviteTimepoint]);
   const copySourceTimepoint = useMemo(() => previousInviteTimepoint(inviteTimepoint), [inviteTimepoint]);
+  const fallbackDuringSessionId = useMemo(() => {
+    const options = Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : [];
+    const firstDuring = options.find((option) => option?.phase === 'during' && option?.id);
+    return String(firstDuring?.id || '').trim();
+  }, [pulseTimepointOptions]);
+  const copySourceDuringSessionId = useMemo(() => {
+    const selected = String(pulseDuringSessionId || '').trim();
+    return selected || fallbackDuringSessionId;
+  }, [fallbackDuringSessionId, pulseDuringSessionId]);
+  const copySourceRequestParams = useMemo(() => {
+    if (!copySourceTimepoint) return null;
+    const params = { timepoint: copySourceTimepoint };
+    if (copySourceTimepoint === 'mid' && copySourceDuringSessionId) {
+      params.duringSessionId = copySourceDuringSessionId;
+    }
+    return params;
+  }, [copySourceDuringSessionId, copySourceTimepoint]);
   const copySourceTimepointText = useMemo(
     () => (copySourceTimepoint ? inviteTimepointLabel(copySourceTimepoint) : ''),
     [copySourceTimepoint]
@@ -632,10 +649,14 @@ export default function PlatformPulseInviteUsers() {
 
   async function copyRecipientsFromPre() {
     if (!copySourceTimepoint) return;
+    if (copySourceTimepoint === 'mid' && !copySourceDuringSessionId) {
+      showToast('Select a During checkpoint before copying recipients from mid.', { variant: 'error' });
+      return;
+    }
     setCopyingFromPre(true);
     try {
       const { data: preData } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`, {
-        params: { timepoint: copySourceTimepoint },
+        params: copySourceRequestParams,
       });
       const preInvites = Array.isArray(preData?.invites) ? preData.invites : [];
       if (preInvites.length === 0) {
