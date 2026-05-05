@@ -19,7 +19,10 @@ const PlatformClients = lazy(() => import('./pages/PlatformClients.jsx'));
 const PlatformTasks = lazy(() => import('./pages/PlatformTasks.jsx'));
 const PlatformClientLayout = lazy(() => import('./pages/PlatformClientLayout.jsx'));
 const PlatformClientOverview = lazy(() => import('./pages/PlatformClientOverview.jsx'));
-const PlatformClientUsers = lazy(() => import('./pages/PlatformClientUsers.jsx'));
+const PlatformClientUsers = lazyWithReload(
+  () => import('./pages/PlatformClientUsers.jsx'),
+  'platform-client-users'
+);
 const PlatformClientTasks = lazy(() => import('./pages/PlatformClientTasks.jsx'));
 const PlatformClientRhythmEngineShell = lazy(() => import('./pages/PlatformClientRhythmEngineShell.jsx'));
 const PlatformClientRhythmEngine = lazy(() => import('./pages/PlatformClientRhythmEngine.jsx'));

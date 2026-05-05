@@ -223,6 +223,9 @@ if (fs.existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
+    // Do not return index.html for asset-like requests; missing chunks must 404.
+    if (path.extname(req.path)) return res.sendStatus(404);
+    res.setHeader('Cache-Control', 'no-store');
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 }
