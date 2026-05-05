@@ -116,7 +116,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     return `sidebar-nav-link${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
   }
 
-  function onPulseTimepointSelect(nextValue) {
+  async function onPulseTimepointSelect(nextValue) {
     if (typeof setPulseTimepoint !== 'function') return;
     if (nextValue === 'pre') {
       setPulseTimepoint('pre');
@@ -130,8 +130,22 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       if (typeof setPulseDuringSessionId === 'function') setPulseDuringSessionId('');
       return;
     }
+    if (nextValue === 'during') {
+      setPulseTimepoint('during');
+      if (typeof createPulseDuringTimepoint === 'function') {
+        await createPulseDuringTimepoint();
+      }
+      return;
+    }
     const dateKey = nextValue.startsWith('during:') ? nextValue.slice('during:'.length) : '';
     const matchingDuring = duringOptions.find((option) => option.id === dateKey);
+    if (!dateKey) {
+      setPulseTimepoint('during');
+      if (typeof createPulseDuringTimepoint === 'function') {
+        await createPulseDuringTimepoint();
+      }
+      return;
+    }
     setPulseTimepoint('during');
     if (typeof setPulseDuringDate === 'function') setPulseDuringDate(matchingDuring?.dateKey || '');
     if (typeof setPulseDuringSessionId === 'function') setPulseDuringSessionId(dateKey);

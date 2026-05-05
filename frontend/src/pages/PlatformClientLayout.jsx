@@ -221,6 +221,22 @@ export default function PlatformClientLayout() {
   }, [pulseTimepoint, pulseDuringSessionId, pulseTimepointOptions]);
 
   useEffect(() => {
+    if (pulseTimepoint !== 'during') return;
+    if (pulseDuringSessionId) return;
+    if (pulseTimepointBusy) return;
+    const hasDuringOption = pulseTimepointOptions.some((row) => row.phase === 'during' && row.id);
+    if (hasDuringOption) return;
+    if (typeof createPulseDuringTimepoint !== 'function') return;
+    createPulseDuringTimepoint();
+  }, [
+    pulseTimepoint,
+    pulseDuringSessionId,
+    pulseTimepointBusy,
+    pulseTimepointOptions,
+    createPulseDuringTimepoint,
+  ]);
+
+  useEffect(() => {
     if (!orgId) return;
     let cancelled = false;
     (async () => {
