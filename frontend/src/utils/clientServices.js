@@ -7,9 +7,11 @@ export const CLIENT_SERVICE_OG_SKATE_AUDIT = 'og-skate-audit';
 export const CLIENT_SERVICE_OG_SKATE_STRATEGY = 'og-skate-strategy';
 export const CLIENT_SERVICE_OG_SKATE_COMMUNITY_ENGAGEMENT = 'og-skate-community-engagement';
 export const CLIENT_SERVICE_OG_SKATE_OTHER = 'og-skate-other';
+export const CLIENT_SERVICE_LICENSEE = 'rhythm-engine-licensee';
 
 export const CLIENT_SERVICE_OPTIONS = [
   { id: CLIENT_SERVICE_PULSE, label: 'Rhythm Engine' },
+  { id: CLIENT_SERVICE_LICENSEE, label: 'Rhythm Engine Licensee' },
   { id: CLIENT_SERVICE_OTHER, label: 'Other' },
   { id: CLIENT_SERVICE_HUMAN_AI, label: 'Human AI' },
   { id: CLIENT_SERVICE_ADOPTION_ACCELERATOR, label: 'Adoption Accelerator' },
@@ -24,6 +26,10 @@ const LOCKED_CLIENT_SERVICES = [
   {
     id: CLIENT_SERVICE_PULSE,
     name: 'Rhythm Engine',
+  },
+  {
+    id: CLIENT_SERVICE_LICENSEE,
+    name: 'Rhythm Engine Licensee',
   },
   {
     id: CLIENT_SERVICE_OTHER,

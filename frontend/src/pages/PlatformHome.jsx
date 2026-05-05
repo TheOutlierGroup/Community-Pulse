@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
+import { isLicenseeUser, usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { CalendarRange, LayoutDashboard, ListTodo } from 'lucide-react';
+import LicenseeOnboardingPanel from '../components/platform/LicenseeOnboardingPanel.jsx';
 
 const ClientTaskDetailPanel = lazy(() => import('../components/platform/ClientTaskDetailPanel.jsx'));
 
@@ -53,9 +54,10 @@ export default function PlatformHome() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   const ok = usePlatformAccess(user, loading, navigate);
+  const isLicensee = isLicenseeUser(user);
   const week = useMemo(() => getLocalWeekRange(), []);
   const [dash, setDash] = useState(null);
-  const [dashLoading, setDashLoading] = useState(true);
+  const [dashLoading, setDashLoading] = useState(!isLicensee);
   const [error, setError] = useState('');
 
   const [detailOrgId, setDetailOrgId] = useState(null);
@@ -79,8 +81,8 @@ export default function PlatformHome() {
   }, [week.weekStart, week.weekEnd]);
 
   useEffect(() => {
-    if (ok) load();
-  }, [ok, load]);
+    if (ok && !isLicensee) load();
+  }, [ok, isLicensee, load]);
 
   const openTaskDetail = useCallback((organizationId, taskId) => {
     setDetailOrgId(organizationId);
@@ -124,6 +126,17 @@ export default function PlatformHome() {
       </h1>
       {error && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
 
+      {isLicensee && (
+        <>
+          <LicenseeOnboardingPanel user={user} />
+          <p className="muted" style={{ marginBottom: '1.5rem' }}>
+            Welcome. Use the Clients tab to manage your client companies and their Rhythm Engine
+            access.
+          </p>
+        </>
+      )}
+
+      {!isLicensee && (
       <div className="platform-client-dashboard-grid">
         <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">
           <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>
@@ -286,6 +299,7 @@ export default function PlatformHome() {
           )}
         </div>
       </div>
+      )}
 
       {detailOrgId && detailTaskId ? (
         <Suspense fallback={null}>

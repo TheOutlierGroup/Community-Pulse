@@ -239,12 +239,12 @@ export async function listTasksDueBetween(organizationId, startDate, endDate) {
   return rows;
 }
 
-/** Tasks assigned to user with due date in range, across all client organizations. */
+/** Tasks assigned to user with due date in range, across all CRM-tracked client/licensee orgs. */
 export async function listTasksDueBetweenForAssignee(userId, startDate, endDate) {
   const { rows } = await query(
     `SELECT t.id, t.organization_id, o.name AS organization_name, t.title, t.status, t.due_date
      FROM client_work_tasks t
-     INNER JOIN organizations o ON o.id = t.organization_id AND o.kind = 'client'
+     INNER JOIN organizations o ON o.id = t.organization_id AND o.kind IN ('client', 'licensee')
      WHERE t.assigned_to = $1
        AND t.due_date IS NOT NULL
        AND t.due_date >= $2::date
@@ -255,12 +255,12 @@ export async function listTasksDueBetweenForAssignee(userId, startDate, endDate)
   return rows;
 }
 
-/** All tasks assigned to user across client orgs (for platform staff home). */
+/** All tasks assigned to user across client/licensee orgs (for platform staff home). */
 export async function listTasksAssignedToUserAcrossClientOrgs(userId) {
   const { rows } = await query(
     `SELECT t.id, t.organization_id, o.name AS organization_name, t.title, t.status, t.due_date, t.start_date
      FROM client_work_tasks t
-     INNER JOIN organizations o ON o.id = t.organization_id AND o.kind = 'client'
+     INNER JOIN organizations o ON o.id = t.organization_id AND o.kind IN ('client', 'licensee')
      WHERE t.assigned_to = $1
      ORDER BY
        CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END,
@@ -275,7 +275,7 @@ export async function countOpenTasksAssignedToUserAcrossClientOrgs(userId) {
   const { rows } = await query(
     `SELECT COUNT(*)::int AS c
      FROM client_work_tasks t
-     INNER JOIN organizations o ON o.id = t.organization_id AND o.kind = 'client'
+     INNER JOIN organizations o ON o.id = t.organization_id AND o.kind IN ('client', 'licensee')
      WHERE t.assigned_to = $1 AND t.status <> 'completed'`,
     [userId]
   );

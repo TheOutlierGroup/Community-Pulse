@@ -132,6 +132,74 @@ export async function getSessionById(id, organizationId) {
   return rows[0] || null;
 }
 
+export async function getSessionByIdAnyOrg(id) {
+  const { rows } = await query(`SELECT * FROM pulse_sessions WHERE id = $1`, [id]);
+  return rows[0] || null;
+}
+
+export async function setRespondentCapOverride(id, organizationId, cap) {
+  const normalized = cap == null
+    ? null
+    : Number.isFinite(cap) && cap >= 0
+      ? Math.floor(cap)
+      : null;
+  const { rows } = await query(
+    `UPDATE pulse_sessions
+     SET respondent_cap_override = $3
+     WHERE id = $1 AND organization_id = $2
+     RETURNING *`,
+    [id, organizationId, normalized]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Counts respondents who have actually submitted a completed response for
+ * a session, across both authenticated employees and link-invite
+ * respondents. Used by INF-05 to compare against the effective cap.
+ */
+export async function countCompletedRespondentsForSession(sessionId) {
+  const { rows } = await query(
+    `SELECT
+       (SELECT COUNT(*)::int
+          FROM employee_responses
+         WHERE session_id = $1 AND completed_at IS NOT NULL) AS employee_completed,
+       (SELECT COUNT(*)::int
+          FROM pulse_link_responses
+         WHERE session_id = $1 AND completed_at IS NOT NULL) AS link_completed`,
+    [sessionId]
+  );
+  const employeeCompleted = rows[0]?.employee_completed ?? 0;
+  const linkCompleted = rows[0]?.link_completed ?? 0;
+  return {
+    total: employeeCompleted + linkCompleted,
+    employee: employeeCompleted,
+    link: linkCompleted,
+  };
+}
+
+export async function hasCompletedLinkResponseForInvite(inviteId, sessionId) {
+  if (!inviteId || !sessionId) return false;
+  const { rows } = await query(
+    `SELECT 1 FROM pulse_link_responses
+     WHERE invite_id = $1 AND session_id = $2 AND completed_at IS NOT NULL
+     LIMIT 1`,
+    [inviteId, sessionId]
+  );
+  return rows.length > 0;
+}
+
+export async function hasCompletedEmployeeResponseForUser(userId, sessionId) {
+  if (!userId || !sessionId) return false;
+  const { rows } = await query(
+    `SELECT 1 FROM employee_responses
+     WHERE user_id = $1 AND session_id = $2 AND completed_at IS NOT NULL
+     LIMIT 1`,
+    [userId, sessionId]
+  );
+  return rows.length > 0;
+}
+
 export async function getLatestSessionForOrgByPurpose(
   organizationId,
   audience = 'staff',

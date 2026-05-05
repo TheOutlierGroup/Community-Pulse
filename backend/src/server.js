@@ -21,6 +21,9 @@ import analyticsRoutes from './routes/analytics.js';
 import platformRoutes from './routes/platformRouter.js';
 import reportRoutes from './routes/reports.js';
 import internalMaintenanceRoutes from './routes/internalMaintenance.js';
+import brandingRoutes from './routes/branding.js';
+import statusRoutes from './routes/status.js';
+import apiV1Routes from './routes/apiV1.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -80,11 +83,28 @@ function buildCspConnectSources() {
 app.use(
   helmet({
     referrerPolicy: { policy: 'no-referrer' },
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    crossOriginResourcePolicy: { policy: 'same-site' },
+    // SEC-04: explicit deny for clickjacking. The `frameguard` default
+    // is already 'sameorigin' but we lock it down to 'deny' since none
+    // of the API surfaces are intended to be framed.
+    frameguard: { action: 'deny' },
+    // SEC-04: 1-year HSTS with preload. Behind a proxy, helmet sets
+    // this header regardless of req.secure — that's correct: clients
+    // connecting via the proxy DO see HTTPS.
+    hsts: isProduction
+      ? { maxAge: 60 * 60 * 24 * 365, includeSubDomains: true, preload: true }
+      : false,
     contentSecurityPolicy: {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
         'img-src': ["'self'", 'data:', 'blob:'],
         'connect-src': buildCspConnectSources(),
+        // SEC-04: prevent the API origin from being embedded anywhere.
+        'frame-ancestors': ["'none'"],
+        // SEC-04: even though we don't ship Flash/Java, lock down
+        // object-src as defence in depth against legacy embeds.
+        'object-src': ["'none'"],
       },
     },
   })
@@ -129,6 +149,9 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/internal', internalMaintenanceRoutes);
+app.use('/api/branding', brandingRoutes);
+app.use('/api/status', statusRoutes);
+app.use('/api/v1', apiV1Routes);
 
 app.use('/api/auth', authRoutes);
 if (!isCrmSurface) {

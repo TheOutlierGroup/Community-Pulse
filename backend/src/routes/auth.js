@@ -11,6 +11,7 @@ import { avatarFilePath, ensureStorageDirs, orgLogoFilePath } from '../config/st
 import { extensionForUpload } from '../middleware/avatarUpload.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
+import * as LicenseConfig from '../models/LicenseConfig.js';
 import * as Organization from '../models/Organization.js';
 import * as PasswordResetToken from '../models/PasswordResetToken.js';
 import { consumePulseHandoffToken } from '../security/pulseHandoffToken.js';
@@ -33,6 +34,8 @@ import {
   enabledServicesFromOrganizationSettings,
   normalizeClientServiceIds,
 } from '../services/clientServices.js';
+import { resolveBrandForOrganization, publicBrand } from '../services/licenseeBrand.js';
+import { buildLicenseeOnboardingChecklist } from '../services/licenseeOnboarding.js';
 
 const router = Router();
 
@@ -102,6 +105,26 @@ router.post(
       });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+    if (user.organization_kind === 'licensee') {
+      const config = await LicenseConfig.getForOrganization(user.organization_id);
+      if (config && !LicenseConfig.isLicenseActive(config)) {
+        await logAuditEvent({
+          actor: { id: user.id, role: user.role, organizationId: user.organization_id },
+          action: 'auth.login',
+          targetType: 'user',
+          targetId: user.id,
+          targetOrganizationId: user.organization_id,
+          result: 'licence_inactive',
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+        const reason =
+          config.status === 'expired'
+            ? 'Your Rhythm Engine licence has expired. Contact Outlier to renew.'
+            : 'Your Rhythm Engine licence is not active. Contact Outlier for support.';
+        return res.status(402).json({ error: reason, licenceStatus: config.status });
+      }
+    }
     if (user.role === 'admin' && user.mfa_enabled) {
       const mfaCode = String(req.body?.mfaCode || '').trim();
       const validTotp = verifyTotpCode(mfaCode, user.mfa_secret);
@@ -163,6 +186,73 @@ router.get('/me', requireAuth, async (req, res) => {
     return res.status(401).json({ error: 'Account is no longer active' });
   }
   res.json(publicUser(user));
+});
+
+/**
+ * INF-06: brand the UI should render for the authenticated user. Returns
+ * null when the user is on a platform-direct workspace (frontend falls
+ * back to default Outlier brand) or when the parent licensee has chosen
+ * not to white-label downstream clients.
+ */
+router.get('/me/brand', requireAuth, async (req, res) => {
+  if (!req.user?.organizationId) return res.json({ brand: null });
+  try {
+    const brand = await resolveBrandForOrganization(req.user.organizationId);
+    res.json({ brand: publicBrand(brand) });
+  } catch (error) {
+    console.error('Failed to resolve brand for user:', error);
+    res.json({ brand: null });
+  }
+});
+
+/**
+ * ONB-02 setup checklist for the current licensee admin. Returns
+ * `{ checklist: null }` for non-licensees so the frontend can use the
+ * same call regardless of org kind without crashing on a 404.
+ */
+router.get('/me/onboarding', requireAuth, async (req, res) => {
+  if (!req.user?.organizationId) return res.json({ checklist: null });
+  try {
+    if (req.user.role !== 'admin') return res.json({ checklist: null });
+    const organization = await Organization.getOrganization(req.user.organizationId);
+    if (!organization || organization.kind !== 'licensee') {
+      return res.json({ checklist: null });
+    }
+    const checklist = await buildLicenseeOnboardingChecklist({ user: req.user, organization });
+    res.json({ checklist });
+  } catch (error) {
+    console.error('Failed to build onboarding checklist:', error);
+    res.json({ checklist: null });
+  }
+});
+
+/**
+ * COM-03 notification preferences. GET returns the merged blob; PATCH
+ * accepts a partial JSON object that's deep-merged into the stored
+ * value. We deliberately don't validate the keys here — that lets us
+ * add new toggles client-side without backend changes — but we cap the
+ * payload size for safety.
+ */
+router.get('/me/notification-preferences', requireAuth, async (req, res, next) => {
+  try {
+    const prefs = await User.getNotificationPreferences(req.user.id);
+    res.json({ preferences: prefs });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch('/me/notification-preferences', requireAuth, async (req, res, next) => {
+  try {
+    const patch = req.body && typeof req.body === 'object' ? req.body : {};
+    if (JSON.stringify(patch).length > 4000) {
+      return res.status(413).json({ error: 'Preferences payload too large' });
+    }
+    const updated = await User.setNotificationPreferences(req.user.id, patch);
+    res.json({ preferences: updated || {} });
+  } catch (e) {
+    next(e);
+  }
 });
 
 router.patch('/me', requireAuth, async (req, res) => {
@@ -710,6 +800,17 @@ router.post(
       return res.status(400).json({ error: 'User already exists — use login' });
     }
     const invitedRole = invite.invited_role === 'admin' ? 'admin' : 'employee';
+    if (invitedRole === 'admin') {
+      const config = await LicenseConfig.getForOrganization(invite.organization_id);
+      if (config) {
+        const counts = await User.countActiveUsersByRoleForOrg(invite.organization_id);
+        if ((counts.admin || 0) >= config.admin_user_limit) {
+          return res.status(402).json({
+            error: `Admin user limit reached for this licence (${config.admin_user_limit}). Contact the platform owner to raise the limit.`,
+          });
+        }
+      }
+    }
     const hash = await bcrypt.hash(password, 12);
     const user = await User.createUserWithProfile({
       email: invite.email,

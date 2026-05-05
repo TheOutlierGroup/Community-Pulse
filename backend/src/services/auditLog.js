@@ -1,5 +1,56 @@
 import { query } from '../config/database.js';
 
+/**
+ * INF-03 canonical action vocabulary. Keep this list close to the schema
+ * — every value is what shows up in the audit feed UI, so renaming is
+ * cheap upfront and expensive after data lands. Group prefixes (`org.`,
+ * `user.`, `licence.`, etc.) make filtering trivial later.
+ */
+export const AUDIT_ACTIONS = Object.freeze({
+  ORG_CREATE: 'org.create',
+  ORG_UPDATE: 'org.update',
+  ORG_DELETE: 'org.delete',
+  ORG_LOGO_UPLOAD: 'org.logo.upload',
+  ORG_LOGO_DELETE: 'org.logo.delete',
+
+  USER_INVITE_SEND: 'user.invite.send',
+  USER_INVITE_RESEND: 'user.invite.resend',
+  USER_UPDATE: 'user.update',
+  USER_DEACTIVATE: 'user.deactivate',
+  USER_PASSWORD_RESET_BY_ADMIN: 'user.password_reset_by_admin',
+
+  LICENCE_CONFIG_UPDATE: 'licence.config.update',
+  LICENCE_EXPIRY_SWEEP: 'licence.expiry.sweep',
+
+  PULSE_SESSION_CREATE: 'pulse.session.create',
+  PULSE_DURING_CHECKPOINT_OPEN: 'pulse.during_checkpoint.open',
+  PULSE_RESPONDENT_CAP_OVERRIDE: 'pulse.respondent_cap.override',
+
+  ASSESSMENT_CONSUME: 'assessment.consume',
+  ASSESSMENT_REFUND: 'assessment.refund',
+
+  STATUS_INCIDENT_CREATE: 'status_incident.create',
+  STATUS_INCIDENT_UPDATE: 'status_incident.update',
+  STATUS_INCIDENT_RESOLVE: 'status_incident.resolve',
+  STATUS_INCIDENT_DELETE: 'status_incident.delete',
+
+  LICENSEE_DATA_EXPORT_DOWNLOAD: 'licensee.data_export.download',
+  LICENSEE_OFFBOARD_REQUEST: 'licensee.offboard.request',
+  LICENSEE_OFFBOARD_CANCEL: 'licensee.offboard.cancel',
+  LICENSEE_OFFBOARD_PURGE: 'licensee.offboard.purge',
+
+  SUPPORT_TASK_CREATE: 'support_task.create',
+  SUPPORT_IMPERSONATE_BEGIN: 'support.impersonate.begin',
+  SUPPORT_IMPERSONATE_BLOCKED_WRITE: 'support.impersonate.blocked_write',
+
+  ANNOUNCEMENT_CREATE: 'announcement.create',
+  ANNOUNCEMENT_UPDATE: 'announcement.update',
+  ANNOUNCEMENT_DELETE: 'announcement.delete',
+
+  API_KEY_CREATE: 'api_key.create',
+  API_KEY_REVOKE: 'api_key.revoke',
+});
+
 function normalizeText(value, fallback = null) {
   if (value == null) return fallback;
   const text = String(value).trim();
@@ -70,6 +121,69 @@ export async function logAuditEvent({
     ]
   );
   return rows[0];
+}
+
+/**
+ * INF-03 fire-and-forget wrapper. Audit logging must NEVER cause a
+ * primary mutation to fail — if the insert errors (DB hiccup, malformed
+ * metadata, etc.) we log to console and return null. Use this in route
+ * handlers; reserve `logAuditEvent` for callers that genuinely care
+ * about the row (e.g. tests).
+ */
+export async function recordAuditEvent(input) {
+  try {
+    return await logAuditEvent(input);
+  } catch (error) {
+    console.error('Audit log write failed:', error?.message || error, {
+      action: input?.action,
+      targetType: input?.targetType,
+      targetId: input?.targetId,
+    });
+    return null;
+  }
+}
+
+/**
+ * Build a request-aware audit recorder pre-populated with actor + IP +
+ * user-agent so the call sites stay short and consistent. Returns a
+ * function that takes the variable bits (action, target, metadata).
+ */
+export function auditFromRequest(req) {
+  const actor = req?.user
+    ? { id: req.user.id, role: req.user.role, organizationId: req.user.organizationId }
+    : null;
+  const ipAddress = req?.ip || null;
+  const userAgent = req?.get?.('user-agent') || null;
+  return function record({ action, targetType, targetId = null, targetOrganizationId = null, result = 'ok', metadata = {} }) {
+    return recordAuditEvent({
+      actor,
+      action,
+      targetType,
+      targetId,
+      targetOrganizationId,
+      result,
+      ipAddress,
+      userAgent,
+      metadata,
+    });
+  };
+}
+
+export function publicAuditEvent(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    occurredAt: row.occurred_at,
+    actorUserId: row.actor_user_id,
+    actorRole: row.actor_role,
+    actorOrganizationId: row.actor_organization_id,
+    action: row.action,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    targetOrganizationId: row.target_organization_id,
+    result: row.result,
+    metadata: row.metadata || {},
+  };
 }
 
 export async function listRecentAuditEvents({

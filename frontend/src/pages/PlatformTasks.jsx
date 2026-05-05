@@ -13,7 +13,7 @@ import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
+import { usePlatformOnlyAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { Check, ClipboardList, Plus, X } from 'lucide-react';
 import {
@@ -33,7 +33,7 @@ const ClientTaskDetailPanel = lazy(() => import('../components/platform/ClientTa
 export default function PlatformTasks() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
-  const ok = usePlatformAccess(user, loading, navigate);
+  const ok = usePlatformOnlyAccess(user, loading, navigate);
   const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTaskParam = searchParams.get('task');

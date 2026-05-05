@@ -79,17 +79,79 @@ export function platformAvatarContentType(filename) {
 
 export async function assertClientOrganizationPlatform(id) {
   const org = await Organization.getOrganization(id);
-  if (!org || org.kind !== 'client') return null;
+  if (!org || (org.kind !== 'client' && org.kind !== 'licensee')) return null;
   return org;
+}
+
+/**
+ * DAT-01 decision core. Pure function — no DB. Given the requester
+ * org/role, the target org, and (only when it could matter) the
+ * already-resolved platform-user assignment / task-stake booleans,
+ * decide whether the requester may read or mutate the target org.
+ *
+ * The pure split is what lets us cover every cross-tenant scenario in
+ * fast unit tests without standing up Postgres.
+ */
+export function canPlatformUserAccessClientOrgPure({
+  user,
+  requesterOrg,
+  targetOrg,
+  hasAssignment = false,
+  hasTaskStake = false,
+}) {
+  if (!user || !requesterOrg || !targetOrg) return false;
+  if (targetOrg.kind !== 'client' && targetOrg.kind !== 'licensee') return false;
+  if (requesterOrg.kind === 'platform') {
+    if (user.role === 'admin') return true;
+    // Non-admin platform users (e.g. consultants) may only see clients
+    // they have been deliberately granted, never licensee orgs.
+    if (targetOrg.kind === 'licensee') return false;
+    return Boolean(hasAssignment || hasTaskStake);
+  }
+  if (requesterOrg.kind === 'licensee') {
+    // Licensees can only see their *own* downstream clients. They cannot
+    // see other licensees, sibling licensees' clients, or the platform.
+    if (targetOrg.kind !== 'client') return false;
+    return targetOrg.parent_organization_id === requesterOrg.id;
+  }
+  return false;
 }
 
 export async function canPlatformUserAccessClientOrg(user, clientOrgId) {
   if (!user || !clientOrgId) return false;
-  const platformOrg = await Organization.getOrganization(user.organizationId);
-  if (!platformOrg || platformOrg.kind !== 'platform') return false;
-  if (user.role === 'admin') return true;
-  if (await PlatformUserClientAssignment.userHasClientOrgAssignment(user.id, clientOrgId)) return true;
-  return ClientWorkTask.platformUserHasStakeInClientOrgTasks(user.id, clientOrgId);
+  const [requesterOrg, targetOrg] = await Promise.all([
+    Organization.getOrganization(user.organizationId),
+    Organization.getOrganization(clientOrgId),
+  ]);
+  if (!requesterOrg || !targetOrg) return false;
+  if (targetOrg.kind !== 'client' && targetOrg.kind !== 'licensee') return false;
+  // Resolve the secondary signals only when the pure decision would
+  // actually consult them — this preserves the previous lazy behaviour.
+  let hasAssignment = false;
+  let hasTaskStake = false;
+  if (
+    requesterOrg.kind === 'platform' &&
+    user.role !== 'admin' &&
+    targetOrg.kind === 'client'
+  ) {
+    hasAssignment = await PlatformUserClientAssignment.userHasClientOrgAssignment(
+      user.id,
+      clientOrgId
+    );
+    if (!hasAssignment) {
+      hasTaskStake = await ClientWorkTask.platformUserHasStakeInClientOrgTasks(
+        user.id,
+        clientOrgId
+      );
+    }
+  }
+  return canPlatformUserAccessClientOrgPure({
+    user,
+    requesterOrg,
+    targetOrg,
+    hasAssignment,
+    hasTaskStake,
+  });
 }
 
 export async function assertClientOrganizationPlatformForUser(id, user) {
@@ -128,6 +190,8 @@ export function publicPulseSessionRow(row) {
     stage,
     createdAt: row.created_at,
     closedAt: row.closed_at,
+    respondentCapOverride:
+      row.respondent_cap_override == null ? null : Number(row.respondent_cap_override),
   };
 }
 

@@ -400,6 +400,214 @@ export async function sendPlatformWelcomeEmail(
   }
 }
 
+/**
+ * COM-05 announcement broadcast email. Delivered per-recipient (each
+ * licensee admin gets their own send so addresses aren't leaked across
+ * tenants via To/CC). The body is treated as plain text so it can't
+ * smuggle scripts; light line-break-to-paragraph reflow is applied for
+ * readability.
+ */
+export async function sendPlatformAnnouncementEmail({
+  to,
+  recipientName,
+  organizationName,
+  title,
+  body,
+}) {
+  const resend = requireResend();
+  const safeTo = String(to || '').trim().toLowerCase();
+  if (!safeTo) throw new Error('Missing recipient email');
+  const greeting = recipientName ? `Hi ${escapeHtml(String(recipientName))},` : 'Hi,';
+  const orgLabel = organizationName ? escapeHtml(String(organizationName)) : '';
+  const paragraphs = String(body || '')
+    .split(/\n{2,}/)
+    .map((p) => `<p style="color: #333; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(p)}</p>`)
+    .join('');
+  const { logoBlock, attachments } = buildOutlierEmailLogoParts();
+  const { error } = await resend.emails.send({
+    from: getResendFromAddress(),
+    to: safeTo,
+    subject: String(title || '').slice(0, 200),
+    attachments,
+    html: `
+      <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 2rem 0;">
+        ${logoBlock}
+        <h2 style="margin: 0 0 1rem;">${escapeHtml(String(title || ''))}</h2>
+        <p style="color: #555;">${greeting}</p>
+        ${paragraphs}
+        ${orgLabel ? `<p style="color: #888; font-size: 0.85rem; margin-top: 1.5rem;">Sent to ${orgLabel} admins.</p>` : ''}
+      </div>
+    `,
+  });
+  if (error) {
+    const detail = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+    throw new Error(detail || 'Failed to send announcement email');
+  }
+}
+
+/**
+ * Phase 2 reconciliation email. Sends the per-licensee monthly CSV
+ * (attached) plus a small HTML summary so admins can scan the headline
+ * numbers without opening the attachment. Same Resend pipeline as the
+ * other transactional emails.
+ */
+export async function sendAssessmentReconciliationEmail({
+  to,
+  organizationName,
+  monthIso,
+  summary,
+  csvFilename,
+  csv,
+}) {
+  const resend = requireResend();
+  const recipients = Array.isArray(to)
+    ? to.map((s) => String(s || '').trim().toLowerCase()).filter(Boolean)
+    : [String(to || '').trim().toLowerCase()].filter(Boolean);
+  if (recipients.length === 0) throw new Error('Missing recipient email');
+
+  const orgPlain = organizationName ? String(organizationName).trim() : 'your team';
+  const month = String(monthIso || '').trim();
+  const subject = `Rhythm Engine assessment reconciliation — ${orgPlain} (${month})`;
+  const { logoBlock, attachments: logoAttachments } = buildOutlierEmailLogoParts();
+
+  const csvAttachment = {
+    filename: String(csvFilename || `reconciliation_${month}.csv`),
+    content: Buffer.from(String(csv || ''), 'utf8').toString('base64'),
+    contentType: 'text/csv; charset=utf-8',
+  };
+  const attachments = [...(logoAttachments || []), csvAttachment];
+
+  const netCharged = Number.isFinite(summary?.netCharged) ? summary.netCharged : 0;
+  const eventCount = Number.isFinite(summary?.eventCount) ? summary.eventCount : 0;
+  const distinctClients = Number.isFinite(summary?.distinctClients) ? summary.distinctClients : 0;
+
+  const { error } = await resend.emails.send({
+    from: getResendFromAddress(),
+    to: recipients,
+    subject,
+    attachments,
+    html: `
+      <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 2rem 0;">
+        ${logoBlock}
+        <h2 style="margin: 0 0 0.75rem;">Monthly assessment reconciliation</h2>
+        <p style="color: #555; line-height: 1.6;">
+          Here is the assessment consumption report for
+          <strong>${escapeHtml(orgPlain)}</strong> covering <strong>${escapeHtml(month)}</strong>.
+        </p>
+        <table style="border-collapse: collapse; margin: 1rem 0; font-size: 0.95rem;">
+          <tr><td style="padding: 0.25rem 1rem 0.25rem 0; color: #555;">Net assessments charged</td><td style="padding: 0.25rem 0;"><strong>${netCharged}</strong></td></tr>
+          <tr><td style="padding: 0.25rem 1rem 0.25rem 0; color: #555;">Ledger events</td><td style="padding: 0.25rem 0;">${eventCount}</td></tr>
+          <tr><td style="padding: 0.25rem 1rem 0.25rem 0; color: #555;">Distinct clients</td><td style="padding: 0.25rem 0;">${distinctClients}</td></tr>
+        </table>
+        <p style="color: #555; line-height: 1.6;">
+          The full row-level CSV is attached for billing reconciliation. If anything looks off, reply to
+          this email and we will investigate.
+        </p>
+      </div>
+    `,
+  });
+  if (error) {
+    console.error('Resend reconciliation email error:', error);
+    const detail = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+    throw new Error(detail || 'Failed to send reconciliation email');
+  }
+}
+
+/**
+ * INF-11: licence expiry warning. Sent N days before `contract_end` to
+ * licensee admins so they can renew before access is suspended.
+ */
+export async function sendLicenseExpiryWarningEmail({
+  to,
+  recipientName,
+  organizationName,
+  contractEndIso,
+  daysRemaining,
+  manageLicenceUrl,
+  // COM-01: per-licensee overrides. Shape:
+  //   { subject?: string, intro?: string }
+  // Both fields are optional; missing fields fall back to defaults.
+  // Subject overrides may use the placeholder `{org}` which is replaced
+  // with `organizationName` after escaping.
+  overrides = {},
+}) {
+  const resend = requireResend();
+  const safeTo = String(to || '').trim().toLowerCase();
+  if (!safeTo) throw new Error('Missing recipient email');
+
+  const greetingName = String(recipientName || '').trim();
+  const greetingHtml = greetingName ? `Hi ${escapeHtml(greetingName)},` : 'Hi,';
+  const orgPlain = organizationName ? String(organizationName).trim() : 'your team';
+  const orgLabelHtml = escapeHtml(orgPlain);
+  const contractEndLabel = (() => {
+    if (!contractEndIso) return '';
+    const dt = new Date(contractEndIso);
+    if (Number.isNaN(dt.getTime())) return '';
+    return dt.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  })();
+  const daysWord = daysRemaining === 1 ? 'day' : 'days';
+  const defaultSubjectLead = daysRemaining <= 0
+    ? 'Your Rhythm Engine licence has expired'
+    : daysRemaining === 1
+      ? 'Your Rhythm Engine licence expires tomorrow'
+      : `Your Rhythm Engine licence expires in ${daysRemaining} ${daysWord}`;
+  const overrideSubject = String(overrides?.subject || '').trim();
+  const subjectLead = overrideSubject
+    ? overrideSubject.replace(/\{org\}/g, orgPlain).slice(0, 200)
+    : defaultSubjectLead;
+  const subject = `${subjectLead} — ${orgPlain.replace(/[\r\n]+/g, ' ').slice(0, 120)}`;
+  const overrideIntro = String(overrides?.intro || '').trim();
+
+  const { logoBlock, attachments } = buildOutlierEmailLogoParts();
+  const safeManageUrl = String(manageLicenceUrl || '').trim();
+
+  const bodyHtml = `
+    <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 2rem 0;">
+      ${logoBlock}
+      <h2 style="margin: 0 0 1rem;">${escapeHtml(subjectLead)}</h2>
+      <p style="color: #555; line-height: 1.6;">${greetingHtml}</p>
+      ${overrideIntro
+        ? `<p style="color: #555; line-height: 1.6;">${escapeHtml(overrideIntro)}</p>`
+        : ''}
+      <p style="color: #555; line-height: 1.6;">
+        Your Rhythm Engine licence for <strong>${orgLabelHtml}</strong>
+        ${daysRemaining <= 0
+          ? `expired on <strong>${escapeHtml(contractEndLabel || 'the contract end date')}</strong>.
+             Access has been suspended until the licence is renewed.`
+          : `is scheduled to expire on <strong>${escapeHtml(contractEndLabel || 'the contract end date')}</strong>
+             — that's ${daysRemaining} ${daysWord} from now. Once it expires, sign-ins for your team and
+             access to assessment data will be paused until the licence is renewed.`}
+      </p>
+      <p style="color: #555; line-height: 1.6;">
+        Please reach out to your Outlier account manager to renew, top up your assessment quota,
+        or change tier. We can usually turn this around the same business day.
+      </p>
+      ${safeManageUrl
+        ? `<p style="color: #555; line-height: 1.6;">
+            You can review the current licence configuration at:
+            <br /><a href="${escapeHtmlAttr(safeManageUrl)}" style="color: #1c1917;">${escapeHtml(safeManageUrl)}</a>
+          </p>`
+        : ''}
+      <p style="color: #888; font-size: 0.85rem; line-height: 1.5; margin-top: 1.5rem;">
+        You are receiving this because you are an admin user on the ${orgLabelHtml} licensee workspace.
+      </p>
+    </div>
+  `;
+
+  const { error } = await resend.emails.send({
+    from: getResendFromAddress(),
+    to: safeTo,
+    subject,
+    ...(attachments ? { attachments } : {}),
+    html: bodyHtml,
+  });
+  if (error) {
+    console.error('Resend licence expiry email error:', error);
+    const detail = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+    throw new Error(detail || 'Failed to send licence expiry email');
+  }
+}
+
 function parseEmailRecipients(raw) {
   return String(raw || '')
     .split(/[,\n;]+/)

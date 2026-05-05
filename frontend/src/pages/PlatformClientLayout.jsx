@@ -54,6 +54,7 @@ export default function PlatformClientLayout() {
   const ok = usePlatformAccess(user, loading, navigate);
 
   const [org, setOrg] = useState(null);
+  const [licenseConfig, setLicenseConfig] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState('');
   const [orgLoading, setOrgLoading] = useState(true);
@@ -77,6 +78,7 @@ export default function PlatformClientLayout() {
   const refreshOrg = useCallback(async () => {
     const { data } = await api.get(`/api/platform/organizations/${orgId}`);
     setOrg(data.organization);
+    setLicenseConfig(data.licenseConfig || null);
     setNotFound(false);
   }, [orgId]);
 
@@ -393,6 +395,7 @@ export default function PlatformClientLayout() {
           org,
           orgId,
           refreshOrg,
+          licenseConfig,
           clientLogoUrl,
           bumpClientLogo,
           pulseSelectedManagerIds,

@@ -5,7 +5,7 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
-import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
+import { isLicenseeUser, usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { Building2, Plus, X } from 'lucide-react';
 import {
@@ -14,6 +14,7 @@ import {
   clientStatusLabel,
   normalizeServices,
 } from './platformClientUtils.js';
+import { CLIENT_SERVICE_LICENSEE } from '../utils/clientServices.js';
 
 function activeServiceLabels(settings, serviceCatalog) {
   return normalizeServices(settings).map((serviceId) => clientServiceLabel(serviceId, serviceCatalog));
@@ -29,6 +30,9 @@ export default function PlatformClients() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const isLicensee = isLicenseeUser(user);
+  const canCreateLicensees = !isLicensee;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
   const [newOrgAddress, setNewOrgAddress] = useState('');
@@ -37,6 +41,7 @@ export default function PlatformClients() {
   const [newOrgAdminLastName, setNewOrgAdminLastName] = useState('');
   const [sendWelcomeEmail, setSendWelcomeEmail] = useState(false);
   const [enableLogin, setEnableLogin] = useState(true);
+  const [createAsLicensee, setCreateAsLicensee] = useState(false);
   const [newOrgLogo, setNewOrgLogo] = useState(null);
 
   const loadOrgs = useCallback(async () => {
@@ -76,6 +81,7 @@ export default function PlatformClients() {
         setNewOrgAdminLastName('');
         setSendWelcomeEmail(false);
         setEnableLogin(true);
+        setCreateAsLicensee(false);
         setNewOrgLogo(null);
       }
     };
@@ -95,6 +101,7 @@ export default function PlatformClients() {
     setNewOrgAdminLastName('');
     setSendWelcomeEmail(false);
     setEnableLogin(true);
+    setCreateAsLicensee(false);
     setNewOrgLogo(null);
   }
 
@@ -116,6 +123,9 @@ export default function PlatformClients() {
       if (newOrgAdminEmail.trim()) {
         fd.append('sendWelcomeEmail', sendWelcomeEmail ? 'true' : 'false');
         fd.append('enableLogin', enableLogin ? 'true' : 'false');
+      }
+      if (canCreateLicensees && createAsLicensee) {
+        fd.append('clientServiceIds', JSON.stringify([CLIENT_SERVICE_LICENSEE]));
       }
       if (newOrgLogo) fd.append('logo', newOrgLogo);
       const { data } = await api.post('/api/platform/organizations', fd);
@@ -175,6 +185,37 @@ export default function PlatformClients() {
 
       {error && !modalOpen && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
 
+      {isLicensee && orgs.length === 0 && (
+        <div
+          className="card"
+          style={{
+            marginBottom: '1.5rem',
+            background: 'linear-gradient(135deg, #fff7ed 0%, #ffffff 60%)',
+            border: '1px solid #fed7aa',
+            padding: '2rem 1.5rem',
+            textAlign: 'center',
+          }}
+        >
+          <Building2 size={36} strokeWidth={1.5} aria-hidden style={{ color: '#ea580c', marginBottom: '0.5rem' }} />
+          <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem' }}>Create your first client</h2>
+          <p className="muted" style={{ maxWidth: 480, margin: '0 auto 1rem', fontSize: '0.95rem' }}>
+            Add the first downstream company you'll deliver Rhythm Engine to. You can grant them platform
+            access right away or set them up first and invite them later.
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setError('');
+              setModalOpen(true);
+            }}
+          >
+            <Plus size={18} strokeWidth={2} aria-hidden />
+            Create company
+          </button>
+        </div>
+      )}
+
       <div className="card platform-users-card" style={{ marginBottom: '1.5rem' }}>
         <div className="table-wrap">
           <table className="admin-table platform-clients-table">
@@ -189,8 +230,10 @@ export default function PlatformClients() {
             <tbody>
               {orgs.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="muted" style={{ padding: '1.5rem' }}>
-                    No client companies yet. Create one to get started.
+                  <td colSpan={4} className="muted" style={{ padding: '1.5rem', textAlign: 'center' }}>
+                    {isLicensee
+                      ? 'No client companies yet — use the prompt above to create your first one.'
+                      : 'No client companies yet. Create one to get started.'}
                   </td>
                 </tr>
               )}
@@ -221,6 +264,11 @@ export default function PlatformClients() {
                         </span>
                       ) : null}
                       <span className="platform-users-table__name">{o.name}</span>
+                      {o.kind === 'licensee' && (
+                        <span className="badge badge-active" style={{ marginLeft: '0.5rem' }}>
+                          Licensee
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td>
@@ -371,6 +419,31 @@ export default function PlatformClients() {
                   </span>
                 </label>
               </div>
+              {canCreateLicensees && (
+                <div className="field">
+                  <p className="muted" style={{ fontSize: '0.85rem', margin: '0 0 0.5rem' }}>
+                    Licensing
+                  </p>
+                  <label
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.35rem 0' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={createAsLicensee}
+                      disabled={busy}
+                      onChange={(e) => setCreateAsLicensee(e.target.checked)}
+                    />
+                    <span>
+                      Rhythm Engine Licensee
+                      <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                        License this company to run their own Rhythm Engine workspace and manage their
+                        own client companies. Tasks and the wider service catalog are not available to
+                        licensees.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
               <div className="field">
                 <label htmlFor="c-logo">Company logo (optional)</label>
                 <input

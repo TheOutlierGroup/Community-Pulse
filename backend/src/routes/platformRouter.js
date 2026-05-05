@@ -1,12 +1,16 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { requireAuth, requirePlatformUser } from '../middleware/auth.js';
+import { blockSupportWrites, requireAuth, requirePlatformOnlyUser, requireWorkspaceUser } from '../middleware/auth.js';
 import { registerPlatformMeRoutes } from './platform/meRoutes.js';
 import { registerPlatformOrgRoutes } from './platform/orgRoutes.js';
 import { registerPlatformStaffRoutes } from './platform/staffRoutes.js';
+import { registerApiKeyRoutes } from './platform/apiKeyRoutes.js';
 import platformComplianceRoutes from './platform/complianceRoutes.js';
 import platformTaskRoutes from './platform/taskRoutes.js';
 import platformPrivacyRoutes from './platform/privacyRoutes.js';
+import platformStatusIncidentRoutes from './platform/statusIncidentRoutes.js';
+import platformSupportTaskRoutes from './platform/supportTaskRoutes.js';
+import platformAnnouncementRoutes from './platform/announcementRoutes.js';
 import { checkPulseSoWhatSummaryHealth } from '../services/pulseSoWhatSummary.js';
 
 const router = Router();
@@ -26,7 +30,7 @@ const platformLimiter = rateLimit({
   },
 });
 
-router.use(requireAuth, requirePlatformUser, platformLimiter);
+router.use(requireAuth, blockSupportWrites, requireWorkspaceUser, platformLimiter);
 router.use((req, _res, next) => {
   if (req.url.includes('rhythm-engine')) {
     req.url = req.url
@@ -58,13 +62,20 @@ if (isPulseSurface) {
 registerPlatformMeRoutes(router);
 registerPlatformOrgRoutes(router);
 registerPlatformStaffRoutes(router);
+registerApiKeyRoutes(router);
+router.use(platformSupportTaskRoutes);
+router.use(platformAnnouncementRoutes);
 router.get('/health/ai-summary', async (req, res) => {
   const live = String(req.query?.live || '').trim().toLowerCase() !== 'false';
   const health = await checkPulseSoWhatSummaryHealth({ live });
   return res.status(health.ok ? 200 : 503).json(health);
 });
-router.use(platformComplianceRoutes);
-router.use(platformPrivacyRoutes);
-router.use(platformTaskRoutes);
+// Platform-only sub-surfaces (compliance, privacy, work-task board) are not
+// part of the licensee product. Reject licensees at the router boundary so
+// individual route files can stay focused on their happy path.
+router.use(requirePlatformOnlyUser, platformComplianceRoutes);
+router.use(requirePlatformOnlyUser, platformPrivacyRoutes);
+router.use(requirePlatformOnlyUser, platformTaskRoutes);
+router.use(requirePlatformOnlyUser, platformStatusIncidentRoutes);
 
 export default router;

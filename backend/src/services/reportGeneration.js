@@ -1,15 +1,18 @@
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
-import { reportFilePath } from '../config/storage.js';
+import { orgLogoFilePath, reportFilePath } from '../config/storage.js';
 import * as GeneratedReport from '../models/GeneratedReport.js';
+import * as Organization from '../models/Organization.js';
 import { assembleReportData } from './reportDataAssembler.js';
 import { generateReportSignals } from './reportAiSignals.js';
 import { buildReportDocx } from './reportDocxBuilder.js';
 import { REPORT_STORAGE_DAYS } from './reportConfig.js';
+import { resolveBrandForOrganization } from './licenseeBrand.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +22,45 @@ function reportExpiresAtDate() {
 
 function isoDay(date = new Date()) {
   return date.toISOString().slice(0, 10).replaceAll('-', '');
+}
+
+/**
+ * INF-07 brand resolver for the DOCX generator. Walks org → parent
+ * licensee → licence_config and reads the licensee org's logo file from
+ * disk so it can be embedded directly in the cover page. Returns null
+ * when the report is for a platform-direct client (the report falls back
+ * to default Outlier styling).
+ */
+async function resolveReportBrand(organization) {
+  if (!organization) return null;
+  try {
+    const brand = await resolveBrandForOrganization(organization);
+    if (!brand) return null;
+    let logoBuffer = null;
+    if (brand.licenseeOrganizationId) {
+      const licenseeOrg = await Organization.getOrganization(brand.licenseeOrganizationId);
+      const filename = licenseeOrg?.company_logo_filename;
+      if (filename) {
+        const safeName = path.basename(String(filename));
+        const full = orgLogoFilePath(safeName);
+        try {
+          if (fsSync.existsSync(full)) {
+            logoBuffer = await fs.readFile(full);
+          }
+        } catch (error) {
+          console.error('Failed to read licensee brand logo for report:', error);
+        }
+      }
+    }
+    return {
+      displayName: brand.displayName,
+      primaryColor: brand.primaryColor,
+      logoBuffer,
+    };
+  } catch (error) {
+    console.error('Failed to resolve brand for report:', error);
+    return null;
+  }
 }
 
 async function convertDocxToPdf(docxPath) {
@@ -70,7 +112,8 @@ export async function generateReport({
 
   try {
     const signals = await generateReportSignals(reportData, context);
-    const docxBuffer = await buildReportDocx({ reportData, signals, context });
+    const brand = await resolveReportBrand(organization);
+    const docxBuffer = await buildReportDocx({ reportData, signals, context, brand });
 
     const reportId = pending.id;
     const dateStamp = isoDay();

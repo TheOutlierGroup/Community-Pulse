@@ -69,6 +69,7 @@ test('normalizeClientServiceCatalog assigns ids and dedupes', () => {
     ], { fallbackToDefaults: false }),
     [
       { id: 'pulse', name: 'Rhythm Engine' },
+      { id: 'rhythm-engine-licensee', name: 'Rhythm Engine Licensee' },
       { id: 'other', name: 'Other' },
       { id: 'managed-ai', name: 'Managed AI' },
       { id: 'managed-ai-2', name: 'Managed AI Duplicate' },
@@ -82,6 +83,7 @@ test('clientServiceCatalogFromPlatformSettings falls back to defaults', () => {
   assert.equal(fromEmpty.length > 0, true);
   assert.deepEqual(clientServiceCatalogFromPlatformSettings({ serviceCatalog: [] }), [
     { id: 'pulse', name: 'Rhythm Engine' },
+    { id: 'rhythm-engine-licensee', name: 'Rhythm Engine Licensee' },
     { id: 'other', name: 'Other' },
   ]);
 });

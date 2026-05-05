@@ -10,6 +10,12 @@ import { requireBodyFields } from '../middleware/validation.js';
 import * as PulseSession from '../models/PulseSession.js';
 import * as PulseSessionStatusEvent from '../models/PulseSessionStatusEvent.js';
 import * as Invite from '../models/Invite.js';
+import * as LicenseConfig from '../models/LicenseConfig.js';
+import {
+  consumeAssessmentForClient,
+  refundAssessmentForLicensee,
+} from '../services/assessmentMeter.js';
+import { SOURCE_CLIENT_ADMIN_SESSION } from '../models/AssessmentConsumptionEvent.js';
 import {
   listSessionResponses,
   RESPONSE_MODE_EMPLOYEE_ONLY,
@@ -24,6 +30,8 @@ export function createAdminRoutes({
   inviteModel = Invite,
   listSessionResponsesFn = listSessionResponses,
   responseModeEmployeeOnly = RESPONSE_MODE_EMPLOYEE_ONLY,
+  consumeAssessmentForClientFn = consumeAssessmentForClient,
+  refundAssessmentForLicenseeFn = refundAssessmentForLicensee,
 } = {}) {
   const router = Router();
 
@@ -52,13 +60,50 @@ export function createAdminRoutes({
     });
   });
 
-  router.post('/sessions', requireBodyFields(['name']), async (req, res) => {
+  router.post('/sessions', requireBodyFields(['name']), async (req, res, next) => {
     const { name, status = 'draft', audience = 'staff' } = req.body;
     if (!['draft', 'active', 'paused', 'closed'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
     const aud = audience === 'manager' ? 'manager' : 'staff';
-    const session = await pulseSessionModel.createSession(req.user.organizationId, name, status, aud);
+
+    // INF-04: client admins on a licensee-owned client also charge against
+    // the licensee quota when they spin up a new pulse session.
+    const meter = await consumeAssessmentForClientFn(req.user.organizationId, {
+      source: SOURCE_CLIENT_ADMIN_SESSION,
+      actorUserId: req.user?.id || null,
+      metadata: { route: 'admin.sessions.create', requestedStatus: status, audience: aud },
+    });
+    if (meter.metered && !meter.ok) {
+      return res.status(meter.status).json({
+        error: meter.error,
+        reason: meter.reason,
+        licenseConfig: LicenseConfig.publicLicenseConfig(meter.licenseConfig),
+      });
+    }
+
+    let session;
+    try {
+      session = await pulseSessionModel.createSession(req.user.organizationId, name, status, aud);
+    } catch (error) {
+      if (meter.metered && meter.ok) {
+        try {
+          await refundAssessmentForLicenseeFn({
+            licenseeOrganizationId: meter.licensee.id,
+            clientOrganizationId: req.user.organizationId,
+            actorUserId: req.user?.id || null,
+            metadata: {
+              route: 'admin.sessions.create',
+              reason: 'session_insert_failed',
+              error: error?.code || error?.message || 'unknown',
+            },
+          });
+        } catch (refundError) {
+          console.error('Failed to refund assessment after admin session create failure:', refundError);
+        }
+      }
+      return next(error);
+    }
     res.status(201).json(session);
   });
 

@@ -6,7 +6,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { Bold, Italic, Link2, List, ListOrdered, SlidersHorizontal } from 'lucide-react';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
+import { usePlatformOnlyAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import api from '../services/api.js';
 import {
@@ -14,6 +14,9 @@ import {
   CLIENT_SERVICE_PULSE,
   normalizeServiceCatalog,
 } from '../utils/clientServices.js';
+import StatusIncidentsAdminPanel from '../components/platform/StatusIncidentsAdminPanel.jsx';
+import LicenseeHealthPanel from '../components/platform/LicenseeHealthPanel.jsx';
+import AnnouncementsAdminPanel from '../components/platform/AnnouncementsAdminPanel.jsx';
 
 const LOCKED_SERVICE_IDS = new Set([CLIENT_SERVICE_PULSE, CLIENT_SERVICE_OTHER]);
 const TEMPLATE_MAX_SUBJECT_LENGTH = 200;
@@ -222,7 +225,7 @@ function normalizeDefaultWelcomeTemplates(rawTemplates) {
 export default function PlatformSettings() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
-  const ok = usePlatformAccess(user, loading, navigate);
+  const ok = usePlatformOnlyAccess(user, loading, navigate);
   const isPlatformAdmin = ok && user?.role === 'admin';
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [newServiceName, setNewServiceName] = useState('');
@@ -934,6 +937,9 @@ export default function PlatformSettings() {
           ))}
         </div>
       </div>
+      <LicenseeHealthPanel />
+      <AnnouncementsAdminPanel />
+      <StatusIncidentsAdminPanel />
     </Layout>
   );
 }

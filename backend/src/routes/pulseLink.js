@@ -13,6 +13,8 @@ import {
 } from '../services/pulseEngine.js';
 import { organizationHasService, CLIENT_SERVICE_PULSE } from '../services/clientServices.js';
 import { internalTimepointToPulseStage, parsePulseStageFromRequest } from '../services/pulseStage.js';
+import { effectiveRespondentCapForSession } from '../services/assessmentMeter.js';
+import { resolveBrandForOrganization, publicBrand } from '../services/licenseeBrand.js';
 
 const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -175,6 +177,38 @@ function getLinkToken(req) {
     };
   }
 
+  /**
+   * INF-05: gracefully short-circuit a respondent when the session has hit
+   * its respondent cap. Respondents who already have a completed response
+   * are always allowed through (so they can re-view their reflection);
+   * everyone else gets a 403 + capReached flag the public app turns into a
+   * holding screen.
+   */
+  async function checkRespondentCapForLink({ session, organization, invite }) {
+    if (!session || !invite) return { ok: true };
+    const cap = await effectiveRespondentCapForSession(session, { client: organization });
+    if (cap == null) return { ok: true };
+    const alreadyCompleted = await pulseSessionModel.hasCompletedLinkResponseForInvite(
+      invite.id,
+      session.id
+    );
+    if (alreadyCompleted) return { ok: true };
+    const counts = await pulseSessionModel.countCompletedRespondentsForSession(session.id);
+    if (counts.total >= cap) {
+      return {
+        ok: false,
+        body: {
+          error:
+            'This Rhythm Engine survey has reached its participant cap. Thank you for your interest — please contact your project lead.',
+          capReached: true,
+          respondentCap: cap,
+          respondentCount: counts.total,
+        },
+      };
+    }
+    return { ok: true };
+  }
+
   async function requirePulseLink(req, res, next) {
     try {
       const raw = getLinkToken(req);
@@ -260,12 +294,30 @@ function sessionJsonForLink(session) {
       audience,
       stage
     );
+    const capCheck = await checkRespondentCapForLink({
+      session,
+      organization: req.pulseLinkOrganization,
+      invite: req.pulseLinkInvite,
+    });
+    if (!capCheck.ok) {
+      return res.status(403).json(capCheck.body);
+    }
     const copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage);
+    let brand = null;
+    try {
+      // INF-06: respondents see the licensee's brand on white-labeled
+      // surveys; if there's no licensee parent the frontend falls back to
+      // the default (Outlier) brand.
+      brand = publicBrand(await resolveBrandForOrganization(req.pulseLinkOrganization));
+    } catch (error) {
+      console.error('Failed to resolve brand for pulse link:', error);
+    }
     res.json({
       session: sessionJsonForLink(session),
       surveyAudience: audience,
       stage,
       copy,
+      brand,
     });
   });
 
@@ -280,6 +332,14 @@ function sessionJsonForLink(session) {
       audience,
       stage
     );
+    const capCheck = await checkRespondentCapForLink({
+      session,
+      organization: req.pulseLinkOrganization,
+      invite: req.pulseLinkInvite,
+    });
+    if (!capCheck.ok) {
+      return res.status(403).json(capCheck.body);
+    }
     await pulseLinkResponseModel.ensureResponseRow(req.pulseLinkInvite.id, session.id, stage);
     let row = await pulseLinkResponseModel.getResponse(req.pulseLinkInvite.id, session.id);
     if (row && !row.survey_started_at && pulseResponseImpliesStarted(row)) {
@@ -401,6 +461,14 @@ function sessionJsonForLink(session) {
     audience,
     stage
   );
+  const capCheck = await checkRespondentCapForLink({
+    session,
+    organization: req.pulseLinkOrganization,
+    invite: req.pulseLinkInvite,
+  });
+  if (!capCheck.ok) {
+    return res.status(403).json(capCheck.body);
+  }
 
   const body = req.body || {};
   if (body.respondentCountryCode || body.privacyNoticeVersion) {

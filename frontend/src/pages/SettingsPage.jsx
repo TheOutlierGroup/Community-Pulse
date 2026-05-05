@@ -10,6 +10,7 @@ import CompanyLogoCard from './settingsPage/CompanyLogoCard.jsx';
 import PasswordCard from './settingsPage/PasswordCard.jsx';
 import MfaCard from './settingsPage/MfaCard.jsx';
 import AccountCard from './settingsPage/AccountCard.jsx';
+import NotificationPreferencesCard from './settingsPage/NotificationPreferencesCard.jsx';
 import { normalizeServices } from '../utils/clientServices.js';
 
 export default function AccountPage() {
@@ -604,6 +605,7 @@ export default function AccountPage() {
           removeCompanyLogo={removeCompanyLogo}
         />
         <AccountCard user={user} orgLabel={orgLabel} />
+        <NotificationPreferencesCard user={user} />
       </div>
       {user.organizationKind === 'client' ? (
         <div className="card" style={{ marginTop: '1rem' }}>

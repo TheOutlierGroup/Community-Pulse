@@ -515,6 +515,8 @@ test('admin session routes accept paused status lifecycle', async () => {
       pulseServiceMiddleware: (_req, _res, next) => next(),
       pulseSessionModel,
       listSessionResponsesFn: async () => ({ rows: [], responseContract: {} }),
+      consumeAssessmentForClientFn: async () => ({ metered: false }),
+      refundAssessmentForLicenseeFn: async () => null,
     })
   );
 

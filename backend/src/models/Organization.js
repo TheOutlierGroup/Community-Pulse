@@ -9,18 +9,24 @@ function normalizeSlug(value) {
   return base || null;
 }
 
+function defaultClientStatusForKind(kind) {
+  if (kind === 'client' || kind === 'licensee') return 'prospect-new';
+  return 'active';
+}
+
 export async function createOrganization(
   name,
   settings = {},
   kind = 'client',
-  clientStatus = kind === 'client' ? 'prospect-new' : 'active'
+  clientStatus = defaultClientStatusForKind(kind),
+  { parentOrganizationId = null } = {}
 ) {
   const slug = normalizeSlug(name);
   const { rows } = await query(
-    `INSERT INTO organizations (name, slug, settings, kind, client_status)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO organizations (name, slug, settings, kind, client_status, parent_organization_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [name, slug, JSON.stringify(settings), kind, clientStatus]
+    [name, slug, JSON.stringify(settings), kind, clientStatus, parentOrganizationId]
   );
   return rows[0];
 }
@@ -51,12 +57,45 @@ export async function listOrganizationsByKind(kind, { limit, offset } = {}) {
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
     `SELECT id, name, slug, kind, settings, created_at, company_logo_filename, client_status,
-            hierarchy_levels, report_contact
+            hierarchy_levels, report_contact, parent_organization_id
      FROM organizations
      WHERE kind = $1
      ORDER BY created_at ASC
      LIMIT $2 OFFSET $3`,
     [kind, cappedLimit, safeOffset]
+  );
+  return rows;
+}
+
+export async function listClientAndLicenseeOrganizations({ limit, offset } = {}) {
+  const cappedLimit =
+    Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 200;
+  const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
+  const { rows } = await query(
+    `SELECT id, name, slug, kind, settings, created_at, company_logo_filename, client_status,
+            hierarchy_levels, report_contact, parent_organization_id
+     FROM organizations
+     WHERE kind IN ('client', 'licensee')
+     ORDER BY created_at ASC
+     LIMIT $1 OFFSET $2`,
+    [cappedLimit, safeOffset]
+  );
+  return rows;
+}
+
+export async function listClientOrganizationsForParent(parentOrganizationId, { limit, offset } = {}) {
+  if (!parentOrganizationId) return [];
+  const cappedLimit =
+    Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 200;
+  const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
+  const { rows } = await query(
+    `SELECT id, name, slug, kind, settings, created_at, company_logo_filename, client_status,
+            hierarchy_levels, report_contact, parent_organization_id
+     FROM organizations
+     WHERE kind = 'client' AND parent_organization_id = $1
+     ORDER BY created_at ASC
+     LIMIT $2 OFFSET $3`,
+    [parentOrganizationId, cappedLimit, safeOffset]
   );
   return rows;
 }
@@ -68,7 +107,7 @@ export async function listClientOrganizationsByIds(ids, { limit, offset } = {}) 
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
     `SELECT id, name, slug, kind, settings, created_at, company_logo_filename, client_status,
-            hierarchy_levels, report_contact
+            hierarchy_levels, report_contact, parent_organization_id
      FROM organizations
      WHERE kind = 'client' AND id = ANY($1::uuid[])
      ORDER BY created_at ASC
@@ -78,9 +117,24 @@ export async function listClientOrganizationsByIds(ids, { limit, offset } = {}) 
   return rows;
 }
 
+export async function isClientOrganizationOwnedByParent(clientOrgId, parentOrganizationId) {
+  if (!clientOrgId || !parentOrganizationId) return false;
+  const { rows } = await query(
+    `SELECT 1
+     FROM organizations
+     WHERE id = $1 AND kind = 'client' AND parent_organization_id = $2
+     LIMIT 1`,
+    [clientOrgId, parentOrganizationId]
+  );
+  return rows.length > 0;
+}
+
 export async function setCompanyLogoFilename(id, filename) {
   const { rows } = await query(
-    `UPDATE organizations SET company_logo_filename = $2 WHERE id = $1 AND kind = 'client' RETURNING *`,
+    `UPDATE organizations
+     SET company_logo_filename = $2
+     WHERE id = $1 AND kind IN ('client', 'licensee')
+     RETURNING *`,
     [id, filename]
   );
   return rows[0] || null;
@@ -95,7 +149,7 @@ export async function clearCompanyLogoFilename(id) {
 
 export async function updateOrganizationClient(id, { name, settings, clientStatus } = {}) {
   const org = await getOrganization(id);
-  if (!org || org.kind !== 'client') return null;
+  if (!org || (org.kind !== 'client' && org.kind !== 'licensee')) return null;
   const nextName = name !== undefined ? name : org.name;
   const nextSlug = name !== undefined ? normalizeSlug(name) : org.slug;
   const nextClientStatus = clientStatus !== undefined ? clientStatus : org.client_status;
@@ -108,7 +162,7 @@ export async function updateOrganizationClient(id, { name, settings, clientStatu
   const { rows } = await query(
     `UPDATE organizations
      SET name = $2, slug = $3, settings = $4::jsonb, client_status = $5
-     WHERE id = $1 AND kind = 'client'
+     WHERE id = $1 AND kind IN ('client', 'licensee')
      RETURNING *`,
     [id, nextName, nextSlug, JSON.stringify(nextSettings), nextClientStatus]
   );
@@ -151,8 +205,11 @@ export async function markOrganizationArchived(id, { disposalYears = 7 } = {}) {
 
 export async function deleteOrganization(id) {
   const org = await getOrganization(id);
-  if (!org || org.kind !== 'client') return null;
-  await query(`DELETE FROM organizations WHERE id = $1 AND kind = 'client'`, [id]);
+  if (!org || (org.kind !== 'client' && org.kind !== 'licensee')) return null;
+  await query(
+    `DELETE FROM organizations WHERE id = $1 AND kind IN ('client', 'licensee')`,
+    [id]
+  );
   return org;
 }
 

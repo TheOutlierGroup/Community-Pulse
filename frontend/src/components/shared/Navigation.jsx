@@ -23,6 +23,7 @@ import {
 } from '../../utils/clientServices.js';
 import api from '../../services/api.js';
 import { rhythmEngineAppBaseUrl } from '../../config/appSurface.js';
+import { isWorkspaceUser, isLicenseeUser } from '../../hooks/usePlatformAccess.js';
 
 function sidebarLinkClass({ isActive }) {
   return `sidebar-nav-link${isActive ? ' sidebar-nav-link--active' : ''}`;
@@ -62,8 +63,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const location = useLocation();
   const [pulseLaunching, setPulseLaunching] = useState(false);
   const [pulseLaunchError, setPulseLaunchError] = useState('');
-  const platformClientOrgId =
-    user?.organizationKind === 'platform' && params.orgId ? params.orgId : null;
+  const isWorkspace = isWorkspaceUser(user);
+  const isLicensee = isLicenseeUser(user);
+  const platformClientOrgId = isWorkspace && params.orgId ? params.orgId : null;
   const clientPulseEnabled = userHasService(user, CLIENT_SERVICE_PULSE);
   const platformViewedClientPulseEnabled = hasService(navContext?.clientOrganization?.settings, CLIENT_SERVICE_PULSE);
   const isPlatformPulseRoute =
@@ -187,7 +189,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     return (
       <div className="nav-wrap nav-wrap--sidebar">
         <nav className="sidebar-links" aria-label="Main">
-          {user.organizationKind === 'platform' && platformClientOrgId && (
+          {isWorkspace && platformClientOrgId && (
             <>
               {isPlatformPulseRoute ? (
                 <>
@@ -309,10 +311,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <Users size={20} strokeWidth={1.75} aria-hidden />
                     Users
                   </NavLink>
-                  <NavLink to={`/platform/clients/${platformClientOrgId}/tasks`} className={sidebarLinkClass}>
-                    <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
-                    Tasks
-                  </NavLink>
+                  {!isLicensee && (
+                    <NavLink to={`/platform/clients/${platformClientOrgId}/tasks`} className={sidebarLinkClass}>
+                      <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
+                      Tasks
+                    </NavLink>
+                  )}
                   {platformViewedClientPulseEnabled && (
                     <button
                       type="button"
@@ -333,7 +337,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
               )}
             </>
           )}
-          {user.organizationKind === 'platform' && !platformClientOrgId && (
+          {isWorkspace && !platformClientOrgId && (
             <>
               <NavLink to="/platform" className={sidebarLinkClass} end>
                 <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
@@ -343,15 +347,17 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 <Building2 size={20} strokeWidth={1.75} aria-hidden />
                 Clients
               </NavLink>
-              <NavLink to="/platform/tasks" className={sidebarLinkClass}>
-                <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
-                Tasks
-              </NavLink>
+              {!isLicensee && (
+                <NavLink to="/platform/tasks" className={sidebarLinkClass}>
+                  <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
+                  Tasks
+                </NavLink>
+              )}
               <NavLink to="/platform/users" className={sidebarLinkClass}>
                 <Users size={20} strokeWidth={1.75} aria-hidden />
                 Users
               </NavLink>
-              {user.role === 'admin' && (
+              {user.role === 'admin' && !isLicensee && (
                 <NavLink to="/platform/settings" className={sidebarLinkClass}>
                   <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
                   Settings
@@ -403,10 +409,10 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
 
   return (
     <div className="nav-actions">
-      {user.organizationKind === 'platform' && (
+      {isWorkspace && (
         <Link to="/platform" className="btn btn-ghost nav-link-btn">
           <LayoutDashboard size={18} strokeWidth={2} aria-hidden />
-          Platform
+          {isLicensee ? 'Workspace' : 'Platform'}
         </Link>
       )}
       {user.organizationKind === 'client' && user.role === 'admin' && (

@@ -9,6 +9,7 @@ import * as User from '../../models/User.js';
 import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import * as Invite from '../../models/Invite.js';
+import * as LicenseConfig from '../../models/LicenseConfig.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import {
   handlePlatformUserCreateUpload,
@@ -16,6 +17,12 @@ import {
   sendAvatarFileOr404,
 } from './shared.js';
 import { isResendConfigured, sendPlatformWelcomeEmail } from '../../services/email.js';
+import { requirePlatformOnlyUser } from '../../middleware/auth.js';
+import { auditFromRequest, AUDIT_ACTIONS } from '../../services/auditLog.js';
+import {
+  inviteSendLimiter,
+  passwordResetByAdminLimiter,
+} from '../../middleware/sensitiveRateLimit.js';
 
 const PLATFORM_WELCOME_RESET_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -56,6 +63,23 @@ function publicStaffAssignedTask(row) {
   };
 }
 
+// Returns null if the org may add another admin, or {status, error} if the
+// licence_config admin_user_limit would be exceeded. Only enforces for orgs
+// that have a licence_config row (currently licensee orgs).
+async function assertAdminUserLimitOrError(organizationId) {
+  const config = await LicenseConfig.getForOrganization(organizationId);
+  if (!config) return null;
+  const counts = await User.countActiveUsersByRoleForOrg(organizationId);
+  const currentAdmins = counts.admin || 0;
+  if (currentAdmins >= config.admin_user_limit) {
+    return {
+      status: 402,
+      error: `Admin user limit reached for this licence (${config.admin_user_limit}). Contact Outlier to raise the limit.`,
+    };
+  }
+  return null;
+}
+
 export function registerPlatformStaffRoutes(router) {
   const requirePlatformAdminRole = (req, res, next) => {
     if (req.user?.role !== 'admin') {
@@ -80,7 +104,7 @@ export function registerPlatformStaffRoutes(router) {
     res.json({ users: outUsers });
   });
 
-  router.get('/staff/:userId/client-assignments', async (req, res) => {
+  router.get('/staff/:userId/client-assignments', requirePlatformOnlyUser, async (req, res) => {
     const target = await User.findUserById(req.params.userId);
     if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
       return res.status(404).json({ error: 'User not found' });
@@ -97,7 +121,7 @@ export function registerPlatformStaffRoutes(router) {
     });
   });
 
-  router.get('/staff/:userId/tasks', async (req, res) => {
+  router.get('/staff/:userId/tasks', requirePlatformOnlyUser, async (req, res) => {
     const target = await User.findUserById(req.params.userId);
     if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
       return res.status(404).json({ error: 'User not found' });
@@ -106,7 +130,7 @@ export function registerPlatformStaffRoutes(router) {
     res.json({ tasks: rows.map(publicStaffAssignedTask) });
   });
 
-  router.put('/staff/:userId/client-assignments', async (req, res) => {
+  router.put('/staff/:userId/client-assignments', requirePlatformOnlyUser, async (req, res) => {
     const target = await User.findUserById(req.params.userId);
     if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
       return res.status(404).json({ error: 'User not found' });
@@ -148,7 +172,7 @@ export function registerPlatformStaffRoutes(router) {
     sendAvatarFileOr404(res, name);
   });
 
-  router.post('/users', handlePlatformUserCreateUpload, async (req, res) => {
+  router.post('/users', inviteSendLimiter, handlePlatformUserCreateUpload, async (req, res) => {
     const firstName = req.body.firstName ?? '';
     const lastName = req.body.lastName ?? '';
     const email = req.body.email;
@@ -180,6 +204,10 @@ export function registerPlatformStaffRoutes(router) {
     const existing = await User.findUserByEmail(String(email));
     if (existing) {
       return res.status(409).json({ error: 'A user with this email already exists' });
+    }
+    if (role === 'admin') {
+      const limitError = await assertAdminUserLimitOrError(req.user.organizationId);
+      if (limitError) return res.status(limitError.status).json({ error: limitError.error });
     }
     const hash =
       trimmedPassword.length >= 8
@@ -232,6 +260,13 @@ export function registerPlatformStaffRoutes(router) {
       }
     }
 
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.USER_INVITE_SEND,
+      targetType: 'user',
+      targetId: outRow.id,
+      targetOrganizationId: req.user.organizationId,
+      metadata: { role, welcomeEmailSent, hasInitialPassword: trimmedPassword.length > 0 },
+    });
     res.status(201).json({ user: publicStaffUser(outRow), welcomeEmailSent });
   });
 
@@ -259,8 +294,22 @@ export function registerPlatformStaffRoutes(router) {
       }
       patch.email = em;
     }
+    if (patch.role === 'admin' && target.role !== 'admin') {
+      const limitError = await assertAdminUserLimitOrError(req.user.organizationId);
+      if (limitError) return res.status(limitError.status).json({ error: limitError.error });
+    }
     const row = await User.updateStaffUserInOrg(userId, req.user.organizationId, patch);
     if (!row) return res.status(404).json({ error: 'User not found' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.USER_UPDATE,
+      targetType: 'user',
+      targetId: userId,
+      targetOrganizationId: req.user.organizationId,
+      metadata: {
+        patchedFields: Object.keys(patch),
+        promotedToAdmin: patch.role === 'admin' && target.role !== 'admin',
+      },
+    });
     res.json({ user: publicStaffUser(row) });
   });
 
@@ -274,21 +323,35 @@ export function registerPlatformStaffRoutes(router) {
       return res.status(404).json({ error: 'User not found' });
     }
     const requesterOrg = await Organization.getOrganization(req.user.organizationId);
-    if (!requesterOrg || requesterOrg.kind !== 'platform') {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
+    if (!requesterOrg) return res.status(403).json({ error: 'Forbidden' });
     const targetOrg = await Organization.getOrganization(target.organization_id);
     if (!targetOrg) {
       return res.status(404).json({ error: 'User not found' });
     }
-    const allowed =
-      targetOrg.kind === 'client' ||
-      (targetOrg.kind === 'platform' && target.organization_id === req.user.organizationId);
+    let allowed = false;
+    if (requesterOrg.kind === 'platform') {
+      allowed =
+        targetOrg.kind === 'client' ||
+        targetOrg.kind === 'licensee' ||
+        (targetOrg.kind === 'platform' && target.organization_id === req.user.organizationId);
+    } else if (requesterOrg.kind === 'licensee') {
+      allowed =
+        target.organization_id === req.user.organizationId ||
+        (targetOrg.kind === 'client' &&
+          targetOrg.parent_organization_id === req.user.organizationId);
+    }
     if (!allowed) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const ok = await User.deactivateUserInOrg(userId, target.organization_id);
     if (!ok) return res.status(404).json({ error: 'User not found' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.USER_DEACTIVATE,
+      targetType: 'user',
+      targetId: userId,
+      targetOrganizationId: target.organization_id,
+      metadata: { wasRole: target.role, wasEmail: target.email },
+    });
     res.json({ ok: true });
   });
 
@@ -340,7 +403,7 @@ export function registerPlatformStaffRoutes(router) {
     res.json({ user: publicStaffUser(outRow) });
   });
 
-  router.post('/staff/invites', requireBodyFields(['email']), async (req, res) => {
+  router.post('/staff/invites', inviteSendLimiter, requireBodyFields(['email']), async (req, res) => {
     const email = req.body.email;
     const existing = await User.findUserByEmail(email);
     if (existing) {
@@ -367,7 +430,7 @@ export function registerPlatformStaffRoutes(router) {
     });
   });
 
-  router.patch('/users/:userId/password', requireBodyFields(['password']), async (req, res) => {
+  router.patch('/users/:userId/password', passwordResetByAdminLimiter, requireBodyFields(['password']), async (req, res) => {
     const { password } = req.body;
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -377,18 +440,32 @@ export function registerPlatformStaffRoutes(router) {
       return res.status(404).json({ error: 'User not found' });
     }
     const requesterOrg = await Organization.getOrganization(req.user.organizationId);
-    if (!requesterOrg || requesterOrg.kind !== 'platform') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!requesterOrg) return res.status(403).json({ error: 'Forbidden' });
+    const targetOrg = await Organization.getOrganization(target.organization_id);
+    let allowed = false;
+    if (requesterOrg.kind === 'platform') {
+      allowed =
+        target.kind === 'client' ||
+        target.kind === 'licensee' ||
+        (target.kind === 'platform' && target.organization_id === req.user.organizationId);
+    } else if (requesterOrg.kind === 'licensee') {
+      allowed =
+        target.organization_id === req.user.organizationId ||
+        (target.kind === 'client' &&
+          targetOrg?.parent_organization_id === req.user.organizationId);
     }
-    const allowed =
-      target.kind === 'client' ||
-      (target.kind === 'platform' && target.organization_id === req.user.organizationId);
     if (!allowed) {
       return res.status(403).json({ error: 'Cannot update this user' });
     }
     const hash = await bcrypt.hash(password, 12);
     const updated = await User.updateUserPassword(req.params.userId, hash);
     if (!updated) return res.status(404).json({ error: 'User not found' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.USER_PASSWORD_RESET_BY_ADMIN,
+      targetType: 'user',
+      targetId: req.params.userId,
+      targetOrganizationId: target.organization_id,
+    });
     res.json({ ok: true });
   });
 }

@@ -6,6 +6,17 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [brand, setBrand] = useState(null);
+
+  async function fetchBrandSafely() {
+    try {
+      const { data } = await api.get('/api/auth/me/brand');
+      setBrand(data?.brand || null);
+    } catch {
+      // INF-06: brand is optional chrome — never block auth on it.
+      setBrand(null);
+    }
+  }
 
   useEffect(() => {
     const token = loadStoredToken();
@@ -15,10 +26,14 @@ export function AuthProvider({ children }) {
     }
     api
       .get('/api/auth/me')
-      .then((res) => setUser(res.data))
+      .then((res) => {
+        setUser(res.data);
+        return fetchBrandSafely();
+      })
       .catch(() => {
         setAuthToken(null);
         setUser(null);
+        setBrand(null);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -27,13 +42,19 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       loading,
+      brand,
       setUserFromLogin(data) {
         setAuthToken(data.token);
         setUser(data.user);
+        fetchBrandSafely();
       },
       async refreshUser() {
         const { data } = await api.get('/api/auth/me');
         setUser(data);
+        await fetchBrandSafely();
+      },
+      async refreshBrand() {
+        await fetchBrandSafely();
       },
       setCurrentUser(nextUser) {
         setUser(nextUser);
@@ -41,9 +62,10 @@ export function AuthProvider({ children }) {
       logout() {
         setAuthToken(null);
         setUser(null);
+        setBrand(null);
       },
     }),
-    [user, loading]
+    [user, loading, brand]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
+import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { Building2, Sparkles, Trash2 } from 'lucide-react';
+import LicenseConfigPanel from '../components/platform/LicenseConfigPanel.jsx';
+import RecentActivityPanel from '../components/platform/RecentActivityPanel.jsx';
+import LicenseeApiKeysPanel from '../components/platform/LicenseeApiKeysPanel.jsx';
 import {
   CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
@@ -54,9 +58,14 @@ function readGroupLevelLabels(settings) {
 }
 
 export default function PlatformClientAccount() {
-  const { org, orgId, refreshOrg, clientLogoUrl, bumpClientLogo } = useOutletContext();
+  const { org, orgId, refreshOrg, licenseConfig, clientLogoUrl, bumpClientLogo } =
+    useOutletContext();
+  const { user } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const isPlatformAdmin =
+    user?.organizationKind === 'platform' && user?.role === 'admin';
+  const isLicenseeOrg = org.kind === 'licensee';
   const logoInputRef = useRef(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -312,6 +321,52 @@ export default function PlatformClientAccount() {
     <>
       <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
       {error && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
+      {isLicenseeOrg && isPlatformAdmin && (
+        <>
+          <LicenseConfigPanel
+            orgId={orgId}
+            licenseConfig={licenseConfig}
+            onSaved={refreshOrg}
+          />
+          <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>Support tools</h2>
+            <p className="muted" style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>
+              Read-only impersonation lets you view this licensee's CRM exactly as their admin sees it.
+              Writes are disabled. Sessions last 30 minutes and are audit-logged.
+            </p>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={async () => {
+                try {
+                  const apiMod = await import('../services/api.js');
+                  const { data } = await apiMod.default.post(
+                    `/api/platform/organizations/${orgId}/support-impersonate`
+                  );
+                  if (data?.token) {
+                    // Stash the original admin token so we can drop back
+                    // out of the impersonation session without logging
+                    // out and back in.
+                    const previous = sessionStorage.getItem('pulse_token');
+                    if (previous) sessionStorage.setItem('pulse_token__pre_impersonate', previous);
+                    apiMod.setAuthToken(data.token);
+                    sessionStorage.setItem('pulse_support_impersonation', '1');
+                    window.location.assign('/platform');
+                  }
+                } catch (err) {
+                  alert(err?.response?.data?.error || 'Could not start support session.');
+                }
+              }}
+            >
+              Start read-only support session
+            </button>
+          </div>
+        </>
+      )}
+      <RecentActivityPanel orgId={orgId} />
+      {isLicenseeOrg && (
+        <LicenseeApiKeysPanel orgId={orgId} canManage={isPlatformAdmin || (user?.organizationKind === 'licensee' && user?.organizationId === orgId && user?.role === 'admin')} />
+      )}
       <div className="platform-client-dashboard-grid">
         <div className="card platform-client-dashboard__card">
           <h1 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>

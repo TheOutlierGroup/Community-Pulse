@@ -72,6 +72,17 @@ export default function PublicPulse() {
   const [surveyCopy, setSurveyCopy] = useState(null);
   const [showWelcomeIntro, setShowWelcomeIntro] = useState(true);
   const [introStartBusy, setIntroStartBusy] = useState(false);
+  const [capReached, setCapReached] = useState(false);
+  const [brand, setBrand] = useState(null);
+
+  function handlePossibleCapReached(err) {
+    if (err?.response?.data?.capReached) {
+      setCapReached(true);
+      setError('');
+      return true;
+    }
+    return false;
+  }
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -85,6 +96,7 @@ export default function PublicPulse() {
       setSurveyCopy(tRes.data.copy || null);
       setSession(sRes.data.session);
       setSurveyAudience(sRes.data.surveyAudience ?? null);
+      setBrand(sRes.data.brand || null);
       if (!sRes.data.session) {
         setError('Could not start the questionnaire. Please try again later.');
         return;
@@ -102,6 +114,7 @@ export default function PublicPulse() {
         setStep(Math.min(Math.max(r.currentStep || 1, 1), 4));
       }
     } catch (e) {
+      if (handlePossibleCapReached(e)) return;
       setError(e.response?.data?.error || 'Could not load Rhythm Engine.');
     }
   }, [token, linkParams]);
@@ -154,6 +167,7 @@ export default function PublicPulse() {
       setReflection(data.reflection);
       setStep(5);
     } catch (e) {
+      if (handlePossibleCapReached(e)) return;
       setError(e.response?.data?.error || 'Could not complete.');
     } finally {
       setBusy(false);
@@ -167,6 +181,7 @@ export default function PublicPulse() {
       await api.post('/api/rhythm-engine-link/survey-started', stage ? { stage } : {}, linkParams);
       setShowWelcomeIntro(false);
     } catch (e) {
+      if (handlePossibleCapReached(e)) return;
       setError(e.response?.data?.error || 'Could not continue.');
     } finally {
       setIntroStartBusy(false);
@@ -183,13 +198,46 @@ export default function PublicPulse() {
     );
   }
 
+  if (capReached) {
+    return (
+      <Layout user={null} onLogout={logout} hideHeader>
+        <div className="login-hero" style={loginHeroBelowLogo}>
+          <img
+            src={brand?.logoUrl || outlierLogo}
+            alt={brand?.displayName || 'Outlier'}
+            className="login-logo"
+            width={PUBLIC_PULSE_LOGO.width}
+            height={PUBLIC_PULSE_LOGO.height}
+          />
+        </div>
+        <div
+          className="card login-card"
+          style={{ maxWidth: 480, margin: '0 auto 2rem', padding: '2rem 1.75rem', textAlign: 'center' }}
+        >
+          <h1 style={{ margin: '0 0 1rem', fontSize: '1.25rem' }}>Thanks for stopping by</h1>
+          <p
+            style={{
+              margin: 0,
+              fontSize: '1.0625rem',
+              lineHeight: 1.65,
+              color: 'var(--text-primary, #292524)',
+            }}
+          >
+            This Rhythm Engine survey has reached its participant capacity. Please get in touch with
+            your project lead if you’d still like to take part.
+          </p>
+        </div>
+      </Layout>
+    );
+  }
+
   if (error && EXPIRED_OR_INVALID_LINK_RE.test(error)) {
     return (
       <Layout user={null} onLogout={logout} hideHeader>
         <div className="login-hero" style={loginHeroBelowLogo}>
           <img
-            src={outlierLogo}
-            alt="Outlier"
+            src={brand?.logoUrl || outlierLogo}
+            alt={brand?.displayName || 'Outlier'}
             className="login-logo"
             width={PUBLIC_PULSE_LOGO.width}
             height={PUBLIC_PULSE_LOGO.height}
@@ -218,8 +266,8 @@ export default function PublicPulse() {
     <Layout user={null} onLogout={logout} hideHeader>
       <div className="login-hero" style={loginHeroBelowLogo}>
         <img
-          src={outlierLogo}
-          alt="Outlier"
+          src={brand?.logoUrl || outlierLogo}
+          alt={brand?.displayName || 'Outlier'}
           className="login-logo"
           width={PUBLIC_PULSE_LOGO.width}
           height={PUBLIC_PULSE_LOGO.height}
@@ -322,6 +370,31 @@ export default function PublicPulse() {
           </>
         )}
       </div>
+      {(brand?.supportEmail || brand?.supportUrl) && (
+        <footer
+          style={{
+            maxWidth: 640,
+            margin: '0.5rem auto 2rem',
+            textAlign: 'center',
+            fontSize: '0.85rem',
+            color: '#666',
+          }}
+        >
+          Need help with this survey? Contact{' '}
+          <strong>{brand?.displayName || 'your provider'}</strong>:{' '}
+          {brand?.supportEmail && (
+            <a href={`mailto:${brand.supportEmail}`} style={{ color: '#1c1917' }}>
+              {brand.supportEmail}
+            </a>
+          )}
+          {brand?.supportEmail && brand?.supportUrl && ' · '}
+          {brand?.supportUrl && (
+            <a href={brand.supportUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#1c1917' }}>
+              Help centre
+            </a>
+          )}
+        </footer>
+      )}
     </Layout>
   );
 }

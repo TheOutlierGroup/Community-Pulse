@@ -1,5 +1,6 @@
 import { checkRetentionHeartbeat, runRetentionSweep } from './retentionPolicy.js';
 import { runArchiveReviewReport } from './archiveReview.js';
+import { runLicenseePurgeSweep } from './licenseePurge.js';
 
 function shouldRunQuarterlyArchive(now = new Date()) {
   if (String(process.env.FORCE_ARCHIVE_REVIEW || '').trim().toLowerCase() === 'true') {
@@ -30,6 +31,11 @@ export async function runPrivacyMaintenance({ dryRun = false, now = new Date() }
   if (shouldRunQuarterlyArchive(now)) {
     maintenanceResult.archiveReview = await runArchiveReviewReport();
   }
+
+  // DAT-03: piggy-back on the same nightly trigger and the same secret
+  // as retention. Errors per-licensee are captured in the result; one
+  // bad org won't fail the whole sweep.
+  maintenanceResult.licenseePurge = await runLicenseePurgeSweep({ now, dryRun });
 
   return maintenanceResult;
 }

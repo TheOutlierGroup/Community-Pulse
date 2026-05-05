@@ -28,6 +28,7 @@ const PublicRhythmEngine = lazy(() => import('./pages/PublicRhythmEngine.jsx'));
 const PlatformClientAccount = lazy(() => import('./pages/PlatformClientAccount.jsx'));
 const PlatformUsers = lazy(() => import('./pages/PlatformUsers.jsx'));
 const PlatformSettings = lazy(() => import('./pages/PlatformSettings.jsx'));
+const PublicStatus = lazy(() => import('./pages/PublicStatus.jsx'));
 const ClientHome = lazy(() => import('./pages/ClientHome.jsx'));
 const AccountPage = lazyWithReload(
   () => import('./pages/SettingsPage.jsx'),
@@ -44,6 +45,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={publicEntry} />
             <Route path="/login" element={publicEntry} />
+            <Route path="/status" element={<PublicStatus />} />
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/forgot-password" element={<ForgotPassword />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/reset-password/:token" element={<ResetPassword />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/invite" element={<InviteAccept />} />}

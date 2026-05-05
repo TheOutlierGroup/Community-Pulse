@@ -3,6 +3,7 @@ import {
   BorderStyle,
   Document,
   HeadingLevel,
+  ImageRun,
   Packer,
   Paragraph,
   ShadingType,
@@ -697,7 +698,62 @@ function dimensionStatusText(avg) {
   return 'Below threshold — requires intervention';
 }
 
-export async function buildReportDocx({ reportData, signals, context = {} }) {
+/**
+ * INF-07 cover-page brand override. If the report's organization sits
+ * under a licensee, the licensee's brand displaces Outlier's navy on the
+ * cover (logo, primary heading colour, "Prepared by …" line). The body
+ * styling is unchanged — keeps the report layout consistent across
+ * tenants while making attribution visible.
+ */
+const HEX_RE = /^#?[0-9a-f]{6}$/i;
+function brandCoverColor(brand) {
+  const raw = String(brand?.primaryColor || '').trim();
+  if (!HEX_RE.test(raw)) return COLOUR.navy;
+  return raw.replace(/^#/, '').toUpperCase();
+}
+
+function brandCoverLogoParagraphs(brand) {
+  if (!brand?.logoBuffer || !Buffer.isBuffer(brand.logoBuffer) || brand.logoBuffer.length === 0) {
+    return [];
+  }
+  try {
+    return [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 200 },
+        children: [
+          new ImageRun({
+            data: brand.logoBuffer,
+            transformation: { width: 180, height: 56 },
+          }),
+        ],
+      }),
+    ];
+  } catch (error) {
+    console.error('Failed to embed licensee brand logo in report:', error);
+    return [];
+  }
+}
+
+function brandPreparedByParagraph(brand, coverColor) {
+  const name = String(brand?.displayName || '').trim();
+  if (!name) return null;
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 200 },
+    children: [
+      new TextRun({
+        text: `Prepared by ${name}`,
+        font: FONT.body,
+        size: 20,
+        italics: true,
+        color: coverColor,
+      }),
+    ],
+  });
+}
+
+export async function buildReportDocx({ reportData, signals, context = {} , brand = null }) {
   const adoptionDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('1'));
   const sponsorshipDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('2'));
 
@@ -776,16 +832,18 @@ export async function buildReportDocx({ reportData, signals, context = {} }) {
         },
         children: [
           // ── Cover Page ────────────────────────────────────────────────
-          spacer(600),
+          spacer(brand?.logoBuffer ? 240 : 600),
+          ...brandCoverLogoParagraphs(brand),
           new Paragraph({
-            children: [new TextRun({ text: 'CHANGE READINESS ASSESSMENT', font: FONT.heading, size: 24, bold: true, color: COLOUR.navy, characterSpacing: 60 })],
+            children: [new TextRun({ text: 'CHANGE READINESS ASSESSMENT', font: FONT.heading, size: 24, bold: true, color: brandCoverColor(brand), characterSpacing: 60 })],
             spacing: { after: 120 },
           }),
           new Paragraph({
-            children: [new TextRun({ text: reportData.org.name, font: FONT.heading, size: 52, bold: true, color: COLOUR.navy })],
+            children: [new TextRun({ text: reportData.org.name, font: FONT.heading, size: 52, bold: true, color: brandCoverColor(brand) })],
             spacing: { after: 60 },
-            border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOUR.navy } },
+            border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: brandCoverColor(brand) } },
           }),
+          ...(brandPreparedByParagraph(brand, brandCoverColor(brand)) ? [brandPreparedByParagraph(brand, brandCoverColor(brand))] : []),
           spacer(300),
           metricRow('Assessment Stage', stageLabel),
           metricRow('Report Date', reportDateFormatted),

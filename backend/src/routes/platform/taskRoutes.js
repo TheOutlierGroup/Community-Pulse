@@ -136,7 +136,12 @@ async function maybeSendConvertedPreview(req, res, fullPath, safeName) {
 async function assertClientOrganizationPlatform(id) {
   const org = await Organization.getOrganization(id);
   if (!org) return null;
-  return org.kind === 'client' || org.kind === 'platform' ? org : null;
+  // Licensee orgs use the same task board as clients (SUP-02): the
+  // licensee is a client of Outlier in CRM terms, and any support
+  // requests they submit land here as cards on that board.
+  return org.kind === 'client' || org.kind === 'platform' || org.kind === 'licensee'
+    ? org
+    : null;
 }
 
 router.use('/organizations/:id', async (req, res, next) => {

@@ -1,5 +1,6 @@
 import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as InAppNotification from '../../models/InAppNotification.js';
+import { requirePlatformOnlyUser } from '../../middleware/auth.js';
 
 function formatIsoDate(d) {
   if (d == null) return null;
@@ -56,7 +57,7 @@ export function registerPlatformMeRoutes(router) {
     }
   });
 
-  router.get('/me/tasks-dashboard', async (req, res) => {
+  router.get('/me/tasks-dashboard', requirePlatformOnlyUser, async (req, res) => {
     const weekStart = req.query.weekStart;
     const weekEnd = req.query.weekEnd;
     if (

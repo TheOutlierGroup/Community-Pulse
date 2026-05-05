@@ -7,11 +7,33 @@ import { avatarFilePath, orgLogoFilePath } from '../../config/storage.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
 import * as Invite from '../../models/Invite.js';
+import * as LicenseConfig from '../../models/LicenseConfig.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import * as PulseSession from '../../models/PulseSession.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
 import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
+import {
+  consumeAssessmentForClient,
+  refundAssessmentForLicensee,
+} from '../../services/assessmentMeter.js';
+import * as AssessmentConsumptionEvent from '../../models/AssessmentConsumptionEvent.js';
+const { SOURCE_PLATFORM_DURING_CHECKPOINT } = AssessmentConsumptionEvent;
+import { runLicenseExpirySweep } from '../../services/licenseExpirySweep.js';
+import {
+  auditFromRequest,
+  AUDIT_ACTIONS,
+  listRecentAuditEvents,
+  publicAuditEvent,
+} from '../../services/auditLog.js';
+import {
+  brandUploadLimiter,
+  dataExportLimiter,
+  expirySweepManualLimiter,
+  inviteSendLimiter,
+  offboardLimiter,
+} from '../../middleware/sensitiveRateLimit.js';
+import { signToken } from '../../middleware/auth.js';
 import {
   isResendConfigured,
   getPulseInviteDefaultTemplate,
@@ -71,7 +93,10 @@ import {
 } from '../../services/pulseStage.js';
 import { createPulseHandoffToken } from '../../security/pulseHandoffToken.js';
 import {
+  CLIENT_SERVICE_LICENSEE,
   CLIENT_SERVICE_PULSE,
+  LICENSEE_DOWNSTREAM_SERVICE_CATALOG,
+  LICENSEE_DOWNSTREAM_SERVICE_IDS,
   clientServiceCatalogFromPlatformSettings,
   normalizeClientServiceCatalog,
   organizationHasService,
@@ -880,6 +905,29 @@ function parseMultipartBool(v) {
   return false;
 }
 
+// Parse a multipart `clientServiceIds` field which can arrive as repeated
+// form values (string[]), a single string, or a JSON-encoded array.
+function parseMultipartServiceIds(raw) {
+  if (raw == null) return null;
+  if (Array.isArray(raw)) return raw.map((id) => String(id || '').trim()).filter(Boolean);
+  const value = String(raw).trim();
+  if (!value) return [];
+  if (value.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((id) => String(id || '').trim()).filter(Boolean);
+      }
+    } catch {
+      // fall through to comma fallback
+    }
+  }
+  return value
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
 function parseTruthyQueryBool(v) {
   if (v == null) return false;
   const normalized = String(v).trim().toLowerCase();
@@ -935,8 +983,16 @@ export function registerPlatformOrgRoutes(router) {
   };
 
   router.get('/organizations', async (req, res) => {
+    const requesterOrg = req.workspaceOrganization;
+    if (requesterOrg?.kind === 'licensee') {
+      const rows = await Organization.listClientOrganizationsForParent(
+        requesterOrg.id,
+        parsePagination(req.query)
+      );
+      return res.json({ organizations: rows });
+    }
     if (req.user?.role === 'admin') {
-      const rows = await Organization.listOrganizationsByKind('client', parsePagination(req.query));
+      const rows = await Organization.listClientAndLicenseeOrganizations(parsePagination(req.query));
       return res.json({ organizations: rows });
     }
     const assignedOrgIds = await PlatformUserClientAssignment.listAssignedClientOrgIdsForUser(req.user.id);
@@ -946,6 +1002,11 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.get('/service-catalog', requirePlatformAdminRole, async (req, res) => {
+    if (req.workspaceOrganization?.kind === 'licensee') {
+      // Licensees never edit their service catalog: only RE/Other are exposed
+      // when they provision downstream client orgs.
+      return res.json({ services: LICENSEE_DOWNSTREAM_SERVICE_CATALOG });
+    }
     const platformOrg = await Organization.getOrganization(req.user.organizationId);
     if (!platformOrg || platformOrg.kind !== 'platform') {
       return res.status(404).json({ error: 'Platform organization not found' });
@@ -956,6 +1017,9 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.patch('/service-catalog', requirePlatformAdminRole, async (req, res) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can edit the service catalog' });
+    }
     const body = req.body || {};
     if (!Object.prototype.hasOwnProperty.call(body, 'services')) {
       return res.status(400).json({ error: 'services is required' });
@@ -1112,13 +1176,87 @@ export function registerPlatformOrgRoutes(router) {
     }
     const adminEmail = req.body.adminEmail;
     const addrRaw = req.body.companyAddress ?? req.body.address;
+    const requesterOrg = req.workspaceOrganization;
+    const isLicenseeRequester = requesterOrg?.kind === 'licensee';
+
+    const requestedServiceIds = parseMultipartServiceIds(
+      req.body.clientServiceIds ?? req.body['clientServiceIds[]']
+    );
+
+    let allowedServiceIds = null;
+    let parentOrganizationId = null;
+    let createdKind = 'client';
+
+    if (isLicenseeRequester) {
+      // Licensees may only provision plain client orgs under themselves and
+      // are limited to the locked downstream service catalog (RE/Other).
+      parentOrganizationId = requesterOrg.id;
+      allowedServiceIds = new Set(LICENSEE_DOWNSTREAM_SERVICE_IDS);
+      if (requestedServiceIds && requestedServiceIds.includes(CLIENT_SERVICE_LICENSEE)) {
+        return res.status(403).json({
+          error: 'Licensees cannot grant the Rhythm Engine Licensee service',
+        });
+      }
+    } else {
+      // Platform admins use the full configured catalog. Selecting the
+      // licensee service flips the new org into a licensee tenant rooted
+      // under this platform org.
+      const platformOrg = await Organization.getOrganization(req.user.organizationId);
+      const catalog = clientServiceCatalogFromPlatformSettings(platformOrg?.settings);
+      allowedServiceIds = new Set(catalog.map((service) => service.id));
+      if (
+        requestedServiceIds &&
+        requestedServiceIds.includes(CLIENT_SERVICE_LICENSEE) &&
+        allowedServiceIds.has(CLIENT_SERVICE_LICENSEE)
+      ) {
+        createdKind = 'licensee';
+        parentOrganizationId = platformOrg?.id || null;
+      }
+    }
+
+    let normalizedServiceIds = null;
+    if (requestedServiceIds) {
+      normalizedServiceIds = normalizeServiceIds(requestedServiceIds, allowedServiceIds);
+      if (normalizedServiceIds == null) {
+        return res.status(400).json({ error: 'clientServiceIds must be an array' });
+      }
+      const invalid = requestedServiceIds.filter((id) => !allowedServiceIds.has(id));
+      if (invalid.length) {
+        return res.status(400).json({
+          error: 'One or more services are not available to this account',
+          invalidServiceIds: invalid,
+        });
+      }
+    }
+
     const initialSettings = {};
     if (addrRaw != null && String(addrRaw).trim()) {
       initialSettings.companyAddress = String(addrRaw).trim();
     }
-    let org = await Organization.createOrganization(name.trim(), initialSettings, 'client');
+    if (normalizedServiceIds && normalizedServiceIds.length) {
+      initialSettings.services = normalizedServiceIds;
+    }
+
+    let org = await Organization.createOrganization(
+      name.trim(),
+      initialSettings,
+      createdKind,
+      undefined,
+      { parentOrganizationId }
+    );
+    if (createdKind === 'licensee') {
+      try {
+        await LicenseConfig.createDefaultForLicensee(org.id);
+      } catch (e) {
+        console.error('Failed to create licence_config row for licensee org:', e);
+      }
+    }
     try {
-      await ensureDefaultPulseSessionsForOrg(org.id);
+      // Licensee orgs do not run pulse sessions themselves; their own
+      // downstream clients each get default sessions when needed.
+      if (createdKind === 'client' && organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
+        await ensureDefaultPulseSessionsForOrg(org.id);
+      }
     } catch (e) {
       console.error('Failed to create default pulse sessions for new org:', e);
     }
@@ -1183,6 +1321,19 @@ export function registerPlatformOrgRoutes(router) {
           }
         }
       }
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.ORG_CREATE,
+        targetType: 'organization',
+        targetId: org.id,
+        targetOrganizationId: org.id,
+        metadata: {
+          kind: org.kind,
+          name: org.name,
+          parentOrganizationId: org.parent_organization_id || null,
+          firstAdminUserId: outRow?.id || null,
+          welcomeEmailSent,
+        },
+      });
       return res.status(201).json({
         organization: org,
         firstUser: publicStaffUser(outRow),
@@ -1190,6 +1341,17 @@ export function registerPlatformOrgRoutes(router) {
         welcomeEmailSent,
       });
     }
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.ORG_CREATE,
+      targetType: 'organization',
+      targetId: org.id,
+      targetOrganizationId: org.id,
+      metadata: {
+        kind: org.kind,
+        name: org.name,
+        parentOrganizationId: org.parent_organization_id || null,
+      },
+    });
     res.status(201).json({ organization: org });
   });
 
@@ -1197,6 +1359,15 @@ export function registerPlatformOrgRoutes(router) {
     const { name, settings, clientStatus } = req.body;
     if (name === undefined && settings === undefined && clientStatus === undefined) {
       return res.status(400).json({ error: 'Nothing to update' });
+    }
+    const requesterOrg = req.workspaceOrganization;
+    const isLicenseeRequester = requesterOrg?.kind === 'licensee';
+    if (isLicenseeRequester) {
+      const owns = await Organization.isClientOrganizationOwnedByParent(
+        req.params.id,
+        requesterOrg.id
+      );
+      if (!owns) return res.status(404).json({ error: 'Organization not found' });
     }
     let normalizedClientStatus;
     if (clientStatus !== undefined) {
@@ -1248,9 +1419,22 @@ export function registerPlatformOrgRoutes(router) {
         return res.status(400).json({ error: 'settings.groupLevelLabels length must match settings.groupLevels' });
       }
       if (Object.prototype.hasOwnProperty.call(settingsPatch, 'services')) {
-        const platformOrg = await Organization.getOrganization(req.user.organizationId);
-        const catalog = clientServiceCatalogFromPlatformSettings(platformOrg?.settings);
-        const allowedServiceIds = new Set(catalog.map((service) => service.id));
+        let allowedServiceIds;
+        if (isLicenseeRequester) {
+          allowedServiceIds = new Set(LICENSEE_DOWNSTREAM_SERVICE_IDS);
+          if (
+            Array.isArray(settingsPatch.services) &&
+            settingsPatch.services.includes(CLIENT_SERVICE_LICENSEE)
+          ) {
+            return res.status(403).json({
+              error: 'Licensees cannot grant the Rhythm Engine Licensee service',
+            });
+          }
+        } else {
+          const platformOrg = await Organization.getOrganization(req.user.organizationId);
+          const catalog = clientServiceCatalogFromPlatformSettings(platformOrg?.settings);
+          allowedServiceIds = new Set(catalog.map((service) => service.id));
+        }
         const normalized = normalizeServiceIds(settingsPatch.services, allowedServiceIds);
         if (normalized == null) {
           return res.status(400).json({ error: 'settings.services must be an array' });
@@ -1277,13 +1461,31 @@ export function registerPlatformOrgRoutes(router) {
         console.error('Failed to create default pulse sessions on service enable:', e);
       }
     }
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.ORG_UPDATE,
+      targetType: 'organization',
+      targetId: updated.id,
+      targetOrganizationId: updated.id,
+      metadata: {
+        kind: updated.kind,
+        nameChanged: name !== undefined,
+        settingsKeys: settingsPatch ? Object.keys(settingsPatch) : [],
+        clientStatusChanged: clientStatus !== undefined,
+      },
+    });
     res.json(updated);
   });
 
   router.delete('/organizations/:id', requirePlatformAdminRole, async (req, res) => {
     const org = await Organization.getOrganization(req.params.id);
-    if (!org || org.kind !== 'client') {
+    const requesterOrg = req.workspaceOrganization;
+    if (!org || (org.kind !== 'client' && org.kind !== 'licensee')) {
       return res.status(404).json({ error: 'Organization not found' });
+    }
+    if (requesterOrg?.kind === 'licensee') {
+      if (org.kind !== 'client' || org.parent_organization_id !== requesterOrg.id) {
+        return res.status(404).json({ error: 'Organization not found' });
+      }
     }
     if (org.company_logo_filename) {
       const logoPath = orgLogoFilePath(req.params.id, org.company_logo_filename);
@@ -1293,6 +1495,17 @@ export function registerPlatformOrgRoutes(router) {
     }
     const deleted = await Organization.deleteOrganization(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'Organization not found' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.ORG_DELETE,
+      targetType: 'organization',
+      targetId: org.id,
+      targetOrganizationId: org.parent_organization_id || org.id,
+      metadata: {
+        kind: org.kind,
+        name: org.name,
+        parentOrganizationId: org.parent_organization_id || null,
+      },
+    });
     res.status(204).end();
   });
 
@@ -1394,7 +1607,7 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ user: publicStaffUser(outRow) });
   });
 
-  router.post('/organizations/:id/invites', requireBodyFields(['email']), async (req, res) => {
+  router.post('/organizations/:id/invites', inviteSendLimiter, requireBodyFields(['email']), async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) {
       return res.status(404).json({ error: 'Organization not found' });
@@ -1434,7 +1647,376 @@ export function registerPlatformOrgRoutes(router) {
   router.get('/organizations/:id', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
-    res.json({ organization: org });
+    let licenseConfig = null;
+    if (org.kind === 'licensee') {
+      licenseConfig = await LicenseConfig.publicForOrganization(org.id);
+    }
+    res.json({ organization: org, licenseConfig });
+  });
+
+  router.patch('/organizations/:id/licence-config', requirePlatformAdminRole, async (req, res) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can edit licence configuration' });
+    }
+    const org = await Organization.getOrganization(req.params.id);
+    if (!org || org.kind !== 'licensee') {
+      return res.status(404).json({ error: 'Licensee organization not found' });
+    }
+    const body = req.body || {};
+    const patch = {};
+    const allowed = [
+      'licenseTier',
+      'status',
+      'contractStart',
+      'contractEnd',
+      'assessmentsIncluded',
+      'assessmentsConsumed',
+      'respondentCapPerAssessment',
+      'adminUserLimit',
+      'benchmarkAccess',
+      'onboardingFeePaid',
+      'notes',
+      'brandDisplayName',
+      'brandPrimaryColor',
+      'brandUseForDownstream',
+    ];
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) patch[key] = body[key];
+    }
+    if (patch.brandPrimaryColor != null && patch.brandPrimaryColor !== '') {
+      const trimmed = String(patch.brandPrimaryColor).trim();
+      if (!/^#[0-9a-f]{6}$/i.test(trimmed)) {
+        return res.status(400).json({
+          error: 'brandPrimaryColor must be a 6-digit hex colour like #0066cc',
+        });
+      }
+      patch.brandPrimaryColor = trimmed;
+    } else if (patch.brandPrimaryColor === '') {
+      patch.brandPrimaryColor = null;
+    }
+    if (patch.brandDisplayName != null) {
+      const trimmed = String(patch.brandDisplayName).trim();
+      patch.brandDisplayName = trimmed === '' ? null : trimmed.slice(0, 120);
+    }
+    if (patch.brandUseForDownstream != null) {
+      patch.brandUseForDownstream = Boolean(patch.brandUseForDownstream);
+    }
+    if (patch.licenseTier && !LicenseConfig.LICENSE_TIERS.includes(patch.licenseTier)) {
+      return res.status(400).json({
+        error: `licenseTier must be one of: ${LicenseConfig.LICENSE_TIERS.join(', ')}`,
+      });
+    }
+    if (patch.status && !LicenseConfig.LICENSE_STATUSES.includes(patch.status)) {
+      return res.status(400).json({
+        error: `status must be one of: ${LicenseConfig.LICENSE_STATUSES.join(', ')}`,
+      });
+    }
+    if (patch.adminUserLimit != null) {
+      const n = Number.parseInt(String(patch.adminUserLimit), 10);
+      if (!Number.isInteger(n) || n < 1) {
+        return res.status(400).json({ error: 'adminUserLimit must be a positive integer' });
+      }
+      patch.adminUserLimit = n;
+    }
+    if (patch.assessmentsIncluded != null) {
+      const n = Number.parseInt(String(patch.assessmentsIncluded), 10);
+      if (!Number.isInteger(n) || n < 0) {
+        return res.status(400).json({ error: 'assessmentsIncluded must be a non-negative integer' });
+      }
+      patch.assessmentsIncluded = n;
+    }
+    if (patch.assessmentsConsumed != null) {
+      const n = Number.parseInt(String(patch.assessmentsConsumed), 10);
+      if (!Number.isInteger(n) || n < 0) {
+        return res.status(400).json({ error: 'assessmentsConsumed must be a non-negative integer' });
+      }
+      patch.assessmentsConsumed = n;
+    }
+    if (patch.respondentCapPerAssessment != null && patch.respondentCapPerAssessment !== '') {
+      const n = Number.parseInt(String(patch.respondentCapPerAssessment), 10);
+      if (!Number.isInteger(n) || n < 1) {
+        return res.status(400).json({
+          error: 'respondentCapPerAssessment must be a positive integer or null',
+        });
+      }
+      patch.respondentCapPerAssessment = n;
+    } else if (patch.respondentCapPerAssessment === '') {
+      patch.respondentCapPerAssessment = null;
+    }
+    // Ensure a row exists; createDefaultForLicensee is a no-op if it does.
+    await LicenseConfig.createDefaultForLicensee(org.id);
+    const updated = await LicenseConfig.updateForOrganization(org.id, patch);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.LICENCE_CONFIG_UPDATE,
+      targetType: 'licence_config',
+      targetId: org.id,
+      targetOrganizationId: org.id,
+      metadata: { patchedFields: Object.keys(patch) },
+    });
+    res.json({ licenseConfig: LicenseConfig.publicLicenseConfig(updated) });
+  });
+
+  // INF-03: audit feed scoped to a single org. Platform admins can read
+  // any org; licensee admins can read their own org and any owned
+  // downstream client. Returns the latest events newest-first, suitable
+  // for a "Recent activity" panel.
+  router.get('/organizations/:id/audit-events', async (req, res, next) => {
+    try {
+      const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+      const limit = Number.parseInt(req.query?.limit, 10) || 50;
+      const action = String(req.query?.action || '').trim() || null;
+      const rows = await listRecentAuditEvents({
+        organizationId: org.id,
+        limit,
+        action,
+      });
+      res.json({ events: rows.map(publicAuditEvent) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // INF-11: platform admins can fire the expiry-warning sweep on demand
+  // (e.g. after manually adjusting a contract end). The cron path uses
+  // the same underlying service.
+  router.post('/licence-expiry-sweep', expirySweepManualLimiter, requirePlatformAdminRole, async (req, res, next) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can run the licence expiry sweep' });
+    }
+    try {
+      const dryRun = String(req.query?.dryRun || '').toLowerCase() === 'true';
+      const result = await runLicenseExpirySweep({ dryRun });
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.LICENCE_EXPIRY_SWEEP,
+        targetType: 'licence_expiry_sweep',
+        metadata: {
+          dryRun,
+          notificationsSent: result.notificationsSent,
+          notificationsSkipped: result.notificationsSkipped,
+          errors: result.errors?.length || 0,
+        },
+      });
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // SUP-01 read-only support impersonation. Mints a short-lived JWT
+  // that authenticates as the licensee's first active admin but with a
+  // `supportImpersonation` flag so blockSupportWrites refuses any non-
+  // GET request. Audit-logged at mint time so we can always prove who
+  // looked at what.
+  router.post('/organizations/:id/support-impersonate', requirePlatformAdminRole, async (req, res, next) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can impersonate' });
+    }
+    try {
+      const org = await Organization.getOrganization(req.params.id);
+      if (!org || (org.kind !== 'licensee' && org.kind !== 'client')) {
+        return res.status(404).json({ error: 'Organization not found' });
+      }
+      const admins = await User.listUsersForOrg(org.id, { role: 'admin' });
+      const target = (admins || []).find((u) => !u.deactivated_at && u.login_enabled !== false);
+      if (!target) {
+        return res.status(409).json({
+          error: 'No active admin user to impersonate. Create one or have the licensee invite an admin first.',
+        });
+      }
+      // Short window — long enough to investigate, too short to forget
+      // about. Treat the token like a one-shot session.
+      const token = signToken({
+        sub: target.id,
+        role: target.role,
+        organizationId: target.organization_id,
+        organizationKind: org.kind,
+        supportImpersonation: true,
+        supportActorUserId: req.user.id,
+        supportTargetOrgId: org.id,
+      }, { expiresIn: '30m' });
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.SUPPORT_IMPERSONATE_BEGIN,
+        targetType: 'organization',
+        targetId: org.id,
+        targetOrganizationId: org.id,
+        metadata: { impersonatedUserId: target.id, impersonatedUserEmail: target.email },
+      });
+      res.json({
+        token,
+        impersonatedUser: { id: target.id, email: target.email, role: target.role },
+        organization: { id: org.id, name: org.name, kind: org.kind },
+        warning: 'Read-only session. Writes will return 403.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // DAT-03 off-board lifecycle. The schedule endpoint suspends the
+  // licence immediately and stamps a purge_after date (default 30 days
+  // grace). The nightly privacy-maintenance job actually deletes.
+  // Cancellation is allowed at any point before purge.
+  router.post('/organizations/:id/offboard', offboardLimiter, requirePlatformAdminRole, async (req, res, next) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can off-board licensees' });
+    }
+    try {
+      const org = await Organization.getOrganization(req.params.id);
+      if (!org || org.kind !== 'licensee') {
+        return res.status(404).json({ error: 'Licensee not found' });
+      }
+      const reason = req.body?.reason ? String(req.body.reason).slice(0, 500) : null;
+      const graceDays = Number.parseInt(req.body?.graceDays, 10);
+      // Make sure a row exists so the UPDATE actually returns a row.
+      await LicenseConfig.createDefaultForLicensee(org.id);
+      const updated = await LicenseConfig.scheduleOffboard(org.id, {
+        reason,
+        requestedBy: req.user?.id || null,
+        graceDays: Number.isFinite(graceDays) ? graceDays : 30,
+      });
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.LICENSEE_OFFBOARD_REQUEST,
+        targetType: 'organization',
+        targetId: org.id,
+        targetOrganizationId: org.id,
+        metadata: { reason, purgeAfter: updated?.purge_after, graceDays },
+      });
+      res.json({ licenseConfig: LicenseConfig.publicLicenseConfig(updated) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete('/organizations/:id/offboard', offboardLimiter, requirePlatformAdminRole, async (req, res, next) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can cancel off-board' });
+    }
+    try {
+      const org = await Organization.getOrganization(req.params.id);
+      if (!org || org.kind !== 'licensee') {
+        return res.status(404).json({ error: 'Licensee not found' });
+      }
+      const updated = await LicenseConfig.cancelScheduledOffboard(org.id);
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.LICENSEE_OFFBOARD_CANCEL,
+        targetType: 'organization',
+        targetId: org.id,
+        targetOrganizationId: org.id,
+      });
+      res.json({ licenseConfig: LicenseConfig.publicLicenseConfig(updated) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // DAT-02 portability bundle for a licensee. Platform admins only;
+  // returns a single JSON document with org / users / downstream
+  // clients / ledger / audit (see licenseeDataExport.js for what's in
+  // and out). Licensee admins can also pull their own bundle (used by
+  // the off-board flow's "download before deletion" affordance).
+  router.get('/organizations/:id/data-export', dataExportLimiter, async (req, res, next) => {
+    try {
+      const requesterOrg = req.workspaceOrganization;
+      const targetOrgId = req.params.id;
+      const isPlatformAdmin = requesterOrg?.kind === 'platform' && req.user?.role === 'admin';
+      const isOwnLicensee = requesterOrg?.kind === 'licensee' && requesterOrg.id === targetOrgId;
+      if (!isPlatformAdmin && !isOwnLicensee) {
+        return res.status(403).json({ error: 'Not allowed to export this organisation' });
+      }
+      const { buildLicenseeDataExport } = await import('../../services/licenseeDataExport.js');
+      const bundle = await buildLicenseeDataExport(targetOrgId);
+      if (!bundle) return res.status(404).json({ error: 'Licensee not found' });
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.LICENSEE_DATA_EXPORT_DOWNLOAD,
+        targetType: 'organization',
+        targetId: targetOrgId,
+        targetOrganizationId: targetOrgId,
+        metadata: { counts: bundle.counts },
+      });
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'private, no-cache');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="licensee-export-${targetOrgId}.json"`
+      );
+      res.status(200).send(JSON.stringify(bundle, null, 2));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Phase 2 support analytics: per-licensee operational health, plus a
+  // bulk variant for the platform-clients page so we don't N+1.
+  router.get('/licensee-health', requirePlatformAdminRole, async (req, res, next) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can read licensee health' });
+    }
+    try {
+      const { getLicenseeHealthSnapshot } = await import('../../services/licenseeHealth.js');
+      const items = await getLicenseeHealthSnapshot();
+      res.json({ licensees: items });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/organizations/:id/licensee-health', requirePlatformAdminRole, async (req, res, next) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can read licensee health' });
+    }
+    try {
+      const { getLicenseeHealthForOrg } = await import('../../services/licenseeHealth.js');
+      const snapshot = await getLicenseeHealthForOrg(req.params.id);
+      if (!snapshot) return res.status(404).json({ error: 'Organization not found' });
+      res.json({ licensee: snapshot });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Phase 2 reconciliation: month-end CSV download for a single
+  // licensee. Manual platform-admin trigger; the cron path lives in
+  // /api/internal and uses the same builder.
+  router.get('/organizations/:id/reconciliation.csv', requirePlatformAdminRole, async (req, res, next) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can download reconciliation' });
+    }
+    try {
+      const monthIso = String(req.query?.month || '').trim()
+        || (await import('../../services/assessmentReconciliation.js')).previousCompletedMonthIso();
+      const { buildMonthlyReconciliation } = await import('../../services/assessmentReconciliation.js');
+      const report = await buildMonthlyReconciliation(req.params.id, monthIso);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Cache-Control', 'private, no-cache');
+      res.setHeader('Content-Disposition', `attachment; filename="${report.filename}"`);
+      res.setHeader('X-Reconciliation-Net-Charged', String(report.summary.netCharged));
+      res.setHeader('X-Reconciliation-Event-Count', String(report.summary.eventCount));
+      res.setHeader('X-Reconciliation-Distinct-Clients', String(report.summary.distinctClients));
+      res.status(200).send(report.csv);
+    } catch (error) {
+      if (/^month must be|^month out of range|^Not a licensee/.test(String(error?.message || ''))) {
+        return res.status(400).json({ error: error.message });
+      }
+      next(error);
+    }
+  });
+
+  // INF-04: ledger of "assessment opened" events for a licensee. Platform
+  // admins use this to audit consumption and reconcile top-ups / refunds.
+  router.get('/organizations/:id/assessment-consumption', requirePlatformAdminRole, async (req, res) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can view assessment consumption' });
+    }
+    const org = await Organization.getOrganization(req.params.id);
+    if (!org || org.kind !== 'licensee') {
+      return res.status(404).json({ error: 'Licensee organization not found' });
+    }
+    const events = await AssessmentConsumptionEvent.listForLicensee(org.id, { limit: 200 });
+    res.json({
+      events: events.map(AssessmentConsumptionEvent.publicEvent),
+      licenseConfig: await LicenseConfig.publicForOrganization(org.id),
+    });
   });
 
   router.get('/organizations/:id/logo', async (req, res) => {
@@ -1475,7 +2057,7 @@ export function registerPlatformOrgRoutes(router) {
     res.status(200).send(csv);
   });
 
-  router.post('/organizations/:id/logo', handleOrgLogoPlatformUpload, async (req, res) => {
+  router.post('/organizations/:id/logo', brandUploadLimiter, handleOrgLogoPlatformUpload, async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     if (!req.file) {
@@ -1493,6 +2075,13 @@ export function registerPlatformOrgRoutes(router) {
       }
       await fs.promises.writeFile(orgLogoFilePath(base), req.file.buffer);
       const updated = await Organization.setCompanyLogoFilename(org.id, base);
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.ORG_LOGO_UPLOAD,
+        targetType: 'organization',
+        targetId: org.id,
+        targetOrganizationId: org.id,
+        metadata: { filename: base },
+      });
       res.json({ organization: updated });
     } catch (e) {
       console.error(e);
@@ -1512,6 +2101,13 @@ export function registerPlatformOrgRoutes(router) {
       }
     }
     const updated = await Organization.getOrganization(req.params.id);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.ORG_LOGO_DELETE,
+      targetType: 'organization',
+      targetId: org.id,
+      targetOrganizationId: org.id,
+      metadata: { previousFilename: prev || null },
+    });
     res.json({ organization: updated });
   });
 
@@ -1530,6 +2126,44 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ sessions: sessions.map(publicPulseSessionRow) });
   });
 
+  // INF-05: platform admins can raise (or clear) the respondent cap for an
+  // individual pulse_session when overage is commercially agreed. The value
+  // is per-session and overrides licence_config.respondent_cap_per_assessment.
+  router.patch('/organizations/:id/pulse-sessions/:sessionId/respondent-cap', requirePlatformAdminRole, async (req, res) => {
+    if (req.workspaceOrganization?.kind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform admins can override respondent caps' });
+    }
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const session = await PulseSession.getSessionById(req.params.sessionId, org.id);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    const raw = req.body?.respondentCapOverride;
+    let nextCap = null;
+    if (raw === null || raw === undefined || raw === '') {
+      nextCap = null;
+    } else {
+      const parsed = Number.parseInt(raw, 10);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return res.status(400).json({ error: 'respondentCapOverride must be null or a non-negative integer' });
+      }
+      nextCap = parsed;
+    }
+    const updated = await PulseSession.setRespondentCapOverride(session.id, org.id, nextCap);
+    if (!updated) return res.status(500).json({ error: 'Could not update respondent cap' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.PULSE_RESPONDENT_CAP_OVERRIDE,
+      targetType: 'pulse_session',
+      targetId: session.id,
+      targetOrganizationId: org.id,
+      metadata: {
+        previousCap: session.respondent_cap_override ?? null,
+        nextCap,
+      },
+    });
+    res.json({ session: publicPulseSessionRow(updated) });
+  });
+
   router.post('/organizations/:id/pulse-timepoints/during', async (req, res, next) => {
     try {
       const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
@@ -1538,12 +2172,66 @@ export function registerPlatformOrgRoutes(router) {
         return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
       }
 
-      const name = createDuringPulseCheckpointName(new Date());
-      const [staffSession, managerSession] = await Promise.all([
-        createFreshActiveDuringSession(org.id, name, 'staff'),
-        createFreshActiveDuringSession(org.id, name, 'manager'),
-      ]);
+      // INF-04: charge one assessment against the parent licensee (if any)
+      // before any pulse_session insert. This is atomic via licence_config
+      // conditional UPDATE so concurrent requests can't both succeed at
+      // quota = N + 1.
+      const meter = await consumeAssessmentForClient(org, {
+        source: SOURCE_PLATFORM_DURING_CHECKPOINT,
+        actorUserId: req.user?.id || null,
+        metadata: { route: 'platform.during_checkpoint' },
+      });
+      if (meter.metered && !meter.ok) {
+        return res.status(meter.status).json({
+          error: meter.error,
+          reason: meter.reason,
+          licenseConfig: LicenseConfig.publicLicenseConfig(meter.licenseConfig),
+        });
+      }
 
+      const name = createDuringPulseCheckpointName(new Date());
+      let staffSession;
+      let managerSession;
+      try {
+        [staffSession, managerSession] = await Promise.all([
+          createFreshActiveDuringSession(org.id, name, 'staff'),
+          createFreshActiveDuringSession(org.id, name, 'manager'),
+        ]);
+      } catch (error) {
+        // Refund the meter charge if the underlying session inserts blew up
+        // so the licensee isn't charged for a checkpoint that never opened.
+        if (meter.metered && meter.ok) {
+          try {
+            await refundAssessmentForLicensee({
+              licenseeOrganizationId: meter.licensee.id,
+              clientOrganizationId: org.id,
+              actorUserId: req.user?.id || null,
+              metadata: {
+                route: 'platform.during_checkpoint',
+                reason: 'session_insert_failed',
+                error: error?.code || error?.message || 'unknown',
+              },
+            });
+          } catch (refundError) {
+            console.error('Failed to refund assessment after checkpoint failure:', refundError);
+          }
+        }
+        throw error;
+      }
+
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.PULSE_DURING_CHECKPOINT_OPEN,
+        targetType: 'pulse_session',
+        targetId: staffSession.id,
+        targetOrganizationId: org.id,
+        metadata: {
+          checkpointDate: pulseSessionDateKey(staffSession),
+          staffSessionId: staffSession.id,
+          managerSessionId: managerSession.id,
+          metered: meter.metered,
+          licenseeOrganizationId: meter.licensee?.id || null,
+        },
+      });
       return res.status(201).json({
         checkpointDate: pulseSessionDateKey(staffSession),
         sessions: [staffSession, managerSession].map(publicPulseSessionRow),

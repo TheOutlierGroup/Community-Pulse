@@ -9,6 +9,7 @@ import {
   getSurveyCopyForAudience,
 } from '../services/pulseEngine.js';
 import { parsePulseStageFromRequest } from '../services/pulseStage.js';
+import { effectiveRespondentCapForSession } from '../services/assessmentMeter.js';
 
 export function createEmployeeRoutes({
   authMiddleware = requireAuth,
@@ -39,6 +40,36 @@ export function createEmployeeRoutes({
     return { ok: true, requested };
   }
 
+  /**
+   * INF-05 cap gate for authenticated employees. Same semantics as the
+   * link-invite check: respondents who already have a completed response
+   * pass through; everyone else is blocked once the cap is reached.
+   */
+  async function checkRespondentCapForEmployee({ session, userId }) {
+    if (!session || !userId) return { ok: true };
+    const cap = await effectiveRespondentCapForSession(session);
+    if (cap == null) return { ok: true };
+    const alreadyCompleted = await pulseSessionModel.hasCompletedEmployeeResponseForUser(
+      userId,
+      session.id
+    );
+    if (alreadyCompleted) return { ok: true };
+    const counts = await pulseSessionModel.countCompletedRespondentsForSession(session.id);
+    if (counts.total >= cap) {
+      return {
+        ok: false,
+        body: {
+          error:
+            'This Rhythm Engine survey has reached its participant cap. Thank you for your interest — please contact your project lead.',
+          capReached: true,
+          respondentCap: cap,
+          respondentCount: counts.total,
+        },
+      };
+    }
+    return { ok: true };
+  }
+
   router.get('/themes', (req, res) => {
     if (req.user.role !== 'employee') {
       return res.status(403).json({ error: 'Employees only' });
@@ -62,6 +93,10 @@ export function createEmployeeRoutes({
     if (!stageValidation.ok) {
       return res.status(400).json({ error: `Session is for ${stage} stage` });
     }
+    const capCheck = await checkRespondentCapForEmployee({ session, userId: req.user.id });
+    if (!capCheck.ok) {
+      return res.status(403).json(capCheck.body);
+    }
     res.json({ session, stage });
   });
 
@@ -77,6 +112,10 @@ export function createEmployeeRoutes({
     const stageValidation = validateRequestedStage(req, stage);
     if (!stageValidation.ok) {
       return res.status(400).json({ error: `Session is for ${stage} stage` });
+    }
+    const capCheck = await checkRespondentCapForEmployee({ session, userId: req.user.id });
+    if (!capCheck.ok) {
+      return res.status(403).json(capCheck.body);
     }
     await employeeResponseModel.ensureResponseRow(req.user.id, session.id);
     const row = await employeeResponseModel.getResponse(req.user.id, session.id);
@@ -178,6 +217,10 @@ export function createEmployeeRoutes({
     const stageValidation = validateRequestedStage(req, stage);
     if (!stageValidation.ok) {
       return res.status(400).json({ error: `Session is for ${stage} stage` });
+    }
+    const capCheck = await checkRespondentCapForEmployee({ session, userId: req.user.id });
+    if (!capCheck.ok) {
+      return res.status(403).json(capCheck.body);
     }
 
     const body = req.body || {};

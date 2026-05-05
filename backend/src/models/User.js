@@ -348,3 +348,33 @@ export async function replaceMfaRecoveryCodeHashes(userId, recoveryCodeHashes = 
 export async function updateLastMfaVerifiedAt(userId) {
   await query(`UPDATE users SET last_mfa_verified_at = NOW() WHERE id = $1`, [userId]);
 }
+
+/**
+ * COM-03 read helper. Returns the JSONB notification_preferences blob
+ * for a user, defaulting to {} so callers don't have to null-check.
+ */
+export async function getNotificationPreferences(userId) {
+  if (!userId) return {};
+  const { rows } = await query(
+    `SELECT notification_preferences FROM users WHERE id = $1`,
+    [userId]
+  );
+  return rows[0]?.notification_preferences || {};
+}
+
+/**
+ * COM-03 write helper. Performs a JSONB merge so callers can patch a
+ * subset of preferences without resetting the others.
+ */
+export async function setNotificationPreferences(userId, preferences) {
+  if (!userId) return null;
+  const next = preferences && typeof preferences === 'object' ? preferences : {};
+  const { rows } = await query(
+    `UPDATE users
+       SET notification_preferences = COALESCE(notification_preferences, '{}'::jsonb) || $2::jsonb
+     WHERE id = $1
+     RETURNING notification_preferences`,
+    [userId, JSON.stringify(next)]
+  );
+  return rows[0]?.notification_preferences || null;
+}
