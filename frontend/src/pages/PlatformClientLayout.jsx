@@ -190,10 +190,15 @@ export default function PlatformClientLayout() {
       const createdDate = String(data?.checkpointDate || '').trim();
       const options = await loadPulseTimepoints();
       const match = options.find((row) => row.phase === 'during' && row.dateKey === createdDate);
+      const fallbackDuring = options.find((row) => row.phase === 'during');
       if (match) {
         setPulseTimepoint('during');
         setPulseDuringDate(match.dateKey);
         setPulseDuringSessionId(match.id);
+      } else if (fallbackDuring) {
+        setPulseTimepoint('during');
+        setPulseDuringDate(fallbackDuring.dateKey || '');
+        setPulseDuringSessionId(fallbackDuring.id);
       } else if (createdDate) {
         setPulseTimepoint('during');
         setPulseDuringDate(createdDate);
@@ -205,6 +210,15 @@ export default function PlatformClientLayout() {
       setPulseTimepointBusy(false);
     }
   }, [orgId, loadPulseTimepoints]);
+
+  useEffect(() => {
+    if (pulseTimepoint !== 'during') return;
+    if (pulseDuringSessionId) return;
+    const fallbackDuring = pulseTimepointOptions.find((row) => row.phase === 'during' && row.id);
+    if (!fallbackDuring) return;
+    setPulseDuringSessionId(fallbackDuring.id);
+    setPulseDuringDate(fallbackDuring.dateKey || '');
+  }, [pulseTimepoint, pulseDuringSessionId, pulseTimepointOptions]);
 
   useEffect(() => {
     if (!orgId) return;
