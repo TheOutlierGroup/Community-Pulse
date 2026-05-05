@@ -138,3 +138,21 @@ export async function listResponsesForSession(sessionId) {
   );
   return rows;
 }
+
+export async function countCompletedForInviteIds(inviteIds) {
+  const ids = Array.isArray(inviteIds)
+    ? inviteIds
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+    : [];
+  if (ids.length === 0) return 0;
+
+  const { rows } = await query(
+    `SELECT COUNT(DISTINCT invite_id)::int AS n
+     FROM pulse_link_responses
+     WHERE invite_id = ANY($1::uuid[])
+       AND completed_at IS NOT NULL`,
+    [ids]
+  );
+  return rows[0]?.n ?? 0;
+}

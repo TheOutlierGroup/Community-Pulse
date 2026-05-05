@@ -789,8 +789,14 @@ export default function PlatformPulseInviteUsers() {
       const completedResponses = Number(data?.completedResponses || 0);
       const unmatchedCount = Number(data?.unmatchedCount || 0);
       const errorCount = Number(data?.completionErrorCount || 0);
+      const verifiedCompletedRows = Number(data?.verifiedCompletedRows || 0);
+      const verifiedPendingRows = Number(data?.verifiedPendingRows || 0);
+      const verificationText =
+        Number.isFinite(verifiedCompletedRows) && (verifiedCompletedRows > 0 || verifiedPendingRows > 0)
+          ? ` Verified completed: ${verifiedCompletedRows}/${parsedTotal}.`
+          : '';
       showToast(
-        `Imported ${completedResponses}/${parsedTotal} responses (${unmatchedCount} unmatched, ${errorCount} errors).`,
+        `Imported ${completedResponses}/${parsedTotal} responses (${unmatchedCount} unmatched, ${errorCount} errors).${verificationText}`,
         { variant: errorCount > 0 ? 'error' : 'success' }
       );
       setTestDataOpen(false);

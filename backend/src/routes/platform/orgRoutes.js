@@ -475,19 +475,36 @@ function consumeInviteMatch(lookup, role, name) {
   const buckets = lookup.buckets instanceof Map ? lookup.buckets : null;
   const consumedInviteIds = lookup.consumedInviteIds instanceof Set ? lookup.consumedInviteIds : null;
   if (!buckets || !consumedInviteIds) return null;
+
+  const consumeByKey = (normalizedKey) => {
+    if (!normalizedKey) return null;
+    const key = `${role}:${normalizedKey}`;
+    const bucket = buckets.get(key);
+    if (!Array.isArray(bucket) || bucket.length === 0) return null;
+    while (bucket.length > 0) {
+      const match = bucket.shift();
+      if (!match?.id || consumedInviteIds.has(match.id)) continue;
+      consumedInviteIds.add(match.id);
+      if (bucket.length === 0) buckets.delete(key);
+      return match;
+    }
+    buckets.delete(key);
+    return null;
+  };
+
   const normalizedName = normalizeDisplayName(name);
   if (!normalizedName) return null;
-  const key = `${role}:${normalizedName}`;
-  const bucket = buckets.get(key);
-  if (!Array.isArray(bucket) || bucket.length === 0) return null;
-  while (bucket.length > 0) {
-    const match = bucket.shift();
-    if (!match?.id || consumedInviteIds.has(match.id)) continue;
-    consumedInviteIds.add(match.id);
-    if (bucket.length === 0) buckets.delete(key);
-    return match;
+
+  const exact = consumeByKey(normalizedName);
+  if (exact) return exact;
+
+  const tokens = normalizedName.split(' ').filter(Boolean);
+  for (let tokenCount = tokens.length - 1; tokenCount >= 1; tokenCount -= 1) {
+    const truncated = tokens.slice(0, tokenCount).join(' ');
+    const fallback = consumeByKey(truncated);
+    if (fallback) return fallback;
   }
-  buckets.delete(key);
+
   return null;
 }
 
@@ -702,6 +719,54 @@ async function createFreshActiveDuringSession(organizationId, name, audience) {
     }
   }
   throw new Error('Could not create active during-project session');
+}
+
+async function resolvePulseImportSessionForScope({
+  organizationId,
+  role,
+  stage,
+  duringSessionId,
+  sessionCache,
+}) {
+  const audience = role === 'manager' ? 'manager' : 'staff';
+  const cacheKey = `${audience}:${stage}:${String(duringSessionId || '')}`;
+  if (sessionCache?.has(cacheKey)) return sessionCache.get(cacheKey);
+
+  let resolved = null;
+  if (stage === 'mid' && duringSessionId) {
+    const selected = await PulseSession.getSessionById(duringSessionId, organizationId);
+    if (selected && String(selected.session_purpose || '').trim().toLowerCase() === 'during_project') {
+      if (selected.audience === audience) {
+        resolved = selected;
+      } else {
+        const sessions = await PulseSession.listSessionsForOrg(organizationId);
+        const targetRows = sessions.filter(
+          (session) =>
+            String(session?.session_purpose || '').trim().toLowerCase() === 'during_project'
+            && String(session?.audience || 'staff').trim().toLowerCase() === audience
+        );
+        if (targetRows.length > 0) {
+          const selectedAt = new Date(selected.created_at || 0).getTime();
+          const sorted = targetRows
+            .map((session) => {
+              const createdAt = new Date(session?.created_at || 0).getTime();
+              const distance = Number.isFinite(createdAt) && Number.isFinite(selectedAt)
+                ? Math.abs(createdAt - selectedAt)
+                : Number.MAX_SAFE_INTEGER;
+              return { session, distance };
+            })
+            .sort((a, b) => a.distance - b.distance);
+          resolved = sorted[0]?.session || null;
+        }
+      }
+    }
+  }
+
+  if (!resolved) {
+    resolved = await PulseSession.resolveSessionForPulseLink(organizationId, audience, stage);
+  }
+  if (sessionCache) sessionCache.set(cacheKey, resolved);
+  return resolved;
 }
 
 async function listMergedResponsesForSession(sessionId, stage = null) {
@@ -3470,8 +3535,14 @@ export function registerPlatformOrgRoutes(router) {
       const inviteRow = upsertResult.upsertedRows[index]?.invite;
       if (!inviteRow) continue;
       try {
-        const audience = inviteRow.survey_role === 'manager' ? 'manager' : 'staff';
-        const session = await PulseSession.resolveSessionForPulseLink(req.params.id, audience, stage);
+        const role = inviteRow.survey_role === 'manager' ? 'manager' : 'staff';
+        const session = await resolvePulseImportSessionForScope({
+          organizationId: req.params.id,
+          role,
+          stage,
+          duringSessionId,
+          sessionCache: sessionsByRole,
+        });
         await PulseLinkResponse.ensureResponseRow(inviteRow.id, session.id, stage);
         const step1 = buildTestSurveyStepAnswers(inviteRow.survey_role, index);
         const completed = await PulseLinkResponse.completeResponse({
@@ -3578,14 +3649,17 @@ export function registerPlatformOrgRoutes(router) {
 
       let completedResponses = 0;
       const completionErrors = [];
+      const matchedInviteIds = matchedRows.map(({ invite }) => invite.id).filter(Boolean);
 
       for (const { row, invite } of matchedRows) {
         try {
-          let session = sessionsByRole.get(row.role);
-          if (!session) {
-            session = await PulseSession.resolveSessionForPulseLink(req.params.id, row.role, stage);
-            sessionsByRole.set(row.role, session);
-          }
+          const session = await resolvePulseImportSessionForScope({
+            organizationId: req.params.id,
+            role: row.role,
+            stage,
+            duringSessionId,
+            sessionCache: sessionsByRole,
+          });
           await PulseLinkResponse.ensureResponseRow(invite.id, session.id, stage);
           const completed = await PulseLinkResponse.completeResponse({
             inviteId: invite.id,
@@ -3608,6 +3682,8 @@ export function registerPlatformOrgRoutes(router) {
         }
       }
 
+      const verifiedCompletedRows = await PulseLinkResponse.countCompletedForInviteIds(matchedInviteIds);
+
       return res.json({
         ok: true,
         parsedEmployees: parsed.employeeRows.length,
@@ -3619,6 +3695,8 @@ export function registerPlatformOrgRoutes(router) {
         unmatchedRows: [],
         completionErrorCount: completionErrors.length,
         completionErrors: completionErrors.slice(0, 20),
+        verifiedCompletedRows,
+        verifiedPendingRows: Math.max(0, matchedRows.length - verifiedCompletedRows),
         timepoint: stage,
       });
     }
