@@ -1,10 +1,10 @@
-import { MailPlus } from 'lucide-react';
 import ModalDialog from '../../components/shared/ModalDialog.jsx';
 
 export default function InviteUserModal({
   open,
   error,
   busy,
+  submitLabel = 'Create user',
   inviteEmail,
   inviteFirstName,
   inviteLastName,
@@ -19,13 +19,7 @@ export default function InviteUserModal({
   if (!open) return null;
 
   return (
-    <ModalDialog open={open} title="Invite user" titleId="invite-user-title" onClose={onClose}>
-      <p className="muted invite-user-modal__intro">
-        <MailPlus size={18} strokeWidth={1.75} className="invite-user-modal__intro-icon" aria-hidden />
-        <span>
-          Creates an invite link you can share; they complete signup with a password.
-        </span>
-      </p>
+    <ModalDialog open={open} title="Create Users" titleId="invite-user-title" onClose={onClose}>
       {error ? <p className="error" style={{ marginBottom: '1rem' }}>{error}</p> : null}
       <form onSubmit={onSubmit}>
         <div className="field">
@@ -78,7 +72,7 @@ export default function InviteUserModal({
             Cancel
           </button>
           <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={busy}>
-            {busy ? 'Creating…' : 'Create invite'}
+            {busy ? 'Creating…' : submitLabel}
           </button>
         </div>
       </form>

@@ -439,8 +439,7 @@ export default function PlatformClients() {
                       Rhythm Engine Licensee
                       <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
                         License this company to run their own Rhythm Engine workspace and manage their
-                        own client companies. Tasks and the wider service catalog are not available to
-                        licensees.
+                        own client companies.
                       </span>
                     </span>
                   </label>

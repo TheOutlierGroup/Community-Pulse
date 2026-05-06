@@ -1792,6 +1792,8 @@ export function registerPlatformOrgRoutes(router) {
     if (!org) {
       return res.status(404).json({ error: 'Organization not found' });
     }
+    const requesterOrg = req.workspaceOrganization;
+    const isLicenseeRequester = requesterOrg?.kind === 'licensee';
     const invitedRole = req.body.invitedRole === 'admin' ? 'admin' : 'employee';
     const email = req.body.email;
     const firstName = req.body.firstName;
@@ -1799,6 +1801,23 @@ export function registerPlatformOrgRoutes(router) {
     const existing = await User.findUserByEmail(email);
     if (existing) {
       return res.status(409).json({ error: 'A user with this email already exists' });
+    }
+    if (isLicenseeRequester) {
+      const passwordHash = await bcrypt.hash(randomBytes(32).toString('base64url'), 12);
+      const created = await User.createUserWithProfile({
+        email: String(email || '').trim(),
+        passwordHash,
+        role: invitedRole,
+        organizationId: org.id,
+        firstName,
+        lastName,
+        loginEnabled: false,
+      });
+      const outRow = await User.findUserById(created.id);
+      return res.status(201).json({
+        user: publicStaffUser(outRow),
+        createdWithoutInvite: true,
+      });
     }
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);

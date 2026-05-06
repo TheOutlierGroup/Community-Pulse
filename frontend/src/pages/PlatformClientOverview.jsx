@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
+import { useAuth } from '../components/shared/Auth.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { ClipboardList, Users } from 'lucide-react';
 import {
@@ -9,6 +10,7 @@ import {
   clientStatusLabel,
   normalizeServices,
 } from './platformClientUtils.js';
+import { isLicenseeUser } from '../hooks/usePlatformAccess.js';
 
 function getLocalWeekRange() {
   const now = new Date();
@@ -58,7 +60,9 @@ function assigneeLabel(a) {
 
 export default function PlatformClientOverview() {
   const { org, orgId, clientLogoUrl } = useOutletContext();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const isLicensee = isLicenseeUser(user);
   const week = useMemo(() => getLocalWeekRange(), []);
   const [dash, setDash] = useState(null);
   const [dashError, setDashError] = useState('');
@@ -82,8 +86,14 @@ export default function PlatformClientOverview() {
   }, [orgId, week.weekStart, week.weekEnd]);
 
   useEffect(() => {
+    if (isLicensee) {
+      setDash(null);
+      setDashLoading(false);
+      setDashError('');
+      return;
+    }
     loadDashboard();
-  }, [loadDashboard]);
+  }, [isLicensee, loadDashboard]);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,108 +131,112 @@ export default function PlatformClientOverview() {
       </div>
       {dashError && <p className="error" style={{ marginBottom: '1rem' }}>{dashError}</p>}
       <div className="platform-client-dashboard-grid">
-        <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">
-          <h3 className="platform-client-dashboard__h2">Stats</h3>
-          {dashLoading && <p className="muted">Loading stats…</p>}
-          {!dashLoading && dash && (
-            <div className="platform-client-stats">
-              <div className="platform-client-stats__tile">
-                <div className="platform-client-stats__icon" aria-hidden>
-                  <Users size={22} strokeWidth={1.75} />
-                </div>
-                <div className="platform-client-stats__value">{dash.userCount}</div>
-                <div className="platform-client-stats__label">Users</div>
-              </div>
-              <div className="platform-client-stats__tile">
-                <div className="platform-client-stats__icon" aria-hidden>
-                  <ClipboardList size={22} strokeWidth={1.75} />
-                </div>
-                <div className="platform-client-stats__value">{dash.totalTasks}</div>
-                <div className="platform-client-stats__label">Tasks (all)</div>
-              </div>
-              {counts &&
-                ['todo', 'working', 'review', 'completed'].map((key) => (
-                  <div key={key} className="platform-client-stats__tile platform-client-stats__tile--status">
-                    <div className="platform-client-stats__value">{counts[key] ?? 0}</div>
-                    <div className="platform-client-stats__label">{STATUS_LABEL[key]}</div>
+        {!isLicensee ? (
+          <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">
+            <h3 className="platform-client-dashboard__h2">Stats</h3>
+            {dashLoading && <p className="muted">Loading stats…</p>}
+            {!dashLoading && dash && (
+              <div className="platform-client-stats">
+                <div className="platform-client-stats__tile">
+                  <div className="platform-client-stats__icon" aria-hidden>
+                    <Users size={22} strokeWidth={1.75} />
                   </div>
-                ))}
-            </div>
-          )}
-        </div>
-
-        <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">
-          <div className="platform-client-dashboard__table-head">
-            <h3 className="platform-client-dashboard__h2" style={{ margin: 0 }}>
-              Tasks due this week
-            </h3>
-            <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.9rem' }}>
-              {formatWeekLabel(week.weekStart, week.weekEnd)} ·{' '}
-              <Link to={`/platform/clients/${orgId}/tasks`} className="platform-client-account__back-dash">
-                Open task board
-              </Link>
-            </p>
-          </div>
-          {dashLoading && <p className="muted" style={{ marginTop: '1rem' }}>Loading…</p>}
-          {!dashLoading && dash && dash.tasksDueThisWeek.length === 0 && (
-            <p className="muted" style={{ marginTop: '1rem' }}>
-              No tasks with a due date in this week.
-            </p>
-          )}
-          {!dashLoading && dash && dash.tasksDueThisWeek.length > 0 && (
-            <div className="table-wrap" style={{ marginTop: '1rem' }}>
-              <table className="admin-table platform-client-dashboard__tasks-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Task</th>
-                    <th scope="col">Due</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Assigned</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dash.tasksDueThisWeek.map((t) => (
-                    <tr
-                      key={t.id}
-                      className="platform-dashboard-task-row platform-dashboard-task-row--clickable"
-                      tabIndex={0}
-                      role="button"
-                      aria-label={`Open task: ${t.title}`}
-                      onClick={() =>
-                        navigate(`/platform/clients/${orgId}/tasks?task=${encodeURIComponent(t.id)}`)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          navigate(`/platform/clients/${orgId}/tasks?task=${encodeURIComponent(t.id)}`);
-                        }
-                      }}
-                    >
-                      <td>
-                        <span className="platform-dashboard-task-row__title">{t.title}</span>
-                      </td>
-                      <td className="muted" style={{ whiteSpace: 'nowrap' }}>
-                        {t.dueDate
-                          ? new Date(`${t.dueDate}T12:00:00`).toLocaleDateString(undefined, {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric',
-                            })
-                          : '—'}
-                      </td>
-                      <td>
-                        <span className={`badge badge-${statusBadgeClass(t.status)}`}>
-                          {STATUS_LABEL[t.status] || t.status}
-                        </span>
-                      </td>
-                      <td className="muted">{assigneeLabel(t.assignedTo)}</td>
-                    </tr>
+                  <div className="platform-client-stats__value">{dash.userCount}</div>
+                  <div className="platform-client-stats__label">Users</div>
+                </div>
+                <div className="platform-client-stats__tile">
+                  <div className="platform-client-stats__icon" aria-hidden>
+                    <ClipboardList size={22} strokeWidth={1.75} />
+                  </div>
+                  <div className="platform-client-stats__value">{dash.totalTasks}</div>
+                  <div className="platform-client-stats__label">Tasks (all)</div>
+                </div>
+                {counts &&
+                  ['todo', 'working', 'review', 'completed'].map((key) => (
+                    <div key={key} className="platform-client-stats__tile platform-client-stats__tile--status">
+                      <div className="platform-client-stats__value">{counts[key] ?? 0}</div>
+                      <div className="platform-client-stats__label">{STATUS_LABEL[key]}</div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {!isLicensee ? (
+          <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">
+            <div className="platform-client-dashboard__table-head">
+              <h3 className="platform-client-dashboard__h2" style={{ margin: 0 }}>
+                Tasks due this week
+              </h3>
+              <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.9rem' }}>
+                {formatWeekLabel(week.weekStart, week.weekEnd)} ·{' '}
+                <Link to={`/platform/clients/${orgId}/tasks`} className="platform-client-account__back-dash">
+                  Open task board
+                </Link>
+              </p>
             </div>
-          )}
-        </div>
+            {dashLoading && <p className="muted" style={{ marginTop: '1rem' }}>Loading…</p>}
+            {!dashLoading && dash && dash.tasksDueThisWeek.length === 0 && (
+              <p className="muted" style={{ marginTop: '1rem' }}>
+                No tasks with a due date in this week.
+              </p>
+            )}
+            {!dashLoading && dash && dash.tasksDueThisWeek.length > 0 && (
+              <div className="table-wrap" style={{ marginTop: '1rem' }}>
+                <table className="admin-table platform-client-dashboard__tasks-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Task</th>
+                      <th scope="col">Due</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Assigned</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dash.tasksDueThisWeek.map((t) => (
+                      <tr
+                        key={t.id}
+                        className="platform-dashboard-task-row platform-dashboard-task-row--clickable"
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Open task: ${t.title}`}
+                        onClick={() =>
+                          navigate(`/platform/clients/${orgId}/tasks?task=${encodeURIComponent(t.id)}`)
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            navigate(`/platform/clients/${orgId}/tasks?task=${encodeURIComponent(t.id)}`);
+                          }
+                        }}
+                      >
+                        <td>
+                          <span className="platform-dashboard-task-row__title">{t.title}</span>
+                        </td>
+                        <td className="muted" style={{ whiteSpace: 'nowrap' }}>
+                          {t.dueDate
+                            ? new Date(`${t.dueDate}T12:00:00`).toLocaleDateString(undefined, {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : '—'}
+                        </td>
+                        <td>
+                          <span className={`badge badge-${statusBadgeClass(t.status)}`}>
+                            {STATUS_LABEL[t.status] || t.status}
+                          </span>
+                        </td>
+                        <td className="muted">{assigneeLabel(t.assignedTo)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
     </>
   );

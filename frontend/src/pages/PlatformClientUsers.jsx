@@ -13,6 +13,7 @@ export default function PlatformClientUsers() {
   const { user } = useAuth();
   const { org, orgId, clientLogoUrl } = useOutletContext();
   const { showToast } = useToast();
+  const isLicensee = user?.organizationKind === 'licensee';
   const [orgUsers, setOrgUsers] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -102,15 +103,19 @@ export default function PlatformClientUsers() {
         firstName: inviteFirstName.trim() || undefined,
         lastName: inviteLastName.trim() || undefined,
       });
-      const fullInvite = `${window.location.origin}${data.inviteUrl}`;
-      showToast(`Invite link for ${invitedTo}:\n\n${fullInvite}`, {
-        variant: 'success',
-        durationMs: 20000,
-      });
+      if (data?.createdWithoutInvite) {
+        showToast(`User created for ${invitedTo}.`, { variant: 'success' });
+      } else {
+        const fullInvite = `${window.location.origin}${data.inviteUrl}`;
+        showToast(`Invite link for ${invitedTo}:\n\n${fullInvite}`, {
+          variant: 'success',
+          durationMs: 20000,
+        });
+      }
       await loadUsers();
       closeInviteModal();
     } catch (err) {
-      setError(err.response?.data?.error || 'Invite failed.');
+      setError(err.response?.data?.error || 'Could not create user.');
     } finally {
       setBusy(false);
     }
@@ -222,6 +227,7 @@ export default function PlatformClientUsers() {
         open={modalOpen}
         error={modalOpen ? error : ''}
         busy={busy}
+        submitLabel={isLicensee ? 'Create user' : 'Create invite'}
         inviteEmail={inviteEmail}
         inviteFirstName={inviteFirstName}
         inviteLastName={inviteLastName}
