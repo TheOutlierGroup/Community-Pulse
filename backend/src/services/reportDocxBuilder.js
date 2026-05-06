@@ -74,40 +74,43 @@ const COLOUR = {
   navy: '1F3864',
   headerBg: '1F3864',
   headerText: 'FFFFFF',
-  scoreGreen: '548235',
-  scoreAmber: 'BF8F00',
-  scoreRed: 'C00000',
-  scoreGreenBg: 'E2EFDA',
-  scoreAmberBg: 'FFF2CC',
-  scoreRedBg: 'F4CCCC',
-  alertCriticalBg: 'F4CCCC',
-  alertCriticalBorder: 'C00000',
-  alertWarningBg: 'FFF2CC',
-  alertWarningBorder: 'E69138',
-  alertThresholdBg: 'CFE2F3',
-  alertThresholdBorder: '1F3864',
-  alertPositiveBg: 'D9EAD3',
-  alertPositiveBorder: '548235',
-  signalBg: 'FFF8E1',
+  scoreGreen: '1E855D',
+  scoreAmber: 'F5A623',
+  scoreOrange: 'CC4E0F',
+  scoreRed: 'E52235',
+  scoreGreenBg: '1E855D',
+  scoreAmberBg: 'F5A623',
+  scoreOrangeBg: 'CC4E0F',
+  scoreRedBg: 'E52235',
+  alertCriticalBg: 'E52235',
+  alertCriticalBorder: 'E52235',
+  alertWarningBg: 'F5A623',
+  alertWarningBorder: 'F5A623',
+  alertThresholdBg: 'CC4E0F',
+  alertThresholdBorder: 'CC4E0F',
+  alertPositiveBg: '1E855D',
+  alertPositiveBorder: '1E855D',
+  signalBg: 'FFFFFF',
   signalBorderBlue: '1F3864',
-  signalBorderOrange: 'E69138',
+  signalBorderOrange: 'CC4E0F',
   lightGrey: 'F2F2F2',
   white: 'FFFFFF',
   black: '000000',
-  quadOptimal: 'FFF8E1',
-  quadMotivated: 'FFF2CC',
-  quadCapable: 'FFF2CC',
-  quadHighRisk: 'F4CCCC',
-  quadHighlight: 'FFF2CC',
-  verdictPassBg: 'D9EAD3',
-  verdictFailBg: 'F4CCCC',
-  chainGreen: 'D9EAD3',
-  chainAmber: 'FFF2CC',
-  chainRed: 'F4CCCC',
-  loadSustainable: 'D9EAD3',
-  loadStretched: 'FFF2CC',
-  loadAtCapacity: 'FCE4D6',
-  loadOverloaded: 'F4CCCC',
+  quadOptimal: '1E855D',
+  quadMotivated: 'CC4E0F',
+  quadCapable: 'CC4E0F',
+  quadHighRisk: 'E52235',
+  quadHighlight: 'E52235',
+  verdictPassBg: '1E855D',
+  verdictFailBg: 'E52235',
+  chainGreen: '1E855D',
+  chainAmber: 'F5A623',
+  chainOrange: 'CC4E0F',
+  chainRed: 'E52235',
+  loadSustainable: '1E855D',
+  loadStretched: 'F5A623',
+  loadAtCapacity: 'CC4E0F',
+  loadOverloaded: 'E52235',
 };
 
 const FONT = { body: 'Calibri', heading: 'Calibri' };
@@ -203,20 +206,24 @@ function scoreStatusColour(status) {
 }
 
 function scoreStatusBg(status) {
-  return status === 'HIGH' ? COLOUR.scoreGreenBg : COLOUR.scoreRedBg;
+  return COLOUR.white;
 }
 
 function dimensionScoreColour(avg) {
   if (avg == null) return COLOUR.black;
-  if (avg >= 3.5) return COLOUR.scoreGreen;
-  if (avg >= 3.0) return COLOUR.scoreAmber;
-  return COLOUR.scoreRed;
+  if (avg >= 4.0) return COLOUR.white;
+  if (avg >= 3.5) return COLOUR.white;
+  if (avg >= 3.0) return COLOUR.black;
+  if (avg >= 2.5) return COLOUR.white;
+  return COLOUR.white;
 }
 
 function dimensionScoreBg(avg) {
   if (avg == null) return COLOUR.white;
+  if (avg >= 4.0) return COLOUR.scoreGreenBg;
   if (avg >= 3.5) return COLOUR.scoreGreenBg;
   if (avg >= 3.0) return COLOUR.scoreAmberBg;
+  if (avg >= 2.5) return COLOUR.scoreOrangeBg;
   return COLOUR.scoreRedBg;
 }
 
@@ -358,11 +365,11 @@ function singleScoreCard(label, score, max, status) {
 
 function verdictBox(verdictText, quadrantLabel) {
   const isPassed = verdictText === 'CLEARED FOR LAUNCH';
-  const bg = isPassed ? COLOUR.verdictPassBg : COLOUR.navy;
+  const bg = COLOUR.white;
   const verdictColor = isPassed ? COLOUR.scoreGreen : COLOUR.scoreRed;
-  const textColor = isPassed ? COLOUR.black : COLOUR.white;
-  const subtitleColor = isPassed ? '666666' : 'CCCCCC';
-  const quadColor = isPassed ? COLOUR.navy : COLOUR.white;
+  const textColor = COLOUR.black;
+  const subtitleColor = '666666';
+  const quadColor = verdictColor;
   const desc = isPassed
     ? 'This organisation has the conditions required to proceed with the change programme.'
     : 'This organisation has the motivation to change. It does not yet have the sponsorship conditions to sustain it.';
@@ -416,21 +423,27 @@ function quadrantMatrix(activeCode) {
   const borders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
 
   function qCell(code, label, desc, isHighlighted) {
-    const bg = isHighlighted ? COLOUR.quadHighlight : COLOUR.white;
+    const config = {
+      optimal: { bg: COLOUR.quadOptimal, color: COLOUR.white },
+      motivated_lost: { bg: COLOUR.quadMotivated, color: COLOUR.white },
+      capable_wary: { bg: COLOUR.quadCapable, color: COLOUR.white },
+      high_risk: { bg: COLOUR.quadHighRisk, color: COLOUR.white },
+    };
+    const cfg = config[code] || { bg: COLOUR.white, color: COLOUR.black };
     return new TableCell({
       borders,
-      shading: { type: ShadingType.CLEAR, color: 'auto', fill: bg },
+      shading: { type: ShadingType.CLEAR, color: 'auto', fill: cfg.bg },
       margins: { top: 80, bottom: 80, left: 100, right: 100 },
       children: [
         new Paragraph({
           children: [
-            ...(isHighlighted ? [new TextRun({ text: '\u25B6 ', font: FONT.body, size: 20, color: COLOUR.navy })] : []),
-            new TextRun({ text: label, font: FONT.heading, size: 20, bold: true, color: isHighlighted ? COLOUR.navy : '666666' }),
+            ...(isHighlighted ? [new TextRun({ text: '\u25B6 ', font: FONT.body, size: 20, color: cfg.color })] : []),
+            new TextRun({ text: label, font: FONT.heading, size: 20, bold: true, color: cfg.color }),
           ],
           spacing: { after: 40 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: desc, font: FONT.body, size: 17, italics: true, color: isHighlighted ? COLOUR.navy : '999999' })],
+          children: [new TextRun({ text: desc, font: FONT.body, size: 17, italics: true, color: cfg.color })],
         }),
       ],
     });
@@ -521,10 +534,10 @@ function signalBox(title, text, borderColor = COLOUR.signalBorderBlue) {
 
 function alertBlock(severity, title, description) {
   const config = {
-    CRITICAL: { bg: COLOUR.alertCriticalBg, border: COLOUR.alertCriticalBorder, color: COLOUR.scoreRed },
-    WARNING: { bg: COLOUR.alertWarningBg, border: COLOUR.alertWarningBorder, color: COLOUR.scoreAmber },
-    THRESHOLD: { bg: COLOUR.alertThresholdBg, border: COLOUR.alertThresholdBorder, color: COLOUR.navy },
-    POSITIVE: { bg: COLOUR.alertPositiveBg, border: COLOUR.alertPositiveBorder, color: COLOUR.scoreGreen },
+    CRITICAL: { bg: COLOUR.alertCriticalBg, border: COLOUR.alertCriticalBorder, color: COLOUR.white, bodyColor: COLOUR.white },
+    WARNING: { bg: COLOUR.alertWarningBg, border: COLOUR.alertWarningBorder, color: COLOUR.black, bodyColor: COLOUR.black },
+    THRESHOLD: { bg: COLOUR.alertThresholdBg, border: COLOUR.alertThresholdBorder, color: COLOUR.white, bodyColor: COLOUR.white },
+    POSITIVE: { bg: COLOUR.alertPositiveBg, border: COLOUR.alertPositiveBorder, color: COLOUR.white, bodyColor: COLOUR.white },
   };
   const style = config[severity] || config.THRESHOLD;
 
@@ -549,7 +562,7 @@ function alertBlock(severity, title, description) {
             spacing: { after: 50 },
           }),
           new Paragraph({
-            children: [new TextRun({ text: description, font: FONT.body, size: 20 })],
+            children: [new TextRun({ text: description, font: FONT.body, size: 20, color: style.bodyColor })],
           }),
         ],
       })],
@@ -559,10 +572,10 @@ function alertBlock(severity, title, description) {
 
 function loadBandCards(distribution) {
   const bandConfig = {
-    Sustainable: { bg: COLOUR.loadSustainable, color: COLOUR.scoreGreen, desc: 'Genuine surplus capacity. Can act as active change sponsor.' },
-    Stretched: { bg: COLOUR.loadStretched, color: COLOUR.scoreAmber, desc: 'Managing, but at risk under additional change load.' },
-    'At Capacity': { bg: COLOUR.loadAtCapacity, color: 'BF6900', desc: 'Requires structured support and executive air cover.' },
-    Overloaded: { bg: COLOUR.loadOverloaded, color: COLOUR.scoreRed, desc: 'Risk amplifier. Do not launch without addressing load first.' },
+    Sustainable: { bg: COLOUR.loadSustainable, color: COLOUR.white, desc: 'Genuine surplus capacity. Can act as active change sponsor.' },
+    Stretched: { bg: COLOUR.loadStretched, color: COLOUR.black, desc: 'Managing, but at risk under additional change load.' },
+    'At Capacity': { bg: COLOUR.loadAtCapacity, color: COLOUR.white, desc: 'Requires structured support and executive air cover.' },
+    Overloaded: { bg: COLOUR.loadOverloaded, color: COLOUR.white, desc: 'Risk amplifier. Do not launch without addressing load first.' },
   };
 
   const cells = distribution.map((band) => {
@@ -577,11 +590,11 @@ function loadBandCards(distribution) {
           spacing: { after: 30 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: band.name, font: FONT.heading, size: 20, bold: true })],
+          children: [new TextRun({ text: band.name, font: FONT.heading, size: 20, bold: true, color: cfg.color })],
           spacing: { after: 40 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: cfg.desc, font: FONT.body, size: 16, color: '555555' })],
+          children: [new TextRun({ text: cfg.desc, font: FONT.body, size: 16, color: cfg.color })],
         }),
       ],
     });
@@ -601,10 +614,10 @@ function loadBandCards(distribution) {
 
 function sponsorshipChainMatrix(distribution) {
   const stateConfig = {
-    'Chain Functioning': { bg: COLOUR.chainGreen },
-    'Breaking at Manager Level': { bg: COLOUR.chainAmber },
-    'Managers Resilient, Under-Supported': { bg: COLOUR.chainAmber },
-    'Sponsorship Failed at Both Levels': { bg: COLOUR.chainRed },
+    'Chain Functioning': { bg: COLOUR.chainGreen, color: COLOUR.white },
+    'Breaking at Manager Level': { bg: COLOUR.chainAmber, color: COLOUR.black },
+    'Managers Resilient, Under-Supported': { bg: COLOUR.chainOrange, color: COLOUR.white },
+    'Sponsorship Failed at Both Levels': { bg: COLOUR.chainRed, color: COLOUR.white },
   };
 
   const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: 'BBBBBB' };
@@ -615,7 +628,7 @@ function sponsorshipChainMatrix(distribution) {
   };
 
   function dataCell(name, percent) {
-    const cfg = stateConfig[name] || { bg: COLOUR.white };
+    const cfg = stateConfig[name] || { bg: COLOUR.white, color: COLOUR.black };
     return new TableCell({
       borders,
       shading: { type: ShadingType.CLEAR, color: 'auto', fill: cfg.bg },
@@ -623,12 +636,12 @@ function sponsorshipChainMatrix(distribution) {
       children: [
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: `${percent}%`, font: FONT.heading, size: 28, bold: true, color: COLOUR.navy })],
+          children: [new TextRun({ text: `${percent}%`, font: FONT.heading, size: 28, bold: true, color: cfg.color })],
           spacing: { after: 30 },
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: name, font: FONT.body, size: 17, bold: true })],
+          children: [new TextRun({ text: name, font: FONT.body, size: 17, bold: true, color: cfg.color })],
         }),
       ],
     });
@@ -777,22 +790,64 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
 
   const loadChainRows = reportData.manager.load_chain_matrix.map((row) => {
     const loadConfig = {
-      Sustainable: COLOUR.loadSustainable,
-      Stretched: COLOUR.loadStretched,
-      'At Capacity': COLOUR.loadAtCapacity,
-      Overloaded: COLOUR.loadOverloaded,
+      Sustainable: { shading: COLOUR.loadSustainable, color: COLOUR.white },
+      Stretched: { shading: COLOUR.loadStretched, color: COLOUR.black },
+      'At Capacity': { shading: COLOUR.loadAtCapacity, color: COLOUR.white },
+      Overloaded: { shading: COLOUR.loadOverloaded, color: COLOUR.white },
+    };
+    const matrixSeverityStyle = (loadBand, chainState) => {
+      if (loadBand === 'Sustainable' && chainState === 'Chain Functioning') {
+        return { shading: COLOUR.scoreGreen, color: COLOUR.white, size: 22 };
+      }
+      if (
+        (loadBand === 'Sustainable' && chainState !== 'Chain Functioning')
+        || (loadBand === 'Stretched' && chainState === 'Chain Functioning')
+      ) {
+        return { shading: '3DAA7A', color: COLOUR.white, size: 22 };
+      }
+      if (
+        loadBand === 'Stretched'
+        && (chainState === 'Breaking at Manager Level' || chainState === 'Managers Resilient, Under-Supported')
+      ) {
+        return { shading: COLOUR.scoreAmber, color: COLOUR.black, size: 22 };
+      }
+      if (
+        (loadBand === 'Stretched' && chainState === 'Sponsorship Failed at Both Levels')
+        || (loadBand === 'At Capacity'
+          && (chainState === 'Breaking at Manager Level' || chainState === 'Managers Resilient, Under-Supported'))
+      ) {
+        return { shading: COLOUR.scoreOrange, color: COLOUR.white, size: 22 };
+      }
+      if (
+        (loadBand === 'At Capacity' && chainState === 'Sponsorship Failed at Both Levels')
+        || (loadBand === 'Overloaded' && chainState === 'Managers Resilient, Under-Supported')
+      ) {
+        return { shading: COLOUR.scoreRed, color: COLOUR.white, size: 22 };
+      }
+      if (loadBand === 'Overloaded' && chainState === 'Sponsorship Failed at Both Levels') {
+        return { shading: COLOUR.scoreRed, color: COLOUR.white, size: 28, bold: true };
+      }
+      return { shading: COLOUR.white, color: COLOUR.black, size: 22 };
     };
     return [
-      { _styled: true, text: row.loadBand, bold: true, shading: loadConfig[row.loadBand] || COLOUR.white },
+      {
+        _styled: true,
+        text: row.loadBand,
+        bold: true,
+        shading: loadConfig[row.loadBand]?.shading || COLOUR.white,
+        color: loadConfig[row.loadBand]?.color || COLOUR.black,
+      },
       ...row.cells.map((cell) => {
-        const count = cell.count;
-        let bg = COLOUR.white;
-        if (count > 0 && (cell.chainState === 'Sponsorship Failed at Both Levels' || cell.chainState === 'Breaking at Manager Level')) {
-          bg = count >= 3 ? COLOUR.chainRed : COLOUR.chainAmber;
-        } else if (count > 0) {
-          bg = COLOUR.chainGreen;
-        }
-        return { _styled: true, text: String(count), alignment: AlignmentType.CENTER, shading: bg };
+        const style = matrixSeverityStyle(row.loadBand, cell.chainState);
+        return {
+          _styled: true,
+          text: String(cell.count),
+          alignment: AlignmentType.CENTER,
+          shading: style.shading,
+          color: style.color,
+          size: style.size,
+          bold: Boolean(style.bold),
+        };
       }),
     ];
   });

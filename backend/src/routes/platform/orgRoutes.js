@@ -172,7 +172,7 @@ function buildExecutiveSummaryContent({
 
   const riskChips = [
     sponsorshipScore != null && sponsorshipScore < threshold ? 'Sponsorship gap' : null,
-    overloadedPercent >= 10 ? 'Manager overload' : null,
+    overloadedPercent > 10 ? 'Manager overload' : null,
     sponsorshipDelta != null && sponsorshipDelta < 0 ? 'Declining sponsorship trend' : null,
     criticalLoadPercent >= 35 ? 'Capacity concentration risk' : null,
     optimalPercent < 30 ? 'Low optimal readiness share' : null,
@@ -2937,7 +2937,7 @@ export function registerPlatformOrgRoutes(router) {
           'Measures the current capacity of each manager to absorb and lead additional change — scored from four questions about their workload, bandwidth, and self-reported sustainable load.',
         bands: loadBandsV3.map((band) => ({
           ...band,
-          critical: band.name === 'Overloaded' && band.percent >= 10,
+          critical: band.name === 'Overloaded' && band.percent > 10,
         })),
       },
       section3: {
@@ -3047,7 +3047,7 @@ export function registerPlatformOrgRoutes(router) {
         .reduce((sum, band) => sum + (band.percent || 0), 0),
       interventionRequired:
         (sponsorshipScore != null && sponsorshipScore < READINESS_THRESHOLD)
-        || ((overloadedBand?.percent || 0) >= 10)
+        || ((overloadedBand?.percent || 0) > 10)
         || ((optimalQuadrant?.percent || 0) < 25),
       completedTotal,
     });

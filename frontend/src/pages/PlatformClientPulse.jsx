@@ -4,10 +4,55 @@ import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
 import { normalizePulseHash, resolvePulseFocusedSection } from './pulseNavigationRules.js';
 import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
+import PulseTrendAnalysisSection from '../components/platform/PulseTrendAnalysisSection.jsx';
 import { crmAppBaseUrl } from '../config/appSurface.js';
 
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
+const DIMENSION_ORDER = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'];
+const PERCEPTION_GAP_THRESHOLD = 1.5;
+const DIMENSION_COMPARISON_META = {
+  '1A': {
+    sharedConstruct: 'Does the team have skills to absorb the change?',
+    pairing: 'Strong',
+    comparable: true,
+  },
+  '1B': {
+    sharedConstruct: 'How has the org handled change historically?',
+    pairing: 'Moderate',
+    comparable: true,
+  },
+  '1C': {
+    sharedConstruct: 'Different subjects, not directly comparable',
+    pairing: 'Excluded',
+    comparable: false,
+  },
+  '1D': {
+    sharedConstruct: 'Is the layer above supporting the layer below?',
+    pairing: 'Strong',
+    comparable: true,
+  },
+  '2A': {
+    sharedConstruct: 'Are senior leaders visibly committed?',
+    pairing: 'Moderate',
+    comparable: true,
+  },
+  '2B': {
+    sharedConstruct: 'Are leaders modelling the change credibly?',
+    pairing: 'Strong',
+    comparable: true,
+  },
+  '2C': {
+    sharedConstruct: 'Different constructs, not directly comparable',
+    pairing: 'Excluded',
+    comparable: false,
+  },
+  '2D': {
+    sharedConstruct: 'Is the environment safe and sustainable?',
+    pairing: 'Strong',
+    comparable: true,
+  },
+};
 
 function formatScore(value) {
   if (value == null || Number.isNaN(value)) return '--';
@@ -190,6 +235,16 @@ function heatTone(value) {
   return 'h1';
 }
 
+function normalizeThresholdStatus(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized.includes('above')) return 'above';
+  return 'below';
+}
+
+function thresholdSignalColor(status) {
+  return normalizeThresholdStatus(status) === 'above' ? 'var(--pulse-green)' : 'var(--pulse-red)';
+}
+
 function loadBandClassName(label) {
   return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
@@ -208,6 +263,15 @@ function loadBandColor(band) {
   if (band === 'At Capacity') return 'var(--pulse-orange)';
   if (band === 'Overloaded') return 'var(--pulse-red)';
   return 'var(--pulse-text)';
+}
+
+function loadBandTextClassName(band) {
+  const normalized = loadBandClassName(band);
+  if (normalized === 'sustainable') return 'pulse-sa-load-text--sustainable';
+  if (normalized === 'stretched') return 'pulse-sa-load-text--stretched';
+  if (normalized === 'at-capacity') return 'pulse-sa-load-text--at-capacity';
+  if (normalized === 'overloaded') return 'pulse-sa-load-text--overloaded';
+  return '';
 }
 
 const chainMatrixQuadOrder = [
@@ -240,7 +304,7 @@ const chainMatrixQuadOrder = [
     backendName: 'Managers Resilient, Under-Supported',
     label: 'Managers resilient, under-supported',
     className: 'cp-ru',
-    color: 'var(--pulse-sponsorship)',
+    color: 'var(--pulse-orange)',
     description: 'Managers are holding the line without adequate senior backing. This will not sustain under significant load.',
   },
 ];
@@ -259,6 +323,139 @@ function chainStatePillClass(state) {
   if (s === 'Managers Resilient, Under-Supported' || s === 'Resilient, Under-supported') return 'cp-ru';
   if (s === 'Sponsorship Failed at Both Levels' || s === 'Failed at Both Levels') return 'cp-fb';
   return '';
+}
+
+const TREND_STAGE_ORDER = [
+  { key: 'pre', timepoint: 'pre', label: 'Pre-Change' },
+  { key: 'mid', timepoint: 'during', label: 'During-Change' },
+  { key: 'post', timepoint: 'completed', label: 'Post-Change' },
+];
+
+function average(values) {
+  const filtered = values.filter((value) => Number.isFinite(value));
+  if (filtered.length === 0) return null;
+  return filtered.reduce((sum, value) => sum + value, 0) / filtered.length;
+}
+
+function buildTrendStageSnapshot(stageKey, label, payload) {
+  const dimensions = Array.isArray(payload?.dimensions) ? payload.dimensions : [];
+  const byId = new Map(dimensions.map((row) => [row.id, row]));
+  const employeeDimensions = Object.fromEntries(
+    DIMENSION_ORDER.map((id) => [id, Number.isFinite(byId.get(id)?.energyAvg) ? byId.get(id).energyAvg : null])
+  );
+  const managerDimensions = Object.fromEntries(
+    DIMENSION_ORDER.map((id) => [id, Number.isFinite(byId.get(id)?.frictionAvg) ? byId.get(id).frictionAvg : null])
+  );
+  const loadBands = Array.isArray(payload?.sponsorshipAnalysis?.section2?.bands)
+    ? payload.sponsorshipAnalysis.section2.bands
+    : [];
+  const chainStates = Array.isArray(payload?.sponsorshipAnalysis?.section3?.states)
+    ? payload.sponsorshipAnalysis.section3.states
+    : [];
+  const dominantQuadrant = [...(payload?.quadrants || [])]
+    .sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || '--';
+  const employeeSponsorshipAvg = average([
+    employeeDimensions['2A'],
+    employeeDimensions['2B'],
+    employeeDimensions['2C'],
+    employeeDimensions['2D'],
+  ]);
+  const managerSponsorshipAvg = average([
+    managerDimensions['2A'],
+    managerDimensions['2B'],
+    managerDimensions['2C'],
+    managerDimensions['2D'],
+  ]);
+
+  return {
+    key: stageKey,
+    label,
+    available: Boolean(payload),
+    adoptionScore: Number.isFinite(payload?.kpis?.adoptionScore) ? payload.kpis.adoptionScore : null,
+    sponsorshipScore: Number.isFinite(payload?.kpis?.sponsorshipScore) ? payload.kpis.sponsorshipScore : null,
+    quadrant: dominantQuadrant,
+    receivedAvg: Number.isFinite(payload?.sponsorshipAnalysis?.section1?.received?.avg)
+      ? payload.sponsorshipAnalysis.section1.received.avg
+      : null,
+    capacityAvg: Number.isFinite(payload?.sponsorshipAnalysis?.section1?.capacity?.avg)
+      ? payload.sponsorshipAnalysis.section1.capacity.avg
+      : null,
+    loadBands: {
+      Sustainable: Number(loadBands.find((band) => band.name === 'Sustainable')?.percent || 0),
+      Stretched: Number(loadBands.find((band) => band.name === 'Stretched')?.percent || 0),
+      'At Capacity': Number(loadBands.find((band) => band.name === 'At Capacity')?.percent || 0),
+      Overloaded: Number(loadBands.find((band) => band.name === 'Overloaded')?.percent || 0),
+    },
+    chainStates: {
+      'Chain Functioning': Number(chainStates.find((row) => row.name === 'Chain Functioning')?.percent || 0),
+      'Breaking at Manager Level': Number(chainStates.find((row) => row.name === 'Breaking at Manager Level')?.percent || 0),
+      'Managers Resilient, Under-Supported': Number(chainStates.find((row) => row.name === 'Managers Resilient, Under-Supported')?.percent || 0),
+      'Sponsorship Failed at Both Levels': Number(chainStates.find((row) => row.name === 'Sponsorship Failed at Both Levels')?.percent || 0),
+    },
+    dimensions: {
+      employee: employeeDimensions,
+      manager: managerDimensions,
+    },
+    employeeSponsorshipAvg,
+    managerSponsorshipAvg,
+    perceptionGap: employeeSponsorshipAvg != null && managerSponsorshipAvg != null
+      ? managerSponsorshipAvg - employeeSponsorshipAvg
+      : null,
+  };
+}
+
+function buildCrossStageDivergenceFlags(orderedStages, threshold = 1.0) {
+  const flags = [];
+  const transitions = [];
+  for (let idx = 1; idx < orderedStages.length; idx += 1) {
+    const from = orderedStages[idx - 1];
+    const to = orderedStages[idx];
+    if (!from.available || !to.available) continue;
+    transitions.push([from, to]);
+  }
+  transitions.forEach(([from, to]) => {
+    DIMENSION_ORDER.forEach((dimensionId) => {
+      const employeeFrom = from.dimensions.employee[dimensionId];
+      const employeeTo = to.dimensions.employee[dimensionId];
+      if (Number.isFinite(employeeFrom) && Number.isFinite(employeeTo)) {
+        const delta = employeeTo - employeeFrom;
+        if (Math.abs(delta) >= threshold) {
+          flags.push({
+            key: `employee-${dimensionId}-${from.key}-${to.key}`,
+            dimensionId,
+            survey: 'Employee',
+            transition: `${from.label} -> ${to.label}`,
+            from: employeeFrom,
+            to: employeeTo,
+            delta,
+          });
+        }
+      }
+      const managerFrom = from.dimensions.manager[dimensionId];
+      const managerTo = to.dimensions.manager[dimensionId];
+      if (Number.isFinite(managerFrom) && Number.isFinite(managerTo)) {
+        const delta = managerTo - managerFrom;
+        if (Math.abs(delta) >= threshold) {
+          flags.push({
+            key: `manager-${dimensionId}-${from.key}-${to.key}`,
+            dimensionId,
+            survey: 'Manager',
+            transition: `${from.label} -> ${to.label}`,
+            from: managerFrom,
+            to: managerTo,
+            delta,
+          });
+        }
+      }
+    });
+  });
+  return flags.sort((a, b) => {
+    const absDiff = Math.abs(b.delta) - Math.abs(a.delta);
+    if (absDiff !== 0) return absDiff;
+    if (a.delta < 0 && b.delta > 0) return -1;
+    if (a.delta > 0 && b.delta < 0) return 1;
+    return a.dimensionId.localeCompare(b.dimensionId);
+  });
 }
 
 export default function PlatformClientPulse() {
@@ -280,12 +477,14 @@ export default function PlatformClientPulse() {
   const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [activeDimensionTab, setActiveDimensionTab] = useState('employee');
   const [groupInviteMap, setGroupInviteMap] = useState({});
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(true);
   const [reportsError, setReportsError] = useState('');
+  const [trendSnapshots, setTrendSnapshots] = useState({});
+  const [trendLoading, setTrendLoading] = useState(true);
+  const [trendError, setTrendError] = useState('');
   const loadRequestIdRef = useRef(0);
 
   const enabledServices = normalizeServices(org.settings);
@@ -302,9 +501,7 @@ export default function PlatformClientPulse() {
   const managerFocusedTopCard = showingSponsorshipOnly;
   const showReadinessSection = showingFullDashboard || pulseFocusedSection === 'organisation-scores';
   const showScoresSection = pulseFocusedSection === 'sponsorship-analysis';
-  const showDimensionsSection = showingFullDashboard
-    || pulseFocusedSection === 'employee-breakdown'
-    || pulseFocusedSection === 'trend-analysis';
+  const showTrendSection = pulseFocusedSection === 'trend-analysis';
   const showTeamLevelSection = showingFullDashboard || pulseFocusedSection === 'team-level-view';
   const showReportsSection = pulseFocusedSection === 'reports';
   const kpis = dashboard?.kpis || {};
@@ -338,25 +535,34 @@ export default function PlatformClientPulse() {
     };
   }, [managerBreakdownRows]);
   const dimensions = dashboard?.dimensions || [];
-  const employeeDimensions = useMemo(
-    () => dimensions.map((dimension) => ({
-      id: dimension.id,
-      label: dimension.label,
-      avg: dimension.energyAvg,
-      highPercent: dimension.highEnergyPercent,
-    })),
-    [dimensions]
-  );
-  const managerDimensions = useMemo(
-    () => dimensions.map((dimension) => ({
-      id: dimension.id,
-      label: dimension.managerLabel || dimension.label,
-      avg: dimension.frictionAvg,
-      highPercent: dimension.managerHighPercent ?? dimension.highEnergyPercent,
-    })),
-    [dimensions]
-  );
-  const activeDimensionRows = activeDimensionTab === 'employee' ? employeeDimensions : managerDimensions;
+  const dimensionHeatmapRows = useMemo(() => {
+    const byId = new Map(dimensions.map((row) => [row.id, row]));
+    return DIMENSION_ORDER.map((id) => {
+      const base = byId.get(id) || {};
+      const meta = DIMENSION_COMPARISON_META[id] || {
+        sharedConstruct: '',
+        pairing: 'Excluded',
+        comparable: false,
+      };
+      const employeeAvg = Number.isFinite(base.energyAvg) ? base.energyAvg : null;
+      const managerAvg = meta.comparable && Number.isFinite(base.frictionAvg) ? base.frictionAvg : null;
+      const gap = employeeAvg != null && managerAvg != null
+        ? Math.abs(employeeAvg - managerAvg)
+        : null;
+      return {
+        id,
+        employeeLabel: base.label || '--',
+        managerLabel: base.managerLabel || '--',
+        employeeAvg,
+        managerAvg,
+        gap,
+        comparable: meta.comparable,
+        pairing: meta.pairing,
+        sharedConstruct: meta.sharedConstruct,
+        perceptionGapFlagged: gap != null && gap >= PERCEPTION_GAP_THRESHOLD,
+      };
+    });
+  }, [dimensions]);
   const managerLoadDistribution = useMemo(() => {
     const total = managerBreakdownRows.length;
     const bands = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
@@ -369,11 +575,12 @@ export default function PlatformClientPulse() {
   const criticalLoadPercent = managerLoadDistribution
     .filter((item) => item.band === 'At Capacity' || item.band === 'Overloaded')
     .reduce((sum, item) => sum + item.percent, 0);
+  const overloadedPercent = managerLoadDistribution.find((item) => item.band === 'Overloaded')?.percent || 0;
   const sponsorshipGap = adoptionScore == null || sponsorshipScore == null
     ? null
     : (adoptionScore - sponsorshipScore);
   const interventionRequired = (sponsorshipScore != null && sponsorshipScore < threshold)
-    || criticalLoadPercent >= 35
+    || overloadedPercent > 10
     || optimalPercent < 25;
   const sponsorshipVerdict = interventionRequired ? 'Intervention Required' : 'Chain Stable';
   const sponsorshipExecutiveSignal = interventionRequired
@@ -608,6 +815,47 @@ export default function PlatformClientPulse() {
     month: 'long',
     year: 'numeric',
   });
+  const orderedTrendStages = useMemo(() => {
+    const fullOrder = TREND_STAGE_ORDER.map((stage) => {
+      const snapshot = trendSnapshots[stage.key];
+      return snapshot || {
+        key: stage.key,
+        label: stage.label,
+        available: false,
+        adoptionScore: null,
+        sponsorshipScore: null,
+        quadrant: '--',
+        receivedAvg: null,
+        capacityAvg: null,
+        loadBands: {
+          Sustainable: 0,
+          Stretched: 0,
+          'At Capacity': 0,
+          Overloaded: 0,
+        },
+        chainStates: {
+          'Chain Functioning': 0,
+          'Breaking at Manager Level': 0,
+          'Managers Resilient, Under-Supported': 0,
+          'Sponsorship Failed at Both Levels': 0,
+        },
+        dimensions: {
+          employee: Object.fromEntries(DIMENSION_ORDER.map((id) => [id, null])),
+          manager: Object.fromEntries(DIMENSION_ORDER.map((id) => [id, null])),
+        },
+        employeeSponsorshipAvg: null,
+        managerSponsorshipAvg: null,
+        perceptionGap: null,
+      };
+    });
+    if (pulseTimepoint === 'during') return fullOrder.filter((stage) => stage.key === 'pre' || stage.key === 'mid');
+    if (pulseTimepoint === 'completed') return fullOrder;
+    return [];
+  }, [pulseTimepoint, trendSnapshots]);
+  const trendDivergenceFlags = useMemo(
+    () => buildCrossStageDivergenceFlags(orderedTrendStages, 1.0),
+    [orderedTrendStages]
+  );
   const executiveSummary = dashboard?.executiveSummary || null;
   const executiveSignalText = (dashboard?.soWhat || dashboard?.narrative || '').trim();
   const micDropScenarios = Array.isArray(executiveSummary?.scenarios) ? executiveSummary.scenarios : [];
@@ -701,6 +949,79 @@ export default function PlatformClientPulse() {
     if (!pulseEnabled) return;
     loadDashboard();
   }, [pulseEnabled, loadDashboard]);
+
+  const loadTrendAnalysis = useCallback(async () => {
+    if (!pulseEnabled || !trendAnalysisVisible) {
+      setTrendSnapshots({});
+      setTrendError('');
+      setTrendLoading(false);
+      return;
+    }
+
+    if (pulseTimepoint === 'pre') {
+      setTrendSnapshots({});
+      setTrendError('');
+      setTrendLoading(false);
+      return;
+    }
+
+    setTrendLoading(true);
+    setTrendError('');
+    try {
+      const sharedParams = {};
+      if (selectedManagerIds.length > 0) {
+        sharedParams.managerIds = selectedManagerIds.join(',');
+        sharedParams.includeManagerSelf = includeManagerSelf ? 'true' : 'false';
+      }
+
+      const preParams = { ...sharedParams, timepoint: 'pre' };
+      const duringParams = { ...sharedParams, timepoint: 'during' };
+      if (pulseDuringDate) duringParams.duringDate = pulseDuringDate;
+      if (pulseDuringSessionId) duringParams.duringSessionId = pulseDuringSessionId;
+      const postParams = { ...sharedParams, timepoint: 'completed' };
+
+      const [preResult, duringResult, postResult] = await Promise.allSettled([
+        api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: preParams }),
+        api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: duringParams }),
+        api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: postParams }),
+      ]);
+
+      const snapshotMap = {};
+      if (preResult.status === 'fulfilled' && preResult.value?.data) {
+        snapshotMap.pre = buildTrendStageSnapshot('pre', 'Pre-Change', preResult.value.data);
+      }
+      if (duringResult.status === 'fulfilled' && duringResult.value?.data) {
+        snapshotMap.mid = buildTrendStageSnapshot('mid', 'During-Change', duringResult.value.data);
+      }
+      if (postResult.status === 'fulfilled' && postResult.value?.data) {
+        snapshotMap.post = buildTrendStageSnapshot('post', 'Post-Change', postResult.value.data);
+      }
+
+      if (Object.keys(snapshotMap).length === 0) {
+        throw new Error('No trend data returned');
+      }
+
+      setTrendSnapshots(snapshotMap);
+    } catch {
+      setTrendSnapshots({});
+      setTrendError('Could not load trend analysis data.');
+    } finally {
+      setTrendLoading(false);
+    }
+  }, [
+    includeManagerSelf,
+    orgId,
+    pulseDuringDate,
+    pulseDuringSessionId,
+    pulseEnabled,
+    pulseTimepoint,
+    selectedManagerIds,
+    trendAnalysisVisible,
+  ]);
+
+  useEffect(() => {
+    loadTrendAnalysis();
+  }, [loadTrendAnalysis]);
 
   useEffect(() => {
     if (!pulseEnabled) return;
@@ -952,6 +1273,16 @@ export default function PlatformClientPulse() {
       {error ? <p className="error">{error}</p> : null}
       {loading ? <p className="muted">Loading dashboard data...</p> : null}
 
+      {showTrendSection ? (
+        <PulseTrendAnalysisSection
+          activeTimepoint={pulseTimepoint}
+          loading={trendLoading}
+          error={trendError}
+          orderedStages={orderedTrendStages}
+          divergenceFlags={trendDivergenceFlags}
+        />
+      ) : null}
+
       {showReadinessSection ? (
         <section className="pulse-clean-readiness card">
         <div className="pulse-clean-readiness__cards">
@@ -995,7 +1326,7 @@ export default function PlatformClientPulse() {
                 </p>
               </div>
               <span className={`pulse-sa-verdict__badge${!interventionRequired ? ' pulse-sa-verdict__badge--stable' : ''}`}>
-                {dashboard?.sponsorshipAnalysis?.verdict?.badge || sponsorshipVerdict}
+                {dashboard?.sponsorshipAnalysis?.verdict?.badge || (interventionRequired ? '⚠ Intervention Required' : sponsorshipVerdict)}
               </span>
             </div>
             <div className="pulse-sa-verdict__foot">
@@ -1022,7 +1353,10 @@ export default function PlatformClientPulse() {
             <div className="pulse-sa-subscores">
               <article className="pulse-sa-subscore">
                 <p className="pulse-sa-subscore__eyebrow">Sponsorship Received</p>
-                <p className="pulse-sa-subscore__score" style={{ color: 'var(--pulse-adoption)' }}>
+                <p
+                  className="pulse-sa-subscore__score"
+                  style={{ color: thresholdSignalColor(dashboard?.sponsorshipAnalysis?.section1?.received?.status) }}
+                >
                   {formatScore(dashboard?.sponsorshipAnalysis?.section1?.received?.avg ?? null)}
                 </p>
                 <p className="pulse-sa-subscore__denom">
@@ -1030,10 +1364,21 @@ export default function PlatformClientPulse() {
                   &nbsp;&nbsp;{dashboard?.sponsorshipAnalysis?.section1?.received?.questionRangeLabel || 'MQ9 — MQ12'}
                 </p>
                 <div className="pulse-sa-track">
-                  <span style={{ width: `${dashboard?.sponsorshipAnalysis?.section1?.received?.trackPercent || 0}%`, background: 'linear-gradient(90deg, var(--pulse-adoption-dim), var(--pulse-adoption))' }} />
+                  <span
+                    style={{
+                      width: `${dashboard?.sponsorshipAnalysis?.section1?.received?.trackPercent || 0}%`,
+                      background: thresholdSignalColor(dashboard?.sponsorshipAnalysis?.section1?.received?.status),
+                    }}
+                  />
                 </div>
-                <span className="pulse-sa-threshold-tag">
-                  {dashboard?.sponsorshipAnalysis?.section1?.received?.status === 'above' ? 'Above Threshold' : 'Below Threshold'}
+                <span
+                  className={`pulse-sa-threshold-tag pulse-sa-threshold-tag--${normalizeThresholdStatus(
+                    dashboard?.sponsorshipAnalysis?.section1?.received?.status
+                  )}`}
+                >
+                  {normalizeThresholdStatus(dashboard?.sponsorshipAnalysis?.section1?.received?.status) === 'above'
+                    ? 'Above Threshold'
+                    : 'Below Threshold'}
                 </span>
                 <div className="pulse-sa-subscore__what">
                   <p className="pulse-sa-subscore__what-label">What this measures</p>
@@ -1043,7 +1388,10 @@ export default function PlatformClientPulse() {
               </article>
               <article className="pulse-sa-subscore">
                 <p className="pulse-sa-subscore__eyebrow">Sponsorship Capacity</p>
-                <p className="pulse-sa-subscore__score" style={{ color: 'var(--pulse-sponsorship)' }}>
+                <p
+                  className="pulse-sa-subscore__score"
+                  style={{ color: thresholdSignalColor(dashboard?.sponsorshipAnalysis?.section1?.capacity?.status) }}
+                >
                   {formatScore(dashboard?.sponsorshipAnalysis?.section1?.capacity?.avg ?? null)}
                 </p>
                 <p className="pulse-sa-subscore__denom">
@@ -1051,10 +1399,21 @@ export default function PlatformClientPulse() {
                   &nbsp;&nbsp;{dashboard?.sponsorshipAnalysis?.section1?.capacity?.questionRangeLabel || 'MQ13 — MQ16'}
                 </p>
                 <div className="pulse-sa-track">
-                  <span style={{ width: `${dashboard?.sponsorshipAnalysis?.section1?.capacity?.trackPercent || 0}%`, background: 'linear-gradient(90deg, var(--pulse-sponsorship-dim), var(--pulse-sponsorship))' }} />
+                  <span
+                    style={{
+                      width: `${dashboard?.sponsorshipAnalysis?.section1?.capacity?.trackPercent || 0}%`,
+                      background: thresholdSignalColor(dashboard?.sponsorshipAnalysis?.section1?.capacity?.status),
+                    }}
+                  />
                 </div>
-                <span className="pulse-sa-threshold-tag">
-                  {dashboard?.sponsorshipAnalysis?.section1?.capacity?.status === 'above' ? 'Above Threshold' : 'Below Threshold'}
+                <span
+                  className={`pulse-sa-threshold-tag pulse-sa-threshold-tag--${normalizeThresholdStatus(
+                    dashboard?.sponsorshipAnalysis?.section1?.capacity?.status
+                  )}`}
+                >
+                  {normalizeThresholdStatus(dashboard?.sponsorshipAnalysis?.section1?.capacity?.status) === 'above'
+                    ? 'Above Threshold'
+                    : 'Below Threshold'}
                 </span>
                 <div className="pulse-sa-subscore__what">
                   <p className="pulse-sa-subscore__what-label">What this measures</p>
@@ -1064,7 +1423,7 @@ export default function PlatformClientPulse() {
               </article>
             </div>
             {sponsorshipSignals?.subScores?.text ? (
-              <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.subScores.variant === 'red' ? 'red' : 'amber'}`}>
+              <div className="pulse-sa-signal pulse-sa-signal--amber">
                 <span className="pulse-sa-signal__label">Signal</span>
                 {sponsorshipSignals.subScores.text}
               </div>
@@ -1089,8 +1448,8 @@ export default function PlatformClientPulse() {
                 />
               ))}
             </div>
-            {criticalLoadPercent >= 10 ? (
-              <span className="pulse-sa-inline-alert">Critical — {formatPercent(criticalLoadPercent)} at capacity or overloaded</span>
+            {overloadedPercent > 10 ? (
+              <span className="pulse-sa-inline-alert">⚠ CRITICAL — {formatPercent(overloadedPercent)} overloaded</span>
             ) : null}
             <div className="pulse-sa-load-grid">
               {managerLoadDistribution.map((item) => (
@@ -1104,7 +1463,7 @@ export default function PlatformClientPulse() {
               ))}
             </div>
             {sponsorshipSignals?.load?.text ? (
-              <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.load.variant === 'red' ? 'red' : 'amber'}`}>
+              <div className="pulse-sa-signal pulse-sa-signal--red">
                 <span className="pulse-sa-signal__label">Signal</span>
                 {sponsorshipSignals.load.text}
               </div>
@@ -1143,8 +1502,8 @@ export default function PlatformClientPulse() {
               <span>High received sponsorship →</span>
             </div>
             {sponsorshipSignals?.chain?.text ? (
-              <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.chain.variant === 'red' ? 'red' : 'sponsorship'}`}>
-                <span className="pulse-sa-signal__label">Signal</span>
+              <div className="pulse-sa-signal pulse-sa-signal--orange">
+                <span className="pulse-sa-signal__label">Note</span>
                 {sponsorshipSignals.chain.text}
               </div>
             ) : null}
@@ -1175,7 +1534,9 @@ export default function PlatformClientPulse() {
                       <td style={{ textAlign: 'left', fontWeight: 600 }}>{row.loadBand}</td>
                       {row.cells.map((cell) => (
                         <td key={`${row.loadBand}-${cell.chainState}`} className={cell.className || ''}>
-                          {cell.count}
+                          <span className={`pulse-sa-matrix__count${cell.className === 'cx5' ? ' pulse-sa-matrix__count--critical' : ''}`}>
+                            {cell.count}
+                          </span>
                         </td>
                       ))}
                     </tr>
@@ -1194,7 +1555,7 @@ export default function PlatformClientPulse() {
               </table>
             </div>
             {sponsorshipSignals?.crossMatrix?.text ? (
-              <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.crossMatrix.variant === 'red' ? 'red' : 'amber'}`}>
+              <div className="pulse-sa-signal pulse-sa-signal--red">
                 <span className="pulse-sa-signal__label">Signal</span>
                 {sponsorshipSignals.crossMatrix.text}
               </div>
@@ -1234,7 +1595,7 @@ export default function PlatformClientPulse() {
                           </span>
                         </td>
                         <td>
-                          <span style={{ color: loadBandColor(row.loadBand), fontWeight: 600 }}>
+                          <span className={`pulse-sa-load-text ${loadBandTextClassName(row.loadBand)}`}>
                             {row.loadBand}
                           </span>
                         </td>
@@ -1251,8 +1612,8 @@ export default function PlatformClientPulse() {
                 </p>
               ) : null}
               {sponsorshipSignals?.teams?.text ? (
-                <div className={`pulse-sa-signal pulse-sa-signal--${sponsorshipSignals.teams.variant === 'red' ? 'red' : 'amber'}`}>
-                  <span className="pulse-sa-signal__label">Signal</span>
+                <div className="pulse-sa-signal pulse-sa-signal--red">
+                  <span className="pulse-sa-signal__label">Note</span>
                   {sponsorshipSignals.teams.text}
                 </div>
               ) : null}
@@ -1261,49 +1622,70 @@ export default function PlatformClientPulse() {
         </section>
       ) : null}
 
-      {showDimensionsSection ? (
+      {showTeamLevelSection ? (
         <section className="pulse-clean-dimensions card">
-          <div className="pulse-clean-dimensions__tabs">
-            <button
-              type="button"
-              className={`pulse-clean-dimensions__tab${activeDimensionTab === 'employee' ? ' is-active' : ''}`}
-              onClick={() => setActiveDimensionTab('employee')}
-            >
-              Employee Dimensions
-            </button>
-            <button
-              type="button"
-              className={`pulse-clean-dimensions__tab${activeDimensionTab === 'manager' ? ' is-active' : ''}`}
-              onClick={() => setActiveDimensionTab('manager')}
-            >
-              Manager Dimensions
-            </button>
+          <div className="pulse-clean-dimensions__head">
+            <p className="pulse-clean-dimensions__eyebrow">Team-Level Overview</p>
+            <h3 className="pulse-clean-dimensions__title">Employee/Manager Dimension Heatmap</h3>
+            <p className="pulse-clean-dimensions__explainer">
+              Each dimension shows employee and manager scores side-by-side. A perception gap flag appears when the
+              cohort gap reaches {PERCEPTION_GAP_THRESHOLD.toFixed(1)} points or more.
+            </p>
           </div>
 
           <div className="table-wrap">
             <table className="pulse-clean-dimensions__table">
               <thead>
                 <tr>
-                  <th>Dimension</th>
-                  <th>Avg</th>
-                  <th>% High</th>
+                  <th>ID</th>
+                  <th>Question / Construct</th>
+                  <th>Employee</th>
+                  <th>Manager</th>
+                  <th>Gap</th>
+                  <th>Dim Avg</th>
                 </tr>
               </thead>
               <tbody>
-                {activeDimensionRows.map((dimension) => (
-                  <tr key={`${activeDimensionTab}-${dimension.id}`}>
-                    <td>{dimension.label}</td>
+                {dimensionHeatmapRows.map((dimension) => (
+                  <tr key={dimension.id}>
+                    <td className="pulse-clean-dimensions__id">{dimension.id}</td>
+                    <td className="pulse-clean-dimensions__construct">
+                      <p className="pulse-clean-dimensions__construct-label">
+                        {dimension.employeeLabel}
+                        {dimension.comparable ? ` <-> ${dimension.managerLabel}` : ''}
+                      </p>
+                      <p className="pulse-clean-dimensions__construct-meta">
+                        {dimension.sharedConstruct}
+                        {' · '}
+                        Pairing: {dimension.pairing}
+                        {dimension.perceptionGapFlagged ? (
+                          <span className="pulse-clean-dimensions__flag">Perception gap</span>
+                        ) : null}
+                      </p>
+                    </td>
                     <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.avg)}`}>
-                        {formatScore(dimension.avg)}
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employeeAvg)}`}>
+                        {formatScore(dimension.employeeAvg)}
                       </span>
                     </td>
-                    <td>{formatPercent(dimension.highPercent)}</td>
+                    <td>
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.managerAvg)}`}>
+                        {dimension.comparable ? formatScore(dimension.managerAvg) : '—'}
+                      </span>
+                    </td>
+                    <td className={dimension.perceptionGapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
+                      {dimension.comparable ? formatScore(dimension.gap) : '—'}
+                    </td>
+                    <td>
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employeeAvg)}`}>
+                        {formatScore(dimension.employeeAvg)}
+                      </span>
+                    </td>
                   </tr>
                 ))}
-                {activeDimensionRows.length === 0 ? (
+                {dimensionHeatmapRows.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="muted">No dimension data available yet.</td>
+                    <td colSpan={6} className="muted">No dimension data available yet.</td>
                   </tr>
                 ) : null}
               </tbody>

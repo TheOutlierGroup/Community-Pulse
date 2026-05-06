@@ -212,15 +212,19 @@ export function buildSponsorshipSectionSignals({
 }) {
   const received = Number(subScores?.received?.avg || 0);
   const capacity = Number(subScores?.capacity?.avg || 0);
+  const receivedThreshold = subScores?.received?.threshold || 14;
+  const capacityThreshold = subScores?.capacity?.threshold || 14;
   const subscoreText =
-    received >= (subScores?.received?.threshold || 14) && capacity >= (subScores?.capacity?.threshold || 14)
+    received >= receivedThreshold && capacity >= capacityThreshold
       ? `Both sub-scores are above threshold. Received (${received.toFixed(1)}) and Capacity (${capacity.toFixed(1)}) indicate a stable sponsorship base.`
-      : `Both sub-scores are below the 14-point threshold. Capacity (${capacity.toFixed(1)}) is weaker than Received (${received.toFixed(1)}), so manager support structures are the immediate priority.`;
+      : `One or both sub-scores are below threshold. Capacity (${capacity.toFixed(1)}) and Received (${received.toFixed(1)}) indicate sponsorship chain fragility that needs targeted intervention.`;
 
   const loadBands = Array.isArray(load?.bands) ? load.bands : [];
   const overloadedPct = loadBands.find((b) => b.name === 'Overloaded')?.percent || 0;
   const atCapacityPct = loadBands.find((b) => b.name === 'At Capacity')?.percent || 0;
-  const loadText = `${pct(overloadedPct + atCapacityPct)} of managers are in At Capacity or Overloaded bands. This is the active delivery risk if additional change load is introduced.`;
+  const loadText = overloadedPct > 10
+    ? `Critical threshold crossed: ${pct(overloadedPct)} of managers are Overloaded. Launch risk is concentrated at the manager layer.`
+    : `${pct(overloadedPct + atCapacityPct)} of managers are in At Capacity or Overloaded bands. Capacity pressure should be tracked before additional change load is introduced.`;
 
   const chainStates = Array.isArray(chain?.states) ? chain.states : [];
   const topState = [...chainStates].sort((a, b) => (b.percent || 0) - (a.percent || 0))[0] || null;
@@ -261,7 +265,7 @@ export function buildSponsorshipSectionSignals({
 
   return {
     subScores: {
-      variant: received < (subScores?.received?.threshold || 14) || capacity < (subScores?.capacity?.threshold || 14) ? 'amber' : 'sponsorship',
+      variant: received < receivedThreshold || capacity < capacityThreshold ? 'amber' : 'green',
       text: subscoreText,
     },
     load: {
@@ -269,7 +273,7 @@ export function buildSponsorshipSectionSignals({
       text: loadText,
     },
     chain: {
-      variant: 'sponsorship',
+      variant: 'orange',
       text: chainText,
     },
     crossMatrix: {
@@ -277,7 +281,7 @@ export function buildSponsorshipSectionSignals({
       text: crossText,
     },
     teams: {
-      variant: highRiskTeams.length > 0 ? 'red' : 'amber',
+      variant: 'red',
       text: teamText,
     },
   };
