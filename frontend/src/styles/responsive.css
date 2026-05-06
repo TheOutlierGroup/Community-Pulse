@@ -4576,6 +4576,7 @@ input[type='range'] {
   --pulse-sponsorship-dim: #cc4e0f;
   --pulse-sponsorship-glow: #f8f1ed;
   --pulse-green-dim: #1e855d;
+  --pulse-amber-dim: #f5a623;
   --pulse-red-dim: #e52235;
   --pulse-orange-dim: #cc4e0f;
   --pulse-font-ui: 'Syne', var(--font-display);
@@ -5521,7 +5522,7 @@ input[type='range'] {
 }
 
 .pulse-sa-load-cell.sustainable .pulse-sa-load-cell__name { color: var(--pulse-green); }
-.pulse-sa-load-cell.stretched .pulse-sa-load-cell__name { color: #000000; }
+.pulse-sa-load-cell.stretched .pulse-sa-load-cell__name { color: var(--pulse-amber); }
 .pulse-sa-load-cell.at-capacity .pulse-sa-load-cell__name { color: var(--pulse-orange); }
 .pulse-sa-load-cell.overloaded .pulse-sa-load-cell__name { color: var(--pulse-red); }
 
@@ -6311,11 +6312,11 @@ input[type='range'] {
 }
 
 .pulse-clean-header__kpi-delta--up {
-  color: #15803d;
+  color: var(--pulse-green);
 }
 
 .pulse-clean-header__kpi-delta--down {
-  color: #b91c1c;
+  color: var(--pulse-red);
 }
 
 .pulse-clean-header__kpi-delta--flat {
@@ -7554,8 +7555,8 @@ input[type='range'] {
 .pulse-trend-card__measure {
   margin: 0 0 0.65rem;
   padding: 0.55rem 0.65rem;
-  border: 1px solid rgba(30, 133, 93, 0.25);
-  background: rgba(30, 133, 93, 0.08);
+  border: 1px solid #1e855d;
+  background: #eaf5f2;
   border-radius: 8px;
   color: var(--text);
   font-style: italic;
@@ -7567,7 +7568,7 @@ input[type='range'] {
   margin: 0.65rem 0 0;
   padding: 0.5rem 0.65rem;
   border-left: 3px solid var(--pulse-amber);
-  background: rgba(245, 166, 35, 0.08);
+  background: var(--surface);
   color: var(--text);
   font-size: 0.84rem;
 }

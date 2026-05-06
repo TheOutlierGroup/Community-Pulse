@@ -848,10 +848,9 @@ export default function PlatformClientPulse() {
         perceptionGap: null,
       };
     });
-    if (pulseTimepoint === 'during') return fullOrder.filter((stage) => stage.key === 'pre' || stage.key === 'mid');
-    if (pulseTimepoint === 'completed') return fullOrder;
-    return [];
-  }, [pulseTimepoint, trendSnapshots]);
+    const availableStages = fullOrder.filter((stage) => stage.available);
+    return availableStages.length > 0 ? availableStages : fullOrder;
+  }, [trendSnapshots]);
   const trendDivergenceFlags = useMemo(
     () => buildCrossStageDivergenceFlags(orderedTrendStages, 1.0),
     [orderedTrendStages]
@@ -958,13 +957,6 @@ export default function PlatformClientPulse() {
       return;
     }
 
-    if (pulseTimepoint === 'pre') {
-      setTrendSnapshots({});
-      setTrendError('');
-      setTrendLoading(false);
-      return;
-    }
-
     setTrendLoading(true);
     setTrendError('');
     try {
@@ -1014,7 +1006,6 @@ export default function PlatformClientPulse() {
     pulseDuringDate,
     pulseDuringSessionId,
     pulseEnabled,
-    pulseTimepoint,
     selectedManagerIds,
     trendAnalysisVisible,
   ]);
@@ -1124,7 +1115,7 @@ export default function PlatformClientPulse() {
   }
 
   return (
-    <>
+    <div className="pulse-prototype-page">
       {showTopSummaryCard ? (
         <section className="pulse-clean-header card">
         <div className="pulse-clean-header__top">
@@ -1275,7 +1266,6 @@ export default function PlatformClientPulse() {
 
       {showTrendSection ? (
         <PulseTrendAnalysisSection
-          activeTimepoint={pulseTimepoint}
           loading={trendLoading}
           error={trendError}
           orderedStages={orderedTrendStages}
@@ -1847,6 +1837,6 @@ export default function PlatformClientPulse() {
         organization={org}
       />
 
-    </>
+    </div>
   );
 }

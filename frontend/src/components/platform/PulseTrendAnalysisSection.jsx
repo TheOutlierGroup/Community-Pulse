@@ -61,7 +61,6 @@ function strongestDimensionMovement(orderedStages, dimensionIds, accessor) {
 }
 
 export default function PulseTrendAnalysisSection({
-  activeTimepoint,
   loading,
   error,
   orderedStages,
@@ -112,18 +111,6 @@ export default function PulseTrendAnalysisSection({
     [orderedStages]
   );
 
-  const preSelected = activeTimepoint === 'pre';
-  if (preSelected) {
-    return (
-      <section className="card pulse-trend-section">
-        <h3 style={{ marginTop: 0 }}>Trend Analysis</h3>
-        <p className="muted" style={{ marginBottom: 0 }}>
-          Trend data becomes available once the During-Change assessment has been completed.
-        </p>
-      </section>
-    );
-  }
-
   if (loading) {
     return (
       <section className="card pulse-trend-section">
@@ -136,6 +123,14 @@ export default function PulseTrendAnalysisSection({
     return (
       <section className="card pulse-trend-section">
         <p className="error" style={{ marginBottom: 0 }}>{error}</p>
+      </section>
+    );
+  }
+
+  if (!orderedStages.length) {
+    return (
+      <section className="card pulse-trend-section">
+        <p className="muted" style={{ marginBottom: 0 }}>No trend analysis data is available yet.</p>
       </section>
     );
   }
