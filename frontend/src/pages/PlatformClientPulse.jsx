@@ -1199,7 +1199,6 @@ export default function PlatformClientPulse() {
             <article className="card pulse-org-overview__score-card">
               <div className="pulse-org-overview__header">
                 <h3 className="pulse-org-overview__title">Are your people ready?</h3>
-                <span className="pulse-org-overview__formula-badge" aria-label="Formula component A">A</span>
               </div>
               <p className="pulse-org-overview__score">{formatScore(adoptionScore)}</p>
               <p className="pulse-org-overview__score-meta">Adoption Readiness /40</p>
@@ -1212,7 +1211,6 @@ export default function PlatformClientPulse() {
             <article className="card pulse-org-overview__score-card">
               <div className="pulse-org-overview__header">
                 <h3 className="pulse-org-overview__title">Can your managers drive the change?</h3>
-                <span className="pulse-org-overview__formula-badge" aria-label="Formula component B">B</span>
               </div>
               <p className="pulse-org-overview__score">{formatScore(sponsorshipScore)}</p>
               <p className="pulse-org-overview__score-meta">Sponsorship Credibility /40</p>
@@ -1231,7 +1229,6 @@ export default function PlatformClientPulse() {
                 <h3 className="pulse-org-likelihood__title">Likelihood of Success?</h3>
               </div>
               <div className="pulse-org-likelihood__status-wrap">
-                <span className="pulse-org-overview__formula-badge" aria-label="Formula component C">C</span>
                 <span className={`pulse-clean-header__badge${kpis.launchVerdict === 'cleared' ? ' pulse-sa-verdict__badge--stable' : ''}`}>
                   {launchStatusLabel}
                 </span>

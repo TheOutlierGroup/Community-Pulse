@@ -6387,19 +6387,6 @@ input[type='range'] {
   line-height: 1.3;
 }
 
-.pulse-org-overview__formula-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.7rem;
-  height: 1.7rem;
-  border: 2px solid var(--text);
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
 .pulse-org-overview__score {
   margin: 0;
   font-size: 2rem;
