@@ -6,19 +6,41 @@ const ALERT_PRIORITY = {
   info: 2,
 };
 
-const CHAIN_STATE_SEVERITY = {
-  'Sponsorship Failed at Both Levels': 4,
-  'Breaking at Manager Level': 3,
-  'Managers Resilient, Under-Supported': 2,
-  'Chain Functioning': 1,
-};
+export const SCORE_CARD_SIGNAL_PROMPTS = Object.freeze({
+  adoption: Object.freeze({
+    system:
+      'You are a change readiness analyst writing a concise signal for a practitioner dashboard score card. Maximum 1 sentence. Be direct. No hedging. Wrap the single most important finding in <strong> tags.',
+    user:
+      'Organisation: {{client_name}} | Adoption Readiness score: {{adoption_score}}/40 | Threshold: 28 | Status: {{adoption_threshold_status}} (Above/Below) | Current quadrant: {{current_quadrant}}\n\nWrite one sentence that states what this score means for this organisation\'s ability to absorb change right now — not what the score is, but what it implies.',
+    fallback:
+      'Adoption Readiness is at {{adoption_score}}/40. Review against the 28-point threshold to determine readiness classification.',
+  }),
+  sponsorship: Object.freeze({
+    system:
+      'You are a change readiness analyst writing a concise signal for a practitioner dashboard score card. Maximum 1 sentence. Be direct. No hedging. Wrap the single most important finding in <strong> tags.',
+    user:
+      'Organisation: {{client_name}} | Sponsorship Credibility score: {{sponsorship_score}}/40 | Threshold: 28 | Status: {{sponsorship_threshold_status}} (Above/Below) | Received sub-score: {{received_score}}/20 | Capacity sub-score: {{capacity_score}}/20 | Sub-score threshold: 14 | Current quadrant: {{current_quadrant}}\n\nWrite one sentence that states what this score means for the quality of leadership sponsorship — specifically whether the deficit (if any) sits in how sponsorship is being delivered from above (Received) or in manager capacity to pass it on (Capacity).',
+    fallback:
+      'Sponsorship Credibility is at {{sponsorship_score}}/40. Review Received and Capacity sub-scores against the 14-point threshold to identify where the deficit sits.',
+  }),
+  likelihood: Object.freeze({
+    system:
+      'You are a change readiness analyst writing a concise signal for a C-suite practitioner dashboard. Maximum 2 sentences. Be direct and decisive — this is a board-level audience. No hedging. Wrap the single most important finding in <strong> tags. Do not restate the score numbers — interpret what they mean.',
+    user:
+      'Organisation: {{client_name}} | Adoption: {{adoption_score}}/40 ({{adoption_threshold_status}}) | Sponsorship: {{sponsorship_score}}/40 ({{sponsorship_threshold_status}}) | Current quadrant (org avg): {{current_quadrant}} | Quadrant distribution: Optimal {{optimal_pct}}%, Motivated Lost {{motivated_lost_pct}}%, Capable Wary {{capable_wary_pct}}%, High Risk {{high_risk_pct}}% | Launch status: {{launch_status}}\n\nWrite a 2-sentence signal that: (1) states what the quadrant distribution reveals about the spread of readiness across the organisation — not just the modal quadrant, and (2) names the single most important implication for how leadership should respond before or during launch.',
+    fallback:
+      'The quadrant distribution shows how individuals are spread across all four readiness states. Review the proportion outside Optimal to determine the scale and nature of intervention required.',
+  }),
+});
 
-const LOAD_BAND_SEVERITY = {
-  Overloaded: 4,
-  'At Capacity': 3,
-  Stretched: 2,
-  Sustainable: 1,
-};
+function renderPromptTemplate(template, values) {
+  return String(template || '').replace(/\{\{([^}]+)\}\}/g, (_full, key) => {
+    const normalizedKey = String(key || '').trim();
+    const value = values?.[normalizedKey];
+    if (value == null) return '';
+    return String(value);
+  });
+}
 
 export function calculateLargestRemainderPercentages(counts) {
   const values = counts.map((count) => Number(count) || 0);
@@ -203,7 +225,309 @@ function pct(value) {
   return `${Math.round(Number(value) || 0)}%`;
 }
 
+function formatScoreOutOf40(value) {
+  if (!Number.isFinite(value)) return '--';
+  return Number(value).toFixed(1);
+}
+
+function formatScoreOutOf20(value) {
+  if (!Number.isFinite(value)) return '--';
+  return Number(value).toFixed(1);
+}
+
+function thresholdStatusLabel(score, threshold) {
+  if (!Number.isFinite(score) || !Number.isFinite(threshold)) return 'Unknown';
+  return score >= threshold ? 'Above' : 'Below';
+}
+
+function safeQuadrantName(value) {
+  const normalized = String(value || '').trim();
+  return normalized || 'Unknown';
+}
+
+function sponsorshipDeficitAnchor({
+  receivedScore,
+  capacityScore,
+  subScoreThreshold,
+}) {
+  const receivedFinite = Number.isFinite(receivedScore);
+  const capacityFinite = Number.isFinite(capacityScore);
+  if (!receivedFinite || !capacityFinite) return 'insufficient_data';
+  const receivedBelow = receivedScore < subScoreThreshold;
+  const capacityBelow = capacityScore < subScoreThreshold;
+  if (receivedBelow && capacityBelow) return 'both';
+  if (receivedBelow) return 'received';
+  if (capacityBelow) return 'capacity';
+  return receivedScore <= capacityScore ? 'received' : 'capacity';
+}
+
+export function buildAdoptionScoreCardSignal({
+  clientName,
+  adoptionScore,
+  threshold = 28,
+  currentQuadrant,
+}) {
+  const scoreText = formatScoreOutOf40(adoptionScore);
+  const fallback = renderPromptTemplate(
+    SCORE_CARD_SIGNAL_PROMPTS.adoption.fallback,
+    { adoption_score: scoreText }
+  );
+  if (!Number.isFinite(adoptionScore)) {
+    return {
+      text: fallback,
+      blurb: fallback,
+      fallback,
+      status: 'Unknown',
+      score: scoreText,
+    };
+  }
+
+  const status = thresholdStatusLabel(adoptionScore, threshold);
+  const orgLabel = String(clientName || 'This organisation').trim() || 'This organisation';
+  const quadrantLabel = safeQuadrantName(currentQuadrant);
+  const blurb = `${orgLabel} is ${status.toLowerCase()} the ${threshold}-point threshold and currently classified as ${quadrantLabel}.`;
+  const text = status === 'Above'
+    ? `<strong>${orgLabel} can absorb additional change load right now</strong>, and the ${quadrantLabel} quadrant shows where execution support must stay targeted to sustain momentum.`
+    : `<strong>${orgLabel} cannot absorb additional change load at the current pace</strong>, and the ${quadrantLabel} quadrant shows this readiness deficit is already shaping execution risk.`;
+  return {
+    text,
+    blurb,
+    fallback,
+    status,
+    score: scoreText,
+  };
+}
+
+export function buildSponsorshipScoreCardSignal({
+  clientName,
+  sponsorshipScore,
+  threshold = 28,
+  receivedScore,
+  capacityScore,
+  subScoreThreshold = 14,
+  currentQuadrant,
+}) {
+  const scoreText = formatScoreOutOf40(sponsorshipScore);
+  const receivedText = formatScoreOutOf20(receivedScore);
+  const capacityText = formatScoreOutOf20(capacityScore);
+  const fallback = renderPromptTemplate(
+    SCORE_CARD_SIGNAL_PROMPTS.sponsorship.fallback,
+    { sponsorship_score: scoreText }
+  );
+  if (!Number.isFinite(sponsorshipScore)) {
+    return {
+      text: fallback,
+      blurb: fallback,
+      fallback,
+      status: 'Unknown',
+      score: scoreText,
+      receivedScore: receivedText,
+      capacityScore: capacityText,
+      deficitAnchor: 'insufficient_data',
+    };
+  }
+
+  const status = thresholdStatusLabel(sponsorshipScore, threshold);
+  const orgLabel = String(clientName || 'This organisation').trim() || 'This organisation';
+  const quadrantLabel = safeQuadrantName(currentQuadrant);
+  const deficitAnchor = sponsorshipDeficitAnchor({
+    receivedScore,
+    capacityScore,
+    subScoreThreshold,
+  });
+  let deficitClause = 'the ownership of any sponsorship deficit cannot yet be isolated';
+  if (deficitAnchor === 'received') {
+    deficitClause = 'the primary deficit sits in how sponsorship is being delivered from above';
+  } else if (deficitAnchor === 'capacity') {
+    deficitClause = 'the primary deficit sits in manager capacity to pass sponsorship on';
+  } else if (deficitAnchor === 'both') {
+    deficitClause = 'the deficit sits in both sponsorship delivery from above and manager pass-through capacity';
+  }
+  const blurb = `${orgLabel} is ${status.toLowerCase()} the ${threshold}-point threshold, with Received ${receivedText}/20 and Capacity ${capacityText}/20 against a ${subScoreThreshold}-point sub-score threshold.`;
+  const text = status === 'Above'
+    ? `<strong>Leadership sponsorship is currently credible enough to support rollout</strong>, and ${deficitClause} in the ${quadrantLabel} quadrant to protect continuity through managers.`
+    : `<strong>Leadership sponsorship is not credible enough to support rollout at pace</strong>, and ${deficitClause} in the ${quadrantLabel} quadrant.`;
+  return {
+    text,
+    blurb,
+    fallback,
+    status,
+    score: scoreText,
+    receivedScore: receivedText,
+    capacityScore: capacityText,
+    deficitAnchor,
+  };
+}
+
+export function buildTopScoreCardSignals({
+  clientName,
+  adoptionScore,
+  sponsorshipScore,
+  threshold = 28,
+  receivedScore,
+  capacityScore,
+  subScoreThreshold = 14,
+  currentQuadrant,
+}) {
+  return {
+    adoption: buildAdoptionScoreCardSignal({
+      clientName,
+      adoptionScore,
+      threshold,
+      currentQuadrant,
+    }),
+    sponsorship: buildSponsorshipScoreCardSignal({
+      clientName,
+      sponsorshipScore,
+      threshold,
+      receivedScore,
+      capacityScore,
+      subScoreThreshold,
+      currentQuadrant,
+    }),
+  };
+}
+
+export function buildLikelihoodWhatThisMeansSignal({
+  currentQuadrant,
+  optimalPct = 0,
+  motivatedLostPct = 0,
+  capableWaryPct = 0,
+  highRiskPct = 0,
+  launchStatus,
+}) {
+  const fallback = SCORE_CARD_SIGNAL_PROMPTS.likelihood.fallback;
+  const hasDistribution = [optimalPct, motivatedLostPct, capableWaryPct, highRiskPct]
+    .some((value) => Number.isFinite(value));
+  if (!hasDistribution) {
+    return {
+      text: fallback,
+      fallback,
+      outsideOptimalPct: null,
+    };
+  }
+
+  const optimal = Math.max(0, Math.round(Number(optimalPct) || 0));
+  const motivated = Math.max(0, Math.round(Number(motivatedLostPct) || 0));
+  const wary = Math.max(0, Math.round(Number(capableWaryPct) || 0));
+  const highRisk = Math.max(0, Math.round(Number(highRiskPct) || 0));
+  const outsideOptimal = Math.max(0, motivated + wary + highRisk);
+  const launchNormalized = String(launchStatus || '').trim().toLowerCase();
+  const launchCleared = launchNormalized.includes('cleared') && !launchNormalized.includes('not');
+  const quadrantLabel = safeQuadrantName(currentQuadrant);
+  const spreadSentence = `<strong>${outsideOptimal}% of respondents sit outside Optimal, with readiness split across Motivated but Lost (${motivated}%), Capable but Wary (${wary}%), and High Risk (${highRisk}%) rather than concentrated in a single launch-ready state.</strong>`;
+  const actionSentence = launchCleared
+    ? `Leadership should proceed with phased deployment from the ${quadrantLabel} base while running targeted sponsorship and capacity actions for non-Optimal cohorts to prevent slippage during rollout.`
+    : `Leadership should not execute a broad launch from a ${quadrantLabel} baseline and must run targeted interventions by cohort before or during rollout to avoid predictable execution failure.`;
+  return {
+    text: `${spreadSentence} ${actionSentence}`,
+    fallback,
+    outsideOptimalPct: outsideOptimal,
+    optimalPct: optimal,
+  };
+}
+
+function adoptionHeaderSignal({
+  managerAdoptionScore,
+  threshold = 28,
+}) {
+  if (!Number.isFinite(managerAdoptionScore)) {
+    return '<strong>Manager Adoption is unavailable, so management-layer readiness to absorb and drive adoption cannot be confirmed.</strong>';
+  }
+  if (managerAdoptionScore >= threshold) {
+    return '<strong>The management layer is ready to absorb and drive adoption across teams.</strong>';
+  }
+  return '<strong>The management layer is not ready to absorb and drive adoption at the current pace.</strong>';
+}
+
+function sponsorshipHeaderSignal({
+  weakerSubScore,
+}) {
+  if (weakerSubScore === 'Sponsorship Received') {
+    return '<strong>Sponsorship Received is the weaker sub-score, so the primary risk sits with how senior leadership is supporting managers.</strong>';
+  }
+  if (weakerSubScore === 'Sponsorship Capacity') {
+    return "<strong>Sponsorship Capacity is the weaker sub-score, so the primary risk sits with managers' ability to pass sponsorship downward to their teams.</strong>";
+  }
+  return '<strong>The weaker sponsorship sub-score is unavailable, so the primary sponsorship risk location cannot be confirmed.</strong>';
+}
+
+function matrixFallbackSignal(matrixRows) {
+  const sustainableFunctioning = matrixRows
+    .find((row) => row.loadBand === 'Sustainable')
+    ?.cells?.find((cell) => cell.chainState === 'Chain Functioning')
+    ?.count || 0;
+  const totalManagers = matrixRows.reduce(
+    (sum, row) => sum + (row.cells || []).reduce((rowSum, cell) => rowSum + (cell.count || 0), 0),
+    0
+  );
+  const outOfPrimaryCell = Math.max(0, totalManagers - sustainableFunctioning);
+  if (outOfPrimaryCell <= 0) {
+    return '<strong>All managers sit in Sustainable × Chain Functioning.</strong> Intervention priority is low because risk is currently contained.';
+  }
+  return `<strong>${outOfPrimaryCell} managers sit outside Sustainable × Chain Functioning.</strong> Intervention priority is those managers because risk is distributed beyond the primary healthy cell.`;
+}
+
+function crossMatrixSignal(matrixRows) {
+  if (!Array.isArray(matrixRows) || matrixRows.length === 0) {
+    return null;
+  }
+
+  const allCells = matrixRows.flatMap((row) =>
+    (row.cells || []).map((cell) => ({
+      loadBand: row.loadBand,
+      chainState: cell.chainState,
+      count: cell.count || 0,
+    }))
+  );
+  const totalManagers = allCells.reduce((sum, cell) => sum + cell.count, 0);
+  if (totalManagers <= 0) {
+    return null;
+  }
+
+  const failedBothCells = allCells.filter((cell) => cell.chainState === 'Sponsorship Failed at Both Levels');
+  const failedBothTotal = failedBothCells.reduce((sum, cell) => sum + cell.count, 0);
+
+  if (failedBothTotal > 0) {
+    const topFailedBothCell = [...failedBothCells].sort((a, b) => b.count - a.count)[0];
+    const sentence1 = `<strong>${failedBothTotal} manager${failedBothTotal === 1 ? '' : 's'} sit in Sponsorship Failed at Both Levels, with the largest cluster in ${topFailedBothCell.loadBand} (${topFailedBothCell.count}).</strong>`;
+    const atRiskCount = allCells
+      .filter((cell) => !(cell.loadBand === 'Sustainable' && cell.chainState === 'Chain Functioning'))
+      .reduce((sum, cell) => sum + cell.count, 0);
+    const concentration = atRiskCount > 0 ? failedBothTotal / atRiskCount : 0;
+    if (concentration >= 0.6) {
+      return `${sentence1} Intervention priority is immediate action on this concentrated risk cluster.`;
+    }
+    if (atRiskCount > 0 && atRiskCount <= Math.max(2, Math.floor(totalManagers * 0.25))) {
+      return `${sentence1} Intervention priority is this masked minority cluster despite an otherwise healthy majority.`;
+    }
+    return `${sentence1} Intervention priority starts with this cluster because risk is distributed across multiple non-functioning cells.`;
+  }
+
+  const nonSustainableBrokenCells = allCells.filter(
+    (cell) => cell.loadBand !== 'Sustainable' && cell.chainState !== 'Chain Functioning' && cell.count > 0
+  );
+  if (nonSustainableBrokenCells.length > 0) {
+    const dominant = [...nonSustainableBrokenCells].sort((a, b) => b.count - a.count)[0];
+    const sentence1 = `<strong>The dominant pressure point is ${dominant.loadBand} × ${dominant.chainState} (${dominant.count} manager${dominant.count === 1 ? '' : 's'}).</strong>`;
+    const outsidePrimary = allCells
+      .filter((cell) => !(cell.loadBand === 'Sustainable' && cell.chainState === 'Chain Functioning'))
+      .reduce((sum, cell) => sum + cell.count, 0);
+    if (outsidePrimary <= Math.max(2, Math.floor(totalManagers * 0.25))) {
+      return `${sentence1} Intervention priority is targeted correction because risk is masked by an otherwise healthy majority.`;
+    }
+    const concentration = outsidePrimary > 0 ? dominant.count / outsidePrimary : 0;
+    if (concentration >= 0.6) {
+      return `${sentence1} Intervention priority is this concentrated cell before broader actions.`;
+    }
+    return `${sentence1} Intervention priority spans multiple non-sustainable broken-chain segments because risk is distributed.`;
+  }
+
+  return matrixFallbackSignal(matrixRows);
+}
+
 export function buildSponsorshipSectionSignals({
+  header,
   subScores,
   load,
   chain,
@@ -233,37 +557,33 @@ export function buildSponsorshipSectionSignals({
     : null;
 
   const matrixRows = Array.isArray(crossMatrix?.rows) ? crossMatrix.rows : [];
-  let highestRiskCell = null;
-  for (const row of matrixRows) {
-    for (const cell of row.cells || []) {
-      const loadSeverity = LOAD_BAND_SEVERITY[row.loadBand] || 0;
-      const chainSeverity = CHAIN_STATE_SEVERITY[cell.chainState] || 0;
-      const combinedSeverity = loadSeverity + chainSeverity;
-      if (
-        !highestRiskCell ||
-        combinedSeverity > highestRiskCell.combinedSeverity ||
-        (combinedSeverity === highestRiskCell.combinedSeverity && (cell.count || 0) > highestRiskCell.count)
-      ) {
-        highestRiskCell = {
-          loadBand: row.loadBand,
-          chainState: cell.chainState,
-          count: cell.count || 0,
-          combinedSeverity,
-        };
-      }
-    }
-  }
-  const crossText = highestRiskCell
-    ? `${highestRiskCell.count} managers sit in the highest-risk cluster (${highestRiskCell.loadBand} × ${highestRiskCell.chainState}). This cohort requires direct support before launch.`
-    : null;
+  const crossText = crossMatrixSignal(matrixRows);
 
   const teamRows = Array.isArray(teams?.rows) ? teams.rows : [];
   const highRiskTeams = teamRows.filter(
     (row) => row.chainState === 'Sponsorship Failed at Both Levels' || row.loadBand === 'Overloaded'
   );
   const teamText = `${highRiskTeams.length} teams are in critical sponsorship states. Use this list to target pre-launch enablement in sequence.`;
+  const weakerSubScore = received <= capacity ? 'Sponsorship Received' : 'Sponsorship Capacity';
+  const managerAdoptionScore = Number(header?.managerAdoptionScore);
+  const managerThreshold = Number.isFinite(Number(header?.threshold)) ? Number(header.threshold) : 28;
 
   return {
+    headerAdoption: {
+      variant: Number.isFinite(managerAdoptionScore) && managerAdoptionScore >= managerThreshold ? 'green' : 'red',
+      cardLabel: 'AVG Adoption Score · Manager Cohort',
+      text: adoptionHeaderSignal({
+        managerAdoptionScore,
+        threshold: managerThreshold,
+      }),
+    },
+    headerSponsorship: {
+      variant: weakerSubScore === 'Sponsorship Received' ? 'amber' : 'orange',
+      cardLabel: 'AVG Sponsorship Score · Manager Cohort',
+      text: sponsorshipHeaderSignal({
+        weakerSubScore,
+      }),
+    },
     subScores: {
       variant: received < receivedThreshold || capacity < capacityThreshold ? 'amber' : 'green',
       text: subscoreText,

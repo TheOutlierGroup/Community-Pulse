@@ -11,6 +11,7 @@ const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
 const DIMENSION_ORDER = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'];
 const PERCEPTION_GAP_THRESHOLD = 1.5;
+const INTRA_DIMENSION_DIVERGENCE_THRESHOLD = 1.5;
 const DIMENSION_COMPARISON_META = {
   '1A': {
     sharedConstruct: 'Does the team have skills to absorb the change?',
@@ -207,6 +208,24 @@ function quadrantTone(name) {
   return 'risk';
 }
 
+function quadrantForScores(adoption, sponsorship, threshold = 28) {
+  if (!Number.isFinite(adoption) || !Number.isFinite(sponsorship)) return null;
+  const adoptionHigh = adoption >= threshold;
+  const sponsorshipHigh = sponsorship >= threshold;
+  if (adoptionHigh && sponsorshipHigh) return 'Optimal';
+  if (adoptionHigh && !sponsorshipHigh) return 'Motivated but Lost';
+  if (!adoptionHigh && sponsorshipHigh) return 'Capable but Wary';
+  return 'High Risk';
+}
+
+function quadrantLetterForName(name) {
+  if (name === 'Motivated but Lost') return 'A';
+  if (name === 'Optimal') return 'B';
+  if (name === 'High Risk') return 'C';
+  if (name === 'Capable but Wary') return 'D';
+  return null;
+}
+
 function normalizeInviteTimepoint(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'during') return 'mid';
@@ -233,6 +252,10 @@ function heatTone(value) {
   if (value >= 3.0) return 'h3';
   if (value >= 2.5) return 'h2';
   return 'h1';
+}
+
+function dimensionQuestionLabel(questionIds = [], fallbackPrefix = 'Q', fallbackIndex = 0) {
+  return questionIds[fallbackIndex] || `${fallbackPrefix}${fallbackIndex + 1}`;
 }
 
 function normalizeThresholdStatus(status) {
@@ -272,6 +295,31 @@ function loadBandTextClassName(band) {
   if (normalized === 'at-capacity') return 'pulse-sa-load-text--at-capacity';
   if (normalized === 'overloaded') return 'pulse-sa-load-text--overloaded';
   return '';
+}
+
+function renderSignalMarkup(text) {
+  const source = String(text || '').trim();
+  if (!source) return null;
+  const nodes = [];
+  const regex = /<strong>(.*?)<\/strong>/gi;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(source)) != null) {
+    if (match.index > lastIndex) {
+      nodes.push(source.slice(lastIndex, match.index));
+    }
+    nodes.push(<strong key={`signal-strong-${match.index}`}>{match[1]}</strong>);
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < source.length) nodes.push(source.slice(lastIndex));
+  return nodes.length > 0 ? nodes : source;
+}
+
+function sponsorshipSignalVariantClass(variant) {
+  const normalized = String(variant || '').trim().toLowerCase();
+  if (normalized === 'red') return 'pulse-sa-signal--red';
+  if (normalized === 'orange') return 'pulse-sa-signal--orange';
+  return 'pulse-sa-signal--amber';
 }
 
 const chainMatrixQuadOrder = [
@@ -522,23 +570,6 @@ export default function PlatformClientPulse() {
   const adoptionScore = Number.isFinite(kpis.adoptionScore) ? kpis.adoptionScore : null;
   const sponsorshipScore = Number.isFinite(kpis.sponsorshipScore) ? kpis.sponsorshipScore : null;
   const managerBreakdownRows = dashboard?.byManager || [];
-  const managerScoreAverages = useMemo(() => {
-    if (!managerBreakdownRows.length) return { adoption: null, sponsorship: null };
-    const adoptionValues = managerBreakdownRows
-      .map((row) => row?.adoptionScore)
-      .filter((value) => Number.isFinite(value));
-    const sponsorshipValues = managerBreakdownRows
-      .map((row) => row?.sponsorshipScore)
-      .filter((value) => Number.isFinite(value));
-    const average = (values) => {
-      if (!values.length) return null;
-      return values.reduce((sum, value) => sum + value, 0) / values.length;
-    };
-    return {
-      adoption: average(adoptionValues),
-      sponsorship: average(sponsorshipValues),
-    };
-  }, [managerBreakdownRows]);
   const dimensions = dashboard?.dimensions || [];
   const dimensionHeatmapRows = useMemo(() => {
     const byId = new Map(dimensions.map((row) => [row.id, row]));
@@ -549,22 +580,72 @@ export default function PlatformClientPulse() {
         pairing: 'Excluded',
         comparable: false,
       };
-      const employeeAvg = Number.isFinite(base.energyAvg) ? base.energyAvg : null;
-      const managerAvg = meta.comparable && Number.isFinite(base.frictionAvg) ? base.frictionAvg : null;
-      const gap = employeeAvg != null && managerAvg != null
-        ? Math.abs(employeeAvg - managerAvg)
-        : null;
+      const comparable = typeof base.comparable === 'boolean' ? base.comparable : meta.comparable;
+      const employeeQuestionIds = Array.isArray(base?.employee?.questionIds)
+        ? base.employee.questionIds
+        : [];
+      const managerQuestionIds = Array.isArray(base?.manager?.questionIds)
+        ? base.manager.questionIds
+        : [];
+      const employeeAvg = Number.isFinite(base?.employee?.average)
+        ? base.employee.average
+        : (Number.isFinite(base.energyAvg) ? base.energyAvg : null);
+      const managerAvg = Number.isFinite(base?.manager?.average)
+        ? base.manager.average
+        : (Number.isFinite(base.frictionAvg) ? base.frictionAvg : null);
+      const employeeQ1Avg = Number.isFinite(base?.employee?.q1Avg) ? base.employee.q1Avg : null;
+      const employeeQ2Avg = Number.isFinite(base?.employee?.q2Avg) ? base.employee.q2Avg : null;
+      const managerQ1Avg = Number.isFinite(base?.manager?.q1Avg) ? base.manager.q1Avg : null;
+      const managerQ2Avg = Number.isFinite(base?.manager?.q2Avg) ? base.manager.q2Avg : null;
+      const employeeIntraGap = Number.isFinite(base?.employee?.intraGap)
+        ? base.employee.intraGap
+        : (Number.isFinite(employeeQ1Avg) && Number.isFinite(employeeQ2Avg)
+          ? Math.abs(employeeQ1Avg - employeeQ2Avg)
+          : null);
+      const managerIntraGap = Number.isFinite(base?.manager?.intraGap)
+        ? base.manager.intraGap
+        : (Number.isFinite(managerQ1Avg) && Number.isFinite(managerQ2Avg)
+          ? Math.abs(managerQ1Avg - managerQ2Avg)
+          : null);
+      const gap = Number.isFinite(base.perceptionGap)
+        ? base.perceptionGap
+        : (comparable && employeeAvg != null && managerAvg != null
+          ? Math.abs(employeeAvg - managerAvg)
+          : null);
       return {
         id,
         employeeLabel: base.label || '--',
         managerLabel: base.managerLabel || '--',
-        employeeAvg,
-        managerAvg,
-        gap,
-        comparable: meta.comparable,
+        comparable,
         pairing: meta.pairing,
         sharedConstruct: meta.sharedConstruct,
-        perceptionGapFlagged: gap != null && gap >= PERCEPTION_GAP_THRESHOLD,
+        employeeQuestionIds,
+        managerQuestionIds,
+        employee: {
+          q1Avg: employeeQ1Avg,
+          q2Avg: employeeQ2Avg,
+          avg: employeeAvg,
+          intraGap: employeeIntraGap,
+          intraGapFlagged:
+            typeof base?.employee?.intraGapFlagged === 'boolean'
+              ? base.employee.intraGapFlagged
+              : (employeeIntraGap != null && employeeIntraGap >= INTRA_DIMENSION_DIVERGENCE_THRESHOLD),
+        },
+        manager: {
+          q1Avg: managerQ1Avg,
+          q2Avg: managerQ2Avg,
+          avg: managerAvg,
+          intraGap: managerIntraGap,
+          intraGapFlagged:
+            typeof base?.manager?.intraGapFlagged === 'boolean'
+              ? base.manager.intraGapFlagged
+              : (managerIntraGap != null && managerIntraGap >= INTRA_DIMENSION_DIVERGENCE_THRESHOLD),
+        },
+        gap,
+        perceptionGapFlagged:
+          typeof base?.perceptionGapFlagged === 'boolean'
+            ? base.perceptionGapFlagged
+            : (gap != null && gap >= PERCEPTION_GAP_THRESHOLD),
       };
     });
   }, [dimensions]);
@@ -860,25 +941,41 @@ export default function PlatformClientPulse() {
     () => buildCrossStageDivergenceFlags(orderedTrendStages, 1.0),
     [orderedTrendStages]
   );
+  const scoreCardSignals = dashboard?.scoreCardSignals || {};
+  const adoptionScoreCardSignal = scoreCardSignals.adoption || {};
+  const sponsorshipScoreCardSignal = scoreCardSignals.sponsorship || {};
+  const likelihoodSignal = dashboard?.likelihoodSignal || {};
   const executiveSummary = dashboard?.executiveSummary || null;
   const executiveSignalText = (dashboard?.soWhat || dashboard?.narrative || '').trim();
   const micDropScenarios = Array.isArray(executiveSummary?.scenarios) ? executiveSummary.scenarios : [];
   const executiveSubhead = String(executiveSummary?.subhead || '').trim();
   const adoptionOverviewBlurb = adoptionScore != null
-    ? `Average adoption readiness is ${formatScore(adoptionScore)}/40, which is ${adoptionScore >= threshold ? 'above' : 'below'} the ${threshold}/40 threshold for execution readiness.`
+    ? (adoptionScoreCardSignal.blurb
+      || `Average adoption readiness is ${formatScore(adoptionScore)}/40, which is ${adoptionScore >= threshold ? 'above' : 'below'} the ${threshold}/40 threshold for execution readiness.`)
     : 'Adoption readiness score is not available for this timepoint yet.';
   const sponsorshipOverviewBlurb = sponsorshipScore != null
-    ? `Average sponsorship credibility is ${formatScore(sponsorshipScore)}/40, which is ${sponsorshipScore >= threshold ? 'above' : 'below'} the ${threshold}/40 leadership support threshold.`
+    ? (sponsorshipScoreCardSignal.blurb
+      || `Average sponsorship credibility is ${formatScore(sponsorshipScore)}/40, which is ${sponsorshipScore >= threshold ? 'above' : 'below'} the ${threshold}/40 leadership support threshold.`)
     : 'Sponsorship credibility score is not available for this timepoint yet.';
-  const adoptionWhyThisMatters = executiveSignalText
+  const adoptionWhyThisMatters = adoptionScoreCardSignal.text
+    || adoptionScoreCardSignal.fallback
+    || executiveSignalText
     || insightCards[0]?.body
     || 'Use this as a readiness signal for whether people can absorb change at the current pace.';
-  const sponsorshipWhyThisMatters = sponsorshipSignals?.subScores?.text
+  const sponsorshipWhyThisMatters = sponsorshipScoreCardSignal.text
+    || sponsorshipScoreCardSignal.fallback
+    || sponsorshipSignals?.subScores?.text
     || sponsorshipExecutiveSignal
     || executiveSignalText
     || 'Use this to gauge whether managers can actively sponsor change across their teams.';
   const launchStatusLabel = kpis.launchVerdict === 'cleared' ? 'Cleared to Launch' : 'Not Cleared';
-  const likelihoodSignalText = (kpis.launchHeadline || executiveSignalText || '').trim();
+  const likelihoodSignalText = String(
+    likelihoodSignal.text
+    || likelihoodSignal.fallback
+    || executiveSubhead
+    || executiveSignalText
+    || ''
+  ).trim();
   const topCardTotalResponses = managerFocusedTopCard ? (kpis.completedManagers ?? 0) : (kpis.completedTotal ?? 0);
   const topCardInvitedTotal = managerFocusedTopCard ? (kpis.invitedManagers ?? 0) : (kpis.invitedTotal ?? 0);
   const topCardParticipationRate = managerFocusedTopCard ? kpis.managerParticipationRate : kpis.participationRate;
@@ -886,10 +983,13 @@ export default function PlatformClientPulse() {
   const topCardInvitedEmployees = managerFocusedTopCard ? (kpis.invitedManagers ?? 0) : (kpis.invitedEmployees ?? 0);
   const topCardManagerResponses = kpis.completedManagers ?? 0;
   const topCardInvitedManagers = kpis.invitedManagers ?? 0;
-  const topCardAdoptionScore = managerFocusedTopCard ? managerScoreAverages.adoption : kpis.adoptionScore;
-  const topCardSponsorshipScore = managerFocusedTopCard ? managerScoreAverages.sponsorship : kpis.sponsorshipScore;
-  const topCardAdoptionDelta = managerFocusedTopCard ? null : kpis.adoptionDelta;
-  const topCardSponsorshipDelta = managerFocusedTopCard ? null : kpis.sponsorshipDelta;
+  const topCardAdoptionScore = kpis.adoptionScore;
+  const topCardSponsorshipScore = kpis.sponsorshipScore;
+  const topCardAdoptionDelta = kpis.adoptionDelta;
+  const topCardSponsorshipDelta = kpis.sponsorshipDelta;
+  const topCardQuadrantName = quadrantForScores(topCardAdoptionScore, topCardSponsorshipScore, threshold);
+  const topCardQuadrantLetter = quadrantLetterForName(topCardQuadrantName);
+  const topCardQuadrantLabel = topCardQuadrantLetter ? `${topCardQuadrantLetter} · ${topCardQuadrantName}` : '--';
 
   useEffect(() => {
     const previous = document.title;
@@ -1222,6 +1322,19 @@ export default function PlatformClientPulse() {
           </div>
         </div>
 
+        {sponsorshipSignals?.headerAdoption?.text ? (
+          <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals.headerAdoption.variant)}`} style={{ marginTop: '0.8rem' }}>
+            <span className="pulse-sa-signal__label">{sponsorshipSignals.headerAdoption.cardLabel || 'Signal'}</span>
+            {renderSignalMarkup(sponsorshipSignals.headerAdoption.text)}
+          </div>
+        ) : null}
+        {sponsorshipSignals?.headerSponsorship?.text ? (
+          <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals.headerSponsorship.variant)}`} style={{ marginTop: '0.55rem' }}>
+            <span className="pulse-sa-signal__label">{sponsorshipSignals.headerSponsorship.cardLabel || 'Signal'}</span>
+            {renderSignalMarkup(sponsorshipSignals.headerSponsorship.text)}
+          </div>
+        ) : null}
+
         </section>
       ) : null}
 
@@ -1234,10 +1347,11 @@ export default function PlatformClientPulse() {
               </div>
               <p className="pulse-org-overview__score">{formatScore(adoptionScore)}</p>
               <p className="pulse-org-overview__score-meta">Adoption Readiness /40</p>
+              <p className="pulse-org-overview__quadrant-meta">Quadrant {topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{adoptionOverviewBlurb}</p>
               <div className="pulse-org-overview__signal">
                 <p className="pulse-org-overview__signal-label">Why this matters</p>
-                <p className="pulse-org-overview__signal-text">{adoptionWhyThisMatters}</p>
+                <p className="pulse-org-overview__signal-text">{renderSignalMarkup(adoptionWhyThisMatters)}</p>
               </div>
             </article>
             <article className="card pulse-org-overview__score-card">
@@ -1246,25 +1360,20 @@ export default function PlatformClientPulse() {
               </div>
               <p className="pulse-org-overview__score">{formatScore(sponsorshipScore)}</p>
               <p className="pulse-org-overview__score-meta">Sponsorship Credibility /40</p>
+              <p className="pulse-org-overview__quadrant-meta">Quadrant {topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{sponsorshipOverviewBlurb}</p>
               <div className="pulse-org-overview__signal">
                 <p className="pulse-org-overview__signal-label">Why this matters</p>
-                <p className="pulse-org-overview__signal-text">{sponsorshipWhyThisMatters}</p>
+                <p className="pulse-org-overview__signal-text">{renderSignalMarkup(sponsorshipWhyThisMatters)}</p>
               </div>
             </article>
           </section>
 
           <section className="card pulse-org-likelihood">
             <div className="pulse-org-likelihood__header">
-              <div>
-                <p className="pulse-org-likelihood__eyebrow">{org?.name || 'Client'} · {reportDateLabel}</p>
-                <h3 className="pulse-org-likelihood__title">Likelihood of Success?</h3>
-              </div>
-              <div className="pulse-org-likelihood__status-wrap">
-                <span className={`pulse-clean-header__badge${kpis.launchVerdict === 'cleared' ? ' pulse-sa-verdict__badge--stable' : ''}`}>
-                  {launchStatusLabel}
-                </span>
-              </div>
+              <p className="pulse-org-likelihood__eyebrow">{org?.name || 'Client'} · {reportDateLabel}</p>
+              <p className="pulse-org-likelihood__verdict" aria-live="polite">{launchStatusLabel}</p>
+              <h3 className="pulse-org-likelihood__title">Likelihood of Success?</h3>
             </div>
             <div className="pulse-sa-card" style={{ marginBottom: 0 }}>
               <p className="pulse-sa-card__label">Quadrant Journey</p>
@@ -1286,14 +1395,10 @@ export default function PlatformClientPulse() {
                 <strong>Score:</strong> {dominantQuadrant.name} ({formatPercent(dominantQuadrant.percent)})
               </p>
               <p className="pulse-sa-card__explainer" style={{ marginTop: '0.35rem' }}>
-                <strong>What it means:</strong> {executiveSubhead || 'Use the dominant quadrant to prioritise intervention and launch pacing.'}
+                <strong>What it means:</strong> {renderSignalMarkup(
+                  likelihoodSignalText || 'Use the dominant quadrant to prioritise intervention and launch pacing.'
+                )}
               </p>
-              {likelihoodSignalText ? (
-                <div className="pulse-sa-signal pulse-sa-signal--amber">
-                  <span className="pulse-sa-signal__label">Signal</span>
-                  {likelihoodSignalText}
-                </div>
-              ) : null}
             </div>
 
             {micDropScenarios.length > 0 ? (
@@ -1471,7 +1576,7 @@ export default function PlatformClientPulse() {
             {sponsorshipSignals?.subScores?.text ? (
               <div className="pulse-sa-signal pulse-sa-signal--amber">
                 <span className="pulse-sa-signal__label">Signal</span>
-                {sponsorshipSignals.subScores.text}
+                {renderSignalMarkup(sponsorshipSignals.subScores.text)}
               </div>
             ) : null}
           </div>
@@ -1534,7 +1639,7 @@ export default function PlatformClientPulse() {
                 return (
                   <article key={quad.status} className={`pulse-sa-chain-tile ${quad.className}`}>
                     {isMajority ? <span className="pulse-sa-chain-tile__majority">◀ Majority</span> : null}
-                    <p className="pulse-sa-chain-tile__pct" style={{ color: quad.color }}>
+                    <p className="pulse-sa-chain-tile__pct">
                       {formatPercent(item.percent)}
                     </p>
                     <p className="pulse-sa-chain-tile__name">{quad.label}</p>
@@ -1550,7 +1655,7 @@ export default function PlatformClientPulse() {
             {sponsorshipSignals?.chain?.text ? (
               <div className="pulse-sa-signal pulse-sa-signal--orange">
                 <span className="pulse-sa-signal__label">Note</span>
-                {sponsorshipSignals.chain.text}
+                {renderSignalMarkup(sponsorshipSignals.chain.text)}
               </div>
             ) : null}
           </div>
@@ -1603,7 +1708,7 @@ export default function PlatformClientPulse() {
             {sponsorshipSignals?.crossMatrix?.text ? (
               <div className="pulse-sa-signal pulse-sa-signal--red">
                 <span className="pulse-sa-signal__label">Signal</span>
-                {sponsorshipSignals.crossMatrix.text}
+                {renderSignalMarkup(sponsorshipSignals.crossMatrix.text)}
               </div>
             ) : null}
           </div>
@@ -1660,7 +1765,7 @@ export default function PlatformClientPulse() {
               {sponsorshipSignals?.teams?.text ? (
                 <div className="pulse-sa-signal pulse-sa-signal--red">
                   <span className="pulse-sa-signal__label">Note</span>
-                  {sponsorshipSignals.teams.text}
+                  {renderSignalMarkup(sponsorshipSignals.teams.text)}
                 </div>
               ) : null}
             </div>
@@ -1674,8 +1779,8 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-dimensions__eyebrow">Team-Level Overview</p>
             <h3 className="pulse-clean-dimensions__title">Employee/Manager Dimension Heatmap</h3>
             <p className="pulse-clean-dimensions__explainer">
-              Each dimension shows employee and manager scores side-by-side. A perception gap flag appears when the
-              cohort gap reaches {PERCEPTION_GAP_THRESHOLD.toFixed(1)} points or more.
+              Each row shows question-level chips (Q1/Q2 and MQ1/MQ2 equivalents), cohort averages, and required flags.
+              Intra-dimension divergence and perception gap flags trigger at {INTRA_DIMENSION_DIVERGENCE_THRESHOLD.toFixed(1)}+ points.
             </p>
           </div>
 
@@ -1684,11 +1789,15 @@ export default function PlatformClientPulse() {
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>Question / Construct</th>
-                  <th>Employee</th>
-                  <th>Manager</th>
+                  <th>Dimension</th>
+                  <th>Emp Q1</th>
+                  <th>Emp Q2</th>
+                  <th>Emp Avg</th>
+                  <th>Mgr Q1</th>
+                  <th>Mgr Q2</th>
+                  <th>Mgr Avg</th>
                   <th>Gap</th>
-                  <th>Dim Avg</th>
+                  <th>Flags</th>
                 </tr>
               </thead>
               <tbody>
@@ -1697,41 +1806,70 @@ export default function PlatformClientPulse() {
                     <td className="pulse-clean-dimensions__id">{dimension.id}</td>
                     <td className="pulse-clean-dimensions__construct">
                       <p className="pulse-clean-dimensions__construct-label">
-                        {dimension.employeeLabel}
-                        {dimension.comparable ? ` <-> ${dimension.managerLabel}` : ''}
+                        {dimension.employeeLabel} {'<->'} {dimension.managerLabel}
                       </p>
                       <p className="pulse-clean-dimensions__construct-meta">
-                        {dimension.sharedConstruct}
+                        {dimension.comparable ? 'Comparable pair' : 'Non-comparable pair'}
                         {' · '}
-                        Pairing: {dimension.pairing}
-                        {dimension.perceptionGapFlagged ? (
-                          <span className="pulse-clean-dimensions__flag">Perception gap</span>
-                        ) : null}
+                        {dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 0)} + {dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 1)}
+                        {' · '}
+                        {dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 0)} + {dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 1)}
                       </p>
                     </td>
                     <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employeeAvg)}`}>
-                        {formatScore(dimension.employeeAvg)}
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employee.q1Avg)}`}>
+                        {formatScore(dimension.employee.q1Avg)}
                       </span>
                     </td>
                     <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.managerAvg)}`}>
-                        {dimension.comparable ? formatScore(dimension.managerAvg) : '—'}
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employee.q2Avg)}`}>
+                        {formatScore(dimension.employee.q2Avg)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employee.avg)}`}>
+                        {formatScore(dimension.employee.avg)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.manager.q1Avg)}`}>
+                        {formatScore(dimension.manager.q1Avg)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.manager.q2Avg)}`}>
+                        {formatScore(dimension.manager.q2Avg)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.manager.avg)}`}>
+                        {formatScore(dimension.manager.avg)}
                       </span>
                     </td>
                     <td className={dimension.perceptionGapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
                       {dimension.comparable ? formatScore(dimension.gap) : '—'}
                     </td>
-                    <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employeeAvg)}`}>
-                        {formatScore(dimension.employeeAvg)}
-                      </span>
+                    <td className="pulse-clean-dimensions__flags">
+                      {dimension.employee.intraGapFlagged ? (
+                        <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (emp)</span>
+                      ) : null}
+                      {dimension.manager.intraGapFlagged ? (
+                        <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (mgr)</span>
+                      ) : null}
+                      {dimension.comparable && dimension.perceptionGapFlagged ? (
+                        <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Perception gap</span>
+                      ) : null}
+                      {!dimension.employee.intraGapFlagged
+                        && !dimension.manager.intraGapFlagged
+                        && !(dimension.comparable && dimension.perceptionGapFlagged) ? (
+                          <span className="pulse-clean-dimensions__gap">—</span>
+                        ) : null}
                     </td>
                   </tr>
                 ))}
                 {dimensionHeatmapRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="muted">No dimension data available yet.</td>
+                    <td colSpan={10} className="muted">No dimension data available yet.</td>
                   </tr>
                 ) : null}
               </tbody>

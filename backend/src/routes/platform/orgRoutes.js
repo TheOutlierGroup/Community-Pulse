@@ -69,6 +69,9 @@ import {
   parseQueryBool,
 } from '../../services/pulseDashboardScope.js';
 import {
+  buildLikelihoodWhatThisMeansSignal,
+  SCORE_CARD_SIGNAL_PROMPTS,
+  buildTopScoreCardSignals,
   buildDimensionFloorAlerts,
   buildSponsorshipSectionSignals,
   buildSponsorshipDecliningAlert,
@@ -114,6 +117,38 @@ function parsePagination(query) {
   };
 }
 
+function readPositiveIntEnv(name, fallback) {
+  const parsed = Number.parseInt(process.env[name] || '', 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+function runWithDeadline(taskFactory, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({ timedOut: true, value: null, error: null });
+    }, Math.max(0, timeoutMs));
+
+    Promise.resolve()
+      .then(() => taskFactory())
+      .then((value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ timedOut: false, value, error: null });
+      })
+      .catch((error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ timedOut: false, value: null, error });
+      });
+  });
+}
+
 function round1(value) {
   return Math.round(value * 10) / 10;
 }
@@ -143,6 +178,10 @@ function scoreDelta(current, previous) {
   if (current == null || previous == null) return null;
   return round1(current - previous);
 }
+
+const NON_COMPARABLE_DIMENSION_IDS = new Set(['1C', '2C']);
+const INTRA_DIMENSION_DIVERGENCE_THRESHOLD = 1.5;
+const PERCEPTION_GAP_THRESHOLD = 1.5;
 
 function formatScore1(value) {
   if (value == null || Number.isNaN(value)) return '--';
@@ -290,6 +329,14 @@ function loadSeverityRank(loadBand) {
   if (loadBand === 'At Capacity') return 3;
   if (loadBand === 'Stretched') return 2;
   return 1;
+}
+
+function teamNameFromGroupValues(groupValues, fallbackName) {
+  const normalized = Array.isArray(groupValues)
+    ? groupValues.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  if (normalized.length > 0) return normalized[normalized.length - 1];
+  return fallbackName;
 }
 
 function pulseSessionTimepointKind(session) {
@@ -2474,6 +2521,7 @@ export function registerPlatformOrgRoutes(router) {
         id: r.id,
         displayName: r.display_name || '',
         email: r.email,
+        groupValues: Array.isArray(r.group_level_values) ? r.group_level_values : [],
       }));
     const managerIdSet = new Set(managerOptions.map((m) => m.id));
     const requestedManagerIds = parseManagerIdsFromQuery(req.query);
@@ -2617,38 +2665,97 @@ export function registerPlatformOrgRoutes(router) {
       }))
       .filter((entry) => entry.scored.valid);
 
+    const employeeScoredRows = completedScoredRows.filter((entry) => entry.role !== 'admin');
+    const managerScoredRows = completedScoredRows.filter((entry) => entry.role === 'admin');
+    const averageFor = (values) => {
+      if (!values.length) return null;
+      return round1(values.reduce((sum, value) => sum + value, 0) / values.length);
+    };
+    const questionAveragesFor = (rows, questionIds = []) => questionIds.map((questionId) => {
+      const values = rows
+        .map((entry) => entry?.scored?.answers?.[questionId])
+        .filter(Number.isFinite);
+      return averageFor(values);
+    });
+
     const dimensions = DIMENSIONS.map((dimension) => {
-      const employeeValues = completedScoredRows
-        .filter((entry) => entry.role !== 'admin')
+      const employeeDimensionValues = employeeScoredRows
         .map((entry) => entry.scored.dimensions.find((d) => d.id === dimension.id))
         .filter(Boolean)
-        .map((d) => d.average);
-
-      const managerValues = completedScoredRows
-        .filter((entry) => entry.role === 'admin')
+        .map((d) => d.average)
+        .filter(Number.isFinite);
+      const managerDimensionValues = managerScoredRows
         .map((entry) => entry.scored.dimensions.find((d) => d.id === dimension.id))
         .filter(Boolean)
-        .map((d) => d.average);
+        .map((d) => d.average)
+        .filter(Number.isFinite);
 
-      const employeeHighCount = employeeValues.filter((value) => value >= 4).length;
-      const managerHighCount = managerValues.filter((value) => value >= 4).length;
+      const [employeeQ1Avg, employeeQ2Avg] = questionAveragesFor(
+        employeeScoredRows,
+        dimension.employeeQuestions
+      );
+      const [managerQ1Avg, managerQ2Avg] = questionAveragesFor(
+        managerScoredRows,
+        dimension.managerQuestions
+      );
+
+      const employeeAvg = averageFor(employeeDimensionValues);
+      const managerAvg = averageFor(managerDimensionValues);
+      const employeeIntraGap =
+        Number.isFinite(employeeQ1Avg) && Number.isFinite(employeeQ2Avg)
+          ? round1(Math.abs(employeeQ1Avg - employeeQ2Avg))
+          : null;
+      const managerIntraGap =
+        Number.isFinite(managerQ1Avg) && Number.isFinite(managerQ2Avg)
+          ? round1(Math.abs(managerQ1Avg - managerQ2Avg))
+          : null;
+      const comparable = !NON_COMPARABLE_DIMENSION_IDS.has(dimension.id);
+      const perceptionGap =
+        comparable && Number.isFinite(employeeAvg) && Number.isFinite(managerAvg)
+          ? round1(Math.abs(employeeAvg - managerAvg))
+          : null;
+
+      const employeeHighCount = employeeDimensionValues.filter((value) => value >= 4).length;
+      const managerHighCount = managerDimensionValues.filter((value) => value >= 4).length;
 
       return {
         id: dimension.id,
         label: dimension.employeeLabel,
         managerLabel: dimension.managerLabel,
-        energyAvg:
-          employeeValues.length > 0
-            ? round1(employeeValues.reduce((sum, value) => sum + value, 0) / employeeValues.length)
-            : null,
-        frictionAvg:
-          managerValues.length > 0
-            ? round1(managerValues.reduce((sum, value) => sum + value, 0) / managerValues.length)
-            : null,
+        comparable,
+        employee: {
+          questionIds: dimension.employeeQuestions,
+          q1Avg: employeeQ1Avg,
+          q2Avg: employeeQ2Avg,
+          average: employeeAvg,
+          intraGap: employeeIntraGap,
+          intraGapFlagged:
+            Number.isFinite(employeeIntraGap)
+            && employeeIntraGap >= INTRA_DIMENSION_DIVERGENCE_THRESHOLD,
+        },
+        manager: {
+          questionIds: dimension.managerQuestions,
+          q1Avg: managerQ1Avg,
+          q2Avg: managerQ2Avg,
+          average: managerAvg,
+          intraGap: managerIntraGap,
+          intraGapFlagged:
+            Number.isFinite(managerIntraGap)
+            && managerIntraGap >= INTRA_DIMENSION_DIVERGENCE_THRESHOLD,
+        },
+        perceptionGap,
+        perceptionGapFlagged:
+          Number.isFinite(perceptionGap) && perceptionGap >= PERCEPTION_GAP_THRESHOLD,
+        energyAvg: employeeAvg,
+        frictionAvg: managerAvg,
         highEnergyPercent:
-          employeeValues.length > 0 ? round1((employeeHighCount / employeeValues.length) * 100) : 0,
+          employeeDimensionValues.length > 0
+            ? round1((employeeHighCount / employeeDimensionValues.length) * 100)
+            : 0,
         managerHighPercent:
-          managerValues.length > 0 ? round1((managerHighCount / managerValues.length) * 100) : 0,
+          managerDimensionValues.length > 0
+            ? round1((managerHighCount / managerDimensionValues.length) * 100)
+            : 0,
       };
     });
 
@@ -2729,6 +2836,8 @@ export function registerPlatformOrgRoutes(router) {
           managerEmail: managerProfile?.email || null,
           receivedScore,
           capacityScore,
+          adoptionScore: scored.adoption,
+          sponsorshipScore: scored.sponsorship,
           loadScore,
           loadBand,
           chainState,
@@ -2737,6 +2846,18 @@ export function registerPlatformOrgRoutes(router) {
       .filter(Boolean);
 
     const managerRespondentCount = managerSelfMetrics.length;
+    const managerAdoptionAvg =
+      managerRespondentCount > 0
+        ? round1(
+            managerSelfMetrics.reduce((sum, row) => sum + row.adoptionScore, 0) / managerRespondentCount
+          )
+        : null;
+    const managerSponsorshipAvg =
+      managerRespondentCount > 0
+        ? round1(
+            managerSelfMetrics.reduce((sum, row) => sum + row.sponsorshipScore, 0) / managerRespondentCount
+          )
+        : null;
     const receivedAvg =
       managerRespondentCount > 0
         ? round1(
@@ -2861,8 +2982,9 @@ export function registerPlatformOrgRoutes(router) {
         items.reduce((sum, item) => sum + item.capacityScore / 4, 0) / items.length
       );
       const managerBreakdown = byManager.find((row) => row.managerId === managerId) || null;
+      const fallbackTeamName = manager.displayName || manager.email || managerId;
       return {
-        teamName: manager.displayName || manager.email || managerId,
+        teamName: teamNameFromGroupValues(manager.groupValues, fallbackTeamName),
         managerId,
         responses: managerBreakdown?.directReportCompletedCount || 0,
         chainState,
@@ -2912,6 +3034,13 @@ export function registerPlatformOrgRoutes(router) {
       : 'Leaders are receiving support and have capacity to sponsor change through their teams.';
 
     const sponsorshipSignals = buildSponsorshipSectionSignals({
+      header: {
+        stage: pulseTimepoint,
+        threshold: READINESS_THRESHOLD,
+        managerCount: managerRespondentCount,
+        managerAdoptionScore: managerAdoptionAvg,
+        managerSponsorshipScore: managerSponsorshipAvg,
+      },
       subScores: {
         received: { avg: receivedAvg, threshold: sponsorshipConfig.receivedThreshold },
         capacity: { avg: capacityAvg, threshold: sponsorshipConfig.capacityThreshold },
@@ -3005,6 +3134,20 @@ export function registerPlatformOrgRoutes(router) {
       },
       signals: sponsorshipConfig.aiSignalsEnabled ? sponsorshipSignals : null,
     };
+    const currentQuadrantForScoreCards =
+      adoptionScore != null && sponsorshipScore != null
+        ? quadrantLabel(adoptionScore, sponsorshipScore)
+        : [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || null;
+    const scoreCardSignals = buildTopScoreCardSignals({
+      clientName: org.name,
+      adoptionScore,
+      sponsorshipScore,
+      threshold: READINESS_THRESHOLD,
+      receivedScore: receivedAvg,
+      capacityScore: capacityAvg,
+      subScoreThreshold: sponsorshipConfig.receivedThreshold,
+      currentQuadrant: currentQuadrantForScoreCards,
+    });
 
     const previousWaveAdoptionScore = trendRows.length >= 2 ? trendRows[1].adoptionScore : null;
     const previousWaveSponsorshipScore = trendRows.length >= 2 ? trendRows[1].sponsorshipScore : null;
@@ -3012,6 +3155,15 @@ export function registerPlatformOrgRoutes(router) {
     const sponsorshipDelta = scoreDelta(sponsorshipScore, previousWaveSponsorshipScore);
     const launchVerdict = verdictForScores(adoptionScore, sponsorshipScore, READINESS_THRESHOLD);
     const launchHeadline = headlineForVerdict(launchVerdict);
+    const launchStatusLabel = launchVerdict === 'cleared' ? 'Cleared to Launch' : 'Not Cleared';
+    const likelihoodSignal = buildLikelihoodWhatThisMeansSignal({
+      currentQuadrant: currentQuadrantForScoreCards,
+      optimalPct: quadrants.find((entry) => entry.name === 'Optimal')?.percent || 0,
+      motivatedLostPct: quadrants.find((entry) => entry.name === 'Motivated but Lost')?.percent || 0,
+      capableWaryPct: quadrants.find((entry) => entry.name === 'Capable but Wary')?.percent || 0,
+      highRiskPct: quadrants.find((entry) => entry.name === 'High Risk')?.percent || 0,
+      launchStatus: launchStatusLabel,
+    });
 
     const baseAlerts = [];
     const overloadedBand = managerLoad.bands.find((b) => b.name === 'Overloaded');
@@ -3056,10 +3208,12 @@ export function registerPlatformOrgRoutes(router) {
     const prioritizedAlerts = prioritizeAndCapAlerts(allAlerts, 5);
     const optimalQuadrant = quadrants.find((entry) => entry.name === 'Optimal');
     const highRiskQuadrant = quadrants.find((entry) => entry.name === 'High Risk');
-    let soWhat = null;
-    let soWhatStatus = 'ready';
-    try {
-      soWhat = await generatePulseSoWhatSummary({
+    const soWhatFallback = SCORE_CARD_SIGNAL_PROMPTS.likelihood.fallback;
+    const aiRenderDeadlineMs = readPositiveIntEnv('CLAUDE_SUMMARY_RENDER_DEADLINE_MS', 350);
+    let soWhat = soWhatFallback;
+    let soWhatStatus = 'fallback';
+    const soWhatAttempt = await runWithDeadline(
+      () => generatePulseSoWhatSummary({
         orgName: org.name,
         completedTotal,
         adoptionScore,
@@ -3069,8 +3223,15 @@ export function registerPlatformOrgRoutes(router) {
         highRiskPercent: highRiskQuadrant?.percent || 0,
         overloadedPercent: overloadedBand?.percent || 0,
         alertTitles: prioritizedAlerts.alerts.map((alert) => alert.title),
-      });
-    } catch (error) {
+      }),
+      aiRenderDeadlineMs
+    );
+    if (soWhatAttempt.value) {
+      soWhat = soWhatAttempt.value;
+      soWhatStatus = 'ready';
+    } else if (soWhatAttempt.timedOut) {
+      soWhatStatus = 'timeout';
+    } else if (soWhatAttempt.error) {
       soWhatStatus = 'unavailable';
     }
 
@@ -3156,6 +3317,8 @@ export function registerPlatformOrgRoutes(router) {
       },
       byManager,
       sponsorshipAnalysis,
+      scoreCardSignals,
+      likelihoodSignal,
       alerts: prioritizedAlerts.alerts,
       alertsOverflowCount: prioritizedAlerts.overflowCount,
       narrative: soWhat,

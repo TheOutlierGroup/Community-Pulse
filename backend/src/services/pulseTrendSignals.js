@@ -6,6 +6,16 @@ const DEFAULT_CLAUDE_MODEL =
   process.env.ANTHROPIC_MODEL ||
   'claude-sonnet-4-20250514';
 
+function readPositiveIntEnv(name, fallback) {
+  const parsed = Number.parseInt(process.env[name] || '', 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+function trendSignalsTimeoutMs() {
+  return readPositiveIntEnv('CLAUDE_TREND_SIGNALS_TIMEOUT_MS', 2500);
+}
+
 function stageDelta(stages, accessor) {
   const available = stages.filter((stage) => stage?.available);
   if (available.length < 2) return null;
@@ -177,21 +187,36 @@ async function requestTrendSignalsFromAi({ orgName, selectedTimepoint, stages })
     'Output JSON only.',
   ].join('\n');
 
-  const response = await fetch(ANTHROPIC_MESSAGES_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: DEFAULT_CLAUDE_MODEL,
-      system: 'You write concise executive signal banners for dashboard sections.',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-      max_tokens: 500,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), trendSignalsTimeoutMs());
+  let response;
+  try {
+    response = await fetch(ANTHROPIC_MESSAGES_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: DEFAULT_CLAUDE_MODEL,
+        system: 'You write concise executive signal banners for dashboard sections.',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 120,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error('Trend signal AI request timed out');
+      timeoutError.code = 'CLAUDE_REQUEST_ABORTED';
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const failure = new Error(`Trend signal AI request failed (${response.status})`);

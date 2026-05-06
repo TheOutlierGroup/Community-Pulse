@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildAdoptionScoreCardSignal,
+  buildLikelihoodWhatThisMeansSignal,
+  SCORE_CARD_SIGNAL_PROMPTS,
   buildSponsorshipSectionSignals,
+  buildSponsorshipScoreCardSignal,
+  buildTopScoreCardSignals,
   buildDimensionFloorAlerts,
   buildSponsorshipDecliningAlert,
   buildTeamOutlierAlerts,
@@ -11,6 +16,25 @@ import {
   prioritizeAndCapAlerts,
   verdictForScores,
 } from './pulseDashboardMetrics.js';
+
+test('score card prompt templates are spec-locked', () => {
+  assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.adoption.system,
+    'You are a change readiness analyst writing a concise signal for a practitioner dashboard score card. Maximum 1 sentence. Be direct. No hedging. Wrap the single most important finding in <strong> tags.'
+  );
+  assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.adoption.fallback,
+    'Adoption Readiness is at {{adoption_score}}/40. Review against the 28-point threshold to determine readiness classification.'
+  );
+  assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.sponsorship.fallback,
+    'Sponsorship Credibility is at {{sponsorship_score}}/40. Review Received and Capacity sub-scores against the 14-point threshold to identify where the deficit sits.'
+  );
+  assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.likelihood.fallback,
+    'The quadrant distribution shows how individuals are spread across all four readiness states. Review the proportion outside Optimal to determine the scale and nature of intervention required.'
+  );
+});
 
 test('largest remainder percentages always sum to 100', () => {
   const percentages = calculateLargestRemainderPercentages([1, 1, 1]);
@@ -190,4 +214,77 @@ test('sponsorship section signals are derived from computed metrics', () => {
   assert.equal(signals.crossMatrix.variant, 'red');
   assert.equal(signals.teams.variant, 'red');
   assert.ok(signals.subScores.text.includes('13.2'));
+});
+
+test('adoption score card signal highlights absorption implication', () => {
+  const signal = buildAdoptionScoreCardSignal({
+    clientName: 'Acme',
+    adoptionScore: 31.4,
+    threshold: 28,
+    currentQuadrant: 'Optimal',
+  });
+  assert.equal(signal.status, 'Above');
+  assert.ok(signal.text.includes('<strong>'));
+  assert.ok(signal.text.includes('absorb additional change load right now'));
+  assert.ok(signal.blurb.includes('currently classified as Optimal'));
+});
+
+test('sponsorship score card signal localizes deficit to received stream', () => {
+  const signal = buildSponsorshipScoreCardSignal({
+    clientName: 'Acme',
+    sponsorshipScore: 25.2,
+    threshold: 28,
+    receivedScore: 12.8,
+    capacityScore: 15.4,
+    subScoreThreshold: 14,
+    currentQuadrant: 'Motivated but Lost',
+  });
+  assert.equal(signal.status, 'Below');
+  assert.equal(signal.deficitAnchor, 'received');
+  assert.ok(signal.text.includes('delivered from above'));
+  assert.ok(signal.text.includes('<strong>'));
+});
+
+test('top score card signals include fallback text when score missing', () => {
+  const signals = buildTopScoreCardSignals({
+    clientName: 'Acme',
+    adoptionScore: null,
+    sponsorshipScore: null,
+    threshold: 28,
+    receivedScore: null,
+    capacityScore: null,
+    subScoreThreshold: 14,
+    currentQuadrant: 'Unknown',
+  });
+  assert.equal(signals.adoption.text, signals.adoption.fallback);
+  assert.equal(signals.sponsorship.text, signals.sponsorship.fallback);
+  assert.ok(signals.adoption.fallback.includes('Review against the 28-point threshold'));
+  assert.ok(signals.sponsorship.fallback.includes('Review Received and Capacity sub-scores'));
+});
+
+test('likelihood what-this-means signal interprets spread and implication', () => {
+  const signal = buildLikelihoodWhatThisMeansSignal({
+    currentQuadrant: 'Motivated but Lost',
+    optimalPct: 24,
+    motivatedLostPct: 31,
+    capableWaryPct: 21,
+    highRiskPct: 24,
+    launchStatus: 'Not Cleared',
+  });
+  assert.ok(signal.text.includes('<strong>'));
+  assert.ok(signal.text.includes('outside Optimal'));
+  assert.ok(signal.text.includes('should not execute a broad launch'));
+});
+
+test('likelihood what-this-means signal uses fallback when distribution missing', () => {
+  const signal = buildLikelihoodWhatThisMeansSignal({
+    currentQuadrant: null,
+    optimalPct: null,
+    motivatedLostPct: null,
+    capableWaryPct: null,
+    highRiskPct: null,
+    launchStatus: 'Not Cleared',
+  });
+  assert.equal(signal.text, signal.fallback);
+  assert.ok(signal.fallback.includes('spread across all four readiness states'));
 });
