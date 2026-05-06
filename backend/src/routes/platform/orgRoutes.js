@@ -82,6 +82,7 @@ import {
 import { schedulePulseAlertNotifications } from '../../services/pulseAlertNotifications.js';
 import { listSessionResponses } from '../../services/pulseDataContract.js';
 import { generatePulseSoWhatSummary } from '../../services/pulseSoWhatSummary.js';
+import { generatePulseTrendSignals } from '../../services/pulseTrendSignals.js';
 import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
@@ -3122,6 +3123,45 @@ export function registerPlatformOrgRoutes(router) {
       soWhat,
       soWhatStatus,
       executiveSummary,
+    });
+  });
+
+  router.post('/organizations/:id/pulse-trend-signals', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    const selectedTimepoint = String(req.body?.selectedTimepoint || '').trim().toLowerCase();
+    const inputStages = Array.isArray(req.body?.stages) ? req.body.stages : [];
+    const stages = inputStages
+      .map((stage) => ({
+        key: String(stage?.key || ''),
+        label: String(stage?.label || ''),
+        available: Boolean(stage?.available),
+        adoptionScore: Number.isFinite(stage?.adoptionScore) ? stage.adoptionScore : null,
+        sponsorshipScore: Number.isFinite(stage?.sponsorshipScore) ? stage.sponsorshipScore : null,
+        quadrant: String(stage?.quadrant || '--'),
+        receivedAvg: Number.isFinite(stage?.receivedAvg) ? stage.receivedAvg : null,
+        capacityAvg: Number.isFinite(stage?.capacityAvg) ? stage.capacityAvg : null,
+        loadBands: stage?.loadBands && typeof stage.loadBands === 'object' ? stage.loadBands : {},
+        chainStates: stage?.chainStates && typeof stage.chainStates === 'object' ? stage.chainStates : {},
+        dimensions: stage?.dimensions && typeof stage.dimensions === 'object'
+          ? stage.dimensions
+          : { employee: {}, manager: {} },
+        employeeSponsorshipAvg: Number.isFinite(stage?.employeeSponsorshipAvg) ? stage.employeeSponsorshipAvg : null,
+        managerSponsorshipAvg: Number.isFinite(stage?.managerSponsorshipAvg) ? stage.managerSponsorshipAvg : null,
+        perceptionGap: Number.isFinite(stage?.perceptionGap) ? stage.perceptionGap : null,
+      }))
+      .filter((stage) => stage.key && stage.label);
+
+    const result = await generatePulseTrendSignals({
+      orgName: org.name,
+      selectedTimepoint,
+      stages,
+    });
+
+    res.json({
+      source: result.source,
+      signals: result.signals,
     });
   });
 

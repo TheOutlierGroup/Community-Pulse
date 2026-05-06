@@ -7673,9 +7673,64 @@ input[type='range'] {
   background: #eaf5f2;
   border-radius: 8px;
   color: var(--text);
+}
+
+.pulse-trend-card__measure-label {
+  margin: 0 0 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: var(--pulse-font-mono);
+  font-size: 0.63rem;
+  color: var(--muted);
+}
+
+.pulse-trend-card__measure-text {
+  margin: 0;
   font-style: italic;
   font-size: 0.85rem;
   line-height: 1.45;
+  color: var(--text);
+}
+
+.pulse-trend-card__chart {
+  margin-bottom: 0.65rem;
+  width: 100%;
+  min-height: 220px;
+}
+
+.pulse-trend-card__subnote {
+  margin: 0 0 0.55rem;
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.82rem;
+}
+
+.pulse-trend-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 0.65rem;
+}
+
+.pulse-trend-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.55rem;
+  background: var(--surface);
+}
+
+.pulse-trend-panel__title {
+  margin: 0 0 0.4rem;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.pulse-trend-panel__note {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-style: italic;
 }
 
 .pulse-trend-card__signal {
