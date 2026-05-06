@@ -266,21 +266,21 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     className={pulseSectionLinkClass('organisation-dashboard')}
                   >
                     <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
-                    Organisation Dashboard
+                    Organisation View
                   </Link>
-                  <NavLink
-                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine/users`}
-                    className={pulseSectionLinkClass('pulse-users')}
-                  >
-                    <UserPlus size={20} strokeWidth={1.75} aria-hidden />
-                    Users
-                  </NavLink>
                   <Link
                     to={`/platform/clients/${platformClientOrgId}/rhythm-engine#team-level-view`}
                     className={pulseSectionLinkClass('team-level-view')}
                   >
                     <Users size={20} strokeWidth={1.75} aria-hidden />
-                    Team-Level View
+                    People View
+                  </Link>
+                  <Link
+                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine#sponsorship-analysis`}
+                    className={pulseSectionLinkClass('sponsorship-analysis')}
+                  >
+                    <Gauge size={20} strokeWidth={1.75} aria-hidden />
+                    Manager View
                   </Link>
                   {trendAnalysisVisible ? (
                     <Link
@@ -291,13 +291,13 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       Trend Analysis
                     </Link>
                   ) : null}
-                  <Link
-                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine#sponsorship-analysis`}
-                    className={pulseSectionLinkClass('sponsorship-analysis')}
+                  <NavLink
+                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine/users`}
+                    className={pulseSectionLinkClass('pulse-users')}
                   >
-                    <Gauge size={20} strokeWidth={1.75} aria-hidden />
-                    Sponsorship Analysis
-                  </Link>
+                    <UserPlus size={20} strokeWidth={1.75} aria-hidden />
+                    Users
+                  </NavLink>
                   <Link
                     to={`/platform/clients/${platformClientOrgId}/rhythm-engine#reports`}
                     className={pulseSectionLinkClass('reports')}

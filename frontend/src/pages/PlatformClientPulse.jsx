@@ -497,12 +497,12 @@ export default function PlatformClientPulse() {
   const pageTitle = sectionLabel(pulseFocusedSection);
   const showingFullDashboard = !normalizedPulseHash || normalizedPulseHash === 'organisation-dashboard';
   const showingSponsorshipOnly = !showingFullDashboard && pulseFocusedSection === 'sponsorship-analysis';
-  const showTopSummaryCard = showingFullDashboard || showingSponsorshipOnly;
+  const showTopSummaryCard = showingSponsorshipOnly;
   const managerFocusedTopCard = showingSponsorshipOnly;
-  const showReadinessSection = showingFullDashboard || pulseFocusedSection === 'organisation-scores';
+  const showReadinessSection = pulseFocusedSection === 'organisation-scores';
   const showScoresSection = pulseFocusedSection === 'sponsorship-analysis';
   const showTrendSection = pulseFocusedSection === 'trend-analysis';
-  const showTeamLevelSection = showingFullDashboard || pulseFocusedSection === 'team-level-view';
+  const showTeamLevelSection = pulseFocusedSection === 'team-level-view';
   const showReportsSection = pulseFocusedSection === 'reports';
   const kpis = dashboard?.kpis || {};
   const scoreSemantics = dashboard?.scoreSemantics || {};
@@ -510,6 +510,10 @@ export default function PlatformClientPulse() {
     const source = dashboard?.quadrants || [];
     return QUADRANT_ORDER.map((name) => source.find((q) => q.name === name) || { name, percent: 0 });
   }, [dashboard?.quadrants]);
+  const dominantQuadrant = useMemo(
+    () => [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0] || { name: '--', percent: 0 },
+    [quadrants]
+  );
   const optimalPercent = quadrants.find((q) => q.name === 'Optimal')?.percent ?? 0;
   const insightCards = (dashboard?.alerts || []).slice(0, 3);
   const sponsorshipSignals = dashboard?.sponsorshipAnalysis?.signals || null;
@@ -858,11 +862,22 @@ export default function PlatformClientPulse() {
   const executiveSummary = dashboard?.executiveSummary || null;
   const executiveSignalText = (dashboard?.soWhat || dashboard?.narrative || '').trim();
   const micDropScenarios = Array.isArray(executiveSummary?.scenarios) ? executiveSummary.scenarios : [];
-  const executiveHeadline = String(executiveSummary?.headline || '').trim();
   const executiveSubhead = String(executiveSummary?.subhead || '').trim();
-  const riskChips = Array.isArray(executiveSummary?.riskChips) ? executiveSummary.riskChips.filter(Boolean) : [];
-  const kpiBridgeText = String(executiveSummary?.kpiBridgeText || '').trim();
-  const basedOnResponsesText = String(executiveSummary?.basedOnResponsesText || '').trim();
+  const adoptionOverviewBlurb = adoptionScore != null
+    ? `Average adoption readiness is ${formatScore(adoptionScore)}/40, which is ${adoptionScore >= threshold ? 'above' : 'below'} the ${threshold}/40 threshold for execution readiness.`
+    : 'Adoption readiness score is not available for this timepoint yet.';
+  const sponsorshipOverviewBlurb = sponsorshipScore != null
+    ? `Average sponsorship credibility is ${formatScore(sponsorshipScore)}/40, which is ${sponsorshipScore >= threshold ? 'above' : 'below'} the ${threshold}/40 leadership support threshold.`
+    : 'Sponsorship credibility score is not available for this timepoint yet.';
+  const adoptionWhyThisMatters = executiveSignalText
+    || insightCards[0]?.body
+    || 'Use this as a readiness signal for whether people can absorb change at the current pace.';
+  const sponsorshipWhyThisMatters = sponsorshipSignals?.subScores?.text
+    || sponsorshipExecutiveSignal
+    || executiveSignalText
+    || 'Use this to gauge whether managers can actively sponsor change across their teams.';
+  const launchStatusLabel = kpis.launchVerdict === 'cleared' ? 'Cleared to Launch' : 'Not Cleared';
+  const likelihoodSignalText = (kpis.launchHeadline || executiveSignalText || '').trim();
   const topCardTotalResponses = managerFocusedTopCard ? (kpis.completedManagers ?? 0) : (kpis.completedTotal ?? 0);
   const topCardInvitedTotal = managerFocusedTopCard ? (kpis.invitedManagers ?? 0) : (kpis.invitedTotal ?? 0);
   const topCardParticipationRate = managerFocusedTopCard ? kpis.managerParticipationRate : kpis.participationRate;
@@ -1175,24 +1190,62 @@ export default function PlatformClientPulse() {
           </div>
         </div>
 
-        {showingFullDashboard ? (
-          <div className="pulse-clean-exec">
-            <div className="pulse-clean-exec__header">
-              <div>
-                <p className="pulse-clean-exec__eyebrow">
-                  Executive Summary · {org?.name || 'Client'} · {reportDateLabel}
-                </p>
-                <h3 className="pulse-clean-exec__title">{executiveHeadline}</h3>
+        </section>
+      ) : null}
+
+      {showingFullDashboard ? (
+        <>
+          <section className="pulse-org-overview">
+            <article className="card pulse-org-overview__score-card">
+              <div className="pulse-org-overview__header">
+                <h3 className="pulse-org-overview__title">Are your people ready?</h3>
+                <span className="pulse-org-overview__formula-badge" aria-label="Formula component A">A</span>
               </div>
-              <span className="pulse-clean-header__badge">
-                {kpis.launchVerdict === 'cleared' ? 'Cleared for launch' : 'Not Cleared for Launch'}
-              </span>
+              <p className="pulse-org-overview__score">{formatScore(adoptionScore)}</p>
+              <p className="pulse-org-overview__score-meta">Adoption Readiness /40</p>
+              <p className="pulse-org-overview__blurb">{adoptionOverviewBlurb}</p>
+              <div className="pulse-org-overview__signal">
+                <p className="pulse-org-overview__signal-label">Why this matters</p>
+                <p className="pulse-org-overview__signal-text">{adoptionWhyThisMatters}</p>
+              </div>
+            </article>
+            <article className="card pulse-org-overview__score-card">
+              <div className="pulse-org-overview__header">
+                <h3 className="pulse-org-overview__title">Can your managers drive the change?</h3>
+                <span className="pulse-org-overview__formula-badge" aria-label="Formula component B">B</span>
+              </div>
+              <p className="pulse-org-overview__score">{formatScore(sponsorshipScore)}</p>
+              <p className="pulse-org-overview__score-meta">Sponsorship Credibility /40</p>
+              <p className="pulse-org-overview__blurb">{sponsorshipOverviewBlurb}</p>
+              <div className="pulse-org-overview__signal">
+                <p className="pulse-org-overview__signal-label">Why this matters</p>
+                <p className="pulse-org-overview__signal-text">{sponsorshipWhyThisMatters}</p>
+              </div>
+            </article>
+          </section>
+
+          <section className="card pulse-org-likelihood">
+            <div className="pulse-org-likelihood__header">
+              <div>
+                <p className="pulse-org-likelihood__eyebrow">{org?.name || 'Client'} · {reportDateLabel}</p>
+                <h3 className="pulse-org-likelihood__title">Likelihood of Success?</h3>
+              </div>
+              <div className="pulse-org-likelihood__status-wrap">
+                <span className="pulse-org-overview__formula-badge" aria-label="Formula component C">C</span>
+                <span className={`pulse-clean-header__badge${kpis.launchVerdict === 'cleared' ? ' pulse-sa-verdict__badge--stable' : ''}`}>
+                  {launchStatusLabel}
+                </span>
+              </div>
             </div>
-            <div className="pulse-clean-exec__overview">
-              <div className="pulse-clean-exec__quadrants">
+            <div className="pulse-sa-card" style={{ marginBottom: 0 }}>
+              <p className="pulse-sa-card__label">Quadrant Journey</p>
+              <p className="pulse-sa-card__explainer">
+                Quadrant classification tracks whether score movement is improving toward Optimal or drifting into higher risk states.
+              </p>
+              <div className="pulse-clean-readiness__quadrants">
                 {quadrants.map((quadrant) => (
                   <div
-                    key={`exec-${quadrant.name}`}
+                    key={`overview-${quadrant.name}`}
                     className={`pulse-clean-readiness__quadrant pulse-clean-readiness__quadrant--${quadrantTone(quadrant.name)}`}
                   >
                     <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
@@ -1200,65 +1253,37 @@ export default function PlatformClientPulse() {
                   </div>
                 ))}
               </div>
-              <p className="pulse-clean-exec__overview-text">{executiveSubhead}</p>
-            </div>
-            <div className="pulse-clean-exec__scenarios">
-              {micDropScenarios.map((scenario) => (
-                <article key={scenario.id} className="pulse-clean-exec__scenario">
-                  <p className="pulse-clean-exec__scenario-tag">{scenario.tag}</p>
-                  <h4 className="pulse-clean-exec__scenario-title">{scenario.title}</h4>
-                  <p className="pulse-clean-exec__scenario-text">{scenario.textA}</p>
-                  <p className="pulse-clean-exec__scenario-text">{scenario.textB}</p>
-                  <p className="pulse-clean-exec__scenario-outcome">
-                    <strong>Projected outcome:</strong> {scenario.outcome}
-                  </p>
-                </article>
-              ))}
-            </div>
-            <div className="pulse-clean-exec__footer">
-              <p className="pulse-clean-exec__footer-note">
-                {basedOnResponsesText || (
-                  <>
-                    Based on <strong>{managerFocusedTopCard ? (kpis.completedManagers ?? 0) : (kpis.completedTotal ?? 0)} responses</strong> · Threshold{' '}
-                    <strong>{threshold}/40</strong>
-                  </>
-                )}
+              <p className="pulse-sa-card__explainer" style={{ marginTop: '0.8rem' }}>
+                <strong>Score:</strong> {dominantQuadrant.name} ({formatPercent(dominantQuadrant.percent)})
               </p>
-              <div className="pulse-clean-exec__chips">
-                {riskChips.length > 0 ? riskChips.map((chip) => (
-                  <span key={chip} className="pulse-clean-exec__chip">{chip}</span>
-                )) : <span className="pulse-clean-exec__chip">No elevated risk flags</span>}
-              </div>
+              <p className="pulse-sa-card__explainer" style={{ marginTop: '0.35rem' }}>
+                <strong>What it means:</strong> {executiveSubhead || 'Use the dominant quadrant to prioritise intervention and launch pacing.'}
+              </p>
+              {likelihoodSignalText ? (
+                <div className="pulse-sa-signal pulse-sa-signal--amber">
+                  <span className="pulse-sa-signal__label">Signal</span>
+                  {likelihoodSignalText}
+                </div>
+              ) : null}
             </div>
-            <div className="pulse-clean-header__summary">
-              <div>
-                <p className="pulse-clean-header__summary-title">{kpis.launchHeadline || '--'}</p>
-                {executiveSignalText ? (
-                  <p className="pulse-clean-header__summary-text">{executiveSignalText}</p>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        ) : null}
-        </section>
-      ) : null}
 
-      {showingFullDashboard && kpiBridgeText ? (
-        <section className="pulse-clean-bridge card">
-          <div className="pulse-clean-bridge__text">{kpiBridgeText}</div>
-        <div className="pulse-clean-bridge__scores">
-          <article className="pulse-clean-bridge__score pulse-clean-bridge__score--adoption">
-            <p className="pulse-clean-bridge__score-label">Adoption Readiness</p>
-            <p className="pulse-clean-bridge__score-value">{formatScore(adoptionScore)}</p>
-            <p className="pulse-clean-bridge__score-meta">/40 · {adoptionScore != null && adoptionScore >= threshold ? 'Above threshold' : 'Below threshold'}</p>
-          </article>
-          <article className="pulse-clean-bridge__score pulse-clean-bridge__score--sponsorship">
-            <p className="pulse-clean-bridge__score-label">Sponsorship Credibility</p>
-            <p className="pulse-clean-bridge__score-value">{formatScore(sponsorshipScore)}</p>
-            <p className="pulse-clean-bridge__score-meta">/40 · {sponsorshipScore != null && sponsorshipScore >= threshold ? 'Above threshold' : 'Below threshold'}</p>
-          </article>
-        </div>
-        </section>
+            {micDropScenarios.length > 0 ? (
+              <div className="pulse-clean-exec__scenarios" style={{ marginTop: '1rem' }}>
+                {micDropScenarios.map((scenario) => (
+                  <article key={scenario.id} className="pulse-clean-exec__scenario">
+                    <p className="pulse-clean-exec__scenario-tag">{scenario.tag}</p>
+                    <h4 className="pulse-clean-exec__scenario-title">{scenario.title}</h4>
+                    <p className="pulse-clean-exec__scenario-text">{scenario.textA}</p>
+                    <p className="pulse-clean-exec__scenario-text">{scenario.textB}</p>
+                    <p className="pulse-clean-exec__scenario-outcome">
+                      <strong>Projected outcome:</strong> {scenario.outcome}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        </>
       ) : null}
 
       {error ? <p className="error">{error}</p> : null}
