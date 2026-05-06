@@ -682,14 +682,21 @@ async function ensureDefaultPulseSessionsForOrg(organizationId) {
           : purpose === 'during_project'
             ? 'During'
             : 'Post';
-      const session = await PulseSession.createSession(
-        organizationId,
-        name,
-        'active',
-        audience,
-        purpose
-      );
-      created.push(session);
+      const initialStatus = purpose === 'pre_project' ? 'active' : 'draft';
+      try {
+        const session = await PulseSession.createSession(
+          organizationId,
+          name,
+          initialStatus,
+          audience,
+          purpose
+        );
+        created.push(session);
+      } catch (error) {
+        // Concurrent lazy init or an existing active session can trigger
+        // unique violations; treat this initializer as best-effort/idempotent.
+        if (error?.code !== '23505') throw error;
+      }
     }
   }
   return created;
@@ -1330,24 +1337,25 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.post('/organizations', requirePlatformAdminRole, handleOrgLogoPlatformUpload, async (req, res) => {
-    const name = req.body.name;
-    if (!name || !String(name).trim()) {
-      return res.status(400).json({ error: 'Name is required' });
-    }
-    const adminEmail = req.body.adminEmail;
-    const addrRaw = req.body.companyAddress ?? req.body.address;
-    const requesterOrg = req.workspaceOrganization;
-    const isLicenseeRequester = requesterOrg?.kind === 'licensee';
+    try {
+      const name = req.body.name;
+      if (!name || !String(name).trim()) {
+        return res.status(400).json({ error: 'Name is required' });
+      }
+      const adminEmail = req.body.adminEmail;
+      const addrRaw = req.body.companyAddress ?? req.body.address;
+      const requesterOrg = req.workspaceOrganization;
+      const isLicenseeRequester = requesterOrg?.kind === 'licensee';
 
-    const requestedServiceIds = parseMultipartServiceIds(
-      req.body.clientServiceIds ?? req.body['clientServiceIds[]']
-    );
+      const requestedServiceIds = parseMultipartServiceIds(
+        req.body.clientServiceIds ?? req.body['clientServiceIds[]']
+      );
 
-    let allowedServiceIds = null;
-    let parentOrganizationId = null;
-    let createdKind = 'client';
+      let allowedServiceIds = null;
+      let parentOrganizationId = null;
+      let createdKind = 'client';
 
-    if (isLicenseeRequester) {
+      if (isLicenseeRequester) {
       // Licensees may only provision plain client orgs under themselves and
       // are limited to the locked downstream service catalog (RE/Other).
       parentOrganizationId = requesterOrg.id;
@@ -1357,7 +1365,7 @@ export function registerPlatformOrgRoutes(router) {
           error: 'Licensees cannot grant the Rhythm Engine Licensee service',
         });
       }
-    } else {
+      } else {
       // Platform admins use the full configured catalog. Selecting the
       // licensee service flips the new org into a licensee tenant rooted
       // under this platform org.
@@ -1374,8 +1382,8 @@ export function registerPlatformOrgRoutes(router) {
       }
     }
 
-    let normalizedServiceIds = null;
-    if (requestedServiceIds) {
+      let normalizedServiceIds = null;
+      if (requestedServiceIds) {
       normalizedServiceIds = normalizeServiceIds(requestedServiceIds, allowedServiceIds);
       if (normalizedServiceIds == null) {
         return res.status(400).json({ error: 'clientServiceIds must be an array' });
@@ -1389,38 +1397,38 @@ export function registerPlatformOrgRoutes(router) {
       }
     }
 
-    const initialSettings = {};
-    if (addrRaw != null && String(addrRaw).trim()) {
+      const initialSettings = {};
+      if (addrRaw != null && String(addrRaw).trim()) {
       initialSettings.companyAddress = String(addrRaw).trim();
     }
-    if (normalizedServiceIds && normalizedServiceIds.length) {
+      if (normalizedServiceIds && normalizedServiceIds.length) {
       initialSettings.services = normalizedServiceIds;
     }
 
-    let org = await Organization.createOrganization(
+      let org = await Organization.createOrganization(
       name.trim(),
       initialSettings,
       createdKind,
       undefined,
       { parentOrganizationId }
     );
-    if (createdKind === 'licensee') {
+      if (createdKind === 'licensee') {
       try {
         await LicenseConfig.createDefaultForLicensee(org.id);
       } catch (e) {
         console.error('Failed to create licence_config row for licensee org:', e);
       }
     }
-    try {
+      try {
       // Licensee orgs do not run pulse sessions themselves; their own
       // downstream clients each get default sessions when needed.
       if (createdKind === 'client' && organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
         await ensureDefaultPulseSessionsForOrg(org.id);
       }
-    } catch (e) {
+      } catch (e) {
       console.error('Failed to create default pulse sessions for new org:', e);
     }
-    if (req.file) {
+      if (req.file) {
       const ext = extensionForUpload(req.file);
       const base = `org-${org.id}${ext || '.png'}`;
       try {
@@ -1431,13 +1439,18 @@ export function registerPlatformOrgRoutes(router) {
         console.error(e);
       }
     }
-    if (adminEmail && String(adminEmail).trim()) {
+      if (adminEmail && String(adminEmail).trim()) {
       const existing = await User.findUserByEmail(adminEmail);
       if (existing) {
         return res.status(409).json({ error: 'A user with this email already exists' });
       }
       let sendWelcomeEmail = parseMultipartBool(req.body.sendWelcomeEmail);
       let enableLogin = parseMultipartBool(req.body.enableLogin);
+      if (isLicenseeRequester) {
+        // Licensee-created client admins are intentionally non-login users.
+        sendWelcomeEmail = false;
+        enableLogin = false;
+      }
       if (sendWelcomeEmail) {
         enableLogin = true;
       }
@@ -1494,14 +1507,14 @@ export function registerPlatformOrgRoutes(router) {
           welcomeEmailSent,
         },
       });
-      return res.status(201).json({
+        return res.status(201).json({
         organization: org,
         firstUser: publicStaffUser(outRow),
         welcomeEmailRequested: sendWelcomeEmail,
         welcomeEmailSent,
       });
-    }
-    auditFromRequest(req)({
+      }
+      auditFromRequest(req)({
       action: AUDIT_ACTIONS.ORG_CREATE,
       targetType: 'organization',
       targetId: org.id,
@@ -1512,7 +1525,14 @@ export function registerPlatformOrgRoutes(router) {
         parentOrganizationId: org.parent_organization_id || null,
       },
     });
-    res.status(201).json({ organization: org });
+      res.status(201).json({ organization: org });
+    } catch (error) {
+      if (error?.code === '23505' && String(error?.constraint || '').toLowerCase().includes('slug')) {
+        return res.status(409).json({ error: 'A company with that slug already exists. Try a different name.' });
+      }
+      console.error('Create organization failed:', error);
+      return res.status(500).json({ error: 'Could not create organization.' });
+    }
   });
 
   router.patch('/organizations/:id', requirePlatformAdminRole, async (req, res) => {

@@ -21,14 +21,26 @@ export async function createOrganization(
   clientStatus = defaultClientStatusForKind(kind),
   { parentOrganizationId = null } = {}
 ) {
-  const slug = normalizeSlug(name);
-  const { rows } = await query(
-    `INSERT INTO organizations (name, slug, settings, kind, client_status, parent_organization_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING *`,
-    [name, slug, JSON.stringify(settings), kind, clientStatus, parentOrganizationId]
-  );
-  return rows[0];
+  const baseSlug = normalizeSlug(name);
+  let slug = baseSlug;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      const { rows } = await query(
+        `INSERT INTO organizations (name, slug, settings, kind, client_status, parent_organization_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [name, slug, JSON.stringify(settings), kind, clientStatus, parentOrganizationId]
+      );
+      return rows[0];
+    } catch (err) {
+      const constraint = String(err?.constraint || '').toLowerCase();
+      const isSlugConflict = err?.code === '23505' && constraint.includes('slug');
+      if (!isSlugConflict || !baseSlug || attempt >= 5) throw err;
+      const suffix = Math.random().toString(36).slice(2, 6);
+      slug = `${baseSlug}-${suffix}`;
+    }
+  }
+  throw new Error('Could not create organization');
 }
 
 export async function getOrganization(id) {

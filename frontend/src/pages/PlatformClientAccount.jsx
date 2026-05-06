@@ -8,7 +8,6 @@ import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { Building2, Sparkles, Trash2 } from 'lucide-react';
 import LicenseConfigPanel from '../components/platform/LicenseConfigPanel.jsx';
 import RecentActivityPanel from '../components/platform/RecentActivityPanel.jsx';
-import LicenseeApiKeysPanel from '../components/platform/LicenseeApiKeysPanel.jsx';
 import {
   CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
@@ -364,9 +363,6 @@ export default function PlatformClientAccount() {
         </>
       )}
       <RecentActivityPanel orgId={orgId} />
-      {isLicenseeOrg && (
-        <LicenseeApiKeysPanel orgId={orgId} canManage={isPlatformAdmin || (user?.organizationKind === 'licensee' && user?.organizationId === orgId && user?.role === 'admin')} />
-      )}
       <div className="platform-client-dashboard-grid">
         <div className="card platform-client-dashboard__card">
           <h1 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>

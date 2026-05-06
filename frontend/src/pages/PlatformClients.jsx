@@ -120,7 +120,7 @@ export default function PlatformClients() {
       if (newOrgAdminEmail.trim()) fd.append('adminEmail', newOrgAdminEmail.trim());
       if (newOrgAdminFirstName.trim()) fd.append('adminFirstName', newOrgAdminFirstName.trim());
       if (newOrgAdminLastName.trim()) fd.append('adminLastName', newOrgAdminLastName.trim());
-      if (newOrgAdminEmail.trim()) {
+      if (newOrgAdminEmail.trim() && !isLicensee) {
         fd.append('sendWelcomeEmail', sendWelcomeEmail ? 'true' : 'false');
         fd.append('enableLogin', enableLogin ? 'true' : 'false');
       }
@@ -153,7 +153,7 @@ export default function PlatformClients() {
       showToast(toastMsg, { variant: 'success', durationMs });
       closeCreateModal();
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not create organization.');
+      setError(err.response?.data?.error || err.message || 'Could not create organization.');
     } finally {
       setBusy(false);
     }
@@ -378,47 +378,49 @@ export default function PlatformClients() {
                   </div>
                 </div>
               </fieldset>
-              <div className="field">
-                <p className="muted" style={{ fontSize: '0.85rem', margin: '0 0 0.5rem' }}>
-                  First admin options (when email is set)
-                </p>
-                <label
-                  style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.35rem 0' }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={sendWelcomeEmail}
-                    disabled={busy}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setSendWelcomeEmail(on);
-                      if (on) setEnableLogin(true);
-                    }}
-                  />
-                  <span>
-                    Send welcome email
-                    <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-                      Sends a link to create their password. Also turns on login.
+              {!isLicensee ? (
+                <div className="field">
+                  <p className="muted" style={{ fontSize: '0.85rem', margin: '0 0 0.5rem' }}>
+                    First admin options (when email is set)
+                  </p>
+                  <label
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.35rem 0' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={sendWelcomeEmail}
+                      disabled={busy}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setSendWelcomeEmail(on);
+                        if (on) setEnableLogin(true);
+                      }}
+                    />
+                    <span>
+                      Send welcome email
+                      <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                        Sends a link to create their password. Also turns on login.
+                      </span>
                     </span>
-                  </span>
-                </label>
-                <label
-                  style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.35rem 0' }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={enableLogin}
-                    disabled={busy || sendWelcomeEmail}
-                    onChange={(e) => setEnableLogin(e.target.checked)}
-                  />
-                  <span>
-                    Enable login
-                    <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-                      If off, they cannot sign in or use password reset and have no access to the platform.
+                  </label>
+                  <label
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.35rem 0' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={enableLogin}
+                      disabled={busy || sendWelcomeEmail}
+                      onChange={(e) => setEnableLogin(e.target.checked)}
+                    />
+                    <span>
+                      Enable login
+                      <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                        If off, they cannot sign in or use password reset and have no access to the platform.
+                      </span>
                     </span>
-                  </span>
-                </label>
-              </div>
+                  </label>
+                </div>
+              ) : null}
               {canCreateLicensees && (
                 <div className="field">
                   <p className="muted" style={{ fontSize: '0.85rem', margin: '0 0 0.5rem' }}>

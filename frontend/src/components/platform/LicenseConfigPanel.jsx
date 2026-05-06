@@ -480,14 +480,17 @@ export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved }) {
         <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.85rem' }}>
           Download the row-level CSV used for billing reconciliation. Defaults to last completed month.
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-          <input
-            type="month"
-            value={reconciliationMonth}
-            onChange={(e) => setReconciliationMonth(e.target.value)}
-            disabled={reconciliationBusy}
-            style={{ maxWidth: 160 }}
-          />
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem', marginBottom: '1rem' }}>
+          <div className="field" style={{ marginBottom: 0, minWidth: 180 }}>
+            <label htmlFor="lc-reconciliation-month">Month</label>
+            <input
+              id="lc-reconciliation-month"
+              type="month"
+              value={reconciliationMonth}
+              onChange={(e) => setReconciliationMonth(e.target.value)}
+              disabled={reconciliationBusy}
+            />
+          </div>
           <button
             type="button"
             className="btn btn-secondary"
