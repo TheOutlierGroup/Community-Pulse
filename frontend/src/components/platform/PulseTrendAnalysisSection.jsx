@@ -6,14 +6,24 @@ function formatScore(value, digits = 1, fallback = '--') {
 }
 
 function formatPercent(value) {
-  if (!Number.isFinite(value)) return '0%';
+  if (!Number.isFinite(value)) return '--';
   return `${Math.round(value)}%`;
 }
 
-function formatDelta(value) {
+function formatDelta(value, minDigits = 1, maxDigits = 3) {
   if (!Number.isFinite(value)) return '--';
-  if (value > 0) return `+${value.toFixed(1)}`;
-  return value.toFixed(1);
+  let digits = minDigits;
+  // Preserve small non-zero movement that would otherwise round to 0.0.
+  while (
+    digits < maxDigits
+    && value !== 0
+    && Number(value.toFixed(digits)) === 0
+  ) {
+    digits += 1;
+  }
+  const formatted = value.toFixed(digits);
+  if (value > 0) return `+${formatted}`;
+  return formatted;
 }
 
 function bandTone(value) {
@@ -91,6 +101,50 @@ export default function PulseTrendAnalysisSection({
     () => stageDelta(orderedStages, (stage) => stage.chainStates['Chain Functioning']),
     [orderedStages]
   );
+  const primaryMovementHeadline = useMemo(() => {
+    const hasAdoptionDelta = Number.isFinite(primaryAdoptionDelta);
+    const hasSponsorshipDelta = Number.isFinite(primarySponsorshipDelta);
+    if (!hasAdoptionDelta && !hasSponsorshipDelta) return 'Primary score movement is not available yet.';
+    if (hasAdoptionDelta && !hasSponsorshipDelta) return 'Adoption has movement data; Sponsorship delta is not available yet.';
+    if (!hasAdoptionDelta && hasSponsorshipDelta) return 'Sponsorship has movement data; Adoption delta is not available yet.';
+    const adoptionAbs = Math.abs(primaryAdoptionDelta);
+    const sponsorshipAbs = Math.abs(primarySponsorshipDelta);
+    if (adoptionAbs < 0.05 && sponsorshipAbs < 0.05) return 'Both primary scores are currently stable.';
+    if (Math.abs(adoptionAbs - sponsorshipAbs) < 0.05) return 'Adoption and Sponsorship moved by similar amounts.';
+    return adoptionAbs > sponsorshipAbs ? 'Adoption has moved the most.' : 'Sponsorship has moved the most.';
+  }, [primaryAdoptionDelta, primarySponsorshipDelta]);
+  const subScoreHeadline = useMemo(() => {
+    const received = currentStage?.receivedAvg;
+    const capacity = currentStage?.capacityAvg;
+    if (!Number.isFinite(received) || !Number.isFinite(capacity)) {
+      return 'Current sub-score comparison is not available yet.';
+    }
+    if (Math.abs(received - capacity) < 0.05) return 'Received and Capacity are currently aligned.';
+    return received <= capacity ? 'Received is currently the weaker sub-score.' : 'Capacity is currently the weaker sub-score.';
+  }, [currentStage?.capacityAvg, currentStage?.receivedAvg]);
+  const overloadHeadline = useMemo(() => {
+    const overloaded = currentStage?.loadBands?.Overloaded;
+    if (!Number.isFinite(overloaded)) return 'Overloaded-band data is not available yet.';
+    if (overloaded >= 10) return `Critical load threshold breached (${formatPercent(overloaded)} overloaded).`;
+    return 'Overloaded band remains below critical threshold.';
+  }, [currentStage?.loadBands?.Overloaded]);
+  const managerConstraintHeadline = useMemo(() => {
+    const changeSaturation = currentStage?.dimensions?.manager?.['1C'];
+    const managerWellbeing = currentStage?.dimensions?.manager?.['2D'];
+    if (!Number.isFinite(changeSaturation) || !Number.isFinite(managerWellbeing)) {
+      return 'Manager-capacity constraint signal is not available yet.';
+    }
+    return changeSaturation < managerWellbeing
+      ? 'Change Saturation is the tighter constraint on manager capacity.'
+      : 'Manager Wellbeing is the tighter constraint on manager capacity.';
+  }, [currentStage?.dimensions?.manager]);
+  const perceptionGapHeadline = useMemo(() => {
+    const gap = currentStage?.perceptionGap;
+    if (!Number.isFinite(gap)) return 'Perception-gap signal is not available yet.';
+    return gap > 0
+      ? 'Managers are currently overestimating sponsorship delivery versus employee experience.'
+      : 'Managers are not overestimating sponsorship delivery at the current stage.';
+  }, [currentStage?.perceptionGap]);
 
   const employeeAdoptionMove = useMemo(
     () =>
@@ -164,7 +218,7 @@ export default function PulseTrendAnalysisSection({
           </table>
         </div>
         <p className="pulse-trend-card__signal">
-          <strong>{Math.abs(primaryAdoptionDelta || 0) >= Math.abs(primarySponsorshipDelta || 0) ? 'Adoption has moved the most.' : 'Sponsorship has moved the most.'}</strong>{' '}
+          <strong>{primaryMovementHeadline}</strong>{' '}
           Latest deltas are Adoption {formatDelta(primaryAdoptionDelta)} and Sponsorship {formatDelta(primarySponsorshipDelta)}.
         </p>
       </article>
@@ -214,7 +268,7 @@ export default function PulseTrendAnalysisSection({
           </table>
         </div>
         <p className="pulse-trend-card__signal">
-          <strong>{(currentStage?.receivedAvg || 0) <= (currentStage?.capacityAvg || 0) ? 'Received is currently the weaker sub-score.' : 'Capacity is currently the weaker sub-score.'}</strong>{' '}
+          <strong>{subScoreHeadline}</strong>{' '}
           Latest deltas: Received {formatDelta(receivedDelta)}, Capacity {formatDelta(capacityDelta)}.
         </p>
       </article>
@@ -245,7 +299,7 @@ export default function PulseTrendAnalysisSection({
           </table>
         </div>
         <p className="pulse-trend-card__signal">
-          <strong>{(currentStage?.loadBands.Overloaded || 0) >= 10 ? `Critical load threshold breached (${formatPercent(currentStage?.loadBands.Overloaded || 0)} overloaded).` : 'Overloaded band remains below critical threshold.'}</strong>{' '}
+          <strong>{overloadHeadline}</strong>{' '}
           Adjust pace and support based on this distribution.
         </p>
       </article>
@@ -317,11 +371,7 @@ export default function PulseTrendAnalysisSection({
           </table>
         </div>
         <p className="pulse-trend-card__signal">
-          <strong>
-            {((currentStage?.dimensions.manager['1C'] || 0) < (currentStage?.dimensions.manager['2D'] || 0))
-              ? 'Change Saturation is the tighter constraint on manager capacity.'
-              : 'Manager Wellbeing is the tighter constraint on manager capacity.'}
-          </strong>{' '}
+          <strong>{managerConstraintHeadline}</strong>{' '}
           Use this as an early warning for sponsorship chain strain.
         </p>
       </article>
@@ -387,11 +437,7 @@ export default function PulseTrendAnalysisSection({
           </table>
         </div>
         <p className="pulse-trend-card__signal">
-          <strong>
-            {Number(currentStage?.perceptionGap || 0) > 0
-              ? 'Managers are currently overestimating sponsorship delivery versus employee experience.'
-              : 'Managers are not overestimating sponsorship delivery at the current stage.'}
-          </strong>{' '}
+          <strong>{perceptionGapHeadline}</strong>{' '}
           Track whether the gap narrows or widens in the next wave.
         </p>
       </article>

@@ -982,9 +982,8 @@ export default function PlatformClientPulse() {
       }
 
       const preParams = { ...sharedParams, timepoint: 'pre' };
+      // Keep trend snapshots pinned to canonical stage aggregates, not dropdown checkpoint selection.
       const duringParams = { ...sharedParams, timepoint: 'during' };
-      if (pulseDuringDate) duringParams.duringDate = pulseDuringDate;
-      if (pulseDuringSessionId) duringParams.duringSessionId = pulseDuringSessionId;
       const postParams = { ...sharedParams, timepoint: 'completed' };
 
       const [preResult, duringResult, postResult] = await Promise.allSettled([
@@ -1018,8 +1017,6 @@ export default function PlatformClientPulse() {
   }, [
     includeManagerSelf,
     orgId,
-    pulseDuringDate,
-    pulseDuringSessionId,
     pulseEnabled,
     selectedManagerIds,
     trendAnalysisVisible,
