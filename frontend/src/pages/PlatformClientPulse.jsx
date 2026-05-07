@@ -17,41 +17,57 @@ const DIMENSION_COMPARISON_META = {
     sharedConstruct: 'Does the team have skills to absorb the change?',
     pairing: 'Strong',
     comparable: true,
+    q1Construct: 'Skill support to perform in new ways',
+    q2Construct: 'Capacity (time, energy, headspace) to learn',
   },
   '1B': {
     sharedConstruct: 'How has the org handled change historically?',
     pairing: 'Moderate',
     comparable: true,
+    q1Construct: 'Past changes stuck without drifting back',
+    q2Construct: 'Change delivered in an organised, manageable way',
   },
   '1C': {
     sharedConstruct: 'Different subjects, not directly comparable',
     pairing: 'Excluded',
     comparable: false,
+    q1Construct: 'Volume of concurrent changes feels manageable',
+    q2Construct: 'Bandwidth to absorb additional change',
   },
   '1D': {
     sharedConstruct: 'Is the layer above supporting the layer below?',
     pairing: 'Strong',
     comparable: true,
+    q1Construct: 'Manager actively engages with change, not just passes info',
+    q2Construct: 'Concerns raised during change are genuinely heard',
   },
   '2A': {
     sharedConstruct: 'Are senior leaders visibly committed?',
     pairing: 'Moderate',
     comparable: true,
+    q1Construct: 'Senior leaders visibly model the change themselves',
+    q2Construct: 'Leaders stay present and engaged when change gets hard',
   },
   '2B': {
     sharedConstruct: 'Are leaders modelling the change credibly?',
     pairing: 'Strong',
     comparable: true,
+    q1Construct: 'Change applies to leaders as much as to staff',
+    q2Construct: "Leaders' words match what actually happens",
   },
   '2C': {
     sharedConstruct: 'Different constructs, not directly comparable',
     pairing: 'Excluded',
     comparable: false,
+    q1Construct: 'Honest about challenges, not just selling positives',
+    q2Construct: 'Leaders adjust approach when something is not working',
   },
   '2D': {
     sharedConstruct: 'Is the environment safe and sustainable?',
     pairing: 'Strong',
     comparable: true,
+    q1Construct: 'Safe to say you are struggling with change',
+    q2Construct: 'Genuine support, not performance management',
   },
 };
 
@@ -580,6 +596,8 @@ export default function PlatformClientPulse() {
         sharedConstruct: '',
         pairing: 'Excluded',
         comparable: false,
+        q1Construct: '',
+        q2Construct: '',
       };
       const comparable = typeof base.comparable === 'boolean' ? base.comparable : meta.comparable;
       const employeeQuestionIds = Array.isArray(base?.employee?.questionIds)
@@ -620,6 +638,8 @@ export default function PlatformClientPulse() {
         comparable,
         pairing: meta.pairing,
         sharedConstruct: meta.sharedConstruct,
+        q1Construct: meta.q1Construct || '',
+        q2Construct: meta.q2Construct || '',
         employeeQuestionIds,
         managerQuestionIds,
         employee: {
@@ -947,7 +967,40 @@ export default function PlatformClientPulse() {
   const sponsorshipScoreCardSignal = scoreCardSignals.sponsorship || {};
   const likelihoodSignal = dashboard?.likelihoodSignal || {};
   const quadrantSignal = dashboard?.quadrantSignal || {};
-  const quadrantSignalText = String(quadrantSignal.text || quadrantSignal.fallback || '').trim();
+  const quadrantSignalText = String(
+    quadrantSignal.text
+    || quadrantSignal.fallback
+    || 'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this programme can proceed with confidence.'
+  ).trim();
+  const quadrantBannerVariant = (() => {
+    const fromBackend = String(quadrantSignal.bannerVariant || '').trim().toLowerCase();
+    if (fromBackend === 'red' || fromBackend === 'amber' || fromBackend === 'green') {
+      return fromBackend;
+    }
+    const segments = [
+      { name: 'Optimal', percent: Number(quadrants.find((q) => q.name === 'Optimal')?.percent) || 0, priority: 0 },
+      { name: 'High Risk', percent: Number(quadrants.find((q) => q.name === 'High Risk')?.percent) || 0, priority: 1 },
+      { name: 'Capable but Wary', percent: Number(quadrants.find((q) => q.name === 'Capable but Wary')?.percent) || 0, priority: 2 },
+      { name: 'Motivated but Lost', percent: Number(quadrants.find((q) => q.name === 'Motivated but Lost')?.percent) || 0, priority: 2 },
+    ].sort((a, b) => {
+      if (b.percent !== a.percent) return b.percent - a.percent;
+      return a.priority - b.priority;
+    });
+    const largest = segments[0];
+    if (!largest || largest.percent <= 0 || largest.name === 'Optimal') return 'green';
+    const nonOptimal = [
+      { name: 'High Risk', percent: Number(quadrants.find((q) => q.name === 'High Risk')?.percent) || 0, priority: 0 },
+      { name: 'Capable but Wary', percent: Number(quadrants.find((q) => q.name === 'Capable but Wary')?.percent) || 0, priority: 1 },
+      { name: 'Motivated but Lost', percent: Number(quadrants.find((q) => q.name === 'Motivated but Lost')?.percent) || 0, priority: 1 },
+    ]
+      .filter((entry) => entry.percent > 0)
+      .sort((a, b) => {
+        if (b.percent !== a.percent) return b.percent - a.percent;
+        return a.priority - b.priority;
+      });
+    if (nonOptimal[0]?.name === 'High Risk') return 'red';
+    return 'amber';
+  })();
   const executiveSummary = dashboard?.executiveSummary || null;
   const executiveSignalText = (dashboard?.soWhat || dashboard?.narrative || '').trim();
   const micDropScenarios = Array.isArray(executiveSummary?.scenarios) ? executiveSummary.scenarios : [];
@@ -1367,6 +1420,11 @@ export default function PlatformClientPulse() {
               <p className="pulse-org-overview__score-meta">Adoption Readiness /40</p>
               <p className="pulse-org-overview__quadrant-meta">{topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{adoptionOverviewBlurb}</p>
+              {Number.isFinite(adoptionScore) ? (
+                <p className="pulse-org-overview__threshold-context">
+                  The 28-point threshold represents an average question score of 3.5 across all eight adoption dimensions &mdash; the point at which the cohort as a whole is leaning positively rather than sitting on the fence. This score is {adoptionScore >= threshold ? 'above' : 'below'} it.
+                </p>
+              ) : null}
               <div className="pulse-org-overview__measures">
                 <p className="pulse-org-overview__measures-label">What it measures</p>
                 <p className="pulse-org-overview__measures-text">
@@ -1393,6 +1451,11 @@ export default function PlatformClientPulse() {
               <p className="pulse-org-overview__score-meta">Sponsorship Credibility /40</p>
               <p className="pulse-org-overview__quadrant-meta">{topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{sponsorshipOverviewBlurb}</p>
+              {Number.isFinite(sponsorshipScore) ? (
+                <p className="pulse-org-overview__threshold-context">
+                  The 28-point threshold represents an average question score of 3.5 across all eight sponsorship dimensions &mdash; the point at which the cohort as a whole is leaning positively rather than sitting on the fence. This score is {sponsorshipScore >= threshold ? 'above' : 'below'} it.
+                </p>
+              ) : null}
               <div className="pulse-org-overview__measures">
                 <p className="pulse-org-overview__measures-label">What it measures</p>
                 <p className="pulse-org-overview__measures-text">
@@ -1425,14 +1488,22 @@ export default function PlatformClientPulse() {
               <p className="pulse-sa-card__explainer">
                 Quadrant classification tracks whether score movement is improving toward Optimal or drifting into higher risk states.
               </p>
-              {quadrantSignalText ? (
-                <div className="pulse-quadrant-signal" role="note" aria-label="Quadrant signal banner">
-                  <span className="pulse-quadrant-signal__label">Signal</span>
-                  <p className="pulse-quadrant-signal__text">
-                    {renderSignalMarkup(quadrantSignalText)}
-                  </p>
-                </div>
-              ) : null}
+              <div className="pulse-trend-card__measure" role="note" aria-label="What this measures">
+                <p className="pulse-trend-card__measure-label">What this measures</p>
+                <p className="pulse-trend-card__measure-text">
+                  The quadrant is determined by crossing two scores: Adoption Readiness — whether the organisation has the capability, capacity, and managerial support to absorb the change — and Sponsorship Credibility — whether leadership is visibly and credibly driving it. Optimal means both are strong; High Risk means both are weak; Motivated but Lost means sponsorship is strong but adoption is not; Capable but Wary means adoption is strong but sponsorship is not.
+                </p>
+              </div>
+              <div
+                className={`pulse-quadrant-signal pulse-quadrant-signal--${quadrantBannerVariant}`}
+                role="note"
+                aria-label="Quadrant signal banner"
+              >
+                <span className="pulse-quadrant-signal__label">Signal</span>
+                <p className="pulse-quadrant-signal__text">
+                  {renderSignalMarkup(quadrantSignalText)}
+                </p>
+              </div>
               <div className="pulse-clean-readiness__quadrants">
                 {quadrants.map((quadrant) => (
                   <div
@@ -1832,9 +1903,10 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-dimensions__eyebrow">Team-Level Overview</p>
             <h3 className="pulse-clean-dimensions__title">Employee/Manager Dimension Heatmap</h3>
             <p className="pulse-clean-dimensions__explainer">
-              Each dimension expands into Q1 and Q2 rows so question-level divergence is visible at a glance.
+              Each dimension expands into its two underlying questions so question-level divergence is visible at a glance.
               Diverged employee or manager chips outline in red; the Dim avg chip flags when the perception gap crosses {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ points.
-              Intra-dimension divergence flags trigger at {INTRA_DIMENSION_DIVERGENCE_THRESHOLD.toFixed(1)}+ points.
+              An AI signal appears next to a question whenever its employee/manager gap crosses {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ points,
+              and intra-dimension divergence flags trigger at {INTRA_DIMENSION_DIVERGENCE_THRESHOLD.toFixed(1)}+ points.
             </p>
           </div>
 
@@ -1887,13 +1959,22 @@ export default function PlatformClientPulse() {
                     extra,
                   ].filter(Boolean).join(' ');
                   const constructLabel = `${dimension.employeeLabel} <-> ${dimension.managerLabel}`;
+                  const q1Construct = dimension.q1Construct
+                    || `${empQ1Label} / ${mgrQ1Label}`;
+                  const q2Construct = dimension.q2Construct
+                    || `${empQ2Label} / ${mgrQ2Label}`;
                   return (
                     <Fragment key={dimension.id}>
                       <tr className="pulse-clean-dimensions__dim-header">
                         <td className="pulse-clean-dimensions__id">{dimension.id}</td>
                         <td colSpan={5} className="pulse-clean-dimensions__dim-header-cell">
                           <div className="pulse-clean-dimensions__construct-row">
-                            <p className="pulse-clean-dimensions__construct-label">{constructLabel}</p>
+                            <div className="pulse-clean-dimensions__construct-heading">
+                              <p className="pulse-clean-dimensions__construct-label">{constructLabel}</p>
+                              {dimension.sharedConstruct ? (
+                                <p className="pulse-clean-dimensions__construct-subtitle">{dimension.sharedConstruct}</p>
+                              ) : null}
+                            </div>
                             <div className="pulse-clean-dimensions__construct-flags">
                               <span className={`pulse-clean-dimensions__pair pulse-clean-dimensions__pair--${dimension.comparable ? 'comparable' : 'non'}`}>
                                 {dimension.comparable ? 'Comparable pair' : 'Non-comparable pair'}
@@ -1915,11 +1996,13 @@ export default function PlatformClientPulse() {
                         <td className="pulse-clean-dimensions__q-id">
                           <span className="pulse-clean-dimensions__q-id-text">{empQ1Label} / {mgrQ1Label}</span>
                         </td>
-                        <td rowSpan={2} className="pulse-clean-dimensions__construct-cell">
-                          <p className="pulse-clean-dimensions__construct-cell-label">{constructLabel}</p>
-                          {dimension.sharedConstruct ? (
-                            <p className="pulse-clean-dimensions__construct-cell-meta">{dimension.sharedConstruct}</p>
-                          ) : null}
+                        <td className="pulse-clean-dimensions__construct-cell">
+                          <div className="pulse-clean-dimensions__construct-cell-row">
+                            <p className="pulse-clean-dimensions__construct-cell-label">{q1Construct}</p>
+                            {q1GapFlagged ? (
+                              <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Q1 gap</span>
+                            ) : null}
+                          </div>
                         </td>
                         <td>
                           <span className={heatClass(dimension.employee.q1Avg, empIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
@@ -1943,6 +2026,14 @@ export default function PlatformClientPulse() {
                       <tr className="pulse-clean-dimensions__q-row pulse-clean-dimensions__q-row--last">
                         <td className="pulse-clean-dimensions__q-id">
                           <span className="pulse-clean-dimensions__q-id-text">{empQ2Label} / {mgrQ2Label}</span>
+                        </td>
+                        <td className="pulse-clean-dimensions__construct-cell">
+                          <div className="pulse-clean-dimensions__construct-cell-row">
+                            <p className="pulse-clean-dimensions__construct-cell-label">{q2Construct}</p>
+                            {q2GapFlagged ? (
+                              <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Q2 gap</span>
+                            ) : null}
+                          </div>
                         </td>
                         <td>
                           <span className={heatClass(dimension.employee.q2Avg, empIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>

@@ -5315,9 +5315,25 @@ input[type='range'] {
   align-items: start;
   gap: 0.55rem 0.7rem;
   padding: 0.7rem 0.85rem;
+  margin-top: 0.65rem;
   border-radius: 10px;
   border-left: 3px solid var(--pulse-green, #1e855d);
   background: rgba(30, 133, 93, 0.06);
+}
+
+.pulse-quadrant-signal--green {
+  border-left-color: var(--pulse-green, #1e855d);
+  background: rgba(30, 133, 93, 0.06);
+}
+
+.pulse-quadrant-signal--amber {
+  border-left-color: var(--pulse-amber, #f5a623);
+  background: rgba(245, 166, 35, 0.07);
+}
+
+.pulse-quadrant-signal--red {
+  border-left-color: var(--pulse-red, #e52235);
+  background: rgba(229, 34, 53, 0.06);
 }
 
 .pulse-quadrant-signal__label {
@@ -5328,6 +5344,14 @@ input[type='range'] {
   font-weight: 600;
   color: var(--pulse-green, #1e855d);
   padding-top: 0.18rem;
+}
+
+.pulse-quadrant-signal--amber .pulse-quadrant-signal__label {
+  color: var(--pulse-amber, #f5a623);
+}
+
+.pulse-quadrant-signal--red .pulse-quadrant-signal__label {
+  color: var(--pulse-red, #e52235);
 }
 
 .pulse-quadrant-signal__text {
@@ -6527,6 +6551,14 @@ input[type='range'] {
   margin: 0.1rem 0 0;
   color: var(--text);
   line-height: 1.5;
+}
+
+.pulse-org-overview__threshold-context {
+  margin: 0.5rem 0 0;
+  font-family: var(--pulse-font-mono, 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: #8A95A8;
 }
 
 .pulse-org-overview__measures {
@@ -7731,7 +7763,16 @@ input[type='range'] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 0.4rem 0.8rem;
+}
+
+.pulse-clean-dimensions__construct-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .pulse-clean-dimensions__construct-label {
@@ -7739,6 +7780,14 @@ input[type='range'] {
   font-size: 0.84rem;
   font-weight: 600;
   color: var(--text);
+}
+
+.pulse-clean-dimensions__construct-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-family: var(--pulse-font-mono);
+  font-weight: 400;
 }
 
 .pulse-clean-dimensions__construct-flags {
@@ -7808,10 +7857,17 @@ input[type='range'] {
   border-bottom: 1px solid var(--border);
 }
 
+.pulse-clean-dimensions__construct-cell-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+}
+
 .pulse-clean-dimensions__construct-cell-label {
   margin: 0;
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
 }
 

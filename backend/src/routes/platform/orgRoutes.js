@@ -3174,6 +3174,7 @@ export function registerPlatformOrgRoutes(router) {
       adoptionScore,
       sponsorshipScore,
       threshold: READINESS_THRESHOLD,
+      currentQuadrant: currentQuadrantForScoreCards,
     });
     const quadrantSignalContext = {
       clientName: org.name || null,

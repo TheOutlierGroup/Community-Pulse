@@ -33,9 +33,9 @@ export const SCORE_CARD_SIGNAL_PROMPTS = Object.freeze({
   }),
   quadrant: Object.freeze({
     system:
-      "You are a change readiness analyst writing a concise signal banner for a senior practitioner dashboard for RhythmEngine — a proprietary diagnostic tool that measures an organisation's readiness to absorb and sustain a specific change programme. The quadrant distribution is the primary output of the instrument and the most important data on this page. Your output will be rendered as italicised prose. Write in plain English. Be direct and factual. Do not hedge. Do not use bullet points. Maximum 3 sentences. Wrap the single most important finding in <strong> tags. Express all proportions as percentages only — never as fractions or ratios. Do not manufacture urgency where the data does not support it, but do not soften findings where it does. Always lead with the strongest positive in the distribution before addressing the deficit. When naming the deficit, prioritise High Risk above all other non-Optimal states — if High Risk is the largest non-Optimal segment, it must be named first and directly.",
+      "You are a change readiness analyst writing a concise signal banner for a senior practitioner dashboard for RhythmEngine — a proprietary diagnostic tool that measures an organisation's readiness to absorb and sustain a specific change programme. The quadrant distribution is the primary output of the instrument and the most important data on this page. Your output will be rendered as italicised prose. Write in plain English. Be direct and factual. Do not hedge. Do not use bullet points. Maximum 3 sentences. Wrap the single most important finding in <strong> tags. Express all proportions as percentages only — never as fractions or ratios. Do not manufacture urgency where the data does not support it, but do not soften findings where it does. Always lead with the strongest positive in the distribution before addressing the deficit. When naming the deficit, prioritise High Risk above all other non-Optimal states — if High Risk is the largest non-Optimal segment, it must be named first and directly. If the current quadrant outcome is Optimal, do not state that nothing needs to be done — instead acknowledge the result honestly, then close with a brief forward-looking statement about sustaining conditions and monitoring as the programme progresses, without implying a specific problem exists.",
     user:
-      'Organisation: {{client_name}} │ Stage: {{assessment_stage}} │ Respondents: {{respondent_count}}\nQuadrant distribution: Optimal {{optimal_pct}}% │ Motivated but Lost {{motivated_lost_pct}}% │ Capable but Wary {{capable_wary_pct}}% │ High Risk {{high_risk_pct}}%\nOrg-level classification: {{org_quadrant}}\nLargest non-Optimal segment: {{largest_deficit_quadrant}} ({{largest_deficit_pct}}%)\n\nWrite a 3-sentence signal banner that: (1) states what the quadrant distribution represents — that it shows the proportion of the organisation that currently has the conditions in place to absorb and sustain this change, versus those that do not; (2) leads with the Optimal percentage as the positive finding, then names the largest deficit segment — prioritising High Risk if it is the largest — and its percentage; and (3) states what closing that gap requires in plain terms, referencing whether the primary barrier is sponsorship, adoption readiness, or both.',
+      'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Respondents: {{respondent_count}}\nQuadrant distribution: Optimal {{optimal_pct}}% | Motivated but Lost {{motivated_lost_pct}}% | Capable but Wary {{capable_wary_pct}}% | High Risk {{high_risk_pct}}%\nOrg-level classification: {{org_quadrant}}\nLargest non-Optimal segment: {{largest_deficit_quadrant}} ({{largest_deficit_pct}}%)\n\nWrite a 3-sentence signal banner that: (1) states what the quadrant distribution represents — that it shows the proportion of the organisation that currently has the conditions in place to absorb and sustain this change, versus those that do not; (2) leads with the Optimal percentage as the positive finding, then names the largest deficit segment — prioritising High Risk if it is the largest — and its percentage; and (3) states what closing that gap requires in plain terms, referencing whether the primary barrier is sponsorship, adoption readiness, or both.',
     fallback:
       'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this programme can proceed with confidence.',
   }),
@@ -461,6 +461,7 @@ export function buildQuadrantExplanationSignal({
   adoptionScore,
   sponsorshipScore,
   threshold = READINESS_THRESHOLD,
+  currentQuadrant = null,
 }) {
   const fallback = SCORE_CARD_SIGNAL_PROMPTS.quadrant.fallback;
   const finiteValues = [optimalPct, motivatedLostPct, capableWaryPct, highRiskPct]
@@ -473,6 +474,8 @@ export function buildQuadrantExplanationSignal({
       optimalPct: null,
       largestDeficitName: null,
       largestDeficitPct: null,
+      largestSegmentName: null,
+      bannerVariant: 'green',
       barrier: 'insufficient_data',
     };
   }
@@ -496,6 +499,29 @@ export function buildQuadrantExplanationSignal({
     });
   const largestDeficit = deficits[0] || null;
 
+  // Largest segment overall — used for banner variant. Optimal wins ties.
+  const allSegments = [
+    { name: 'Optimal', percent: optimal, priority: 0 },
+    { name: 'High Risk', percent: highRisk, priority: 1 },
+    { name: 'Capable but Wary', percent: wary, priority: 2 },
+    { name: 'Motivated but Lost', percent: motivated, priority: 2 },
+  ].sort((a, b) => {
+    if (b.percent !== a.percent) return b.percent - a.percent;
+    return a.priority - b.priority;
+  });
+  const largestSegment = allSegments[0];
+
+  let bannerVariant;
+  if (largestSegment.name === 'Optimal') {
+    bannerVariant = 'green';
+  } else if (largestDeficit?.name === 'High Risk') {
+    bannerVariant = 'red';
+  } else {
+    bannerVariant = 'amber';
+  }
+
+  const isOrgOptimal = String(currentQuadrant || '').trim() === 'Optimal';
+
   const sentence1 = 'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change versus those that do not.';
 
   let sentence2;
@@ -511,7 +537,12 @@ export function buildQuadrantExplanationSignal({
   const sponsorshipBelow = Number.isFinite(sponsorshipScore) && sponsorshipScore < threshold;
   let barrier;
   let sentence3;
-  if (!largestDeficit) {
+  if (isOrgOptimal) {
+    // Org-level outcome is Optimal: do not imply a specific problem; close
+    // with a forward-looking sustain/monitoring statement instead.
+    barrier = 'sustain';
+    sentence3 = 'Sustaining these conditions through ongoing sponsorship visibility and capacity monitoring is what will protect this position as the programme progresses.';
+  } else if (!largestDeficit) {
     barrier = 'none';
     sentence3 = 'Sustained execution discipline on the existing sponsorship and adoption foundations is what protects this position through rollout.';
   } else if (adoptionBelow && sponsorshipBelow) {
@@ -534,6 +565,8 @@ export function buildQuadrantExplanationSignal({
     optimalPct: optimal,
     largestDeficitName: largestDeficit?.name || null,
     largestDeficitPct: largestDeficit?.percent ?? null,
+    largestSegmentName: largestSegment.name,
+    bannerVariant,
     barrier,
   };
 }
