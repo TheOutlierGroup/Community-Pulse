@@ -1308,7 +1308,6 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-header__kpi-label">Avg Adoption Score</p>
             <p className="pulse-clean-header__kpi-value">{formatScore(topCardAdoptionScore)}</p>
             <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
-            <p className="pulse-clean-header__kpi-meta">Quadrant {topCardQuadrantLabel}</p>
             <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardAdoptionDelta)}`}>
               {formatDelta(topCardAdoptionDelta)}
             </p>
@@ -1317,7 +1316,6 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-header__kpi-label">Avg Sponsorship Score</p>
             <p className="pulse-clean-header__kpi-value">{formatScore(topCardSponsorshipScore)}</p>
             <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
-            <p className="pulse-clean-header__kpi-meta">Quadrant {topCardQuadrantLabel}</p>
             <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardSponsorshipDelta)}`}>
               {formatDelta(topCardSponsorshipDelta)}
             </p>
@@ -1346,6 +1344,7 @@ export default function PlatformClientPulse() {
             <article className="card pulse-org-overview__score-card">
               <div className="pulse-org-overview__header">
                 <h3 className="pulse-org-overview__title">Are your people ready?</h3>
+                <span className="pulse-org-overview__corner-badge" aria-label="Card marker A">A</span>
               </div>
               <p className="pulse-org-overview__score">{formatScore(adoptionScore)}</p>
               <p className="pulse-org-overview__score-meta">Adoption Readiness /40</p>
@@ -1359,6 +1358,7 @@ export default function PlatformClientPulse() {
             <article className="card pulse-org-overview__score-card">
               <div className="pulse-org-overview__header">
                 <h3 className="pulse-org-overview__title">Can your managers drive the change?</h3>
+                <span className="pulse-org-overview__corner-badge" aria-label="Card marker B">B</span>
               </div>
               <p className="pulse-org-overview__score">{formatScore(sponsorshipScore)}</p>
               <p className="pulse-org-overview__score-meta">Sponsorship Credibility /40</p>

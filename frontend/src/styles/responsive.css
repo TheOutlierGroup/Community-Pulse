@@ -6387,6 +6387,22 @@ input[type='range'] {
   line-height: 1.3;
 }
 
+.pulse-org-overview__corner-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.8rem;
+  height: 1.8rem;
+  padding: 0 0.45rem;
+  border-radius: 6px;
+  background: var(--pulse-red);
+  color: #ffffff;
+  font-family: var(--pulse-font-ui);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
 .pulse-org-overview__score {
   margin: 0;
   font-size: 2rem;
