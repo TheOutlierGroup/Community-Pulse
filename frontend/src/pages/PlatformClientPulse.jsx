@@ -1375,7 +1375,10 @@ export default function PlatformClientPulse() {
             <div className="pulse-org-likelihood__header">
               <p className="pulse-org-likelihood__eyebrow">{org?.name || 'Client'} · {reportDateLabel}</p>
               <p className="pulse-org-likelihood__verdict" aria-live="polite">{launchStatusLabel}</p>
-              <h3 className="pulse-org-likelihood__title">Likelihood of Success?</h3>
+              <div className="pulse-org-likelihood__title-row">
+                <h3 className="pulse-org-likelihood__title">Likelihood of Success?</h3>
+                <span className="pulse-org-overview__corner-badge" aria-label="Card marker C">C</span>
+              </div>
             </div>
             <div className="pulse-sa-card" style={{ marginBottom: 0 }}>
               <p className="pulse-sa-card__label">Quadrant Journey</p>

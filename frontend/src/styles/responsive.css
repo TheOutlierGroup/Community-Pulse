@@ -6478,6 +6478,13 @@ input[type='range'] {
   font-size: 1.3rem;
 }
 
+.pulse-org-likelihood__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .pulse-org-likelihood__verdict {
   margin: 0;
   display: inline-flex;
