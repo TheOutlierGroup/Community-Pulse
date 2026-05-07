@@ -1308,6 +1308,7 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-header__kpi-label">Avg Adoption Score</p>
             <p className="pulse-clean-header__kpi-value">{formatScore(topCardAdoptionScore)}</p>
             <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
+            <p className="pulse-clean-header__kpi-meta">Quadrant {topCardQuadrantLabel}</p>
             <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardAdoptionDelta)}`}>
               {formatDelta(topCardAdoptionDelta)}
             </p>
@@ -1316,6 +1317,7 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-header__kpi-label">Avg Sponsorship Score</p>
             <p className="pulse-clean-header__kpi-value">{formatScore(topCardSponsorshipScore)}</p>
             <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
+            <p className="pulse-clean-header__kpi-meta">Quadrant {topCardQuadrantLabel}</p>
             <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardSponsorshipDelta)}`}>
               {formatDelta(topCardSponsorshipDelta)}
             </p>
