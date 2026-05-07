@@ -401,6 +401,151 @@ export async function sendPlatformWelcomeEmail(
 }
 
 /**
+ * Default licensee welcome email template. Returned for the GET endpoint
+ * when no platform-level override has been saved yet, and used as the
+ * fallback when a saved override is missing fields. The body is the
+ * editorial copy between the logo and the CTAs — the send function adds
+ * the standard chrome (logo, two CTA buttons, footer with link copy).
+ */
+export function getLicenseeWelcomeEmailDefaultTemplate() {
+  return {
+    subject: 'Welcome to Outlier — your licensee workspace is ready',
+    bodyHtml: [
+      '<h2 style="margin: 0 0 1rem;">Your licensee workspace is ready</h2>',
+      '<p style="color: #555; line-height: 1.6;">Hi {{name}},</p>',
+      '<p style="color: #555; line-height: 1.6;">',
+      'Welcome to Outlier. Your <strong>{{licenseeName}}</strong> licensee workspace has been provisioned and is ready for you to start onboarding clients.',
+      '</p>',
+      '<p style="color: #555; line-height: 1.6;">',
+      'Use <strong>Create password</strong> below to set a password for your account (the link expires in {{tokenDays}} days), then use <strong>Sign in</strong> to access your workspace.',
+      '</p>',
+    ].join('\n'),
+  };
+}
+
+/**
+ * Welcome email for a newly created licensee organization's first admin.
+ * The subject and editorial body come from a CRM-managed template
+ * (`templateOverride`); the standard chrome (logo, CTAs, link-fallback
+ * footer) is added by this function so admins cannot accidentally break
+ * the call-to-action layout.
+ *
+ * Supported placeholders in subject/body:
+ *   {{name}}           — admin display name (or "there")
+ *   {{licenseeName}}   — new licensee org name (alias {{organizationName}})
+ *   {{loginLink}}      — login URL                (alias {{loginUrl}})
+ *   {{setPasswordLink}}— create-password URL     (alias {{setPasswordUrl}})
+ *   {{tokenDays}}      — create-password expiry in days
+ */
+export async function sendLicenseeWelcomeEmail(
+  to,
+  displayName,
+  loginUrl,
+  setPasswordUrl,
+  organizationName,
+  templateOverride = null
+) {
+  const resend = requireResend();
+  const fallback = getLicenseeWelcomeEmailDefaultTemplate();
+  const override = templateOverride && typeof templateOverride === 'object' ? templateOverride : {};
+  const subjectTemplate =
+    typeof override.subject === 'string' && override.subject.trim()
+      ? override.subject
+      : fallback.subject;
+  const bodyTemplateHtml =
+    typeof override.bodyHtml === 'string' && override.bodyHtml.trim()
+      ? override.bodyHtml
+      : fallback.bodyHtml;
+
+  const name = String(displayName || '').trim();
+  const orgPlain = organizationName ? String(organizationName).trim() : 'your licensee workspace';
+  const safeLogin = String(loginUrl || '');
+  const safeSetPw = String(setPasswordUrl || '');
+
+  const subjectReplacements = {
+    name: name || 'there',
+    licenseeName: orgPlain,
+    licenseename: orgPlain,
+    organizationName: orgPlain,
+    organizationname: orgPlain,
+    tokenDays: String(PLATFORM_WELCOME_TOKEN_DAYS),
+    tokendays: String(PLATFORM_WELCOME_TOKEN_DAYS),
+  };
+  const bodyReplacements = {
+    ...subjectReplacements,
+    loginLink: safeLogin,
+    loginlink: safeLogin,
+    loginUrl: safeLogin,
+    loginurl: safeLogin,
+    setPasswordLink: safeSetPw,
+    setpasswordlink: safeSetPw,
+    setPasswordUrl: safeSetPw,
+    setpasswordurl: safeSetPw,
+  };
+
+  const subject = applyTemplatePlaceholders(subjectTemplate, subjectReplacements, { escapeValues: false })
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200) || fallback.subject;
+  const renderedBodyHtml = applyTemplatePlaceholders(bodyTemplateHtml, bodyReplacements, {
+    escapeValues: true,
+  });
+
+  const { logoBlock, attachments } = buildOutlierEmailLogoParts();
+
+  const ctaBlock = `
+    <p style="margin: 1.5rem 0 0.25rem;">
+      <a href="${escapeHtmlAttr(safeSetPw)}"
+         style="display: inline-block; margin: 0 0.75rem 0.5rem 0; padding: 0.75rem 1.5rem;
+                background: #ffcc80; color: #1c1917; font-weight: 600;
+                text-decoration: none; border-radius: 8px;">
+        Create password
+      </a>
+      <a href="${escapeHtmlAttr(safeLogin)}"
+         style="display: inline-block; margin: 0 0 0.5rem; padding: 0.75rem 1.5rem;
+                background: transparent; color: #1c1917; font-weight: 600;
+                text-decoration: none; border-radius: 8px; border: 2px solid #d6d3d1;">
+        Sign in
+      </a>
+    </p>`;
+
+  const footerBlock = `
+    <p style="color: #888; font-size: 0.85rem; line-height: 1.5; margin-top: 1.25rem;">
+      The create-password link expires in ${PLATFORM_WELCOME_TOKEN_DAYS} days.
+      If a button does not work, copy the URL:<br />
+      <span style="word-break: break-all;">${escapeHtml(safeSetPw)}</span>
+    </p>`;
+
+  const { error } = await resend.emails.send({
+    from: getResendFromAddress(),
+    to,
+    subject,
+    ...(attachments ? { attachments } : {}),
+    html: `
+      <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
+        ${logoBlock}
+        ${renderedBodyHtml}
+        ${ctaBlock}
+        ${footerBlock}
+      </div>
+    `,
+  });
+
+  if (error) {
+    console.error('Resend licensee welcome error:', error);
+    const detail =
+      error && typeof error.message === 'string'
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error);
+    throw new Error(detail || 'Failed to send licensee welcome email');
+  }
+}
+
+/**
  * COM-05 announcement broadcast email. Delivered per-recipient (each
  * licensee admin gets their own send so addresses aren't leaked across
  * tenants via To/CC). The body is treated as plain text so it can't

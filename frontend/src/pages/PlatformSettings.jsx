@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -20,6 +20,15 @@ import AnnouncementsAdminPanel from '../components/platform/AnnouncementsAdminPa
 
 const LOCKED_SERVICE_IDS = new Set([CLIENT_SERVICE_PULSE, CLIENT_SERVICE_OTHER]);
 const TEMPLATE_MAX_SUBJECT_LENGTH = 200;
+
+const SETTINGS_TABS = [
+  { id: 'general', label: 'General' },
+  { id: 'rhythm-engine', label: 'Rhythm Engine' },
+  { id: 'licensees', label: 'Licensees' },
+  { id: 'communications', label: 'Communications' },
+];
+const SETTINGS_TAB_IDS = new Set(SETTINGS_TABS.map((tab) => tab.id));
+const DEFAULT_SETTINGS_TAB = 'general';
 const TEMPLATE_TIMEPOINT_OPTIONS = [
   { value: 'pre', label: 'Pre' },
   { value: 'during', label: 'During' },
@@ -56,6 +65,35 @@ function defaultTemplateForAudience(audience) {
     subject: 'Rhythm Engine questionnaire',
     bodyHtml:
       '<p>Hi {{name}},</p><p>You have been invited to complete a short Rhythm Engine questionnaire.</p><p style="margin: 1.2rem 0;"><a href="{{link}}" style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">Open Rhythm Engine</a></p>',
+  };
+}
+
+const LICENSEE_WELCOME_TEMPLATE_PLACEHOLDERS = ['name', 'licenseeName', 'loginLink', 'setPasswordLink', 'tokenDays'];
+
+function defaultLicenseeWelcomeEmailTemplate() {
+  return {
+    subject: 'Welcome to Outlier — your licensee workspace is ready',
+    bodyHtml: [
+      '<h2 style="margin: 0 0 1rem;">Your licensee workspace is ready</h2>',
+      '<p style="color: #555; line-height: 1.6;">Hi {{name}},</p>',
+      '<p style="color: #555; line-height: 1.6;">',
+      'Welcome to Outlier. Your <strong>{{licenseeName}}</strong> licensee workspace has been provisioned and is ready for you to start onboarding clients.',
+      '</p>',
+      '<p style="color: #555; line-height: 1.6;">',
+      'Use <strong>Create password</strong> below to set a password for your account (the link expires in {{tokenDays}} days), then use <strong>Sign in</strong> to access your workspace.',
+      '</p>',
+    ].join('\n'),
+  };
+}
+
+function normalizeLicenseeWelcomeTemplate(raw) {
+  const fallback = defaultLicenseeWelcomeEmailTemplate();
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const subject = String(source.subject || '').trim();
+  const bodyHtml = String(source.bodyHtml || '').trim();
+  return {
+    subject: subject || fallback.subject,
+    bodyHtml: bodyHtml || fallback.bodyHtml,
   };
 }
 
@@ -225,8 +263,15 @@ function normalizeDefaultWelcomeTemplates(rawTemplates) {
 export default function PlatformSettings() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const ok = usePlatformOnlyAccess(user, loading, navigate);
   const isPlatformAdmin = ok && user?.role === 'admin';
+
+  const initialTab = (() => {
+    const fromHash = String(location.hash || '').replace(/^#/, '').trim().toLowerCase();
+    return SETTINGS_TAB_IDS.has(fromHash) ? fromHash : DEFAULT_SETTINGS_TAB;
+  })();
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [newServiceName, setNewServiceName] = useState('');
   const [loadingCatalog, setLoadingCatalog] = useState(false);
@@ -262,6 +307,15 @@ export default function PlatformSettings() {
   const anySavingDefaultTemplates = savingDefaultTemplates.staff || savingDefaultTemplates.manager;
   const anySavingDefaultWelcomeTemplates =
     savingDefaultWelcomeTemplates.staff || savingDefaultWelcomeTemplates.manager;
+
+  const [licenseeWelcomeTemplate, setLicenseeWelcomeTemplate] = useState(() =>
+    normalizeLicenseeWelcomeTemplate(null)
+  );
+  const [loadingLicenseeWelcomeTemplate, setLoadingLicenseeWelcomeTemplate] = useState(false);
+  const [savingLicenseeWelcomeTemplate, setSavingLicenseeWelcomeTemplate] = useState(false);
+  const [licenseeWelcomeTemplateMessage, setLicenseeWelcomeTemplateMessage] = useState('');
+  const [licenseeWelcomeTemplateError, setLicenseeWelcomeTemplateError] = useState('');
+  const [licenseeWelcomeTemplateMode, setLicenseeWelcomeTemplateMode] = useState('edit');
 
   const previewName = 'Alex';
   const previewClientName = 'Acme Co';
@@ -363,10 +417,41 @@ export default function PlatformSettings() {
   }, [defaultWelcomeTemplateTimepoint, isPlatformAdmin]);
 
   useEffect(() => {
+    if (!isPlatformAdmin) return;
+    (async () => {
+      setLoadingLicenseeWelcomeTemplate(true);
+      setLicenseeWelcomeTemplateError('');
+      try {
+        const { data } = await api.get('/api/platform/licensee-welcome-email-template');
+        setLicenseeWelcomeTemplate(normalizeLicenseeWelcomeTemplate(data?.template));
+      } catch (err) {
+        setLicenseeWelcomeTemplateError(
+          err.response?.data?.error || 'Could not load licensee welcome email template.'
+        );
+      } finally {
+        setLoadingLicenseeWelcomeTemplate(false);
+      }
+    })();
+  }, [isPlatformAdmin]);
+
+  useEffect(() => {
     if (!loading && ok && user?.role !== 'admin') {
       navigate('/platform', { replace: true });
     }
   }, [loading, ok, user, navigate]);
+
+  useEffect(() => {
+    const fromHash = String(location.hash || '').replace(/^#/, '').trim().toLowerCase();
+    if (SETTINGS_TAB_IDS.has(fromHash) && fromHash !== activeTab) {
+      setActiveTab(fromHash);
+    }
+  }, [location.hash, activeTab]);
+
+  function changeTab(nextTab) {
+    if (!SETTINGS_TAB_IDS.has(nextTab) || nextTab === activeTab) return;
+    setActiveTab(nextTab);
+    navigate(`#${nextTab}`, { replace: false });
+  }
 
   function updateServiceName(key, name) {
     setServiceCatalog((current) =>
@@ -529,6 +614,55 @@ export default function PlatformSettings() {
     }
   }
 
+  function updateLicenseeWelcomeTemplateField(field, value) {
+    setLicenseeWelcomeTemplate((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function saveLicenseeWelcomeTemplate() {
+    const subject = String(licenseeWelcomeTemplate.subject || '').trim();
+    const bodyHtml = String(licenseeWelcomeTemplate.bodyHtml || '').trim();
+    if (!subject || !stripHtmlToText(bodyHtml)) {
+      setLicenseeWelcomeTemplateError('Subject and body are both required.');
+      setLicenseeWelcomeTemplateMessage('');
+      return;
+    }
+    setSavingLicenseeWelcomeTemplate(true);
+    setLicenseeWelcomeTemplateError('');
+    setLicenseeWelcomeTemplateMessage('');
+    try {
+      const { data } = await api.put('/api/platform/licensee-welcome-email-template', {
+        subject,
+        bodyHtml,
+      });
+      setLicenseeWelcomeTemplate(normalizeLicenseeWelcomeTemplate(data?.template));
+      setLicenseeWelcomeTemplateMessage('Licensee welcome email template saved.');
+    } catch (err) {
+      setLicenseeWelcomeTemplateError(
+        err.response?.data?.error || 'Could not save licensee welcome email template.'
+      );
+    } finally {
+      setSavingLicenseeWelcomeTemplate(false);
+    }
+  }
+
+  const licenseeWelcomePreviewSubject = applyTemplatePlaceholders(licenseeWelcomeTemplate.subject, {
+    name: previewName,
+    licenseeName: 'Acme Consulting',
+    licenseename: 'Acme Consulting',
+    tokenDays: '7',
+    tokendays: '7',
+  });
+  const licenseeWelcomePreviewBodyHtml = applyTemplatePlaceholders(licenseeWelcomeTemplate.bodyHtml, {
+    name: previewName,
+    licenseeName: 'Acme Consulting',
+    licenseename: 'Acme Consulting',
+    tokenDays: '7',
+    tokendays: '7',
+  });
+
   useDocumentTitle(!loading && isPlatformAdmin ? `Settings | ${DEFAULT_TAB}` : null);
 
   if (loading || !isPlatformAdmin) return null;
@@ -543,6 +677,35 @@ export default function PlatformSettings() {
           </h1>
         </div>
       </div>
+      <div
+        className="pulse-template-mode-switch"
+        role="tablist"
+        aria-label="Settings sections"
+        style={{ marginTop: '1rem', marginBottom: 0 }}
+      >
+        {SETTINGS_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`settings-tab-${tab.id}`}
+            id={`settings-tab-trigger-${tab.id}`}
+            className={`pulse-template-mode-switch__pill${
+              activeTab === tab.id ? ' pulse-template-mode-switch__pill--active' : ''
+            }`}
+            onClick={() => changeTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {activeTab === 'general' && (
+      <div
+        role="tabpanel"
+        id="settings-tab-general"
+        aria-labelledby="settings-tab-trigger-general"
+      >
       <div className="card" style={{ marginTop: '1rem' }}>
         <h2 className="settings-section-title">Service catalog</h2>
         {serviceError ? (
@@ -640,6 +803,14 @@ export default function PlatformSettings() {
           </button>
         </form>
       </div>
+      </div>
+      )}
+      {activeTab === 'rhythm-engine' && (
+      <div
+        role="tabpanel"
+        id="settings-tab-rhythm-engine"
+        aria-labelledby="settings-tab-trigger-rhythm-engine"
+      >
       <div className="card" style={{ marginTop: '1rem' }}>
         <h2 className="settings-section-title">Rhythm Engine default email templates</h2>
         <p className="muted" style={{ margin: '0.45rem 0 0.95rem' }}>
@@ -937,9 +1108,128 @@ export default function PlatformSettings() {
           ))}
         </div>
       </div>
+      </div>
+      )}
+      {activeTab === 'licensees' && (
+      <div
+        role="tabpanel"
+        id="settings-tab-licensees"
+        aria-labelledby="settings-tab-trigger-licensees"
+      >
+      <div className="card" style={{ marginTop: '1rem' }}>
+        <h2 className="settings-section-title">Licensee admin welcome email</h2>
+        <p className="muted" style={{ margin: '0.45rem 0 0.95rem' }}>
+          Sent to the first admin when a new licensee organisation is created
+          (i.e. when the Licensee service is selected at create-time). The standard
+          Outlier logo header, <strong>Create password</strong> and <strong>Sign in</strong>{' '}
+          buttons, and link-fallback footer are added automatically — only the subject
+          and editorial body below are configurable.
+        </p>
+        {licenseeWelcomeTemplateError ? (
+          <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+            {licenseeWelcomeTemplateError}
+          </p>
+        ) : null}
+        {licenseeWelcomeTemplateMessage ? (
+          <p className="muted" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+            {licenseeWelcomeTemplateMessage}
+          </p>
+        ) : null}
+        <div className="field">
+          <label htmlFor="settings-licensee-welcome-subject">Subject</label>
+          <input
+            id="settings-licensee-welcome-subject"
+            value={licenseeWelcomeTemplate.subject}
+            maxLength={TEMPLATE_MAX_SUBJECT_LENGTH}
+            onChange={(e) => updateLicenseeWelcomeTemplateField('subject', e.target.value)}
+            disabled={loadingLicenseeWelcomeTemplate || savingLicenseeWelcomeTemplate}
+          />
+        </div>
+        <div className="pulse-template-mode-switch" role="tablist" aria-label="Licensee welcome template editor mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={licenseeWelcomeTemplateMode === 'edit'}
+            className={`pulse-template-mode-switch__pill${
+              licenseeWelcomeTemplateMode === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
+            }`}
+            onClick={() => setLicenseeWelcomeTemplateMode('edit')}
+            disabled={loadingLicenseeWelcomeTemplate || savingLicenseeWelcomeTemplate}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={licenseeWelcomeTemplateMode === 'view'}
+            className={`pulse-template-mode-switch__pill${
+              licenseeWelcomeTemplateMode === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
+            }`}
+            onClick={() => setLicenseeWelcomeTemplateMode('view')}
+            disabled={loadingLicenseeWelcomeTemplate || savingLicenseeWelcomeTemplate}
+          >
+            View
+          </button>
+        </div>
+        <div className="field">
+          <label>{licenseeWelcomeTemplateMode === 'view' ? 'Preview' : 'Body'}</label>
+          {licenseeWelcomeTemplateMode === 'view' ? (
+            <div className="pulse-template-preview">
+              <div className="pulse-template-preview__subject">
+                {licenseeWelcomePreviewSubject || '(No subject)'}
+              </div>
+              <div className="pulse-template-preview__canvas">
+                <div
+                  className="pulse-template-preview__body"
+                  dangerouslySetInnerHTML={{ __html: licenseeWelcomePreviewBodyHtml || '<p></p>' }}
+                />
+                <p className="pulse-template-preview__footer">
+                  The standard Create password / Sign in buttons and footer are appended automatically.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <EmailTemplateRichEditor
+              value={licenseeWelcomeTemplate.bodyHtml}
+              onChange={(nextBodyHtml) => updateLicenseeWelcomeTemplateField('bodyHtml', nextBodyHtml)}
+              disabled={loadingLicenseeWelcomeTemplate || savingLicenseeWelcomeTemplate}
+              placeholder="Write the welcome email body. Use {{name}}, {{licenseeName}}, and {{tokenDays}} placeholders."
+            />
+          )}
+        </div>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={loadingLicenseeWelcomeTemplate || savingLicenseeWelcomeTemplate}
+          onClick={saveLicenseeWelcomeTemplate}
+        >
+          {savingLicenseeWelcomeTemplate ? 'Saving…' : 'Save licensee welcome email'}
+        </button>
+        <p className="muted" style={{ margin: '0.95rem 0 0' }}>
+          Placeholders available in subject and body:{' '}
+          {LICENSEE_WELCOME_TEMPLATE_PLACEHOLDERS.map((token, idx) => (
+            <span key={token}>
+              {idx > 0 ? ', ' : ''}
+              <code>{`{{${token}}}`}</code>
+            </span>
+          ))}
+          . The <code>{'{{loginLink}}'}</code> and <code>{'{{setPasswordLink}}'}</code> URLs are
+          generated per-recipient and only resolve inside the sent email.
+        </p>
+      </div>
       <LicenseeHealthPanel />
-      <AnnouncementsAdminPanel />
-      <StatusIncidentsAdminPanel />
+      </div>
+      )}
+      {activeTab === 'communications' && (
+      <div
+        role="tabpanel"
+        id="settings-tab-communications"
+        aria-labelledby="settings-tab-trigger-communications"
+      >
+        <AnnouncementsAdminPanel />
+        <StatusIncidentsAdminPanel />
+      </div>
+      )}
     </Layout>
   );
 }

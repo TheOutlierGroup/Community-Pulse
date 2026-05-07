@@ -38,7 +38,9 @@ import { signToken } from '../../middleware/auth.js';
 import {
   isResendConfigured,
   getPulseInviteDefaultTemplate,
+  getLicenseeWelcomeEmailDefaultTemplate,
   sendPlatformWelcomeEmail,
+  sendLicenseeWelcomeEmail,
   sendPulseInviteEmail,
 } from '../../services/email.js';
 import {
@@ -1110,6 +1112,39 @@ function pulseInviteDefaultTemplatesPayload(platformOrg, timepointPhase = 'pre')
   };
 }
 
+const LICENSEE_WELCOME_TEMPLATE_MAX_SUBJECT_LENGTH = 200;
+const LICENSEE_WELCOME_TEMPLATE_MAX_BODY_LENGTH = 20000;
+const LICENSEE_WELCOME_TEMPLATE_PLACEHOLDERS = [
+  'name',
+  'licenseeName',
+  'loginLink',
+  'setPasswordLink',
+  'tokenDays',
+];
+
+/**
+ * Merge the saved per-platform licensee welcome template (if any) with the
+ * default. Always returns both fields so the editor can render them.
+ */
+function licenseeWelcomeEmailTemplateFromSettings(settings) {
+  const fallback = getLicenseeWelcomeEmailDefaultTemplate();
+  const saved =
+    settings?.licenseeWelcomeEmailTemplate
+    && typeof settings.licenseeWelcomeEmailTemplate === 'object'
+    && !Array.isArray(settings.licenseeWelcomeEmailTemplate)
+      ? settings.licenseeWelcomeEmailTemplate
+      : {};
+  const subject = String(saved.subject || '').trim();
+  const bodyHtml = String(saved.bodyHtml || '').trim();
+  return {
+    subject: subject || fallback.subject,
+    bodyHtml: bodyHtml || fallback.bodyHtml,
+    isCustomized: Boolean(subject || bodyHtml),
+    updatedAt: saved.updatedAt || null,
+    updatedByUserId: saved.updatedByUserId || null,
+  };
+}
+
 function parseMultipartBool(v) {
   if (v === true || v === 'true' || v === '1') return true;
   if (v === false || v === 'false' || v === '0') return false;
@@ -1385,6 +1420,58 @@ export function registerPlatformOrgRoutes(router) {
     });
   });
 
+  // Welcome email sent to the first admin of a newly created licensee org.
+  // Stored on the platform org (global, single-template) so platform admins
+  // edit it once and every subsequent licensee creation pulls from it.
+  router.get('/licensee-welcome-email-template', requirePlatformAdminRole, async (req, res) => {
+    const platformOrg = await Organization.getOrganization(req.user.organizationId);
+    if (!platformOrg || platformOrg.kind !== 'platform') {
+      return res.status(404).json({ error: 'Platform organization not found' });
+    }
+    return res.json({
+      template: licenseeWelcomeEmailTemplateFromSettings(platformOrg.settings),
+      placeholders: LICENSEE_WELCOME_TEMPLATE_PLACEHOLDERS,
+    });
+  });
+
+  router.put('/licensee-welcome-email-template', requirePlatformAdminRole, async (req, res) => {
+    const platformOrg = await Organization.getOrganization(req.user.organizationId);
+    if (!platformOrg || platformOrg.kind !== 'platform') {
+      return res.status(404).json({ error: 'Platform organization not found' });
+    }
+    const subject = String(req.body?.subject || '').trim();
+    if (!subject) return res.status(400).json({ error: 'subject is required' });
+    if (subject.length > LICENSEE_WELCOME_TEMPLATE_MAX_SUBJECT_LENGTH) {
+      return res.status(400).json({
+        error: `subject must be ${LICENSEE_WELCOME_TEMPLATE_MAX_SUBJECT_LENGTH} characters or less`,
+      });
+    }
+    const bodyHtml = String(req.body?.bodyHtml || '').trim();
+    if (!bodyHtml || !stripHtmlToText(bodyHtml)) {
+      return res.status(400).json({ error: 'bodyHtml is required' });
+    }
+    if (bodyHtml.length > LICENSEE_WELCOME_TEMPLATE_MAX_BODY_LENGTH) {
+      return res.status(400).json({
+        error: `bodyHtml is too long (max ${LICENSEE_WELCOME_TEMPLATE_MAX_BODY_LENGTH} chars)`,
+      });
+    }
+    const updated = await Organization.updateOrganizationSettings(platformOrg.id, {
+      licenseeWelcomeEmailTemplate: {
+        subject,
+        bodyHtml,
+        updatedAt: new Date().toISOString(),
+        updatedByUserId: req.user.id,
+      },
+    });
+    if (!updated || updated.kind !== 'platform') {
+      return res.status(404).json({ error: 'Platform organization not found' });
+    }
+    return res.json({
+      template: licenseeWelcomeEmailTemplateFromSettings(updated.settings),
+      placeholders: LICENSEE_WELCOME_TEMPLATE_PLACEHOLDERS,
+    });
+  });
+
   router.post('/organizations', requirePlatformAdminRole, handleOrgLogoPlatformUpload, async (req, res) => {
     try {
       const name = req.body.name;
@@ -1530,13 +1617,31 @@ export function registerPlatformOrgRoutes(router) {
               .map((s) => String(s || '').trim())
               .filter(Boolean)
               .join(' ');
-            await sendPlatformWelcomeEmail(
-              String(adminEmail).trim(),
-              displayName,
-              loginUrl,
-              setPasswordUrl,
-              org.name
-            );
+            if (createdKind === 'licensee') {
+              // Pull the editable subject/body from CRM settings (platform org).
+              // Falls back to the default template inside sendLicenseeWelcomeEmail
+              // if no override has been saved yet.
+              const platformOrgForTemplate = await Organization.getOrganization(req.user.organizationId);
+              const licenseeTemplate = licenseeWelcomeEmailTemplateFromSettings(
+                platformOrgForTemplate?.settings
+              );
+              await sendLicenseeWelcomeEmail(
+                String(adminEmail).trim(),
+                displayName,
+                loginUrl,
+                setPasswordUrl,
+                org.name,
+                { subject: licenseeTemplate.subject, bodyHtml: licenseeTemplate.bodyHtml }
+              );
+            } else {
+              await sendPlatformWelcomeEmail(
+                String(adminEmail).trim(),
+                displayName,
+                loginUrl,
+                setPasswordUrl,
+                org.name
+              );
+            }
             welcomeEmailSent = true;
           } catch (e) {
             console.error('Client first admin welcome email failed:', e);

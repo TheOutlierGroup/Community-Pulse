@@ -321,10 +321,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
                     Dashboard
                   </NavLink>
-                  <NavLink to={`/platform/clients/${platformClientOrgId}/users`} className={sidebarLinkClass}>
-                    <Users size={20} strokeWidth={1.75} aria-hidden />
-                    Users
-                  </NavLink>
+                  {!isLicensee && (
+                    <NavLink to={`/platform/clients/${platformClientOrgId}/users`} className={sidebarLinkClass}>
+                      <Users size={20} strokeWidth={1.75} aria-hidden />
+                      Users
+                    </NavLink>
+                  )}
                   {!isLicensee && (
                     <NavLink to={`/platform/clients/${platformClientOrgId}/tasks`} className={sidebarLinkClass}>
                       <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
