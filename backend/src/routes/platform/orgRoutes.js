@@ -3035,7 +3035,7 @@ export function registerPlatformOrgRoutes(router) {
 
     const sponsorshipSignals = buildSponsorshipSectionSignals({
       header: {
-        stage: pulseTimepoint,
+        stage: requestedTimepoint,
         threshold: READINESS_THRESHOLD,
         managerCount: managerRespondentCount,
         managerAdoptionScore: managerAdoptionAvg,
