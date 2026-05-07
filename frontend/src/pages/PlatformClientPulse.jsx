@@ -246,6 +246,13 @@ function heatTone(value) {
   return 'h1';
 }
 
+function scoreTone(value, threshold = 28) {
+  if (value == null || !Number.isFinite(value)) return 'neutral';
+  if (value >= threshold) return 'positive';
+  if (value >= threshold - 5) return 'caution';
+  return 'risk';
+}
+
 function dimensionQuestionLabel(questionIds = [], fallbackPrefix = 'Q', fallbackIndex = 0) {
   return questionIds[fallbackIndex] || `${fallbackPrefix}${fallbackIndex + 1}`;
 }
@@ -1979,18 +1986,51 @@ export default function PlatformClientPulse() {
                     </div>
                   </td>
                   <td>{row.responses || 0}</td>
-                  <td>{formatScore(row.adoption)}</td>
-                  <td>{formatScore(row.sponsorship)}</td>
-                  <td>{row.loadBand}</td>
-                  <td>{row.quadrant}</td>
+                  <td>
+                    <span className={`pulse-clean-groups__chip pulse-clean-groups__chip--${scoreTone(row.adoption, threshold)}`}>
+                      {formatScore(row.adoption)}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`pulse-clean-groups__chip pulse-clean-groups__chip--${scoreTone(row.sponsorship, threshold)}`}>
+                      {formatScore(row.sponsorship)}
+                    </span>
+                  </td>
+                  <td>
+                    {(() => {
+                      const bandKey = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'].includes(row.loadBand)
+                        ? loadBandClassName(row.loadBand)
+                        : 'unknown';
+                      return (
+                        <span className={`pulse-clean-groups__band pulse-clean-groups__band--${bandKey}`}>
+                          {row.loadBand || '--'}
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td>
+                    {(() => {
+                      const isKnownQuadrant = ['Optimal', 'Motivated but Lost', 'Capable but Wary', 'High Risk'].includes(row.quadrant);
+                      const tone = isKnownQuadrant ? quadrantTone(row.quadrant) : 'unknown';
+                      return (
+                        <span className={`pulse-clean-groups__quadrant pulse-clean-groups__quadrant--${tone}`}>
+                          {row.quadrant || '--'}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td>
                     <div className="pulse-clean-groups__spark">
-                      {(row.trend || []).map((value, idx) => (
-                        <span
-                          key={`${row.key}-spark-${idx}`}
-                          style={{ height: `${Math.max(3, Math.min(18, ((value || 0) / 40) * 18))}px` }}
-                        />
-                      ))}
+                      {(row.trend || []).map((value, idx) => {
+                        const tone = scoreTone(value, threshold);
+                        return (
+                          <span
+                            key={`${row.key}-spark-${idx}`}
+                            className={`pulse-clean-groups__spark-bar pulse-clean-groups__spark-bar--${tone}`}
+                            style={{ height: `${Math.max(3, Math.min(18, ((value || 0) / 40) * 18))}px` }}
+                          />
+                        );
+                      })}
                     </div>
                   </td>
                 </tr>
