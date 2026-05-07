@@ -134,7 +134,6 @@ export default function PulseTrendAnalysisSection({
   error,
   orderedStages,
   divergenceFlags,
-  selectedTimepoint,
   sectionSignals,
 }) {
   const stageColumns = useMemo(
@@ -319,15 +318,6 @@ export default function PulseTrendAnalysisSection({
   }
 
   if (!orderedStages.length) {
-    if (selectedTimepoint === 'pre') {
-      return (
-        <section className="card pulse-trend-section">
-          <p className="muted" style={{ marginBottom: 0 }}>
-            Trend data becomes available once the During-Change assessment has been completed.
-          </p>
-        </section>
-      );
-    }
     return (
       <section className="card pulse-trend-section">
         <p className="muted" style={{ marginBottom: 0 }}>No trend analysis data is available yet.</p>

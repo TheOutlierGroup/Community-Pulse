@@ -1128,13 +1128,6 @@ export default function PlatformClientPulse() {
       setTrendLoading(false);
       return;
     }
-    if (pulseTimepoint === 'pre') {
-      setTrendSnapshots({});
-      setTrendSignals({});
-      setTrendError('');
-      setTrendLoading(false);
-      return;
-    }
 
     setTrendLoading(true);
     setTrendError('');
@@ -1145,24 +1138,17 @@ export default function PlatformClientPulse() {
         sharedParams.includeManagerSelf = includeManagerSelf ? 'true' : 'false';
       }
 
+      // Trend analysis always renders the canonical stage aggregates, independent of the
+      // dropdown checkpoint selection on the rest of the page.
       const preParams = { ...sharedParams, timepoint: 'pre' };
       const duringParams = { ...sharedParams, timepoint: 'during' };
-      if (pulseTimepoint === 'during' && pulseDuringDate) {
-        duringParams.duringDate = pulseDuringDate;
-      }
-      if (pulseTimepoint === 'during' && pulseDuringSessionId) {
-        duringParams.duringSessionId = pulseDuringSessionId;
-      }
-      const shouldLoadPostStage = pulseTimepoint === 'completed';
-      const requests = [
+      const postParams = { ...sharedParams, timepoint: 'completed' };
+
+      const [preResult, duringResult, postResult] = await Promise.allSettled([
         api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: preParams }),
         api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: duringParams }),
-      ];
-      if (shouldLoadPostStage) {
-        const postParams = { ...sharedParams, timepoint: 'completed' };
-        requests.push(api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: postParams }));
-      }
-      const [preResult, duringResult, postResult] = await Promise.allSettled(requests);
+        api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: postParams }),
+      ]);
 
       const snapshotMap = {};
       if (preResult.status === 'fulfilled' && preResult.value?.data) {
@@ -1171,7 +1157,7 @@ export default function PlatformClientPulse() {
       if (duringResult.status === 'fulfilled' && duringResult.value?.data) {
         snapshotMap.mid = buildTrendStageSnapshot('mid', 'During-Change', duringResult.value.data);
       }
-      if (postResult?.status === 'fulfilled' && postResult.value?.data) {
+      if (postResult.status === 'fulfilled' && postResult.value?.data) {
         snapshotMap.post = buildTrendStageSnapshot('post', 'Post-Change', postResult.value.data);
       }
 
@@ -1182,7 +1168,6 @@ export default function PlatformClientPulse() {
       let nextSignals = {};
       try {
         const { data } = await api.post(`/api/platform/organizations/${orgId}/pulse-trend-signals`, {
-          selectedTimepoint: pulseTimepoint,
           stages: Object.values(snapshotMap),
         });
         if (data?.signals && typeof data.signals === 'object') {
@@ -1204,9 +1189,6 @@ export default function PlatformClientPulse() {
   }, [
     includeManagerSelf,
     orgId,
-    pulseDuringDate,
-    pulseDuringSessionId,
-    pulseTimepoint,
     pulseEnabled,
     selectedManagerIds,
     trendAnalysisVisible,
@@ -1553,7 +1535,6 @@ export default function PlatformClientPulse() {
           error={trendError}
           orderedStages={orderedTrendStages}
           divergenceFlags={trendDivergenceFlags}
-          selectedTimepoint={pulseTimepoint}
           sectionSignals={trendSignals}
         />
       ) : null}
