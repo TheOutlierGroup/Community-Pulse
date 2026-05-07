@@ -111,3 +111,136 @@ test('assembleReportData returns stable matrix, percentages, and invite totals f
   assert.ok(out.readiness.verdict);
   assert.ok(Array.isArray(out.teams));
 });
+
+test('assembleReportData names teams from group_level_values, not manager personal name', async () => {
+  // Two staff respondents and a manager, all on the "Backend" team
+  // ('Engineering > Backend' in group_level_values). Manager Mike is
+  // the team lead; the breakdown should be keyed by 'Backend', not 'Mike'.
+  const responses = [
+    { id: 'r1', invite_id: 'staff-1', manager_invite_id: 'mgr-1', role: 'employee', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('Q', 4) },
+    { id: 'r2', invite_id: 'staff-2', manager_invite_id: 'mgr-1', role: 'employee', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('Q', 3) },
+    { id: 'r3', invite_id: 'mgr-1', manager_invite_id: null, role: 'admin', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('MQ', 5) },
+  ];
+
+  const assembleReportData = createAssembleReportData({
+    reportMinResponses: 2,
+    reportStageMap: { pre: 'pre', mid: 'during', post: 'completed' },
+    pulseSessionModel: {
+      async listSessionsForOrg() {
+        return [{ id: 's1', session_purpose: 'pre_project' }];
+      },
+    },
+    listSessionResponsesFn: async () => ({ rows: responses }),
+    userModel: { async countActiveUsersByRoleForOrg() { return { employee: 0, admin: 0 }; } },
+    pulseLinkInviteModel: {
+      async listInviteRowsForOrg() {
+        return [
+          { id: 'mgr-1', survey_role: 'manager', display_name: 'Mike',
+            group_level_values: ['Engineering', 'Backend'], manager_display_name: null },
+          { id: 'staff-1', survey_role: 'employee', display_name: 'Sara',
+            group_level_values: ['Engineering', 'Backend'], manager_invite_id: 'mgr-1', manager_display_name: 'Mike' },
+          { id: 'staff-2', survey_role: 'employee', display_name: 'Sam',
+            group_level_values: ['Engineering', 'Backend'], manager_invite_id: 'mgr-1', manager_display_name: 'Mike' },
+        ];
+      },
+    },
+  });
+
+  const out = await assembleReportData({
+    organization: { id: 'org-1', name: 'Client A' },
+    stage: 'pre',
+  });
+
+  assert.deepEqual(out.totals.teams_in_scope, 'Backend');
+  assert.equal(out.teams.length, 1);
+  assert.equal(out.teams[0].name, 'Backend');
+  assert.equal(out.teams[0].response_count, 3);
+  assert.equal(out.teams[0].employee_count, 2);
+  assert.equal(out.teams[0].manager_count, 1);
+});
+
+test('assembleReportData populates hierarchy_levels from configured groupLevelLabels', async () => {
+  const responses = [
+    { id: 'r1', invite_id: 'staff-1', manager_invite_id: 'mgr-1', role: 'employee', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('Q', 4) },
+    { id: 'r2', invite_id: 'mgr-1', manager_invite_id: null, role: 'admin', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('MQ', 5) },
+  ];
+  const assembleReportData = createAssembleReportData({
+    reportMinResponses: 2,
+    reportStageMap: { pre: 'pre', mid: 'during', post: 'completed' },
+    pulseSessionModel: { async listSessionsForOrg() { return [{ id: 's1', session_purpose: 'pre_project' }]; } },
+    listSessionResponsesFn: async () => ({ rows: responses }),
+    userModel: { async countActiveUsersByRoleForOrg() { return { employee: 0, admin: 0 }; } },
+    pulseLinkInviteModel: { async listInviteRowsForOrg() { return []; } },
+  });
+
+  const labelsOut = await assembleReportData({
+    organization: {
+      id: 'org-1',
+      name: 'Client A',
+      settings: { groupLevels: 3, groupLevelLabels: ['Division', 'Department', 'Team'] },
+    },
+    stage: 'pre',
+  });
+  assert.equal(labelsOut.org.hierarchy_levels, 'Division → Department → Team');
+
+  const countOnlyOut = await assembleReportData({
+    organization: {
+      id: 'org-1',
+      name: 'Client A',
+      settings: { groupLevels: 2 },
+    },
+    stage: 'pre',
+  });
+  assert.equal(countOnlyOut.org.hierarchy_levels, '2 levels');
+
+  const legacyOut = await assembleReportData({
+    organization: {
+      id: 'org-1',
+      name: 'Client A',
+      hierarchy_levels: '4 levels: VP → Director → Manager → IC',
+    },
+    stage: 'pre',
+  });
+  assert.equal(legacyOut.org.hierarchy_levels, '4 levels: VP → Director → Manager → IC');
+
+  const emptyOut = await assembleReportData({
+    organization: { id: 'org-1', name: 'Client A' },
+    stage: 'pre',
+  });
+  assert.equal(emptyOut.org.hierarchy_levels, null);
+});
+
+test('assembleReportData falls back to manager display name when group_level_values is absent', async () => {
+  const responses = [
+    { id: 'r1', invite_id: 'staff-1', manager_invite_id: 'mgr-1', role: 'employee', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('Q', 4) },
+    { id: 'r2', invite_id: 'mgr-1', manager_invite_id: null, role: 'admin', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('MQ', 5) },
+  ];
+
+  const assembleReportData = createAssembleReportData({
+    reportMinResponses: 2,
+    reportStageMap: { pre: 'pre', mid: 'during', post: 'completed' },
+    pulseSessionModel: {
+      async listSessionsForOrg() {
+        return [{ id: 's1', session_purpose: 'pre_project' }];
+      },
+    },
+    listSessionResponsesFn: async () => ({ rows: responses }),
+    userModel: { async countActiveUsersByRoleForOrg() { return { employee: 0, admin: 0 }; } },
+    pulseLinkInviteModel: {
+      async listInviteRowsForOrg() {
+        return [
+          { id: 'mgr-1', survey_role: 'manager', display_name: 'Mike', group_level_values: [] },
+          { id: 'staff-1', survey_role: 'employee', display_name: 'Sara', group_level_values: [], manager_invite_id: 'mgr-1', manager_display_name: 'Mike' },
+        ];
+      },
+    },
+  });
+
+  const out = await assembleReportData({
+    organization: { id: 'org-1', name: 'Client A' },
+    stage: 'pre',
+  });
+
+  assert.equal(out.teams.length, 1);
+  assert.equal(out.teams[0].name, 'Mike');
+});

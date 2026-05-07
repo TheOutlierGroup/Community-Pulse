@@ -173,15 +173,42 @@ export function createAssembleReportData({
     const invitedTotal = invitedEmployees + invitedManagers;
     const responseRate = invitedTotal > 0 ? pct(filteredRows.length, invitedTotal) : null;
 
+    // Team identity comes from the deepest group_level_values entry on
+    // an invite (the actual team/department label). When no group values
+    // are configured we fall back to the lead manager's display name so
+    // the team can still be referenced — never the staff member's own
+    // name. This mirrors the dashboard's teamNameFromGroupValues.
+    const deriveTeamNameForInvite = (invite) => {
+      const groupValues = Array.isArray(invite?.group_level_values)
+        ? invite.group_level_values
+            .map((value) => String(value ?? '').trim())
+            .filter(Boolean)
+        : [];
+      if (groupValues.length > 0) return groupValues[groupValues.length - 1];
+      const isManager = String(invite?.survey_role || '').trim() === 'manager';
+      const managerName = isManager
+        ? String(invite?.display_name || '').trim()
+        : String(invite?.manager_display_name || '').trim();
+      return managerName || null;
+    };
+
     const teams = [...new Set(linkInviteRows
-      .map((row) => String(row.manager_display_name || '').trim())
+      .map(deriveTeamNameForInvite)
       .filter(Boolean))];
 
     // Team-level breakdown — only link-invite respondents carry team
-    // affiliation. Staff rows belong to their manager's team (via
-    // manager_display_name); manager rows lead a team named after
-    // themselves. Employee-source rows (no invite linkage) are excluded
-    // from this view.
+    // affiliation. Each invite is mapped to its team name once, then
+    // response rows are grouped by looking up that name via the
+    // respondent's own invite_id (managers) or their manager_invite_id
+    // (staff). Employee-source rows (no invite linkage) are excluded.
+    const inviteIdToTeamName = new Map();
+    for (const invite of linkInviteRows) {
+      const teamName = deriveTeamNameForInvite(invite);
+      if (teamName && invite?.id) {
+        inviteIdToTeamName.set(invite.id, teamName);
+      }
+    }
+
     const teamGroupMap = new Map();
     const ensureTeam = (name) => {
       if (!teamGroupMap.has(name)) {
@@ -191,17 +218,14 @@ export function createAssembleReportData({
     };
     for (const entry of scoredRows) {
       const row = entry.row;
+      const teamName = entry.audience === 'manager'
+        ? inviteIdToTeamName.get(row.invite_id)
+        : inviteIdToTeamName.get(row.manager_invite_id);
+      if (!teamName) continue;
+      const team = ensureTeam(teamName);
+      team.responses.push(entry);
       if (entry.audience === 'manager') {
-        const ownName = String(row.display_name || '').trim();
-        if (!ownName) continue;
-        const team = ensureTeam(ownName);
-        team.responses.push(entry);
         team.managerSelf = entry;
-      } else {
-        const teamName = String(row.manager_display_name || '').trim();
-        if (!teamName) continue;
-        const team = ensureTeam(teamName);
-        team.responses.push(entry);
       }
     }
 
@@ -277,12 +301,33 @@ export function createAssembleReportData({
       });
     }
 
+    // Hierarchy Levels metric — prefer the actual group level labels the
+    // client has configured (e.g. ['Division','Department','Team']) so the
+    // cover reflects the team structure they set up. Fall back to the
+    // configured count, then the legacy free-text column, then null.
+    const groupLevelLabelsCfg = Array.isArray(organization.settings?.groupLevelLabels)
+      ? organization.settings.groupLevelLabels
+          .map((label) => String(label ?? '').trim())
+          .filter(Boolean)
+      : [];
+    const groupLevelsCount = Number.isInteger(organization.settings?.groupLevels)
+      ? organization.settings.groupLevels
+      : null;
+    let hierarchyLevelsDisplay = null;
+    if (groupLevelLabelsCfg.length > 0) {
+      hierarchyLevelsDisplay = groupLevelLabelsCfg.join(' → ');
+    } else if (groupLevelsCount && groupLevelsCount > 0) {
+      hierarchyLevelsDisplay = `${groupLevelsCount} level${groupLevelsCount === 1 ? '' : 's'}`;
+    } else if (organization.hierarchy_levels) {
+      hierarchyLevelsDisplay = organization.hierarchy_levels;
+    }
+
     return {
     org: {
       id: organization.id,
       name: organization.name,
       slug: organization.slug,
-      hierarchy_levels: organization.hierarchy_levels || null,
+      hierarchy_levels: hierarchyLevelsDisplay,
       report_contact: organization.report_contact || null,
     },
     stage,
