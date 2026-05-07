@@ -109,4 +109,5 @@ test('assembleReportData returns stable matrix, percentages, and invite totals f
   assert.equal(out.manager.load_chain_matrix[0].cells.length, 4);
   assert.ok(Array.isArray(out.alerts));
   assert.ok(out.readiness.verdict);
+  assert.ok(Array.isArray(out.teams));
 });

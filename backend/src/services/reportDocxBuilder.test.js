@@ -49,6 +49,34 @@ function makeReportData({ includeMatrix = true } = {}) {
       sponsorship_chain_distribution: [{ name: 'Chain Functioning', percent: 75, count: 3 }],
       load_chain_matrix: matrix,
     },
+    teams: [
+      {
+        name: 'Team Alpha',
+        response_count: 5,
+        employee_count: 4,
+        manager_count: 1,
+        adoption_score: 31.2,
+        sponsorship_score: 29.4,
+        adoption_status: 'HIGH',
+        sponsorship_status: 'HIGH',
+        quadrant: 'optimal',
+        quadrant_label: 'Optimal',
+        manager_load_band: 'Sustainable',
+      },
+      {
+        name: 'Team Bravo',
+        response_count: 3,
+        employee_count: 3,
+        manager_count: 0,
+        adoption_score: 22.0,
+        sponsorship_score: 19.5,
+        adoption_status: 'LOW',
+        sponsorship_status: 'LOW',
+        quadrant: 'high_risk',
+        quadrant_label: 'High Risk',
+        manager_load_band: null,
+      },
+    ],
     alerts: [{ severity: 'WARNING', title: 'Dimension Floor', description: 'Watch 2A trend.' }],
   };
 }
@@ -59,6 +87,7 @@ const signals = {
   sponsorship: 'Sponsorship signal text.',
   managerLoad: 'Manager load signal text.',
   chain: 'Chain signal text.',
+  teams: 'Team breakdown signal text.',
   keyFindings: ['Finding one', 'Finding two'],
   nextStepsOrder: ['Manager Enablement Programme', 'Mid-Change Assessment'],
 };
@@ -77,6 +106,21 @@ test('buildReportDocx tolerates empty load-chain matrix without throwing', async
     reportData: makeReportData({ includeMatrix: false }),
     signals: { ...signals, nextStepsOrder: [] },
   });
+  assert.ok(Buffer.isBuffer(buffer));
+  assert.ok(buffer.length > 500);
+});
+
+test('buildReportDocx skips team-level breakdown when teams array is empty', async () => {
+  const reportData = { ...makeReportData(), teams: [] };
+  const buffer = await buildReportDocx({ reportData, signals });
+  assert.ok(Buffer.isBuffer(buffer));
+  assert.ok(buffer.length > 500);
+});
+
+test('buildReportDocx skips team-level breakdown when teams field is missing', async () => {
+  const reportData = makeReportData();
+  delete reportData.teams;
+  const buffer = await buildReportDocx({ reportData, signals });
   assert.ok(Buffer.isBuffer(buffer));
   assert.ok(buffer.length > 500);
 });

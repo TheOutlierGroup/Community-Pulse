@@ -70,47 +70,74 @@ async function injectTheme(docxBuffer) {
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
+// Palette aligned with the Outlier report style guide: navy primary,
+// muted/deep status text on light pastel cell backgrounds. Status text
+// colours are intended to be paired with their *Bg counterpart to keep
+// contrast readable in Word.
 const COLOUR = {
   navy: '1F3864',
   headerBg: '1F3864',
   headerText: 'FFFFFF',
-  scoreGreen: '1E855D',
-  scoreAmber: 'F5A623',
-  scoreOrange: 'CC4E0F',
-  scoreRed: 'E52235',
-  scoreGreenBg: '1E855D',
-  scoreAmberBg: 'F5A623',
-  scoreOrangeBg: 'CC4E0F',
-  scoreRedBg: 'E52235',
-  alertCriticalBg: 'E52235',
-  alertCriticalBorder: 'E52235',
-  alertWarningBg: 'F5A623',
-  alertWarningBorder: 'F5A623',
-  alertThresholdBg: 'CC4E0F',
-  alertThresholdBorder: 'CC4E0F',
-  alertPositiveBg: '1E855D',
-  alertPositiveBorder: '1E855D',
-  signalBg: 'FFFFFF',
+
+  // Status text (deep, print-friendly)
+  scoreGreen: '548235',
+  scoreAmber: 'BF8F00',
+  scoreOrange: 'BF6900',
+  scoreRed: 'C00000',
+
+  // Status backgrounds (light pastels)
+  scoreGreenBg: 'E2EFDA',
+  scoreAmberBg: 'FFF2CC',
+  scoreOrangeBg: 'FCE4D6',
+  scoreRedBg: 'F4CCCC',
+  scoreInfoBg: 'CFE2F3',
+
+  // Alerts — pastel BG, deep border/title text, navy body for readability
+  alertCriticalBg: 'F4CCCC',
+  alertCriticalBorder: 'C00000',
+  alertWarningBg: 'FFF2CC',
+  alertWarningBorder: 'BF8F00',
+  alertThresholdBg: 'CFE2F3',
+  alertThresholdBorder: '1F3864',
+  alertPositiveBg: 'E2EFDA',
+  alertPositiveBorder: '548235',
+
+  // Signal callout boxes — cream fill, accent border/title
+  signalBg: 'FFF8E1',
   signalBorderBlue: '1F3864',
-  signalBorderOrange: 'CC4E0F',
+  signalBorderOrange: 'E69138',
+
   lightGrey: 'F2F2F2',
+  mediumGrey: '999999',
+  bodyGrey: '555555',
   white: 'FFFFFF',
   black: '000000',
-  quadOptimal: '1E855D',
-  quadMotivated: 'CC4E0F',
-  quadCapable: 'CC4E0F',
-  quadHighRisk: 'E52235',
-  quadHighlight: 'E52235',
-  verdictPassBg: '1E855D',
-  verdictFailBg: 'E52235',
-  chainGreen: '1E855D',
-  chainAmber: 'F5A623',
-  chainOrange: 'CC4E0F',
-  chainRed: 'E52235',
-  loadSustainable: '1E855D',
-  loadStretched: 'F5A623',
-  loadAtCapacity: 'CC4E0F',
-  loadOverloaded: 'E52235',
+
+  // Quadrant matrix — only the active quadrant is colour-highlighted
+  quadActiveBg: 'FFF2CC',
+  quadActiveText: '1F3864',
+  quadInactiveBg: 'FFFFFF',
+  quadInactiveText: '666666',
+  quadInactiveDesc: '999999',
+
+  // Verdict header band — navy block with white description text
+  verdictBg: '1F3864',
+  verdictPassText: '548235',
+  verdictFailText: 'C00000',
+  verdictDescText: 'FFFFFF',
+  verdictLabelText: 'CCCCCC',
+
+  // Sponsorship chain matrix — pastel cells with navy text
+  chainGreen: 'D9EAD3',
+  chainAmber: 'FFF2CC',
+  chainOrange: 'FFF2CC',
+  chainRed: 'F4CCCC',
+
+  // Manager load bands — pastel cell BGs, status-colored percent
+  loadSustainable: 'D9EAD3',
+  loadStretched: 'FFF2CC',
+  loadAtCapacity: 'FCE4D6',
+  loadOverloaded: 'F4CCCC',
 };
 
 const FONT = { body: 'Calibri', heading: 'Calibri' };
@@ -206,21 +233,19 @@ function scoreStatusColour(status) {
 }
 
 function scoreStatusBg(status) {
-  return COLOUR.white;
+  return status === 'HIGH' ? COLOUR.scoreGreenBg : COLOUR.scoreRedBg;
 }
 
 function dimensionScoreColour(avg) {
   if (avg == null) return COLOUR.black;
-  if (avg >= 4.0) return COLOUR.white;
-  if (avg >= 3.5) return COLOUR.white;
-  if (avg >= 3.0) return COLOUR.black;
-  if (avg >= 2.5) return COLOUR.white;
-  return COLOUR.white;
+  if (avg >= 3.5) return COLOUR.scoreGreen;
+  if (avg >= 3.0) return COLOUR.scoreAmber;
+  if (avg >= 2.5) return COLOUR.scoreOrange;
+  return COLOUR.scoreRed;
 }
 
 function dimensionScoreBg(avg) {
   if (avg == null) return COLOUR.white;
-  if (avg >= 4.0) return COLOUR.scoreGreenBg;
   if (avg >= 3.5) return COLOUR.scoreGreenBg;
   if (avg >= 3.0) return COLOUR.scoreAmberBg;
   if (avg >= 2.5) return COLOUR.scoreOrangeBg;
@@ -365,11 +390,11 @@ function singleScoreCard(label, score, max, status) {
 
 function verdictBox(verdictText, quadrantLabel) {
   const isPassed = verdictText === 'CLEARED FOR LAUNCH';
-  const bg = COLOUR.white;
-  const verdictColor = isPassed ? COLOUR.scoreGreen : COLOUR.scoreRed;
-  const textColor = COLOUR.black;
-  const subtitleColor = '666666';
-  const quadColor = verdictColor;
+  const bg = COLOUR.verdictBg;
+  const verdictColor = isPassed ? COLOUR.verdictPassText : COLOUR.verdictFailText;
+  const descColor = COLOUR.verdictDescText;
+  const labelColor = COLOUR.verdictLabelText;
+  const quadColor = COLOUR.white;
   const desc = isPassed
     ? 'This organisation has the conditions required to proceed with the change programme.'
     : 'This organisation has the motivation to change. It does not yet have the sponsorship conditions to sustain it.';
@@ -392,7 +417,7 @@ function verdictBox(verdictText, quadrantLabel) {
               spacing: { after: 80 },
             }),
             new Paragraph({
-              children: [new TextRun({ text: desc, font: FONT.body, size: 20, color: textColor })],
+              children: [new TextRun({ text: desc, font: FONT.body, size: 20, color: descColor })],
             }),
           ],
         }),
@@ -404,7 +429,7 @@ function verdictBox(verdictText, quadrantLabel) {
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'Quadrant:', font: FONT.body, size: 18, color: subtitleColor })],
+              children: [new TextRun({ text: 'Quadrant:', font: FONT.body, size: 18, color: labelColor })],
               spacing: { after: 40 },
             }),
             new Paragraph({
@@ -422,14 +447,13 @@ function quadrantMatrix(activeCode) {
   const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: 'BBBBBB' };
   const borders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
 
+  // Style guide: only the active quadrant is highlighted (navy text on
+  // pale yellow). Inactive quadrants stay white with muted grey text so
+  // the strategic position reads at a glance.
   function qCell(code, label, desc, isHighlighted) {
-    const config = {
-      optimal: { bg: COLOUR.quadOptimal, color: COLOUR.white },
-      motivated_lost: { bg: COLOUR.quadMotivated, color: COLOUR.white },
-      capable_wary: { bg: COLOUR.quadCapable, color: COLOUR.white },
-      high_risk: { bg: COLOUR.quadHighRisk, color: COLOUR.white },
-    };
-    const cfg = config[code] || { bg: COLOUR.white, color: COLOUR.black };
+    const cfg = isHighlighted
+      ? { bg: COLOUR.quadActiveBg, titleColor: COLOUR.quadActiveText, descColor: COLOUR.quadActiveText }
+      : { bg: COLOUR.quadInactiveBg, titleColor: COLOUR.quadInactiveText, descColor: COLOUR.quadInactiveDesc };
     return new TableCell({
       borders,
       shading: { type: ShadingType.CLEAR, color: 'auto', fill: cfg.bg },
@@ -437,13 +461,13 @@ function quadrantMatrix(activeCode) {
       children: [
         new Paragraph({
           children: [
-            ...(isHighlighted ? [new TextRun({ text: '\u25B6 ', font: FONT.body, size: 20, color: cfg.color })] : []),
-            new TextRun({ text: label, font: FONT.heading, size: 20, bold: true, color: cfg.color }),
+            ...(isHighlighted ? [new TextRun({ text: '\u25B6 ', font: FONT.body, size: 20, color: cfg.titleColor })] : []),
+            new TextRun({ text: label, font: FONT.heading, size: 20, bold: true, color: cfg.titleColor }),
           ],
           spacing: { after: 40 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: desc, font: FONT.body, size: 17, italics: true, color: cfg.color })],
+          children: [new TextRun({ text: desc, font: FONT.body, size: 17, italics: true, color: cfg.descColor })],
         }),
       ],
     });
@@ -454,7 +478,7 @@ function quadrantMatrix(activeCode) {
     verticalAlign: 'center',
     children: [new Paragraph({
       alignment: AlignmentType.RIGHT,
-      children: [new TextRun({ text, font: FONT.body, size: 17, italics: true, color: '999999' })],
+      children: [new TextRun({ text, font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
     })],
   });
 
@@ -473,14 +497,14 @@ function quadrantMatrix(activeCode) {
             borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
             children: [new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'LOW Sponsorship', font: FONT.body, size: 17, italics: true, color: '999999' })],
+              children: [new TextRun({ text: 'LOW Sponsorship', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
             })],
           }),
           new TableCell({
             borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
             children: [new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'HIGH Sponsorship', font: FONT.body, size: 17, italics: true, color: '999999' })],
+              children: [new TextRun({ text: 'HIGH Sponsorship', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
             })],
           }),
         ],
@@ -533,11 +557,14 @@ function signalBox(title, text, borderColor = COLOUR.signalBorderBlue) {
 }
 
 function alertBlock(severity, title, description) {
+  // Style guide: pastel cell BG, deep status colour for the title/border,
+  // navy body text. Mirrors the THRESHOLD example (light blue + navy)
+  // shown in the reference report.
   const config = {
-    CRITICAL: { bg: COLOUR.alertCriticalBg, border: COLOUR.alertCriticalBorder, color: COLOUR.white, bodyColor: COLOUR.white },
-    WARNING: { bg: COLOUR.alertWarningBg, border: COLOUR.alertWarningBorder, color: COLOUR.black, bodyColor: COLOUR.black },
-    THRESHOLD: { bg: COLOUR.alertThresholdBg, border: COLOUR.alertThresholdBorder, color: COLOUR.white, bodyColor: COLOUR.white },
-    POSITIVE: { bg: COLOUR.alertPositiveBg, border: COLOUR.alertPositiveBorder, color: COLOUR.white, bodyColor: COLOUR.white },
+    CRITICAL: { bg: COLOUR.alertCriticalBg, border: COLOUR.alertCriticalBorder, color: COLOUR.alertCriticalBorder, bodyColor: COLOUR.navy },
+    WARNING: { bg: COLOUR.alertWarningBg, border: COLOUR.alertWarningBorder, color: COLOUR.alertWarningBorder, bodyColor: COLOUR.navy },
+    THRESHOLD: { bg: COLOUR.alertThresholdBg, border: COLOUR.alertThresholdBorder, color: COLOUR.alertThresholdBorder, bodyColor: COLOUR.navy },
+    POSITIVE: { bg: COLOUR.alertPositiveBg, border: COLOUR.alertPositiveBorder, color: COLOUR.alertPositiveBorder, bodyColor: COLOUR.navy },
   };
   const style = config[severity] || config.THRESHOLD;
 
@@ -571,11 +598,30 @@ function alertBlock(severity, title, description) {
 }
 
 function loadBandCards(distribution) {
+  // Style guide: pastel BG per band, status-coloured percent number,
+  // black title, medium-grey description. Mirrors the dimension table
+  // ramp so the same severity reads consistently across the report.
   const bandConfig = {
-    Sustainable: { bg: COLOUR.loadSustainable, color: COLOUR.white, desc: 'Genuine surplus capacity. Can act as active change sponsor.' },
-    Stretched: { bg: COLOUR.loadStretched, color: COLOUR.black, desc: 'Managing, but at risk under additional change load.' },
-    'At Capacity': { bg: COLOUR.loadAtCapacity, color: COLOUR.white, desc: 'Requires structured support and executive air cover.' },
-    Overloaded: { bg: COLOUR.loadOverloaded, color: COLOUR.white, desc: 'Risk amplifier. Do not launch without addressing load first.' },
+    Sustainable: {
+      bg: COLOUR.loadSustainable,
+      percentColor: COLOUR.scoreGreen,
+      desc: 'Genuine surplus capacity. Can act as active change sponsor.',
+    },
+    Stretched: {
+      bg: COLOUR.loadStretched,
+      percentColor: COLOUR.scoreAmber,
+      desc: 'Managing, but at risk under additional change load.',
+    },
+    'At Capacity': {
+      bg: COLOUR.loadAtCapacity,
+      percentColor: COLOUR.scoreOrange,
+      desc: 'Requires structured support and executive air cover.',
+    },
+    Overloaded: {
+      bg: COLOUR.loadOverloaded,
+      percentColor: COLOUR.scoreRed,
+      desc: 'Risk amplifier. Do not launch without addressing load first.',
+    },
   };
 
   const cells = distribution.map((band) => {
@@ -586,15 +632,15 @@ function loadBandCards(distribution) {
       margins: { top: 100, bottom: 100, left: 100, right: 100 },
       children: [
         new Paragraph({
-          children: [new TextRun({ text: `${band.percent}%`, font: FONT.heading, size: 36, bold: true, color: cfg.color })],
+          children: [new TextRun({ text: `${band.percent}%`, font: FONT.heading, size: 36, bold: true, color: cfg.percentColor })],
           spacing: { after: 30 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: band.name, font: FONT.heading, size: 20, bold: true, color: cfg.color })],
+          children: [new TextRun({ text: band.name, font: FONT.heading, size: 20, bold: true, color: COLOUR.black })],
           spacing: { after: 40 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: cfg.desc, font: FONT.body, size: 16, color: cfg.color })],
+          children: [new TextRun({ text: cfg.desc, font: FONT.body, size: 16, color: COLOUR.bodyGrey })],
         }),
       ],
     });
@@ -613,11 +659,13 @@ function loadBandCards(distribution) {
 }
 
 function sponsorshipChainMatrix(distribution) {
+  // Style guide: pastel cell BG indicates state severity, but all
+  // numbers and labels are navy so the matrix reads as a single unit.
   const stateConfig = {
-    'Chain Functioning': { bg: COLOUR.chainGreen, color: COLOUR.white },
-    'Breaking at Manager Level': { bg: COLOUR.chainAmber, color: COLOUR.black },
-    'Managers Resilient, Under-Supported': { bg: COLOUR.chainOrange, color: COLOUR.white },
-    'Sponsorship Failed at Both Levels': { bg: COLOUR.chainRed, color: COLOUR.white },
+    'Chain Functioning': { bg: COLOUR.chainGreen },
+    'Breaking at Manager Level': { bg: COLOUR.chainAmber },
+    'Managers Resilient, Under-Supported': { bg: COLOUR.chainOrange },
+    'Sponsorship Failed at Both Levels': { bg: COLOUR.chainRed },
   };
 
   const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: 'BBBBBB' };
@@ -628,7 +676,7 @@ function sponsorshipChainMatrix(distribution) {
   };
 
   function dataCell(name, percent) {
-    const cfg = stateConfig[name] || { bg: COLOUR.white, color: COLOUR.black };
+    const cfg = stateConfig[name] || { bg: COLOUR.white };
     return new TableCell({
       borders,
       shading: { type: ShadingType.CLEAR, color: 'auto', fill: cfg.bg },
@@ -636,12 +684,12 @@ function sponsorshipChainMatrix(distribution) {
       children: [
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: `${percent}%`, font: FONT.heading, size: 28, bold: true, color: cfg.color })],
+          children: [new TextRun({ text: `${percent}%`, font: FONT.heading, size: 28, bold: true, color: COLOUR.navy })],
           spacing: { after: 30 },
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: name, font: FONT.body, size: 17, bold: true, color: cfg.color })],
+          children: [new TextRun({ text: name, font: FONT.body, size: 17, bold: true, color: COLOUR.navy })],
         }),
       ],
     });
@@ -658,14 +706,14 @@ function sponsorshipChainMatrix(distribution) {
             ...axisOpts,
             children: [new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'LOW Received', font: FONT.body, size: 17, italics: true, color: '999999' })],
+              children: [new TextRun({ text: 'LOW Received', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
             })],
           }),
           new TableCell({
             ...axisOpts,
             children: [new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'HIGH Received', font: FONT.body, size: 17, italics: true, color: '999999' })],
+              children: [new TextRun({ text: 'HIGH Received', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
             })],
           }),
         ],
@@ -676,7 +724,7 @@ function sponsorshipChainMatrix(distribution) {
             ...axisOpts,
             children: [new Paragraph({
               alignment: AlignmentType.RIGHT,
-              children: [new TextRun({ text: 'HIGH\nCapacity', font: FONT.body, size: 17, italics: true, color: '999999' })],
+              children: [new TextRun({ text: 'HIGH\nCapacity', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
             })],
           }),
           dataCell('Breaking at Manager Level', distribution.find((s) => s.name === 'Breaking at Manager Level')?.percent || 0),
@@ -689,7 +737,7 @@ function sponsorshipChainMatrix(distribution) {
             ...axisOpts,
             children: [new Paragraph({
               alignment: AlignmentType.RIGHT,
-              children: [new TextRun({ text: 'LOW\nCapacity', font: FONT.body, size: 17, italics: true, color: '999999' })],
+              children: [new TextRun({ text: 'LOW\nCapacity', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
             })],
           }),
           dataCell('Sponsorship Failed at Both Levels', distribution.find((s) => s.name === 'Sponsorship Failed at Both Levels')?.percent || 0),
@@ -702,6 +750,101 @@ function sponsorshipChainMatrix(distribution) {
 
 function spacer(points = 120) {
   return new Paragraph({ spacing: { after: points } });
+}
+
+// 40-point readiness score → status colour ramp. Mirrors the dimension
+// table ramp so a single visual language carries through the report.
+function readinessScoreColour(score, threshold = 28) {
+  if (score == null) return COLOUR.black;
+  if (score >= threshold) return COLOUR.scoreGreen;
+  if (score >= threshold - 4) return COLOUR.scoreAmber;
+  if (score >= threshold - 8) return COLOUR.scoreOrange;
+  return COLOUR.scoreRed;
+}
+
+function readinessScoreBg(score, threshold = 28) {
+  if (score == null) return COLOUR.white;
+  if (score >= threshold) return COLOUR.scoreGreenBg;
+  if (score >= threshold - 4) return COLOUR.scoreAmberBg;
+  if (score >= threshold - 8) return COLOUR.scoreOrangeBg;
+  return COLOUR.scoreRedBg;
+}
+
+const LOAD_BAND_BG = {
+  Sustainable: COLOUR.loadSustainable,
+  Stretched: COLOUR.loadStretched,
+  'At Capacity': COLOUR.loadAtCapacity,
+  Overloaded: COLOUR.loadOverloaded,
+};
+
+const QUADRANT_BG = {
+  optimal: COLOUR.scoreGreenBg,
+  motivated_lost: COLOUR.scoreAmberBg,
+  capable_wary: COLOUR.scoreAmberBg,
+  high_risk: COLOUR.scoreRedBg,
+};
+
+function teamBreakdownTable(teams) {
+  const headers = ['Team', 'Responses', 'Adoption', 'Sponsorship', 'Quadrant', 'Manager Load'];
+  const rows = teams.map((team) => {
+    const adoptionText = team.adoption_score != null
+      ? `${team.adoption_score} / 40 (${team.adoption_status})`
+      : '—';
+    const sponsorshipText = team.sponsorship_score != null
+      ? `${team.sponsorship_score} / 40 (${team.sponsorship_status})`
+      : '—';
+    const responsesText = team.manager_count
+      ? `${team.response_count} (${team.employee_count} staff · ${team.manager_count} mgr)`
+      : `${team.response_count}`;
+
+    return [
+      { _styled: true, text: team.name, bold: true },
+      { _styled: true, text: responsesText, alignment: AlignmentType.CENTER },
+      {
+        _styled: true,
+        text: adoptionText,
+        bold: true,
+        color: readinessScoreColour(team.adoption_score),
+        shading: readinessScoreBg(team.adoption_score),
+        alignment: AlignmentType.CENTER,
+      },
+      {
+        _styled: true,
+        text: sponsorshipText,
+        bold: true,
+        color: readinessScoreColour(team.sponsorship_score),
+        shading: readinessScoreBg(team.sponsorship_score),
+        alignment: AlignmentType.CENTER,
+      },
+      {
+        _styled: true,
+        text: team.quadrant_label || '—',
+        bold: true,
+        color: COLOUR.navy,
+        shading: QUADRANT_BG[team.quadrant] || COLOUR.white,
+        alignment: AlignmentType.CENTER,
+      },
+      {
+        _styled: true,
+        text: team.manager_load_band || '—',
+        bold: true,
+        color: COLOUR.black,
+        shading: LOAD_BAND_BG[team.manager_load_band] || COLOUR.white,
+        alignment: AlignmentType.CENTER,
+      },
+    ];
+  });
+
+  return styledTable(headers, rows, {
+    columnWidths: [
+      { size: 24, type: WidthType.PERCENTAGE },
+      { size: 14, type: WidthType.PERCENTAGE },
+      { size: 16, type: WidthType.PERCENTAGE },
+      { size: 16, type: WidthType.PERCENTAGE },
+      { size: 16, type: WidthType.PERCENTAGE },
+      { size: 14, type: WidthType.PERCENTAGE },
+    ],
+  });
 }
 
 function dimensionStatusText(avg) {
@@ -789,43 +932,49 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
   });
 
   const loadChainRows = reportData.manager.load_chain_matrix.map((row) => {
+    // Style guide: row label sits on the load band's pastel BG with
+    // black text. Severity in the count cells follows the same green →
+    // yellow → orange → pink ramp, with white reserved for empty cells.
     const loadConfig = {
-      Sustainable: { shading: COLOUR.loadSustainable, color: COLOUR.white },
-      Stretched: { shading: COLOUR.loadStretched, color: COLOUR.black },
-      'At Capacity': { shading: COLOUR.loadAtCapacity, color: COLOUR.white },
-      Overloaded: { shading: COLOUR.loadOverloaded, color: COLOUR.white },
+      Sustainable: { shading: COLOUR.loadSustainable },
+      Stretched: { shading: COLOUR.loadStretched },
+      'At Capacity': { shading: COLOUR.loadAtCapacity },
+      Overloaded: { shading: COLOUR.loadOverloaded },
     };
-    const matrixSeverityStyle = (loadBand, chainState) => {
+    const matrixSeverityStyle = (loadBand, chainState, count) => {
+      if (count === 0) {
+        return { shading: COLOUR.white, color: COLOUR.black, size: 22 };
+      }
       if (loadBand === 'Sustainable' && chainState === 'Chain Functioning') {
-        return { shading: COLOUR.scoreGreen, color: COLOUR.white, size: 22 };
+        return { shading: COLOUR.chainGreen, color: COLOUR.black, size: 22 };
       }
       if (
         (loadBand === 'Sustainable' && chainState !== 'Chain Functioning')
         || (loadBand === 'Stretched' && chainState === 'Chain Functioning')
       ) {
-        return { shading: '3DAA7A', color: COLOUR.white, size: 22 };
+        return { shading: COLOUR.chainGreen, color: COLOUR.black, size: 22 };
       }
       if (
         loadBand === 'Stretched'
         && (chainState === 'Breaking at Manager Level' || chainState === 'Managers Resilient, Under-Supported')
       ) {
-        return { shading: COLOUR.scoreAmber, color: COLOUR.black, size: 22 };
+        return { shading: COLOUR.scoreAmberBg, color: COLOUR.black, size: 22 };
       }
       if (
         (loadBand === 'Stretched' && chainState === 'Sponsorship Failed at Both Levels')
         || (loadBand === 'At Capacity'
           && (chainState === 'Breaking at Manager Level' || chainState === 'Managers Resilient, Under-Supported'))
       ) {
-        return { shading: COLOUR.scoreOrange, color: COLOUR.white, size: 22 };
+        return { shading: COLOUR.scoreOrangeBg, color: COLOUR.black, size: 22 };
       }
       if (
         (loadBand === 'At Capacity' && chainState === 'Sponsorship Failed at Both Levels')
         || (loadBand === 'Overloaded' && chainState === 'Managers Resilient, Under-Supported')
       ) {
-        return { shading: COLOUR.scoreRed, color: COLOUR.white, size: 22 };
+        return { shading: COLOUR.scoreRedBg, color: COLOUR.black, size: 22 };
       }
       if (loadBand === 'Overloaded' && chainState === 'Sponsorship Failed at Both Levels') {
-        return { shading: COLOUR.scoreRed, color: COLOUR.white, size: 28, bold: true };
+        return { shading: COLOUR.scoreRedBg, color: COLOUR.scoreRed, size: 28, bold: true };
       }
       return { shading: COLOUR.white, color: COLOUR.black, size: 22 };
     };
@@ -835,10 +984,10 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
         text: row.loadBand,
         bold: true,
         shading: loadConfig[row.loadBand]?.shading || COLOUR.white,
-        color: loadConfig[row.loadBand]?.color || COLOUR.black,
+        color: COLOUR.black,
       },
       ...row.cells.map((cell) => {
-        const style = matrixSeverityStyle(row.loadBand, cell.chainState);
+        const style = matrixSeverityStyle(row.loadBand, cell.chainState, cell.count);
         return {
           _styled: true,
           text: String(cell.count),
@@ -913,14 +1062,13 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
           ...(context.programme_timeline ? [metricRow('Programme Timeline', context.programme_timeline)] : []),
           spacer(600),
           new Paragraph({
-            children: [new TextRun({ text: 'Prepared by', font: FONT.body, size: 18, color: '999999' })],
+            children: [new TextRun({ text: 'Prepared by', font: FONT.body, size: 18, color: COLOUR.mediumGrey })],
             spacing: { after: 40 },
           }),
           new Paragraph({
             children: [new TextRun({ text: 'The Outlier Group', font: FONT.heading, size: 24, bold: true })],
             spacing: { after: 40 },
           }),
-          bodySmallItalic('Grounded in Self-Determination Theory & Systems Psychodynamics'),
           spacer(300),
           new Paragraph({
             children: [new TextRun({ text: 'CONFIDENTIAL — FOR AUTHORISED RECIPIENTS ONLY', font: FONT.heading, size: 20, bold: true, color: COLOUR.scoreRed })],
@@ -961,7 +1109,7 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
           // ── Adoption Readiness ────────────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),
           h1('Adoption Readiness'),
-          body('The Adoption Readiness score measures the degree to which employees and managers feel equipped, supported, and capable of absorbing significant change. It draws on Self-Determination Theory constructs of Competence and Relatedness, and Systems Psychodynamic concepts of containing experience and carrying capacity.'),
+          body('The Adoption Readiness score measures the degree to which employees and managers feel equipped, supported, and capable of absorbing significant change.'),
           spacer(80),
           singleScoreCard(
             'Adoption Readiness Score',
@@ -986,7 +1134,7 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
           // ── Sponsorship Credibility ───────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),
           h1('Sponsorship Credibility'),
-          body('The Sponsorship Credibility score measures the degree to which employees and managers experience senior leadership as visibly modelling change, communicating with honesty, walking the talk, and creating the psychological safety needed to raise concerns. It draws on Systems Psychodynamic concepts of containment, work-group functioning, and primary task holding.'),
+          body('The Sponsorship Credibility score measures the degree to which employees and managers experience senior leadership as visibly modelling change, communicating with honesty, walking the talk, and creating the psychological safety needed to raise concerns.'),
           spacer(80),
           singleScoreCard(
             'Sponsorship Credibility Score',
@@ -1060,6 +1208,19 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
           spacer(120),
           signalBox('Sponsorship Chain Analysis', signals.chain, COLOUR.signalBorderOrange),
 
+          // ── Team-Level Breakdown ──────────────────────────────────────
+          ...((reportData.teams && reportData.teams.length > 0) ? [
+            new Paragraph({ pageBreakBefore: true }),
+            h1('Team-Level Breakdown'),
+            body('The table below disaggregates the org-wide scores into a per-team view. Compare each team\'s Adoption and Sponsorship against the readiness threshold (28/40) and the org averages above to identify outliers requiring tailored intervention sequencing.'),
+            spacer(80),
+            teamBreakdownTable(reportData.teams),
+            spacer(80),
+            bodySmallItalic('Teams with fewer than 5 respondents should be interpreted with caution; small samples are sensitive to individual perspectives. Manager Load is shown only for teams whose lead manager completed the assessment.'),
+            spacer(120),
+            signalBox('Team-Level Breakdown', signals.teams, COLOUR.signalBorderOrange),
+          ] : []),
+
           // ── Adoption Alerts ───────────────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),
           h1('Adoption Alerts'),
@@ -1119,7 +1280,7 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
             alignment: AlignmentType.CENTER,
             children: [new TextRun({
               text: `This report is confidential and prepared exclusively for ${reportData.org.name}. The methodology, frameworks, and scoring logic are proprietary to The Outlier Group.`,
-              font: FONT.body, size: 16, italics: true, color: '999999',
+              font: FONT.body, size: 16, italics: true, color: COLOUR.mediumGrey,
             })],
           }),
         ],

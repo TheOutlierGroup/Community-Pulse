@@ -177,6 +177,68 @@ export function createAssembleReportData({
       .map((row) => String(row.manager_display_name || '').trim())
       .filter(Boolean))];
 
+    // Team-level breakdown — only link-invite respondents carry team
+    // affiliation. Staff rows belong to their manager's team (via
+    // manager_display_name); manager rows lead a team named after
+    // themselves. Employee-source rows (no invite linkage) are excluded
+    // from this view.
+    const teamGroupMap = new Map();
+    const ensureTeam = (name) => {
+      if (!teamGroupMap.has(name)) {
+        teamGroupMap.set(name, { name, responses: [], managerSelf: null });
+      }
+      return teamGroupMap.get(name);
+    };
+    for (const entry of scoredRows) {
+      const row = entry.row;
+      if (entry.audience === 'manager') {
+        const ownName = String(row.display_name || '').trim();
+        if (!ownName) continue;
+        const team = ensureTeam(ownName);
+        team.responses.push(entry);
+        team.managerSelf = entry;
+      } else {
+        const teamName = String(row.manager_display_name || '').trim();
+        if (!teamName) continue;
+        const team = ensureTeam(teamName);
+        team.responses.push(entry);
+      }
+    }
+
+    const teamBreakdown = [...teamGroupMap.values()]
+      .map((team) => {
+        const responses = team.responses;
+        const adoption = responses.length
+          ? round1(responses.reduce((sum, e) => sum + e.scored.adoption, 0) / responses.length)
+          : null;
+        const sponsorship = responses.length
+          ? round1(responses.reduce((sum, e) => sum + e.scored.sponsorship, 0) / responses.length)
+          : null;
+        const teamQuadrant = adoption != null && sponsorship != null
+          ? classifyQuadrant(adoption, sponsorship)
+          : null;
+        const managerLoadScore = team.managerSelf?.scored?.sponsorshipLoadScore ?? null;
+        const managerLoadBand = managerLoadScore != null
+          ? scoreBandForSponsorshipLoad(managerLoadScore)
+          : null;
+        return {
+          name: team.name,
+          response_count: responses.length,
+          employee_count: responses.filter((e) => e.audience === 'staff').length,
+          manager_count: responses.filter((e) => e.audience === 'manager').length,
+          adoption_score: adoption,
+          sponsorship_score: sponsorship,
+          adoption_status:
+            adoption != null && adoption >= readinessThreshold ? 'HIGH' : 'LOW',
+          sponsorship_status:
+            sponsorship != null && sponsorship >= readinessThreshold ? 'HIGH' : 'LOW',
+          quadrant: teamQuadrant?.code || null,
+          quadrant_label: teamQuadrant?.label || null,
+          manager_load_band: managerLoadBand,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
     const adoptionDimFloor = dimensionsEmployee
       .filter((dimension) => dimension.id.startsWith('1') && dimension.avg != null)
       .sort((a, b) => a.avg - b.avg)[0];
@@ -277,6 +339,7 @@ export function createAssembleReportData({
       })),
       load_chain_matrix: loadChainMatrix,
     },
+    teams: teamBreakdown,
     alerts: alerts.slice(0, 5),
     };
   };
