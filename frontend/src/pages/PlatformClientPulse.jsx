@@ -1365,6 +1365,18 @@ export default function PlatformClientPulse() {
               <p className="pulse-org-overview__score-meta">Adoption Readiness /40</p>
               <p className="pulse-org-overview__quadrant-meta">{topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{adoptionOverviewBlurb}</p>
+              <div className="pulse-org-overview__measures">
+                <p className="pulse-org-overview__measures-label">What it measures</p>
+                <p className="pulse-org-overview__measures-text">
+                  Composite of four employee-survey dimensions, each scored 1&ndash;5 and rolled up to a 0&ndash;{40} scale. The {threshold}/40 line is the readiness floor for absorbing change at the current pace.
+                </p>
+                <ul className="pulse-org-overview__measures-list">
+                  <li><span className="pulse-org-overview__measures-id">1A</span> Competence &amp; Capability</li>
+                  <li><span className="pulse-org-overview__measures-id">1B</span> Change Track Record</li>
+                  <li><span className="pulse-org-overview__measures-id">1C</span> Change Load / Capacity</li>
+                  <li><span className="pulse-org-overview__measures-id">1D</span> Manager as Enabler</li>
+                </ul>
+              </div>
               <div className="pulse-org-overview__signal">
                 <p className="pulse-org-overview__signal-label">Why this matters</p>
                 <p className="pulse-org-overview__signal-text">{renderSignalMarkup(adoptionWhyThisMatters)}</p>
@@ -1379,6 +1391,18 @@ export default function PlatformClientPulse() {
               <p className="pulse-org-overview__score-meta">Sponsorship Credibility /40</p>
               <p className="pulse-org-overview__quadrant-meta">{topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{sponsorshipOverviewBlurb}</p>
+              <div className="pulse-org-overview__measures">
+                <p className="pulse-org-overview__measures-label">What it measures</p>
+                <p className="pulse-org-overview__measures-text">
+                  Composite of <strong>Sponsorship Received</strong> (how visibly senior leaders are modelling the change &mdash; /20) and <strong>Sponsorship Capacity</strong> (whether managers have the load and conditions to pass sponsorship downward &mdash; /20). The {threshold}/40 line is the credibility floor for sustaining momentum through managers.
+                </p>
+                <ul className="pulse-org-overview__measures-list">
+                  <li><span className="pulse-org-overview__measures-id">2A</span> Visible Sponsorship</li>
+                  <li><span className="pulse-org-overview__measures-id">2B</span> Walk the Talk</li>
+                  <li><span className="pulse-org-overview__measures-id">2C</span> Honest Communication</li>
+                  <li><span className="pulse-org-overview__measures-id">2D</span> Psychological Safety</li>
+                </ul>
+              </div>
               <div className="pulse-org-overview__signal">
                 <p className="pulse-org-overview__signal-label">Why this matters</p>
                 <p className="pulse-org-overview__signal-text">{renderSignalMarkup(sponsorshipWhyThisMatters)}</p>
