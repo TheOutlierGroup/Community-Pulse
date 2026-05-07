@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   buildAdoptionScoreCardSignal,
   buildLikelihoodWhatThisMeansSignal,
+  buildQuadrantExplanationSignal,
+  normalizeAssessmentStageLabel,
   SCORE_CARD_SIGNAL_PROMPTS,
   buildSponsorshipSectionSignals,
   buildSponsorshipScoreCardSignal,
@@ -287,4 +289,126 @@ test('likelihood what-this-means signal uses fallback when distribution missing'
   });
   assert.equal(signal.text, signal.fallback);
   assert.ok(signal.fallback.includes('spread across all four readiness states'));
+});
+
+test('quadrant explanation prompt is spec-locked', () => {
+  assert.ok(
+    SCORE_CARD_SIGNAL_PROMPTS.quadrant.system.startsWith(
+      'You are a change readiness analyst writing a concise signal banner for a senior practitioner dashboard for RhythmEngine'
+    )
+  );
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.quadrant.system.includes('Maximum 3 sentences'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.quadrant.system.includes('prioritise High Risk'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.quadrant.user.includes('{{client_name}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.quadrant.user.includes('{{assessment_stage}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.quadrant.user.includes('{{respondent_count}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.quadrant.user.includes('{{largest_deficit_quadrant}}'));
+  assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.quadrant.fallback,
+    'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this programme can proceed with confidence.'
+  );
+});
+
+test('quadrant explanation signal leads with Optimal then names largest deficit', () => {
+  const signal = buildQuadrantExplanationSignal({
+    optimalPct: 39,
+    motivatedLostPct: 21,
+    capableWaryPct: 12,
+    highRiskPct: 28,
+    adoptionScore: 22,
+    sponsorshipScore: 30,
+    threshold: 28,
+  });
+  assert.ok(signal.text.includes('<strong>39% of respondents are positioned in Optimal</strong>'));
+  // Largest non-Optimal is High Risk at 28
+  assert.equal(signal.largestDeficitName, 'High Risk');
+  assert.equal(signal.largestDeficitPct, 28);
+  assert.ok(signal.text.includes('28% sit in High Risk'));
+  // Adoption below, sponsorship above => barrier is adoption
+  assert.equal(signal.barrier, 'adoption');
+  assert.ok(signal.text.includes('lifting adoption readiness'));
+  // Spec: 3 sentences
+  assert.equal(signal.text.split(/(?<=\.)\s+/).filter(Boolean).length, 3);
+});
+
+test('quadrant explanation signal prioritises High Risk on ties with other deficits', () => {
+  const signal = buildQuadrantExplanationSignal({
+    optimalPct: 40,
+    motivatedLostPct: 20,
+    capableWaryPct: 20,
+    highRiskPct: 20,
+    adoptionScore: 30,
+    sponsorshipScore: 30,
+    threshold: 28,
+  });
+  assert.equal(signal.largestDeficitName, 'High Risk');
+  assert.equal(signal.largestDeficitPct, 20);
+});
+
+test('quadrant explanation signal calls out both barriers when both scores below threshold', () => {
+  const signal = buildQuadrantExplanationSignal({
+    optimalPct: 12,
+    motivatedLostPct: 32,
+    capableWaryPct: 24,
+    highRiskPct: 32,
+    adoptionScore: 18,
+    sponsorshipScore: 17,
+    threshold: 28,
+  });
+  // Tied Motivated but Lost (32) and High Risk (32) — High Risk must win
+  assert.equal(signal.largestDeficitName, 'High Risk');
+  assert.equal(signal.barrier, 'both');
+  assert.ok(signal.text.includes('both sponsorship credibility and adoption readiness'));
+});
+
+test('quadrant explanation signal calls out sponsorship barrier when only sponsorship is below', () => {
+  const signal = buildQuadrantExplanationSignal({
+    optimalPct: 35,
+    motivatedLostPct: 25,
+    capableWaryPct: 20,
+    highRiskPct: 20,
+    adoptionScore: 30,
+    sponsorshipScore: 22,
+    threshold: 28,
+  });
+  assert.equal(signal.barrier, 'sponsorship');
+  assert.ok(signal.text.includes('lifting sponsorship credibility'));
+});
+
+test('quadrant explanation signal uses fallback when distribution is empty', () => {
+  const signal = buildQuadrantExplanationSignal({
+    optimalPct: 0,
+    motivatedLostPct: 0,
+    capableWaryPct: 0,
+    highRiskPct: 0,
+    adoptionScore: 30,
+    sponsorshipScore: 30,
+    threshold: 28,
+  });
+  assert.equal(signal.text, signal.fallback);
+  assert.equal(signal.barrier, 'insufficient_data');
+});
+
+test('quadrant explanation signal expresses proportions as percentages, never fractions', () => {
+  const signal = buildQuadrantExplanationSignal({
+    optimalPct: 39,
+    motivatedLostPct: 21,
+    capableWaryPct: 12,
+    highRiskPct: 28,
+    adoptionScore: 22,
+    sponsorshipScore: 30,
+    threshold: 28,
+  });
+  assert.ok(!/\d+\s*\/\s*\d+/.test(signal.text), `signal text should not contain fractions: ${signal.text}`);
+  assert.ok(/\d+%/.test(signal.text));
+});
+
+test('normalizeAssessmentStageLabel maps timepoint codes to display labels', () => {
+  assert.equal(normalizeAssessmentStageLabel('pre'), 'Pre-Change');
+  assert.equal(normalizeAssessmentStageLabel('during'), 'Mid-Change');
+  assert.equal(normalizeAssessmentStageLabel('mid'), 'Mid-Change');
+  assert.equal(normalizeAssessmentStageLabel('completed'), 'Post-Change');
+  assert.equal(normalizeAssessmentStageLabel('post'), 'Post-Change');
+  assert.equal(normalizeAssessmentStageLabel(null), 'Pre-Change');
+  assert.equal(normalizeAssessmentStageLabel('Pre-Change'), 'Pre-Change');
 });

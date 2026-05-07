@@ -31,6 +31,14 @@ export const SCORE_CARD_SIGNAL_PROMPTS = Object.freeze({
     fallback:
       'The quadrant distribution shows how individuals are spread across all four readiness states. Review the proportion outside Optimal to determine the scale and nature of intervention required.',
   }),
+  quadrant: Object.freeze({
+    system:
+      "You are a change readiness analyst writing a concise signal banner for a senior practitioner dashboard for RhythmEngine — a proprietary diagnostic tool that measures an organisation's readiness to absorb and sustain a specific change programme. The quadrant distribution is the primary output of the instrument and the most important data on this page. Your output will be rendered as italicised prose. Write in plain English. Be direct and factual. Do not hedge. Do not use bullet points. Maximum 3 sentences. Wrap the single most important finding in <strong> tags. Express all proportions as percentages only — never as fractions or ratios. Do not manufacture urgency where the data does not support it, but do not soften findings where it does. Always lead with the strongest positive in the distribution before addressing the deficit. When naming the deficit, prioritise High Risk above all other non-Optimal states — if High Risk is the largest non-Optimal segment, it must be named first and directly.",
+    user:
+      'Organisation: {{client_name}} │ Stage: {{assessment_stage}} │ Respondents: {{respondent_count}}\nQuadrant distribution: Optimal {{optimal_pct}}% │ Motivated but Lost {{motivated_lost_pct}}% │ Capable but Wary {{capable_wary_pct}}% │ High Risk {{high_risk_pct}}%\nOrg-level classification: {{org_quadrant}}\nLargest non-Optimal segment: {{largest_deficit_quadrant}} ({{largest_deficit_pct}}%)\n\nWrite a 3-sentence signal banner that: (1) states what the quadrant distribution represents — that it shows the proportion of the organisation that currently has the conditions in place to absorb and sustain this change, versus those that do not; (2) leads with the Optimal percentage as the positive finding, then names the largest deficit segment — prioritising High Risk if it is the largest — and its percentage; and (3) states what closing that gap requires in plain terms, referencing whether the primary barrier is sponsorship, adoption readiness, or both.',
+    fallback:
+      'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this programme can proceed with confidence.',
+  }),
 });
 
 function renderPromptTemplate(template, values) {
@@ -424,6 +432,109 @@ export function buildLikelihoodWhatThisMeansSignal({
     fallback,
     outsideOptimalPct: outsideOptimal,
     optimalPct: optimal,
+  };
+}
+
+const ASSESSMENT_STAGE_LABELS = Object.freeze({
+  pre: 'Pre-Change',
+  during: 'Mid-Change',
+  mid: 'Mid-Change',
+  completed: 'Post-Change',
+  post: 'Post-Change',
+});
+
+export function normalizeAssessmentStageLabel(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 'Pre-Change';
+  if (ASSESSMENT_STAGE_LABELS[raw]) return ASSESSMENT_STAGE_LABELS[raw];
+  if (raw.includes('post') || raw.includes('complete')) return 'Post-Change';
+  if (raw.includes('mid') || raw.includes('during')) return 'Mid-Change';
+  if (raw.includes('pre')) return 'Pre-Change';
+  return 'Pre-Change';
+}
+
+export function buildQuadrantExplanationSignal({
+  optimalPct = 0,
+  motivatedLostPct = 0,
+  capableWaryPct = 0,
+  highRiskPct = 0,
+  adoptionScore,
+  sponsorshipScore,
+  threshold = READINESS_THRESHOLD,
+}) {
+  const fallback = SCORE_CARD_SIGNAL_PROMPTS.quadrant.fallback;
+  const finiteValues = [optimalPct, motivatedLostPct, capableWaryPct, highRiskPct]
+    .filter((value) => Number.isFinite(value));
+  const distributionTotal = finiteValues.reduce((sum, value) => sum + value, 0);
+  if (finiteValues.length === 0 || distributionTotal <= 0) {
+    return {
+      text: fallback,
+      fallback,
+      optimalPct: null,
+      largestDeficitName: null,
+      largestDeficitPct: null,
+      barrier: 'insufficient_data',
+    };
+  }
+
+  const optimal = Math.max(0, Math.round(Number(optimalPct) || 0));
+  const motivated = Math.max(0, Math.round(Number(motivatedLostPct) || 0));
+  const wary = Math.max(0, Math.round(Number(capableWaryPct) || 0));
+  const highRisk = Math.max(0, Math.round(Number(highRiskPct) || 0));
+
+  // Largest non-Optimal segment, prioritising High Risk on ties.
+  // Lower priority value wins ties (High Risk = 0).
+  const deficits = [
+    { name: 'High Risk', percent: highRisk, priority: 0 },
+    { name: 'Capable but Wary', percent: wary, priority: 1 },
+    { name: 'Motivated but Lost', percent: motivated, priority: 1 },
+  ]
+    .filter((entry) => entry.percent > 0)
+    .sort((a, b) => {
+      if (b.percent !== a.percent) return b.percent - a.percent;
+      return a.priority - b.priority;
+    });
+  const largestDeficit = deficits[0] || null;
+
+  const sentence1 = 'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change versus those that do not.';
+
+  let sentence2;
+  if (largestDeficit) {
+    sentence2 = optimal > 0
+      ? `<strong>${optimal}% of respondents are positioned in Optimal</strong>, while ${largestDeficit.percent}% sit in ${largestDeficit.name} as the largest segment that does not yet meet the conditions to absorb this change.`
+      : `<strong>No respondents are positioned in Optimal</strong>, with ${largestDeficit.percent}% concentrated in ${largestDeficit.name} as the largest segment that does not yet meet the conditions to absorb this change.`;
+  } else {
+    sentence2 = `<strong>${optimal}% of respondents are positioned in Optimal</strong>, with no other quadrant carrying material weight in this distribution.`;
+  }
+
+  const adoptionBelow = Number.isFinite(adoptionScore) && adoptionScore < threshold;
+  const sponsorshipBelow = Number.isFinite(sponsorshipScore) && sponsorshipScore < threshold;
+  let barrier;
+  let sentence3;
+  if (!largestDeficit) {
+    barrier = 'none';
+    sentence3 = 'Sustained execution discipline on the existing sponsorship and adoption foundations is what protects this position through rollout.';
+  } else if (adoptionBelow && sponsorshipBelow) {
+    barrier = 'both';
+    sentence3 = 'Closing that gap requires intervention on both sponsorship credibility and adoption readiness before this programme can proceed at pace.';
+  } else if (sponsorshipBelow) {
+    barrier = 'sponsorship';
+    sentence3 = 'Closing that gap requires lifting sponsorship credibility, because managers cannot pass this change downward without visible senior backing.';
+  } else if (adoptionBelow) {
+    barrier = 'adoption';
+    sentence3 = 'Closing that gap requires lifting adoption readiness, because capability, capacity, and change track record must improve before broader rollout.';
+  } else {
+    barrier = 'execution';
+    sentence3 = 'Closing that gap requires sustained execution discipline on the existing sponsorship and adoption foundations to migrate the deficit segment toward Optimal.';
+  }
+
+  return {
+    text: `${sentence1} ${sentence2} ${sentence3}`,
+    fallback,
+    optimalPct: optimal,
+    largestDeficitName: largestDeficit?.name || null,
+    largestDeficitPct: largestDeficit?.percent ?? null,
+    barrier,
   };
 }
 

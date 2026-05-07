@@ -946,6 +946,8 @@ export default function PlatformClientPulse() {
   const adoptionScoreCardSignal = scoreCardSignals.adoption || {};
   const sponsorshipScoreCardSignal = scoreCardSignals.sponsorship || {};
   const likelihoodSignal = dashboard?.likelihoodSignal || {};
+  const quadrantSignal = dashboard?.quadrantSignal || {};
+  const quadrantSignalText = String(quadrantSignal.text || quadrantSignal.fallback || '').trim();
   const executiveSummary = dashboard?.executiveSummary || null;
   const executiveSignalText = (dashboard?.soWhat || dashboard?.narrative || '').trim();
   const micDropScenarios = Array.isArray(executiveSummary?.scenarios) ? executiveSummary.scenarios : [];
@@ -1423,6 +1425,14 @@ export default function PlatformClientPulse() {
               <p className="pulse-sa-card__explainer">
                 Quadrant classification tracks whether score movement is improving toward Optimal or drifting into higher risk states.
               </p>
+              {quadrantSignalText ? (
+                <div className="pulse-quadrant-signal" role="note" aria-label="Quadrant signal banner">
+                  <span className="pulse-quadrant-signal__label">Signal</span>
+                  <p className="pulse-quadrant-signal__text">
+                    {renderSignalMarkup(quadrantSignalText)}
+                  </p>
+                </div>
+              ) : null}
               <div className="pulse-clean-readiness__quadrants">
                 {quadrants.map((quadrant) => (
                   <div

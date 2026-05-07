@@ -70,6 +70,8 @@ import {
 } from '../../services/pulseDashboardScope.js';
 import {
   buildLikelihoodWhatThisMeansSignal,
+  buildQuadrantExplanationSignal,
+  normalizeAssessmentStageLabel,
   SCORE_CARD_SIGNAL_PROMPTS,
   buildTopScoreCardSignals,
   buildDimensionFloorAlerts,
@@ -3164,6 +3166,24 @@ export function registerPlatformOrgRoutes(router) {
       highRiskPct: quadrants.find((entry) => entry.name === 'High Risk')?.percent || 0,
       launchStatus: launchStatusLabel,
     });
+    const quadrantSignal = buildQuadrantExplanationSignal({
+      optimalPct: quadrants.find((entry) => entry.name === 'Optimal')?.percent || 0,
+      motivatedLostPct: quadrants.find((entry) => entry.name === 'Motivated but Lost')?.percent || 0,
+      capableWaryPct: quadrants.find((entry) => entry.name === 'Capable but Wary')?.percent || 0,
+      highRiskPct: quadrants.find((entry) => entry.name === 'High Risk')?.percent || 0,
+      adoptionScore,
+      sponsorshipScore,
+      threshold: READINESS_THRESHOLD,
+    });
+    const quadrantSignalContext = {
+      clientName: org.name || null,
+      assessmentStage: normalizeAssessmentStageLabel(requestedTimepoint),
+      respondentCount: completedTotal,
+      orgQuadrant: currentQuadrantForScoreCards,
+      largestDeficitQuadrant: quadrantSignal.largestDeficitName,
+      largestDeficitPct: quadrantSignal.largestDeficitPct,
+      optimalPct: quadrantSignal.optimalPct,
+    };
 
     const baseAlerts = [];
     const overloadedBand = managerLoad.bands.find((b) => b.name === 'Overloaded');
@@ -3319,6 +3339,7 @@ export function registerPlatformOrgRoutes(router) {
       sponsorshipAnalysis,
       scoreCardSignals,
       likelihoodSignal,
+      quadrantSignal: { ...quadrantSignal, context: quadrantSignalContext },
       alerts: prioritizedAlerts.alerts,
       alertsOverflowCount: prioritizedAlerts.overflowCount,
       narrative: soWhat,
