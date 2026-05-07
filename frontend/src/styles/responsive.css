@@ -6451,16 +6451,17 @@ input[type='range'] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.8rem;
-  height: 1.8rem;
-  padding: 0 0.45rem;
-  border-radius: 6px;
-  background: var(--pulse-red);
-  color: #ffffff;
+  min-width: 2.6rem;
+  height: 2.6rem;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  background: #1C2333;
+  color: #8A95A8;
   font-family: var(--pulse-font-ui);
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.45rem;
+  font-weight: 700;
   line-height: 1;
+  letter-spacing: 0.02em;
 }
 
 .pulse-org-overview__score {
@@ -6848,9 +6849,9 @@ input[type='range'] {
 }
 
 .pulse-clean-readiness__quadrant--wary {
-  border-color: var(--pulse-orange, #cc4e0f);
-  background: var(--pulse-orange, #cc4e0f);
-  color: var(--pulse-on-orange, #ffffff);
+  border-color: var(--pulse-amber, #f5a623);
+  background: var(--pulse-amber, #f5a623);
+  color: var(--pulse-on-amber, #000000);
 }
 
 .pulse-clean-readiness__quadrant-percent {

@@ -218,14 +218,6 @@ function quadrantForScores(adoption, sponsorship, threshold = 28) {
   return 'High Risk';
 }
 
-function quadrantLetterForName(name) {
-  if (name === 'Motivated but Lost') return 'A';
-  if (name === 'Optimal') return 'B';
-  if (name === 'High Risk') return 'C';
-  if (name === 'Capable but Wary') return 'D';
-  return null;
-}
-
 function normalizeInviteTimepoint(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'during') return 'mid';
@@ -990,8 +982,7 @@ export default function PlatformClientPulse() {
   const topCardAdoptionDelta = kpis.adoptionDelta;
   const topCardSponsorshipDelta = kpis.sponsorshipDelta;
   const topCardQuadrantName = quadrantForScores(topCardAdoptionScore, topCardSponsorshipScore, threshold);
-  const topCardQuadrantLetter = quadrantLetterForName(topCardQuadrantName);
-  const topCardQuadrantLabel = topCardQuadrantLetter ? `${topCardQuadrantLetter} · ${topCardQuadrantName}` : '--';
+  const topCardQuadrantLabel = topCardQuadrantName ? `Outcome · ${topCardQuadrantName}` : '--';
 
   useEffect(() => {
     const previous = document.title;
@@ -1365,7 +1356,7 @@ export default function PlatformClientPulse() {
               </div>
               <p className="pulse-org-overview__score">{formatScore(adoptionScore)}</p>
               <p className="pulse-org-overview__score-meta">Adoption Readiness /40</p>
-              <p className="pulse-org-overview__quadrant-meta">Quadrant {topCardQuadrantLabel}</p>
+              <p className="pulse-org-overview__quadrant-meta">{topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{adoptionOverviewBlurb}</p>
               <div className="pulse-org-overview__signal">
                 <p className="pulse-org-overview__signal-label">Why this matters</p>
@@ -1379,7 +1370,7 @@ export default function PlatformClientPulse() {
               </div>
               <p className="pulse-org-overview__score">{formatScore(sponsorshipScore)}</p>
               <p className="pulse-org-overview__score-meta">Sponsorship Credibility /40</p>
-              <p className="pulse-org-overview__quadrant-meta">Quadrant {topCardQuadrantLabel}</p>
+              <p className="pulse-org-overview__quadrant-meta">{topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{sponsorshipOverviewBlurb}</p>
               <div className="pulse-org-overview__signal">
                 <p className="pulse-org-overview__signal-label">Why this matters</p>
