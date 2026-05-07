@@ -546,7 +546,9 @@ export default function PlatformClientPulse() {
   const pageTitle = sectionLabel(pulseFocusedSection);
   const showingFullDashboard = !normalizedPulseHash || normalizedPulseHash === 'organisation-dashboard';
   const showingSponsorshipOnly = !showingFullDashboard && pulseFocusedSection === 'sponsorship-analysis';
-  const showTopSummaryCard = showingSponsorshipOnly;
+  const showTopSummaryCard = showingFullDashboard || showingSponsorshipOnly;
+  const showTopSummaryScoreKpis = showingSponsorshipOnly;
+  const showTopSummarySponsorshipSignals = showingSponsorshipOnly;
   const managerFocusedTopCard = showingSponsorshipOnly;
   const showReadinessSection = pulseFocusedSection === 'organisation-scores';
   const showScoresSection = pulseFocusedSection === 'sponsorship-analysis';
@@ -1282,7 +1284,7 @@ export default function PlatformClientPulse() {
           </div>
         </div>
 
-        <div className="pulse-clean-header__kpis">
+        <div className={`pulse-clean-header__kpis${showingFullDashboard ? ' pulse-clean-header__kpis--with-verdict' : ''}`}>
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Total Responses</p>
             <p className="pulse-clean-header__kpi-value">{topCardTotalResponses}</p>
@@ -1304,31 +1306,46 @@ export default function PlatformClientPulse() {
               {formatPercent(kpis.managerParticipationRate)}
             </p>
           </div>
-          <div className="pulse-clean-header__kpi">
-            <p className="pulse-clean-header__kpi-label">Avg Adoption Score</p>
-            <p className="pulse-clean-header__kpi-value">{formatScore(topCardAdoptionScore)}</p>
-            <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
-            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardAdoptionDelta)}`}>
-              {formatDelta(topCardAdoptionDelta)}
-            </p>
-          </div>
-          <div className="pulse-clean-header__kpi">
-            <p className="pulse-clean-header__kpi-label">Avg Sponsorship Score</p>
-            <p className="pulse-clean-header__kpi-value">{formatScore(topCardSponsorshipScore)}</p>
-            <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
-            <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardSponsorshipDelta)}`}>
-              {formatDelta(topCardSponsorshipDelta)}
-            </p>
-          </div>
+          {showTopSummaryScoreKpis ? (
+            <>
+              <div className="pulse-clean-header__kpi">
+                <p className="pulse-clean-header__kpi-label">Avg Adoption Score</p>
+                <p className="pulse-clean-header__kpi-value">{formatScore(topCardAdoptionScore)}</p>
+                <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
+                <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardAdoptionDelta)}`}>
+                  {formatDelta(topCardAdoptionDelta)}
+                </p>
+              </div>
+              <div className="pulse-clean-header__kpi">
+                <p className="pulse-clean-header__kpi-label">Avg Sponsorship Score</p>
+                <p className="pulse-clean-header__kpi-value">{formatScore(topCardSponsorshipScore)}</p>
+                <p className="pulse-clean-header__kpi-meta">/40 this timepoint</p>
+                <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardSponsorshipDelta)}`}>
+                  {formatDelta(topCardSponsorshipDelta)}
+                </p>
+              </div>
+            </>
+          ) : null}
+          {showingFullDashboard ? (
+            <div className="pulse-clean-header__kpi pulse-clean-header__kpi--verdict">
+              <p className="pulse-clean-header__kpi-label">Likelihood of Success</p>
+              <p
+                className={`pulse-clean-header__verdict-pill pulse-clean-header__verdict-pill--${kpis.launchVerdict === 'cleared' ? 'cleared' : 'not-cleared'}`}
+                aria-live="polite"
+              >
+                {launchStatusLabel}
+              </p>
+            </div>
+          ) : null}
         </div>
 
-        {sponsorshipSignals?.headerAdoption?.text ? (
+        {showTopSummarySponsorshipSignals && sponsorshipSignals?.headerAdoption?.text ? (
           <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals.headerAdoption.variant)}`} style={{ marginTop: '0.8rem' }}>
             <span className="pulse-sa-signal__label">{sponsorshipSignals.headerAdoption.cardLabel || 'Signal'}</span>
             {renderSignalMarkup(sponsorshipSignals.headerAdoption.text)}
           </div>
         ) : null}
-        {sponsorshipSignals?.headerSponsorship?.text ? (
+        {showTopSummarySponsorshipSignals && sponsorshipSignals?.headerSponsorship?.text ? (
           <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals.headerSponsorship.variant)}`} style={{ marginTop: '0.55rem' }}>
             <span className="pulse-sa-signal__label">{sponsorshipSignals.headerSponsorship.cardLabel || 'Signal'}</span>
             {renderSignalMarkup(sponsorshipSignals.headerSponsorship.text)}
@@ -1374,7 +1391,6 @@ export default function PlatformClientPulse() {
           <section className="card pulse-org-likelihood">
             <div className="pulse-org-likelihood__header">
               <p className="pulse-org-likelihood__eyebrow">{org?.name || 'Client'} · {reportDateLabel}</p>
-              <p className="pulse-org-likelihood__verdict" aria-live="polite">{launchStatusLabel}</p>
               <div className="pulse-org-likelihood__title-row">
                 <h3 className="pulse-org-likelihood__title">Likelihood of Success?</h3>
                 <span className="pulse-org-overview__corner-badge" aria-label="Card marker C">C</span>

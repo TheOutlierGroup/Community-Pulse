@@ -22,6 +22,22 @@
   --font-body: 'DM Sans', system-ui, sans-serif;
   --space: clamp(1rem, 3vw, 1.75rem);
   --max: 1100px;
+  /* Pulse brand signal palette — declared at :root so the org dashboard's
+     manager-load tiles, chain-matrix tiles, and readiness quadrant tiles
+     resolve their colors even if the .pulse-prototype-page wrapper is
+     missing from the layout shell. */
+  --pulse-green: #1e855d;
+  --pulse-amber: #f5a623;
+  --pulse-orange: #cc4e0f;
+  --pulse-red: #e52235;
+  --pulse-on-green: #ffffff;
+  --pulse-on-amber: #000000;
+  --pulse-on-orange: #ffffff;
+  --pulse-on-red: #ffffff;
+  --pulse-green-dim: #1e855d;
+  --pulse-amber-dim: #f5a623;
+  --pulse-orange-dim: #cc4e0f;
+  --pulse-red-dim: #e52235;
 }
 
 *,
@@ -5439,19 +5455,19 @@ input[type='range'] {
 }
 
 .pulse-sa-load-segment.sustainable {
-  background: var(--pulse-green);
+  background: var(--pulse-green, #1e855d);
 }
 
 .pulse-sa-load-segment.stretched {
-  background: var(--pulse-amber);
+  background: var(--pulse-amber, #f5a623);
 }
 
 .pulse-sa-load-segment.at-capacity {
-  background: var(--pulse-orange);
+  background: var(--pulse-orange, #cc4e0f);
 }
 
 .pulse-sa-load-segment.overloaded {
-  background: var(--pulse-red);
+  background: var(--pulse-red, #e52235);
 }
 
 .pulse-sa-load-grid {
@@ -5510,25 +5526,29 @@ input[type='range'] {
 }
 
 .pulse-sa-load-cell.sustainable {
-  border-top-color: var(--pulse-green);
+  border-top-color: var(--pulse-green, #1e855d);
 }
 
 .pulse-sa-load-cell.stretched {
-  border-top-color: var(--pulse-amber);
+  border-top-color: var(--pulse-amber, #f5a623);
 }
 
 .pulse-sa-load-cell.at-capacity {
-  border-top-color: var(--pulse-orange);
+  border-top-color: var(--pulse-orange, #cc4e0f);
 }
 
 .pulse-sa-load-cell.overloaded {
-  border-top-color: var(--pulse-red);
+  border-top-color: var(--pulse-red, #e52235);
 }
 
-.pulse-sa-load-cell.sustainable .pulse-sa-load-cell__name { color: var(--pulse-green); }
-.pulse-sa-load-cell.stretched .pulse-sa-load-cell__name { color: var(--pulse-amber); }
-.pulse-sa-load-cell.at-capacity .pulse-sa-load-cell__name { color: var(--pulse-orange); }
-.pulse-sa-load-cell.overloaded .pulse-sa-load-cell__name { color: var(--pulse-red); }
+.pulse-sa-load-cell.sustainable .pulse-sa-load-cell__pct,
+.pulse-sa-load-cell.sustainable .pulse-sa-load-cell__name { color: var(--pulse-green, #1e855d); }
+.pulse-sa-load-cell.stretched .pulse-sa-load-cell__pct,
+.pulse-sa-load-cell.stretched .pulse-sa-load-cell__name { color: var(--pulse-amber, #f5a623); }
+.pulse-sa-load-cell.at-capacity .pulse-sa-load-cell__pct,
+.pulse-sa-load-cell.at-capacity .pulse-sa-load-cell__name { color: var(--pulse-orange, #cc4e0f); }
+.pulse-sa-load-cell.overloaded .pulse-sa-load-cell__pct,
+.pulse-sa-load-cell.overloaded .pulse-sa-load-cell__name { color: var(--pulse-red, #e52235); }
 
 .pulse-sa-chain-grid {
   display: grid;
@@ -5554,24 +5574,27 @@ input[type='range'] {
 }
 
 .pulse-sa-chain-tile.cp-fn {
-  background: var(--pulse-green);
-  border-color: var(--pulse-green);
+  background: var(--pulse-green, #1e855d);
+  border-color: var(--pulse-green, #1e855d);
+  color: var(--pulse-on-green, #ffffff);
 }
 
 .pulse-sa-chain-tile.cp-bm {
-  background: var(--pulse-amber);
-  border-color: var(--pulse-amber);
-  color: var(--pulse-on-amber);
+  background: var(--pulse-amber, #f5a623);
+  border-color: var(--pulse-amber, #f5a623);
+  color: var(--pulse-on-amber, #000000);
 }
 
 .pulse-sa-chain-tile.cp-ru {
-  background: var(--pulse-orange);
-  border-color: var(--pulse-orange);
+  background: var(--pulse-orange, #cc4e0f);
+  border-color: var(--pulse-orange, #cc4e0f);
+  color: var(--pulse-on-orange, #ffffff);
 }
 
 .pulse-sa-chain-tile.cp-fb {
-  background: var(--pulse-red);
-  border-color: var(--pulse-red);
+  background: var(--pulse-red, #e52235);
+  border-color: var(--pulse-red, #e52235);
+  color: var(--pulse-on-red, #ffffff);
 }
 
 .pulse-sa-chain-tile__pct {
@@ -6327,6 +6350,43 @@ input[type='range'] {
   color: var(--muted);
 }
 
+.pulse-clean-header__kpis--with-verdict {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pulse-clean-header__kpi--verdict {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  text-align: right;
+  gap: 0.45rem;
+}
+
+.pulse-clean-header__verdict-pill {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.9rem 0.46rem;
+  border-radius: 8px;
+  color: #ffffff;
+  font-family: var(--pulse-font-ui);
+  font-size: clamp(2.25rem, 4.4vw, 3rem);
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pulse-clean-header__verdict-pill--not-cleared {
+  background: #e52235;
+}
+
+.pulse-clean-header__verdict-pill--cleared {
+  background: var(--pulse-green);
+}
+
 .pulse-clean-header__summary {
   display: flex;
   justify-content: space-between;
@@ -6420,7 +6480,7 @@ input[type='range'] {
 
 .pulse-org-overview__quadrant-meta {
   margin: 0.1rem 0 0;
-  color: var(--pulse-blue);
+  color: var(--pulse-text-soft, #4b5563);
   font-size: 0.76rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -6770,27 +6830,27 @@ input[type='range'] {
 }
 
 .pulse-clean-readiness__quadrant--optimal {
-  border-color: var(--pulse-green);
-  background: var(--pulse-green);
-  color: var(--pulse-on-green);
+  border-color: var(--pulse-green, #1e855d);
+  background: var(--pulse-green, #1e855d);
+  color: var(--pulse-on-green, #ffffff);
 }
 
 .pulse-clean-readiness__quadrant--motivated {
-  border-color: var(--pulse-orange);
-  background: var(--pulse-orange);
-  color: var(--pulse-on-orange);
+  border-color: var(--pulse-orange, #cc4e0f);
+  background: var(--pulse-orange, #cc4e0f);
+  color: var(--pulse-on-orange, #ffffff);
 }
 
 .pulse-clean-readiness__quadrant--risk {
-  border-color: var(--pulse-red);
-  background: var(--pulse-red);
-  color: var(--pulse-on-red);
+  border-color: var(--pulse-red, #e52235);
+  background: var(--pulse-red, #e52235);
+  color: var(--pulse-on-red, #ffffff);
 }
 
 .pulse-clean-readiness__quadrant--wary {
-  border-color: var(--pulse-orange);
-  background: var(--pulse-orange);
-  color: var(--pulse-on-orange);
+  border-color: var(--pulse-orange, #cc4e0f);
+  background: var(--pulse-orange, #cc4e0f);
+  color: var(--pulse-on-orange, #ffffff);
 }
 
 .pulse-clean-readiness__quadrant-percent {
