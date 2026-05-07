@@ -6459,9 +6459,8 @@ input[type='range'] {
   color: #8A95A8;
   font-family: var(--pulse-font-ui);
   font-size: 1.45rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
-  letter-spacing: 0.02em;
 }
 
 .pulse-org-overview__score {
