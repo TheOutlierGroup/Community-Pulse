@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
@@ -1784,97 +1784,138 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-dimensions__eyebrow">Team-Level Overview</p>
             <h3 className="pulse-clean-dimensions__title">Employee/Manager Dimension Heatmap</h3>
             <p className="pulse-clean-dimensions__explainer">
-              Each row shows question-level chips (Q1/Q2 and MQ1/MQ2 equivalents), cohort averages, and required flags.
-              Intra-dimension divergence and perception gap flags trigger at {INTRA_DIMENSION_DIVERGENCE_THRESHOLD.toFixed(1)}+ points.
+              Each dimension expands into Q1 and Q2 rows so question-level divergence is visible at a glance.
+              Diverged employee or manager chips outline in red; the Dim avg chip flags when the perception gap crosses {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ points.
+              Intra-dimension divergence flags trigger at {INTRA_DIMENSION_DIVERGENCE_THRESHOLD.toFixed(1)}+ points.
             </p>
           </div>
 
           <div className="table-wrap">
             <table className="pulse-clean-dimensions__table">
+              <colgroup>
+                <col className="pulse-clean-dimensions__col-id" />
+                <col className="pulse-clean-dimensions__col-construct" />
+                <col className="pulse-clean-dimensions__col-score" />
+                <col className="pulse-clean-dimensions__col-score" />
+                <col className="pulse-clean-dimensions__col-gap" />
+                <col className="pulse-clean-dimensions__col-dim-avg" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>Dimension</th>
-                  <th>Emp Q1</th>
-                  <th>Emp Q2</th>
-                  <th>Emp Avg</th>
-                  <th>Mgr Q1</th>
-                  <th>Mgr Q2</th>
-                  <th>Mgr Avg</th>
+                  <th>Question / Construct</th>
+                  <th>Employee</th>
+                  <th>Manager</th>
                   <th>Gap</th>
-                  <th>Flags</th>
+                  <th>Dim avg</th>
                 </tr>
               </thead>
               <tbody>
-                {dimensionHeatmapRows.map((dimension) => (
-                  <tr key={dimension.id}>
-                    <td className="pulse-clean-dimensions__id">{dimension.id}</td>
-                    <td className="pulse-clean-dimensions__construct">
-                      <p className="pulse-clean-dimensions__construct-label">
-                        {dimension.employeeLabel} {'<->'} {dimension.managerLabel}
-                      </p>
-                      <p className="pulse-clean-dimensions__construct-meta">
-                        {dimension.comparable ? 'Comparable pair' : 'Non-comparable pair'}
-                        {' · '}
-                        {dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 0)} + {dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 1)}
-                        {' · '}
-                        {dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 0)} + {dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 1)}
-                      </p>
-                    </td>
-                    <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employee.q1Avg)}`}>
-                        {formatScore(dimension.employee.q1Avg)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employee.q2Avg)}`}>
-                        {formatScore(dimension.employee.q2Avg)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.employee.avg)}`}>
-                        {formatScore(dimension.employee.avg)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.manager.q1Avg)}`}>
-                        {formatScore(dimension.manager.q1Avg)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.manager.q2Avg)}`}>
-                        {formatScore(dimension.manager.q2Avg)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(dimension.manager.avg)}`}>
-                        {formatScore(dimension.manager.avg)}
-                      </span>
-                    </td>
-                    <td className={dimension.perceptionGapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
-                      {dimension.comparable ? formatScore(dimension.gap) : '—'}
-                    </td>
-                    <td className="pulse-clean-dimensions__flags">
-                      {dimension.employee.intraGapFlagged ? (
-                        <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (emp)</span>
-                      ) : null}
-                      {dimension.manager.intraGapFlagged ? (
-                        <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (mgr)</span>
-                      ) : null}
-                      {dimension.comparable && dimension.perceptionGapFlagged ? (
-                        <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Perception gap</span>
-                      ) : null}
-                      {!dimension.employee.intraGapFlagged
-                        && !dimension.manager.intraGapFlagged
-                        && !(dimension.comparable && dimension.perceptionGapFlagged) ? (
-                          <span className="pulse-clean-dimensions__gap">—</span>
-                        ) : null}
-                    </td>
-                  </tr>
-                ))}
+                {dimensionHeatmapRows.map((dimension) => {
+                  const empIntra = dimension.employee.intraGapFlagged;
+                  const mgrIntra = dimension.manager.intraGapFlagged;
+                  const perceptionFlagged = dimension.comparable && dimension.perceptionGapFlagged;
+                  const empAvg = dimension.employee.avg;
+                  const mgrAvg = dimension.manager.avg;
+                  const dimAvg = (Number.isFinite(empAvg) && Number.isFinite(mgrAvg))
+                    ? (empAvg + mgrAvg) / 2
+                    : (Number.isFinite(empAvg) ? empAvg : (Number.isFinite(mgrAvg) ? mgrAvg : null));
+                  const computeQGap = (e, m) => (
+                    dimension.comparable && Number.isFinite(e) && Number.isFinite(m)
+                      ? Math.abs(e - m)
+                      : null
+                  );
+                  const q1Gap = computeQGap(dimension.employee.q1Avg, dimension.manager.q1Avg);
+                  const q2Gap = computeQGap(dimension.employee.q2Avg, dimension.manager.q2Avg);
+                  const q1GapFlagged = q1Gap != null && q1Gap >= PERCEPTION_GAP_THRESHOLD;
+                  const q2GapFlagged = q2Gap != null && q2Gap >= PERCEPTION_GAP_THRESHOLD;
+                  const empQ1Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 0);
+                  const empQ2Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 1);
+                  const mgrQ1Label = dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 0);
+                  const mgrQ2Label = dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 1);
+                  const heatClass = (value, extra) => [
+                    'pulse-clean-dimensions__heat',
+                    `pulse-clean-dimensions__heat--${heatTone(value)}`,
+                    extra,
+                  ].filter(Boolean).join(' ');
+                  const constructLabel = `${dimension.employeeLabel} <-> ${dimension.managerLabel}`;
+                  return (
+                    <Fragment key={dimension.id}>
+                      <tr className="pulse-clean-dimensions__dim-header">
+                        <td className="pulse-clean-dimensions__id">{dimension.id}</td>
+                        <td colSpan={5} className="pulse-clean-dimensions__dim-header-cell">
+                          <div className="pulse-clean-dimensions__construct-row">
+                            <p className="pulse-clean-dimensions__construct-label">{constructLabel}</p>
+                            <div className="pulse-clean-dimensions__construct-flags">
+                              <span className={`pulse-clean-dimensions__pair pulse-clean-dimensions__pair--${dimension.comparable ? 'comparable' : 'non'}`}>
+                                {dimension.comparable ? 'Comparable pair' : 'Non-comparable pair'}
+                              </span>
+                              {empIntra ? (
+                                <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (emp)</span>
+                              ) : null}
+                              {mgrIntra ? (
+                                <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (mgr)</span>
+                              ) : null}
+                              {perceptionFlagged ? (
+                                <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Perception gap</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr className="pulse-clean-dimensions__q-row">
+                        <td className="pulse-clean-dimensions__q-id">
+                          <span className="pulse-clean-dimensions__q-id-text">{empQ1Label} / {mgrQ1Label}</span>
+                        </td>
+                        <td rowSpan={2} className="pulse-clean-dimensions__construct-cell">
+                          <p className="pulse-clean-dimensions__construct-cell-label">{constructLabel}</p>
+                          {dimension.sharedConstruct ? (
+                            <p className="pulse-clean-dimensions__construct-cell-meta">{dimension.sharedConstruct}</p>
+                          ) : null}
+                        </td>
+                        <td>
+                          <span className={heatClass(dimension.employee.q1Avg, empIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
+                            {formatScore(dimension.employee.q1Avg)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={heatClass(dimension.manager.q1Avg, mgrIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
+                            {formatScore(dimension.manager.q1Avg)}
+                          </span>
+                        </td>
+                        <td className={q1GapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
+                          {q1Gap != null ? formatScore(q1Gap) : '—'}
+                        </td>
+                        <td rowSpan={2} className="pulse-clean-dimensions__dim-avg-cell">
+                          <span className={heatClass(dimAvg, ['pulse-clean-dimensions__heat--dim', perceptionFlagged ? 'pulse-clean-dimensions__heat--flagged' : ''].filter(Boolean).join(' '))}>
+                            {formatScore(dimAvg)}
+                          </span>
+                        </td>
+                      </tr>
+                      <tr className="pulse-clean-dimensions__q-row pulse-clean-dimensions__q-row--last">
+                        <td className="pulse-clean-dimensions__q-id">
+                          <span className="pulse-clean-dimensions__q-id-text">{empQ2Label} / {mgrQ2Label}</span>
+                        </td>
+                        <td>
+                          <span className={heatClass(dimension.employee.q2Avg, empIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
+                            {formatScore(dimension.employee.q2Avg)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={heatClass(dimension.manager.q2Avg, mgrIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
+                            {formatScore(dimension.manager.q2Avg)}
+                          </span>
+                        </td>
+                        <td className={q2GapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
+                          {q2Gap != null ? formatScore(q2Gap) : '—'}
+                        </td>
+                      </tr>
+                    </Fragment>
+                  );
+                })}
                 {dimensionHeatmapRows.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="muted">No dimension data available yet.</td>
+                    <td colSpan={6} className="muted">No dimension data available yet.</td>
                   </tr>
                 ) : null}
               </tbody>
