@@ -10,6 +10,7 @@ import { usePlatformOnlyAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import api from '../services/api.js';
 import {
+  CLIENT_SERVICE_LICENSEE,
   CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
   normalizeServiceCatalog,
@@ -18,7 +19,11 @@ import StatusIncidentsAdminPanel from '../components/platform/StatusIncidentsAdm
 import LicenseeHealthPanel from '../components/platform/LicenseeHealthPanel.jsx';
 import AnnouncementsAdminPanel from '../components/platform/AnnouncementsAdminPanel.jsx';
 
-const LOCKED_SERVICE_IDS = new Set([CLIENT_SERVICE_PULSE, CLIENT_SERVICE_OTHER]);
+const LOCKED_SERVICE_IDS = new Set([
+  CLIENT_SERVICE_PULSE,
+  CLIENT_SERVICE_LICENSEE,
+  CLIENT_SERVICE_OTHER,
+]);
 const TEMPLATE_MAX_SUBJECT_LENGTH = 200;
 
 const SETTINGS_TABS = [
@@ -462,9 +467,11 @@ export default function PlatformSettings() {
               name:
                 service.id === CLIENT_SERVICE_PULSE
                   ? 'Rhythm Engine'
-                  : service.id === CLIENT_SERVICE_OTHER
-                    ? 'Other'
-                    : name,
+                  : service.id === CLIENT_SERVICE_LICENSEE
+                    ? 'Rhythm Engine Licensee'
+                    : service.id === CLIENT_SERVICE_OTHER
+                      ? 'Other'
+                      : name,
             }
           : service
       )
@@ -499,9 +506,11 @@ export default function PlatformSettings() {
         name:
           service.id === CLIENT_SERVICE_PULSE
             ? 'Rhythm Engine'
-            : service.id === CLIENT_SERVICE_OTHER
-              ? 'Other'
-              : String(service.name || '').trim(),
+            : service.id === CLIENT_SERVICE_LICENSEE
+              ? 'Rhythm Engine Licensee'
+              : service.id === CLIENT_SERVICE_OTHER
+                ? 'Other'
+                : String(service.name || '').trim(),
       }))
       .filter((service) => service.name);
     if (nextServices.length !== serviceCatalog.length) {
@@ -754,6 +763,8 @@ export default function PlatformSettings() {
                         />
                           {service.id === CLIENT_SERVICE_PULSE ? (
                             <span className="badge badge-active">Required</span>
+                          ) : service.id === CLIENT_SERVICE_LICENSEE ? (
+                            <span className="badge badge-active">Locked</span>
                           ) : service.id === CLIENT_SERVICE_OTHER ? (
                             <span className="badge badge-active">Locked</span>
                           ) : null}

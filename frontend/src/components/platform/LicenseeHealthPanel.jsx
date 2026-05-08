@@ -97,13 +97,26 @@ export default function LicenseeHealthPanel() {
         Operational snapshot for every licensee — last login, recent activity, and quota burn.
       </p>
       {error && <p className="error" style={{ marginBottom: '0.5rem' }}>{error}</p>}
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-        <label htmlFor="health-sort" style={{ fontSize: '0.8rem' }}>Sort by:</label>
+      <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <label
+          htmlFor="health-sort"
+          style={{ fontSize: '0.875rem', color: 'var(--muted)' }}
+        >
+          Sort by:
+        </label>
         <select
           id="health-sort"
           value={sortKey}
           onChange={(e) => setSortKey(e.target.value)}
-          style={{ fontSize: '0.85rem' }}
+          style={{
+            font: 'inherit',
+            fontSize: '0.875rem',
+            padding: '0.4rem 0.7rem',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            background: 'var(--surface)',
+            color: 'var(--text)',
+          }}
         >
           <option value="health">Health (worst first)</option>
           <option value="name">Name (A–Z)</option>
