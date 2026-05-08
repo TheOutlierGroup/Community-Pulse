@@ -22,15 +22,29 @@ import {
 test('score card prompt templates are spec-locked', () => {
   assert.equal(
     SCORE_CARD_SIGNAL_PROMPTS.adoption.system,
-    'You are a change readiness analyst writing a concise signal for a practitioner dashboard score card. Maximum 1 sentence. Be direct. No hedging. Wrap the single most important finding in <strong> tags.'
+    'You are a change readiness analyst writing a single descriptive sentence for a dashboard score card. Maximum 1 sentence. No hedging. No classification labels. Do not use the words "High Risk", "Optimal", "Capable Wary", or "Motivated but Lost".'
   );
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.adoption.user.includes('{{client_name}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.adoption.user.includes('{{assessment_stage}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.adoption.user.includes('{{respondent_count}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.adoption.user.includes('{{adoption_score}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.adoption.user.includes('{{modal_quadrant}}'));
   assert.equal(
     SCORE_CARD_SIGNAL_PROMPTS.adoption.fallback,
-    'Adoption Readiness is at {{adoption_score}}/40. Review against the 28-point threshold to determine readiness classification.'
+    'With the majority of respondents sitting within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience their readiness to absorb this change.'
   );
   assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.sponsorship.system,
+    'You are a change readiness analyst writing a single descriptive sentence for a dashboard score card. Maximum 1 sentence. No hedging. No classification labels. Do not use the words "High Risk", "Optimal", "Capable Wary", or "Motivated but Lost".'
+  );
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.sponsorship.user.includes('{{client_name}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.sponsorship.user.includes('{{assessment_stage}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.sponsorship.user.includes('{{respondent_count}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.sponsorship.user.includes('{{sponsorship_score}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.sponsorship.user.includes('{{modal_quadrant}}'));
+  assert.equal(
     SCORE_CARD_SIGNAL_PROMPTS.sponsorship.fallback,
-    'Sponsorship Credibility is at {{sponsorship_score}}/40. Review Received and Capacity sub-scores against the 14-point threshold to identify where the deficit sits.'
+    'With the majority of respondents sitting within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship.'
   );
   assert.equal(
     SCORE_CARD_SIGNAL_PROMPTS.likelihood.fallback,
@@ -224,11 +238,28 @@ test('adoption score card signal highlights absorption implication', () => {
     adoptionScore: 31.4,
     threshold: 28,
     currentQuadrant: 'Optimal',
+    modalQuadrant: 'Optimal',
+    assessmentStage: 'Pre-Change',
+    respondentCount: 120,
   });
   assert.equal(signal.status, 'Above');
   assert.ok(signal.text.includes('<strong>'));
   assert.ok(signal.text.includes('absorb additional change load right now'));
-  assert.ok(signal.blurb.includes('currently classified as Optimal'));
+  assert.equal(
+    signal.blurb,
+    'With the majority of respondents sitting within the Optimal quadrant, this score reflects how employees and managers collectively experience their readiness to absorb this change.'
+  );
+  assert.equal(signal.modalQuadrant, 'Optimal');
+});
+
+test('adoption score card blurb falls back to current quadrant when modal quadrant is absent', () => {
+  const signal = buildAdoptionScoreCardSignal({
+    clientName: 'Acme',
+    adoptionScore: 31.4,
+    threshold: 28,
+    currentQuadrant: 'Capable but Wary',
+  });
+  assert.ok(signal.blurb.includes('within the Capable but Wary quadrant'));
 });
 
 test('sponsorship score card signal localizes deficit to received stream', () => {
@@ -240,11 +271,18 @@ test('sponsorship score card signal localizes deficit to received stream', () =>
     capacityScore: 15.4,
     subScoreThreshold: 14,
     currentQuadrant: 'Motivated but Lost',
+    modalQuadrant: 'Motivated but Lost',
+    assessmentStage: 'Pre-Change',
+    respondentCount: 120,
   });
   assert.equal(signal.status, 'Below');
   assert.equal(signal.deficitAnchor, 'received');
   assert.ok(signal.text.includes('delivered from above'));
   assert.ok(signal.text.includes('<strong>'));
+  assert.equal(
+    signal.blurb,
+    'With the majority of respondents sitting within the Motivated but Lost quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship.'
+  );
 });
 
 test('top score card signals include fallback text when score missing', () => {
@@ -257,11 +295,16 @@ test('top score card signals include fallback text when score missing', () => {
     capacityScore: null,
     subScoreThreshold: 14,
     currentQuadrant: 'Unknown',
+    modalQuadrant: 'High Risk',
+    assessmentStage: 'Pre-Change',
+    respondentCount: 0,
   });
   assert.equal(signals.adoption.text, signals.adoption.fallback);
   assert.equal(signals.sponsorship.text, signals.sponsorship.fallback);
-  assert.ok(signals.adoption.fallback.includes('Review against the 28-point threshold'));
-  assert.ok(signals.sponsorship.fallback.includes('Review Received and Capacity sub-scores'));
+  assert.ok(signals.adoption.fallback.includes('within the High Risk quadrant'));
+  assert.ok(signals.adoption.fallback.includes('readiness to absorb this change'));
+  assert.ok(signals.sponsorship.fallback.includes('within the High Risk quadrant'));
+  assert.ok(signals.sponsorship.fallback.includes('credibility and visibility of leadership sponsorship'));
 });
 
 test('likelihood what-this-means signal interprets spread and implication', () => {

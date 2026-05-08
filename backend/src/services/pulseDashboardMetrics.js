@@ -9,19 +9,19 @@ const ALERT_PRIORITY = {
 export const SCORE_CARD_SIGNAL_PROMPTS = Object.freeze({
   adoption: Object.freeze({
     system:
-      'You are a change readiness analyst writing a concise signal for a practitioner dashboard score card. Maximum 1 sentence. Be direct. No hedging. Wrap the single most important finding in <strong> tags.',
+      'You are a change readiness analyst writing a single descriptive sentence for a dashboard score card. Maximum 1 sentence. No hedging. No classification labels. Do not use the words "High Risk", "Optimal", "Capable Wary", or "Motivated but Lost".',
     user:
-      'Organisation: {{client_name}} | Adoption Readiness score: {{adoption_score}}/40 | Threshold: 28 | Status: {{adoption_threshold_status}} (Above/Below) | Current quadrant: {{current_quadrant}}\n\nWrite one sentence that states what this score means for this organisation\'s ability to absorb change right now — not what the score is, but what it implies.',
+      'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Respondents: {{respondent_count}} (all employees and managers)\n\nAdoption Readiness score: {{adoption_score}}/40 | Threshold: 28 | Modal quadrant across all respondents: {{modal_quadrant}}\n\nWrite one sentence that states, generically, where the majority of respondents sit — using the quadrant name only — without leading with a verdict or classification. For example: "With the majority of respondents sitting within the [quadrant] quadrant, this score reflects how employees and managers collectively experience their capacity and conditions to absorb this change."',
     fallback:
-      'Adoption Readiness is at {{adoption_score}}/40. Review against the 28-point threshold to determine readiness classification.',
+      'With the majority of respondents sitting within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience their readiness to absorb this change.',
   }),
   sponsorship: Object.freeze({
     system:
-      'You are a change readiness analyst writing a concise signal for a practitioner dashboard score card. Maximum 1 sentence. Be direct. No hedging. Wrap the single most important finding in <strong> tags.',
+      'You are a change readiness analyst writing a single descriptive sentence for a dashboard score card. Maximum 1 sentence. No hedging. No classification labels. Do not use the words "High Risk", "Optimal", "Capable Wary", or "Motivated but Lost".',
     user:
-      'Organisation: {{client_name}} | Sponsorship Credibility score: {{sponsorship_score}}/40 | Threshold: 28 | Status: {{sponsorship_threshold_status}} (Above/Below) | Received sub-score: {{received_score}}/20 | Capacity sub-score: {{capacity_score}}/20 | Sub-score threshold: 14 | Current quadrant: {{current_quadrant}}\n\nWrite one sentence that states what this score means for the quality of leadership sponsorship — specifically whether the deficit (if any) sits in how sponsorship is being delivered from above (Received) or in manager capacity to pass it on (Capacity).',
+      'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Respondents: {{respondent_count}} (all employees and managers)\n\nSponsorship Credibility score: {{sponsorship_score}}/40 | Threshold: 28 | Modal quadrant across all respondents: {{modal_quadrant}}\n\nWrite one sentence that states, generically, where the majority of respondents sit — using the quadrant name only — without leading with a verdict or classification. For example: "With the majority of respondents sitting within the [quadrant] quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship."',
     fallback:
-      'Sponsorship Credibility is at {{sponsorship_score}}/40. Review Received and Capacity sub-scores against the 14-point threshold to identify where the deficit sits.',
+      'With the majority of respondents sitting within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship.',
   }),
   likelihood: Object.freeze({
     system:
@@ -274,26 +274,39 @@ export function buildAdoptionScoreCardSignal({
   adoptionScore,
   threshold = 28,
   currentQuadrant,
+  modalQuadrant,
+  assessmentStage,
+  respondentCount,
 }) {
   const scoreText = formatScoreOutOf40(adoptionScore);
+  const modalQuadrantLabel = safeQuadrantName(modalQuadrant ?? currentQuadrant);
   const fallback = renderPromptTemplate(
     SCORE_CARD_SIGNAL_PROMPTS.adoption.fallback,
-    { adoption_score: scoreText }
+    { modal_quadrant: modalQuadrantLabel }
   );
+  const blurb = fallback;
+  const promptContext = {
+    clientName: String(clientName || '').trim() || null,
+    assessmentStage: assessmentStage || null,
+    respondentCount: Number.isFinite(Number(respondentCount)) ? Number(respondentCount) : null,
+    adoptionScore: scoreText,
+    modalQuadrant: modalQuadrantLabel,
+  };
   if (!Number.isFinite(adoptionScore)) {
     return {
       text: fallback,
-      blurb: fallback,
+      blurb,
       fallback,
       status: 'Unknown',
       score: scoreText,
+      modalQuadrant: modalQuadrantLabel,
+      promptContext,
     };
   }
 
   const status = thresholdStatusLabel(adoptionScore, threshold);
   const orgLabel = String(clientName || 'This organisation').trim() || 'This organisation';
   const quadrantLabel = safeQuadrantName(currentQuadrant);
-  const blurb = `${orgLabel} is ${status.toLowerCase()} the ${threshold}-point threshold and currently classified as ${quadrantLabel}.`;
   const text = status === 'Above'
     ? `<strong>${orgLabel} can absorb additional change load right now</strong>, and the ${quadrantLabel} quadrant shows where execution support must stay targeted to sustain momentum.`
     : `<strong>${orgLabel} cannot absorb additional change load at the current pace</strong>, and the ${quadrantLabel} quadrant shows this readiness deficit is already shaping execution risk.`;
@@ -303,6 +316,8 @@ export function buildAdoptionScoreCardSignal({
     fallback,
     status,
     score: scoreText,
+    modalQuadrant: modalQuadrantLabel,
+    promptContext,
   };
 }
 
@@ -314,24 +329,38 @@ export function buildSponsorshipScoreCardSignal({
   capacityScore,
   subScoreThreshold = 14,
   currentQuadrant,
+  modalQuadrant,
+  assessmentStage,
+  respondentCount,
 }) {
   const scoreText = formatScoreOutOf40(sponsorshipScore);
   const receivedText = formatScoreOutOf20(receivedScore);
   const capacityText = formatScoreOutOf20(capacityScore);
+  const modalQuadrantLabel = safeQuadrantName(modalQuadrant ?? currentQuadrant);
   const fallback = renderPromptTemplate(
     SCORE_CARD_SIGNAL_PROMPTS.sponsorship.fallback,
-    { sponsorship_score: scoreText }
+    { modal_quadrant: modalQuadrantLabel }
   );
+  const blurb = fallback;
+  const promptContext = {
+    clientName: String(clientName || '').trim() || null,
+    assessmentStage: assessmentStage || null,
+    respondentCount: Number.isFinite(Number(respondentCount)) ? Number(respondentCount) : null,
+    sponsorshipScore: scoreText,
+    modalQuadrant: modalQuadrantLabel,
+  };
   if (!Number.isFinite(sponsorshipScore)) {
     return {
       text: fallback,
-      blurb: fallback,
+      blurb,
       fallback,
       status: 'Unknown',
       score: scoreText,
       receivedScore: receivedText,
       capacityScore: capacityText,
       deficitAnchor: 'insufficient_data',
+      modalQuadrant: modalQuadrantLabel,
+      promptContext,
     };
   }
 
@@ -351,7 +380,6 @@ export function buildSponsorshipScoreCardSignal({
   } else if (deficitAnchor === 'both') {
     deficitClause = 'the deficit sits in both sponsorship delivery from above and manager pass-through capacity';
   }
-  const blurb = `${orgLabel} is ${status.toLowerCase()} the ${threshold}-point threshold, with Received ${receivedText}/20 and Capacity ${capacityText}/20 against a ${subScoreThreshold}-point sub-score threshold.`;
   const text = status === 'Above'
     ? `<strong>Leadership sponsorship is currently credible enough to support rollout</strong>, and ${deficitClause} in the ${quadrantLabel} quadrant to protect continuity through managers.`
     : `<strong>Leadership sponsorship is not credible enough to support rollout at pace</strong>, and ${deficitClause} in the ${quadrantLabel} quadrant.`;
@@ -364,6 +392,8 @@ export function buildSponsorshipScoreCardSignal({
     receivedScore: receivedText,
     capacityScore: capacityText,
     deficitAnchor,
+    modalQuadrant: modalQuadrantLabel,
+    promptContext,
   };
 }
 
@@ -376,6 +406,9 @@ export function buildTopScoreCardSignals({
   capacityScore,
   subScoreThreshold = 14,
   currentQuadrant,
+  modalQuadrant,
+  assessmentStage,
+  respondentCount,
 }) {
   return {
     adoption: buildAdoptionScoreCardSignal({
@@ -383,6 +416,9 @@ export function buildTopScoreCardSignals({
       adoptionScore,
       threshold,
       currentQuadrant,
+      modalQuadrant,
+      assessmentStage,
+      respondentCount,
     }),
     sponsorship: buildSponsorshipScoreCardSignal({
       clientName,
@@ -392,6 +428,9 @@ export function buildTopScoreCardSignals({
       capacityScore,
       subScoreThreshold,
       currentQuadrant,
+      modalQuadrant,
+      assessmentStage,
+      respondentCount,
     }),
   };
 }

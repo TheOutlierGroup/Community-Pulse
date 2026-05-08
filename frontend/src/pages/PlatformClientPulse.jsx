@@ -1052,9 +1052,6 @@ export default function PlatformClientPulse() {
   const topCardSponsorshipScore = kpis.sponsorshipScore;
   const topCardAdoptionDelta = kpis.adoptionDelta;
   const topCardSponsorshipDelta = kpis.sponsorshipDelta;
-  const topCardQuadrantName = quadrantForScores(topCardAdoptionScore, topCardSponsorshipScore, threshold);
-  const topCardQuadrantLabel = topCardQuadrantName ? `Outcome · ${topCardQuadrantName}` : '--';
-
   useEffect(() => {
     const previous = document.title;
     const client = String(org?.name ?? '').trim() || 'Client';
@@ -1407,9 +1404,17 @@ export default function PlatformClientPulse() {
                 <h3 className="pulse-org-overview__title">Are your people ready?</h3>
                 <span className="pulse-org-overview__corner-badge" aria-label="Card marker A">A</span>
               </div>
-              <p className="pulse-org-overview__score">{formatScore(adoptionScore)}</p>
+              <p
+                className="pulse-org-overview__score"
+                style={
+                  Number.isFinite(adoptionScore)
+                    ? { color: adoptionScore >= 28 ? '#1E855D' : '#E52235' }
+                    : undefined
+                }
+              >
+                {formatScore(adoptionScore)}
+              </p>
               <p className="pulse-org-overview__score-meta">Adoption Readiness /40</p>
-              <p className="pulse-org-overview__quadrant-meta">{topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{adoptionOverviewBlurb}</p>
               {Number.isFinite(adoptionScore) ? (
                 <p className="pulse-org-overview__threshold-context">
@@ -1438,9 +1443,17 @@ export default function PlatformClientPulse() {
                 <h3 className="pulse-org-overview__title">Can your managers drive the change?</h3>
                 <span className="pulse-org-overview__corner-badge" aria-label="Card marker B">B</span>
               </div>
-              <p className="pulse-org-overview__score">{formatScore(sponsorshipScore)}</p>
+              <p
+                className="pulse-org-overview__score"
+                style={
+                  Number.isFinite(sponsorshipScore)
+                    ? { color: sponsorshipScore >= 28 ? '#1E855D' : '#E52235' }
+                    : undefined
+                }
+              >
+                {formatScore(sponsorshipScore)}
+              </p>
               <p className="pulse-org-overview__score-meta">Sponsorship Credibility /40</p>
-              <p className="pulse-org-overview__quadrant-meta">{topCardQuadrantLabel}</p>
               <p className="pulse-org-overview__blurb">{sponsorshipOverviewBlurb}</p>
               {Number.isFinite(sponsorshipScore) ? (
                 <p className="pulse-org-overview__threshold-context">
@@ -1482,7 +1495,7 @@ export default function PlatformClientPulse() {
               <div className="pulse-trend-card__measure" role="note" aria-label="What this measures">
                 <p className="pulse-trend-card__measure-label">What this measures</p>
                 <p className="pulse-trend-card__measure-text">
-                  The quadrant is determined by crossing two scores: Adoption Readiness — whether the organisation has the capability, capacity, and managerial support to absorb the change — and Sponsorship Credibility — whether leadership is visibly and credibly driving it. Optimal means both are strong; High Risk means both are weak; Motivated but Lost means sponsorship is strong but adoption is not; Capable but Wary means adoption is strong but sponsorship is not.
+                  The quadrant is determined by crossing two scores: Adoption Readiness (whether the organisation has the capability, capacity, and managerial support to absorb the change) and Sponsorship Credibility (whether leadership is visibly and credibly driving it). Optimal means both are strong; High Risk means both are weak; Capable but Wary means sponsorship is strong but adoption is not; Motivated but Lost means adoption is strong but sponsorship is not.
                 </p>
               </div>
               <div

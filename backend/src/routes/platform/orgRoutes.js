@@ -236,7 +236,7 @@ function buildExecutiveSummaryContent({
     {
       id: 'do-nothing',
       tag: 'Scenario A · No Intervention',
-      title: 'What happens if they do nothing',
+      title: 'What happens if you do nothing',
       textA:
         adoptionScore == null || sponsorshipScore == null
           ? 'The current pattern remains unresolved: readiness risks persist and rollout friction accumulates in the middle of the organisation.'
@@ -249,7 +249,7 @@ function buildExecutiveSummaryContent({
     {
       id: 'traditional-change',
       tag: 'Scenario B · Traditional Change',
-      title: 'What happens if they roll out traditional change',
+      title: 'What happens if you roll out traditional change',
       textA:
         sponsorshipScore != null && sponsorshipScore >= threshold
           ? 'Traditional change mechanics (comms, training, stakeholder plans) can improve consistency, but they do not automatically strengthen day-to-day sponsorship behaviour.'
@@ -262,7 +262,7 @@ function buildExecutiveSummaryContent({
     {
       id: 'experiential-campaign',
       tag: 'Scenario C · Experiential Campaign',
-      title: 'What happens if they do an experiential change campaign',
+      title: 'What happens if you run an experiential campaign',
       textA:
         'An experiential campaign targets the conditions revealed by the diagnostic: visible sponsorship behaviour, manager enablement, and practical support for teams outside optimal readiness.',
       textB:
@@ -3253,6 +3253,8 @@ export function registerPlatformOrgRoutes(router) {
       adoptionScore != null && sponsorshipScore != null
         ? quadrantLabel(adoptionScore, sponsorshipScore)
         : [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || null;
+    const modalQuadrantForScoreCards =
+      [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || null;
     const scoreCardSignals = buildTopScoreCardSignals({
       clientName: org.name,
       adoptionScore,
@@ -3262,6 +3264,9 @@ export function registerPlatformOrgRoutes(router) {
       capacityScore: capacityAvg,
       subScoreThreshold: sponsorshipConfig.receivedThreshold,
       currentQuadrant: currentQuadrantForScoreCards,
+      modalQuadrant: modalQuadrantForScoreCards,
+      assessmentStage: normalizeAssessmentStageLabel(requestedTimepoint),
+      respondentCount: completedTotal,
     });
 
     const previousWaveAdoptionScore = trendRows.length >= 2 ? trendRows[1].adoptionScore : null;

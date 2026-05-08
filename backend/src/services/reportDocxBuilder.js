@@ -70,16 +70,24 @@ async function injectTheme(docxBuffer) {
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
-// Palette aligned with the Outlier report style guide: navy primary,
-// muted/deep status text on light pastel cell backgrounds. Status text
-// colours are intended to be paired with their *Bg counterpart to keep
-// contrast readable in Word.
+// Palette aligned with the Outlier report style guide:
+// - Single ink colour (#1F1C2E) for ALL body, heading, and label text.
+// - Status colours are reserved for in-cell score/severity badges where
+//   the colour itself communicates information that ink alone cannot.
+// - Box and card backgrounds use light pastels (NEVER grey) so the
+//   exported document reads as a designed artefact, not a spreadsheet.
 const COLOUR = {
+  // Primary ink — used for every piece of body, heading and label text.
+  text: '1F1C2E',
+
+  // Brand block colour for solid-fill panels (verdict band, contact
+  // footer, table headers). Not used as a *text* colour.
   navy: '1F3864',
   headerBg: '1F3864',
   headerText: 'FFFFFF',
 
-  // Status text (deep, print-friendly)
+  // Status text (deep, print-friendly). Used inside score/severity
+  // cells where the colour communicates a data signal.
   scoreGreen: '548235',
   scoreAmber: 'BF8F00',
   scoreOrange: 'BF6900',
@@ -92,7 +100,7 @@ const COLOUR = {
   scoreRedBg: 'F4CCCC',
   scoreInfoBg: 'CFE2F3',
 
-  // Alerts — pastel BG, deep border/title text, navy body for readability
+  // Alerts — pastel BG, deep border/title text, ink body for readability
   alertCriticalBg: 'F4CCCC',
   alertCriticalBorder: 'C00000',
   alertWarningBg: 'FFF2CC',
@@ -107,27 +115,28 @@ const COLOUR = {
   signalBorderBlue: '1F3864',
   signalBorderOrange: 'E69138',
 
-  lightGrey: 'F2F2F2',
-  mediumGrey: '999999',
-  bodyGrey: '555555',
+  // Next-steps cards — soft cream/sand backgrounds, ink text.
+  nextStepBg: 'FFF8E1',
+  nextStepAccent: 'E69138',
+
+  // Subtle row-stripe replaces the previous F2F2F2 grey. Pale cream
+  // keeps the alternating-row hint without reading as a "spreadsheet
+  // grey" box per the design document.
+  rowStripe: 'FAF6EC',
   white: 'FFFFFF',
-  black: '000000',
 
   // Quadrant matrix — only the active quadrant is colour-highlighted
   quadActiveBg: 'FFF2CC',
-  quadActiveText: '1F3864',
   quadInactiveBg: 'FFFFFF',
-  quadInactiveText: '666666',
-  quadInactiveDesc: '999999',
 
   // Verdict header band — navy block with white description text
   verdictBg: '1F3864',
   verdictPassText: '548235',
   verdictFailText: 'C00000',
   verdictDescText: 'FFFFFF',
-  verdictLabelText: 'CCCCCC',
+  verdictLabelText: 'FFFFFF',
 
-  // Sponsorship chain matrix — pastel cells with navy text
+  // Sponsorship chain matrix — pastel cells with ink text
   chainGreen: 'D9EAD3',
   chainAmber: 'FFF2CC',
   chainOrange: 'FFF2CC',
@@ -140,22 +149,24 @@ const COLOUR = {
   loadOverloaded: 'F4CCCC',
 };
 
-const FONT = { body: 'Calibri', heading: 'Calibri' };
+// Poppins is the brand typeface. Word will fall back to a sans-serif
+// substitute when the font is not installed on the reader's machine.
+const FONT = { body: 'Poppins', heading: 'Poppins' };
 const BORDER_NONE = { style: BorderStyle.NONE, size: 0 };
-const BORDER_BOTTOM_NAVY = { style: BorderStyle.SINGLE, size: 6, color: COLOUR.navy };
+const BORDER_BOTTOM_INK = { style: BorderStyle.SINGLE, size: 6, color: COLOUR.text };
 
 function h1(text) {
   return new Paragraph({
-    children: [new TextRun({ text, font: FONT.heading, size: 36, bold: true, color: COLOUR.navy })],
+    children: [new TextRun({ text, font: FONT.heading, size: 36, bold: true, color: COLOUR.text })],
     heading: HeadingLevel.HEADING_1,
     spacing: { before: 120, after: 200 },
-    border: { bottom: BORDER_BOTTOM_NAVY },
+    border: { bottom: BORDER_BOTTOM_INK },
   });
 }
 
 function h2(text) {
   return new Paragraph({
-    children: [new TextRun({ text, font: FONT.heading, size: 28, bold: true, color: COLOUR.navy })],
+    children: [new TextRun({ text, font: FONT.heading, size: 28, bold: true, color: COLOUR.text })],
     heading: HeadingLevel.HEADING_2,
     spacing: { before: 200, after: 140 },
   });
@@ -163,7 +174,7 @@ function h2(text) {
 
 function h3(text) {
   return new Paragraph({
-    children: [new TextRun({ text, font: FONT.heading, size: 24, bold: true, color: COLOUR.navy })],
+    children: [new TextRun({ text, font: FONT.heading, size: 24, bold: true, color: COLOUR.text })],
     heading: HeadingLevel.HEADING_3,
     spacing: { before: 160, after: 100 },
   });
@@ -171,28 +182,28 @@ function h3(text) {
 
 function body(text) {
   return new Paragraph({
-    children: [new TextRun({ text: String(text || ''), font: FONT.body, size: 21 })],
+    children: [new TextRun({ text: String(text || ''), font: FONT.body, size: 21, color: COLOUR.text })],
     spacing: { after: 140 },
   });
 }
 
 function bodyItalic(text) {
   return new Paragraph({
-    children: [new TextRun({ text: String(text || ''), font: FONT.body, size: 21, italics: true })],
+    children: [new TextRun({ text: String(text || ''), font: FONT.body, size: 21, italics: true, color: COLOUR.text })],
     spacing: { after: 140 },
   });
 }
 
 function bodySmallItalic(text) {
   return new Paragraph({
-    children: [new TextRun({ text: String(text || ''), font: FONT.body, size: 18, italics: true, color: '666666' })],
+    children: [new TextRun({ text: String(text || ''), font: FONT.body, size: 18, italics: true, color: COLOUR.text })],
     spacing: { after: 100 },
   });
 }
 
 function bullet(text) {
   return new Paragraph({
-    children: [new TextRun({ text: `•  ${String(text || '')}`, font: FONT.body, size: 21 })],
+    children: [new TextRun({ text: `•  ${String(text || '')}`, font: FONT.body, size: 21, color: COLOUR.text })],
     spacing: { after: 80 },
     indent: { left: convertInchesToTwip(0.3) },
   });
@@ -212,14 +223,14 @@ function metricRow(label, value) {
             width: { size: 30, type: WidthType.PERCENTAGE },
             borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
             children: [new Paragraph({
-              children: [new TextRun({ text: label, font: FONT.body, size: 21, bold: true, color: '444444' })],
+              children: [new TextRun({ text: label, font: FONT.body, size: 21, bold: true, color: COLOUR.text })],
             })],
           }),
           new TableCell({
             width: { size: 70, type: WidthType.PERCENTAGE },
             borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
             children: [new Paragraph({
-              children: [new TextRun({ text: String(value ?? '—'), font: FONT.body, size: 21 })],
+              children: [new TextRun({ text: String(value ?? '—'), font: FONT.body, size: 21, color: COLOUR.text })],
             })],
           }),
         ],
@@ -237,7 +248,7 @@ function scoreStatusBg(status) {
 }
 
 function dimensionScoreColour(avg) {
-  if (avg == null) return COLOUR.black;
+  if (avg == null) return COLOUR.text;
   if (avg >= 3.5) return COLOUR.scoreGreen;
   if (avg >= 3.0) return COLOUR.scoreAmber;
   if (avg >= 2.5) return COLOUR.scoreOrange;
@@ -254,7 +265,7 @@ function dimensionScoreBg(avg) {
 
 function styledCell(text, opts = {}) {
   const {
-    bold = false, color = COLOUR.black, shading = null,
+    bold = false, color = COLOUR.text, shading = null,
     font = FONT.body, size = 21, alignment = AlignmentType.LEFT,
     width = null, verticalAlign = null,
   } = opts;
@@ -282,17 +293,19 @@ function styledTable(headers, rows, opts = {}) {
     if (columnWidths?.[idx]) cellOpts.width = columnWidths[idx];
     return styledCell(header, cellOpts);
   });
+  // Alternating rows use a faint cream tint instead of grey so the
+  // table reads as a designed component, not a spreadsheet.
   const dataRows = rows.map((row, rowIdx) =>
     new TableRow({
       children: row.map((cell, colIdx) => {
         if (typeof cell === 'object' && cell !== null && '_styled' in cell) {
           return styledCell(cell.text, {
             ...cell,
-            shading: cell.shading || (rowIdx % 2 === 1 ? COLOUR.lightGrey : COLOUR.white),
+            shading: cell.shading || (rowIdx % 2 === 1 ? COLOUR.rowStripe : COLOUR.white),
           });
         }
         return styledCell(cell, {
-          shading: rowIdx % 2 === 1 ? COLOUR.lightGrey : COLOUR.white,
+          shading: rowIdx % 2 === 1 ? COLOUR.rowStripe : COLOUR.white,
           width: columnWidths?.[colIdx] || null,
         });
       }),
@@ -320,13 +333,13 @@ function scoreCardPair(leftLabel, leftScore, leftMax, leftStatus, rightLabel, ri
       margins: { top: 120, bottom: 120, left: 160, right: 160 },
       children: [
         new Paragraph({
-          children: [new TextRun({ text: label, font: FONT.heading, size: 22, bold: true, color })],
+          children: [new TextRun({ text: label, font: FONT.heading, size: 22, bold: true, color: COLOUR.text })],
           spacing: { after: 60 },
         }),
         new Paragraph({
           children: [
             new TextRun({ text: String(score), font: FONT.heading, size: 52, bold: true, color }),
-            new TextRun({ text: ` / ${max}`, font: FONT.body, size: 24, color: '666666' }),
+            new TextRun({ text: ` / ${max}`, font: FONT.body, size: 24, color: COLOUR.text }),
           ],
           spacing: { after: 40 },
         }),
@@ -340,7 +353,7 @@ function scoreCardPair(leftLabel, leftScore, leftMax, leftStatus, rightLabel, ri
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 2, color: COLOUR.navy },
+      top: { style: BorderStyle.SINGLE, size: 2, color: COLOUR.text },
       bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE,
       insideHorizontal: BORDER_NONE, insideVertical: { style: BorderStyle.SINGLE, size: 2, color: COLOUR.white },
     },
@@ -359,7 +372,7 @@ function singleScoreCard(label, score, max, status) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 4, color: COLOUR.navy },
+      top: { style: BorderStyle.SINGLE, size: 4, color: COLOUR.text },
       bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE,
       insideHorizontal: BORDER_NONE, insideVertical: BORDER_NONE,
     },
@@ -369,13 +382,13 @@ function singleScoreCard(label, score, max, status) {
         margins: { top: 120, bottom: 120, left: 160, right: 160 },
         children: [
           new Paragraph({
-            children: [new TextRun({ text: label, font: FONT.heading, size: 22, bold: true, color })],
+            children: [new TextRun({ text: label, font: FONT.heading, size: 22, bold: true, color: COLOUR.text })],
             spacing: { after: 60 },
           }),
           new Paragraph({
             children: [
               new TextRun({ text: String(score), font: FONT.heading, size: 52, bold: true, color }),
-              new TextRun({ text: ` / ${max}`, font: FONT.body, size: 24, color: '666666' }),
+              new TextRun({ text: ` / ${max}`, font: FONT.body, size: 24, color: COLOUR.text }),
             ],
             spacing: { after: 40 },
           }),
@@ -444,30 +457,28 @@ function verdictBox(verdictText, quadrantLabel) {
 }
 
 function quadrantMatrix(activeCode) {
-  const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: 'BBBBBB' };
+  const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: COLOUR.text };
   const borders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
 
-  // Style guide: only the active quadrant is highlighted (navy text on
-  // pale yellow). Inactive quadrants stay white with muted grey text so
-  // the strategic position reads at a glance.
+  // Style guide: only the active quadrant is highlighted (pale yellow
+  // fill); inactive quadrants stay white. All text is the brand ink
+  // colour so the matrix reads as a single typographic unit.
   function qCell(code, label, desc, isHighlighted) {
-    const cfg = isHighlighted
-      ? { bg: COLOUR.quadActiveBg, titleColor: COLOUR.quadActiveText, descColor: COLOUR.quadActiveText }
-      : { bg: COLOUR.quadInactiveBg, titleColor: COLOUR.quadInactiveText, descColor: COLOUR.quadInactiveDesc };
+    const bg = isHighlighted ? COLOUR.quadActiveBg : COLOUR.quadInactiveBg;
     return new TableCell({
       borders,
-      shading: { type: ShadingType.CLEAR, color: 'auto', fill: cfg.bg },
+      shading: { type: ShadingType.CLEAR, color: 'auto', fill: bg },
       margins: { top: 80, bottom: 80, left: 100, right: 100 },
       children: [
         new Paragraph({
           children: [
-            ...(isHighlighted ? [new TextRun({ text: '\u25B6 ', font: FONT.body, size: 20, color: cfg.titleColor })] : []),
-            new TextRun({ text: label, font: FONT.heading, size: 20, bold: true, color: cfg.titleColor }),
+            ...(isHighlighted ? [new TextRun({ text: '\u25B6 ', font: FONT.body, size: 20, color: COLOUR.text })] : []),
+            new TextRun({ text: label, font: FONT.heading, size: 20, bold: true, color: COLOUR.text }),
           ],
           spacing: { after: 40 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: desc, font: FONT.body, size: 17, italics: true, color: cfg.descColor })],
+          children: [new TextRun({ text: desc, font: FONT.body, size: 17, italics: true, color: COLOUR.text })],
         }),
       ],
     });
@@ -478,7 +489,7 @@ function quadrantMatrix(activeCode) {
     verticalAlign: 'center',
     children: [new Paragraph({
       alignment: AlignmentType.RIGHT,
-      children: [new TextRun({ text, font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
+      children: [new TextRun({ text, font: FONT.body, size: 17, italics: true, color: COLOUR.text })],
     })],
   });
 
@@ -497,14 +508,14 @@ function quadrantMatrix(activeCode) {
             borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
             children: [new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'LOW Sponsorship', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
+              children: [new TextRun({ text: 'LOW Sponsorship', font: FONT.body, size: 17, italics: true, color: COLOUR.text })],
             })],
           }),
           new TableCell({
             borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
             children: [new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'HIGH Sponsorship', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
+              children: [new TextRun({ text: 'HIGH Sponsorship', font: FONT.body, size: 17, italics: true, color: COLOUR.text })],
             })],
           }),
         ],
@@ -544,11 +555,11 @@ function signalBox(title, text, borderColor = COLOUR.signalBorderBlue) {
         },
         children: [
           new Paragraph({
-            children: [new TextRun({ text: title, font: FONT.heading, size: 20, bold: true, color: borderColor })],
+            children: [new TextRun({ text: title, font: FONT.heading, size: 20, bold: true, color: COLOUR.text })],
             spacing: { after: 60 },
           }),
           new Paragraph({
-            children: [new TextRun({ text: String(text || ''), font: FONT.body, size: 20, italics: true })],
+            children: [new TextRun({ text: String(text || ''), font: FONT.body, size: 20, italics: true, color: COLOUR.text })],
           }),
         ],
       })],
@@ -557,14 +568,14 @@ function signalBox(title, text, borderColor = COLOUR.signalBorderBlue) {
 }
 
 function alertBlock(severity, title, description) {
-  // Style guide: pastel cell BG, deep status colour for the title/border,
-  // navy body text. Mirrors the THRESHOLD example (light blue + navy)
-  // shown in the reference report.
+  // Style guide: pastel cell BG, deep status colour for the title border
+  // (visual signal only), with all text in the brand ink colour for a
+  // single typographic voice across the report.
   const config = {
-    CRITICAL: { bg: COLOUR.alertCriticalBg, border: COLOUR.alertCriticalBorder, color: COLOUR.alertCriticalBorder, bodyColor: COLOUR.navy },
-    WARNING: { bg: COLOUR.alertWarningBg, border: COLOUR.alertWarningBorder, color: COLOUR.alertWarningBorder, bodyColor: COLOUR.navy },
-    THRESHOLD: { bg: COLOUR.alertThresholdBg, border: COLOUR.alertThresholdBorder, color: COLOUR.alertThresholdBorder, bodyColor: COLOUR.navy },
-    POSITIVE: { bg: COLOUR.alertPositiveBg, border: COLOUR.alertPositiveBorder, color: COLOUR.alertPositiveBorder, bodyColor: COLOUR.navy },
+    CRITICAL: { bg: COLOUR.alertCriticalBg, border: COLOUR.alertCriticalBorder },
+    WARNING: { bg: COLOUR.alertWarningBg, border: COLOUR.alertWarningBorder },
+    THRESHOLD: { bg: COLOUR.alertThresholdBg, border: COLOUR.alertThresholdBorder },
+    POSITIVE: { bg: COLOUR.alertPositiveBg, border: COLOUR.alertPositiveBorder },
   };
   const style = config[severity] || config.THRESHOLD;
 
@@ -583,13 +594,13 @@ function alertBlock(severity, title, description) {
         children: [
           new Paragraph({
             children: [
-              new TextRun({ text: `${severity} — `, font: FONT.heading, size: 20, bold: true, color: style.color }),
-              new TextRun({ text: title.toUpperCase(), font: FONT.heading, size: 20, bold: true, color: style.color }),
+              new TextRun({ text: `${severity} — `, font: FONT.heading, size: 20, bold: true, color: COLOUR.text }),
+              new TextRun({ text: title.toUpperCase(), font: FONT.heading, size: 20, bold: true, color: COLOUR.text }),
             ],
             spacing: { after: 50 },
           }),
           new Paragraph({
-            children: [new TextRun({ text: description, font: FONT.body, size: 20, color: style.bodyColor })],
+            children: [new TextRun({ text: description, font: FONT.body, size: 20, color: COLOUR.text })],
           }),
         ],
       })],
@@ -636,11 +647,11 @@ function loadBandCards(distribution) {
           spacing: { after: 30 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: band.name, font: FONT.heading, size: 20, bold: true, color: COLOUR.black })],
+          children: [new TextRun({ text: band.name, font: FONT.heading, size: 20, bold: true, color: COLOUR.text })],
           spacing: { after: 40 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: cfg.desc, font: FONT.body, size: 16, color: COLOUR.bodyGrey })],
+          children: [new TextRun({ text: cfg.desc, font: FONT.body, size: 16, color: COLOUR.text })],
         }),
       ],
     });
@@ -649,7 +660,7 @@ function loadBandCards(distribution) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 2, color: COLOUR.navy },
+      top: { style: BorderStyle.SINGLE, size: 2, color: COLOUR.text },
       bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE,
       insideHorizontal: BORDER_NONE,
       insideVertical: { style: BorderStyle.SINGLE, size: 2, color: COLOUR.white },
@@ -668,7 +679,7 @@ function sponsorshipChainMatrix(distribution) {
     'Sponsorship Failed at Both Levels': { bg: COLOUR.chainRed },
   };
 
-  const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: 'BBBBBB' };
+  const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: COLOUR.text };
   const borders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
   const axisOpts = {
     borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
@@ -684,12 +695,12 @@ function sponsorshipChainMatrix(distribution) {
       children: [
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: `${percent}%`, font: FONT.heading, size: 28, bold: true, color: COLOUR.navy })],
+          children: [new TextRun({ text: `${percent}%`, font: FONT.heading, size: 28, bold: true, color: COLOUR.text })],
           spacing: { after: 30 },
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: name, font: FONT.body, size: 17, bold: true, color: COLOUR.navy })],
+          children: [new TextRun({ text: name, font: FONT.body, size: 17, bold: true, color: COLOUR.text })],
         }),
       ],
     });
@@ -706,14 +717,14 @@ function sponsorshipChainMatrix(distribution) {
             ...axisOpts,
             children: [new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'LOW Received', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
+              children: [new TextRun({ text: 'LOW Received', font: FONT.body, size: 17, italics: true, color: COLOUR.text })],
             })],
           }),
           new TableCell({
             ...axisOpts,
             children: [new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'HIGH Received', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
+              children: [new TextRun({ text: 'HIGH Received', font: FONT.body, size: 17, italics: true, color: COLOUR.text })],
             })],
           }),
         ],
@@ -724,7 +735,7 @@ function sponsorshipChainMatrix(distribution) {
             ...axisOpts,
             children: [new Paragraph({
               alignment: AlignmentType.RIGHT,
-              children: [new TextRun({ text: 'HIGH\nCapacity', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
+              children: [new TextRun({ text: 'HIGH\nCapacity', font: FONT.body, size: 17, italics: true, color: COLOUR.text })],
             })],
           }),
           dataCell('Breaking at Manager Level', distribution.find((s) => s.name === 'Breaking at Manager Level')?.percent || 0),
@@ -737,7 +748,7 @@ function sponsorshipChainMatrix(distribution) {
             ...axisOpts,
             children: [new Paragraph({
               alignment: AlignmentType.RIGHT,
-              children: [new TextRun({ text: 'LOW\nCapacity', font: FONT.body, size: 17, italics: true, color: COLOUR.mediumGrey })],
+              children: [new TextRun({ text: 'LOW\nCapacity', font: FONT.body, size: 17, italics: true, color: COLOUR.text })],
             })],
           }),
           dataCell('Sponsorship Failed at Both Levels', distribution.find((s) => s.name === 'Sponsorship Failed at Both Levels')?.percent || 0),
@@ -752,10 +763,68 @@ function spacer(points = 120) {
   return new Paragraph({ spacing: { after: points } });
 }
 
+/**
+ * Next-Step priority card. Each priority gets its own boxed cream
+ * panel with a ring-badge priority number, the priority title, and the
+ * recommended sub-actions as bulleted lines inside the same box. This
+ * replaces the previous heading + flat bullet list which read as a
+ * generic outline rather than a designed recommendation block.
+ */
+function nextStepCard({ priority, title, items }) {
+  const accent = COLOUR.nextStepAccent;
+  const badgeCell = new TableCell({
+    width: { size: 12, type: WidthType.PERCENTAGE },
+    verticalAlign: 'center',
+    shading: { type: ShadingType.CLEAR, color: 'auto', fill: COLOUR.nextStepBg },
+    margins: { top: 160, bottom: 160, left: 160, right: 80 },
+    borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: '0' + String(priority), font: FONT.heading, size: 56, bold: true, color: accent })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: 'Priority', font: FONT.body, size: 16, bold: true, color: COLOUR.text, allCaps: true, characterSpacing: 40 })],
+      }),
+    ],
+  });
+
+  const bodyChildren = [
+    new Paragraph({
+      children: [new TextRun({ text: title, font: FONT.heading, size: 24, bold: true, color: COLOUR.text })],
+      spacing: { after: 100 },
+    }),
+    ...items.map((line) => new Paragraph({
+      children: [new TextRun({ text: `•  ${String(line || '')}`, font: FONT.body, size: 20, color: COLOUR.text })],
+      spacing: { after: 60 },
+      indent: { left: convertInchesToTwip(0.1) },
+    })),
+  ];
+
+  const bodyCell = new TableCell({
+    width: { size: 88, type: WidthType.PERCENTAGE },
+    shading: { type: ShadingType.CLEAR, color: 'auto', fill: COLOUR.nextStepBg },
+    margins: { top: 160, bottom: 160, left: 80, right: 200 },
+    borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
+    children: bodyChildren,
+  });
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: BORDER_NONE, bottom: BORDER_NONE, right: BORDER_NONE,
+      left: { style: BorderStyle.SINGLE, size: 18, color: accent },
+      insideHorizontal: BORDER_NONE, insideVertical: BORDER_NONE,
+    },
+    rows: [new TableRow({ children: [badgeCell, bodyCell] })],
+  });
+}
+
 // 40-point readiness score → status colour ramp. Mirrors the dimension
 // table ramp so a single visual language carries through the report.
 function readinessScoreColour(score, threshold = 28) {
-  if (score == null) return COLOUR.black;
+  if (score == null) return COLOUR.text;
   if (score >= threshold) return COLOUR.scoreGreen;
   if (score >= threshold - 4) return COLOUR.scoreAmber;
   if (score >= threshold - 8) return COLOUR.scoreOrange;
@@ -820,7 +889,7 @@ function teamBreakdownTable(teams) {
         _styled: true,
         text: team.quadrant_label || '—',
         bold: true,
-        color: COLOUR.navy,
+        color: COLOUR.text,
         shading: QUADRANT_BG[team.quadrant] || COLOUR.white,
         alignment: AlignmentType.CENTER,
       },
@@ -828,7 +897,7 @@ function teamBreakdownTable(teams) {
         _styled: true,
         text: team.manager_load_band || '—',
         bold: true,
-        color: COLOUR.black,
+        color: COLOUR.text,
         shading: LOAD_BAND_BG[team.manager_load_band] || COLOUR.white,
         alignment: AlignmentType.CENTER,
       },
@@ -864,31 +933,49 @@ function dimensionStatusText(avg) {
 const HEX_RE = /^#?[0-9a-f]{6}$/i;
 function brandCoverColor(brand) {
   const raw = String(brand?.primaryColor || '').trim();
-  if (!HEX_RE.test(raw)) return COLOUR.navy;
+  if (!HEX_RE.test(raw)) return COLOUR.text;
   return raw.replace(/^#/, '').toUpperCase();
 }
 
-function brandCoverLogoParagraphs(brand) {
-  if (!brand?.logoBuffer || !Buffer.isBuffer(brand.logoBuffer) || brand.logoBuffer.length === 0) {
-    return [];
-  }
+function isUsableLogoBuffer(buffer) {
+  return Buffer.isBuffer(buffer) && buffer.length > 0;
+}
+
+function logoParagraph(buffer, { width = 180, height = 56, after = 120 } = {}) {
+  if (!isUsableLogoBuffer(buffer)) return null;
   try {
-    return [
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 200 },
-        children: [
-          new ImageRun({
-            data: brand.logoBuffer,
-            transformation: { width: 180, height: 56 },
-          }),
-        ],
-      }),
-    ];
+    return new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after },
+      children: [
+        new ImageRun({
+          data: buffer,
+          transformation: { width, height },
+        }),
+      ],
+    });
   } catch (error) {
-    console.error('Failed to embed licensee brand logo in report:', error);
-    return [];
+    console.error('Failed to embed logo in report:', error);
+    return null;
   }
+}
+
+/**
+ * Cover page logo lock-up. The Outlier (or licensee) brand logo always
+ * sits at the top; the client's own company logo (when uploaded) is
+ * stacked below it so the report visually identifies "for whom" as well
+ * as "by whom" before the title even appears.
+ */
+function coverLogoStack({ outlierLogoBuffer, brandLogoBuffer, companyLogoBuffer }) {
+  const paragraphs = [];
+  // Prefer the licensee brand logo when one is configured, otherwise
+  // fall back to the canonical Outlier logo.
+  const topLogo = isUsableLogoBuffer(brandLogoBuffer) ? brandLogoBuffer : outlierLogoBuffer;
+  const top = logoParagraph(topLogo, { width: 200, height: 60, after: companyLogoBuffer ? 120 : 240 });
+  if (top) paragraphs.push(top);
+  const company = logoParagraph(companyLogoBuffer, { width: 180, height: 60, after: 240 });
+  if (company) paragraphs.push(company);
+  return paragraphs;
 }
 
 function brandPreparedByParagraph(brand, coverColor) {
@@ -909,7 +996,14 @@ function brandPreparedByParagraph(brand, coverColor) {
   });
 }
 
-export async function buildReportDocx({ reportData, signals, context = {} , brand = null }) {
+export async function buildReportDocx({
+  reportData,
+  signals,
+  context = {},
+  brand = null,
+  outlierLogoBuffer = null,
+  companyLogoBuffer = null,
+}) {
   const adoptionDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('1'));
   const sponsorshipDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('2'));
 
@@ -932,9 +1026,11 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
   });
 
   const loadChainRows = reportData.manager.load_chain_matrix.map((row) => {
-    // Style guide: row label sits on the load band's pastel BG with
-    // black text. Severity in the count cells follows the same green →
-    // yellow → orange → pink ramp, with white reserved for empty cells.
+    // Style guide: row label sits on the load band's pastel BG.
+    // Severity in the count cells is communicated by the cell shading
+    // (green → yellow → orange → pink ramp); the count itself stays in
+    // the brand ink colour so the matrix reads as a single unit, with
+    // the highest-risk corner promoted to red text for emphasis.
     const loadConfig = {
       Sustainable: { shading: COLOUR.loadSustainable },
       Stretched: { shading: COLOUR.loadStretched },
@@ -943,40 +1039,40 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
     };
     const matrixSeverityStyle = (loadBand, chainState, count) => {
       if (count === 0) {
-        return { shading: COLOUR.white, color: COLOUR.black, size: 22 };
+        return { shading: COLOUR.white, color: COLOUR.text, size: 22 };
       }
       if (loadBand === 'Sustainable' && chainState === 'Chain Functioning') {
-        return { shading: COLOUR.chainGreen, color: COLOUR.black, size: 22 };
+        return { shading: COLOUR.chainGreen, color: COLOUR.text, size: 22 };
       }
       if (
         (loadBand === 'Sustainable' && chainState !== 'Chain Functioning')
         || (loadBand === 'Stretched' && chainState === 'Chain Functioning')
       ) {
-        return { shading: COLOUR.chainGreen, color: COLOUR.black, size: 22 };
+        return { shading: COLOUR.chainGreen, color: COLOUR.text, size: 22 };
       }
       if (
         loadBand === 'Stretched'
         && (chainState === 'Breaking at Manager Level' || chainState === 'Managers Resilient, Under-Supported')
       ) {
-        return { shading: COLOUR.scoreAmberBg, color: COLOUR.black, size: 22 };
+        return { shading: COLOUR.scoreAmberBg, color: COLOUR.text, size: 22 };
       }
       if (
         (loadBand === 'Stretched' && chainState === 'Sponsorship Failed at Both Levels')
         || (loadBand === 'At Capacity'
           && (chainState === 'Breaking at Manager Level' || chainState === 'Managers Resilient, Under-Supported'))
       ) {
-        return { shading: COLOUR.scoreOrangeBg, color: COLOUR.black, size: 22 };
+        return { shading: COLOUR.scoreOrangeBg, color: COLOUR.text, size: 22 };
       }
       if (
         (loadBand === 'At Capacity' && chainState === 'Sponsorship Failed at Both Levels')
         || (loadBand === 'Overloaded' && chainState === 'Managers Resilient, Under-Supported')
       ) {
-        return { shading: COLOUR.scoreRedBg, color: COLOUR.black, size: 22 };
+        return { shading: COLOUR.scoreRedBg, color: COLOUR.text, size: 22 };
       }
       if (loadBand === 'Overloaded' && chainState === 'Sponsorship Failed at Both Levels') {
         return { shading: COLOUR.scoreRedBg, color: COLOUR.scoreRed, size: 28, bold: true };
       }
-      return { shading: COLOUR.white, color: COLOUR.black, size: 22 };
+      return { shading: COLOUR.white, color: COLOUR.text, size: 22 };
     };
     return [
       {
@@ -984,7 +1080,7 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
         text: row.loadBand,
         bold: true,
         shading: loadConfig[row.loadBand]?.shading || COLOUR.white,
-        color: COLOUR.black,
+        color: COLOUR.text,
       },
       ...row.cells.map((cell) => {
         const style = matrixSeverityStyle(row.loadBand, cell.chainState, cell.count);
@@ -1018,7 +1114,7 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
     styles: {
       default: {
         document: {
-          run: { font: FONT.body, size: 21 },
+          run: { font: FONT.body, size: 21, color: COLOUR.text },
         },
       },
     },
@@ -1036,8 +1132,14 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
         },
         children: [
           // ── Cover Page ────────────────────────────────────────────────
-          spacer(brand?.logoBuffer ? 240 : 600),
-          ...brandCoverLogoParagraphs(brand),
+          // Logo lock-up: brand logo (or Outlier default) over the
+          // client's company logo when one is on file.
+          spacer((outlierLogoBuffer || brand?.logoBuffer || companyLogoBuffer) ? 240 : 600),
+          ...coverLogoStack({
+            outlierLogoBuffer,
+            brandLogoBuffer: brand?.logoBuffer,
+            companyLogoBuffer,
+          }),
           new Paragraph({
             children: [new TextRun({ text: 'CHANGE READINESS ASSESSMENT', font: FONT.heading, size: 24, bold: true, color: brandCoverColor(brand), characterSpacing: 60 })],
             spacing: { after: 120 },
@@ -1062,11 +1164,11 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
           ...(context.programme_timeline ? [metricRow('Programme Timeline', context.programme_timeline)] : []),
           spacer(600),
           new Paragraph({
-            children: [new TextRun({ text: 'Prepared by', font: FONT.body, size: 18, color: COLOUR.mediumGrey })],
+            children: [new TextRun({ text: 'Prepared by Rhythm Engine,', font: FONT.heading, size: 22, bold: true, color: COLOUR.text })],
             spacing: { after: 40 },
           }),
           new Paragraph({
-            children: [new TextRun({ text: 'The Outlier Group', font: FONT.heading, size: 24, bold: true })],
+            children: [new TextRun({ text: 'powered by The Outlier Group', font: FONT.body, size: 20, italics: true, color: COLOUR.text })],
             spacing: { after: 40 },
           }),
           spacer(300),
@@ -1234,15 +1336,15 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
           new Paragraph({ pageBreakBefore: true }),
           h1('Next Steps & Recommended Support'),
           body('The findings in this report point to a clear and sequenced set of interventions. The Outlier Group partners with organisations to design and deliver the specific interventions this assessment points to. The recommendations below reflect the priority sequence indicated by the data.'),
-          spacer(80),
-          ...nextStepOrder.flatMap((name, idx) => {
-            const bullets = NEXT_STEPS_STATIC_BLOCKS[name] || [];
-            return [
-              h2(`Priority ${idx + 1} — ${name}`),
-              ...bullets.map((line) => bullet(line)),
-              spacer(80),
-            ];
-          }),
+          spacer(120),
+          ...nextStepOrder.flatMap((name, idx) => [
+            nextStepCard({
+              priority: idx + 1,
+              title: name,
+              items: NEXT_STEPS_STATIC_BLOCKS[name] || [],
+            }),
+            spacer(140),
+          ]),
 
           // ── Contact Footer ────────────────────────────────────────────
           spacer(200),
@@ -1251,7 +1353,7 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
             borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE, insideHorizontal: BORDER_NONE, insideVertical: BORDER_NONE },
             rows: [new TableRow({
               children: [new TableCell({
-                shading: { type: ShadingType.CLEAR, color: 'auto', fill: COLOUR.navy },
+                shading: { type: ShadingType.CLEAR, color: 'auto', fill: COLOUR.text },
                 margins: { top: 200, bottom: 200, left: 200, right: 200 },
                 children: [
                   new Paragraph({
@@ -1280,7 +1382,7 @@ export async function buildReportDocx({ reportData, signals, context = {} , bran
             alignment: AlignmentType.CENTER,
             children: [new TextRun({
               text: `This report is confidential and prepared exclusively for ${reportData.org.name}. The methodology, frameworks, and scoring logic are proprietary to The Outlier Group.`,
-              font: FONT.body, size: 16, italics: true, color: COLOUR.mediumGrey,
+              font: FONT.body, size: 16, italics: true, color: COLOUR.text,
             })],
           }),
         ],

@@ -6432,7 +6432,7 @@ input[type='range'] {
   border-radius: 8px;
   color: #ffffff;
   font-family: var(--pulse-font-ui);
-  font-size: clamp(2.25rem, 4.4vw, 3rem);
+  font-size: 2rem;
   line-height: 1;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -6503,8 +6503,8 @@ input[type='range'] {
 
 .pulse-org-overview__title {
   margin: 0;
-  font-size: 1.1rem;
-  line-height: 1.3;
+  font-size: clamp(2.25rem, 4.4vw, 3rem);
+  line-height: 1.1;
 }
 
 .pulse-org-overview__corner-badge {
@@ -6762,7 +6762,7 @@ input[type='range'] {
 
 .pulse-clean-exec__scenario-title {
   margin: 0.02rem 0 0.08rem;
-  font-size: 0.95rem;
+  font-size: 0.66rem;
   line-height: 1.35;
 }
 

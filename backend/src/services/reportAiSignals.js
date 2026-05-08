@@ -33,7 +33,7 @@ function teamsFallbackText(reportData) {
   return `${belowBoth.length} of ${teams.length} teams fall below the readiness threshold on both Adoption and Sponsorship${worstName}; ${belowAdoption} are below on Adoption and ${belowSponsorship} on Sponsorship overall. Sequence enablement against this list rather than treating the org as uniform.`;
 }
 
-const SYSTEM_PROMPT = `You are a specialist change management analyst writing a signal commentary for a section of a confidential client report.
+const SECTION_SYSTEM_PROMPT = `You are a specialist change management analyst writing a signal commentary for a section of a confidential client report.
 Your output will be placed in a report delivered to C-suite executives.
 Rules:
 - Write exactly 2-3 sentences.
@@ -42,7 +42,18 @@ Rules:
 - End with one clear implication.
 - Respond with prose only.`;
 
-async function callClaude({ apiKey, instruction, payload }) {
+// Dedicated system prompt for the report's "Executive Overview" signal
+// box. The section-level prompt above is too short and reads as a sound
+// bite; the executive summary needs to do the strategic interpretation
+// the rest of the report leaves to the reader.
+const EXECUTIVE_SYSTEM_PROMPT = `Generate an executive summary based on the data in this report. Write for a C-suite audience and focus on the 'so what' — the key insights, implications, and strategic meaning behind the data. Your summary must include:
+- A clear statement on whether the initiative is 'cleared for launch' or not, based on the evidence.
+- A high-level interpretation of the 'messy middle' — summarising the major management, operational, or performance dynamics revealed in the data.
+- A concise overview of the 'next steps' section, highlighting only the actions that matter most at an executive level.
+The tone should be concise, outcome-focused, and aligned with how an executive summary is typically written.
+Respond with prose only.`;
+
+async function callClaude({ apiKey, instruction, payload, systemPrompt = SECTION_SYSTEM_PROMPT, maxTokens = 300 }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REPORT_AI_TIMEOUT_MS);
   try {
@@ -55,9 +66,9 @@ async function callClaude({ apiKey, instruction, payload }) {
       },
       body: JSON.stringify({
         model: REPORT_AI_MODEL,
-        max_tokens: 300,
+        max_tokens: maxTokens,
         temperature: 0.4,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: [
           {
             role: 'user',
@@ -128,6 +139,7 @@ export async function generateReportSignals(reportData, context = {}) {
     };
   }
 
+  const nextStepsOrder = nextStepsOrderFromData(reportData);
   const payload = {
     stage: reportData.stage,
     org: reportData.org.name,
@@ -136,14 +148,17 @@ export async function generateReportSignals(reportData, context = {}) {
     manager: reportData.manager,
     teams: reportData.teams,
     alerts: reportData.alerts.map((alert) => alert.title),
+    next_steps_priority_order: nextStepsOrder,
     context,
   };
 
   const calls = [
     callClaude({
       apiKey,
+      systemPrompt: EXECUTIVE_SYSTEM_PROMPT,
+      maxTokens: 600,
       instruction:
-        'Write an executive signal commentary for the overall Change Readiness result. Focus on the single most important strategic implication.',
+        'Write the Executive Summary for this Change Readiness Assessment, following the executive-summary system prompt exactly. Use the readiness verdict and quadrant to anchor the launch decision, the manager load, sponsorship chain distribution, and team-level scores to interpret the messy middle, and the next_steps_priority_order to pick the actions that matter most at an executive level.',
       payload,
     }).catch(() => FALLBACK.executive),
     callClaude({
@@ -188,6 +203,6 @@ export async function generateReportSignals(reportData, context = {}) {
     chain: chain || FALLBACK.chain,
     teams: teams || teamsFallback,
     keyFindings: keyFindingsFromData(reportData),
-    nextStepsOrder: nextStepsOrderFromData(reportData),
+    nextStepsOrder,
   };
 }

@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
@@ -15,6 +16,35 @@ import { REPORT_STORAGE_DAYS } from './reportConfig.js';
 import { resolveBrandForOrganization } from './licenseeBrand.js';
 
 const execFileAsync = promisify(execFile);
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const OUTLIER_LOGO_PATH = path.resolve(__dirname, '../assets/outlier-logo.png');
+
+let cachedOutlierLogoBuffer;
+async function loadOutlierLogoBuffer() {
+  if (cachedOutlierLogoBuffer !== undefined) return cachedOutlierLogoBuffer;
+  try {
+    cachedOutlierLogoBuffer = await fs.readFile(OUTLIER_LOGO_PATH);
+  } catch (error) {
+    console.error('Failed to load Outlier brand logo for report:', error);
+    cachedOutlierLogoBuffer = null;
+  }
+  return cachedOutlierLogoBuffer;
+}
+
+async function loadCompanyLogoBuffer(organization) {
+  const filename = organization?.company_logo_filename;
+  if (!filename) return null;
+  try {
+    const safeName = path.basename(String(filename));
+    const full = orgLogoFilePath(safeName);
+    if (!fsSync.existsSync(full)) return null;
+    return await fs.readFile(full);
+  } catch (error) {
+    console.error('Failed to read client company logo for report:', error);
+    return null;
+  }
+}
 
 function reportExpiresAtDate() {
   return new Date(Date.now() + REPORT_STORAGE_DAYS * 24 * 60 * 60 * 1000);
@@ -113,7 +143,18 @@ export async function generateReport({
   try {
     const signals = await generateReportSignals(reportData, context);
     const brand = await resolveReportBrand(organization);
-    const docxBuffer = await buildReportDocx({ reportData, signals, context, brand });
+    const [outlierLogoBuffer, companyLogoBuffer] = await Promise.all([
+      loadOutlierLogoBuffer(),
+      loadCompanyLogoBuffer(organization),
+    ]);
+    const docxBuffer = await buildReportDocx({
+      reportData,
+      signals,
+      context,
+      brand,
+      outlierLogoBuffer,
+      companyLogoBuffer,
+    });
 
     const reportId = pending.id;
     const dateStamp = isoDay();
