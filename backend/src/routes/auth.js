@@ -797,7 +797,54 @@ router.post(
     }
     const existing = await User.findUserByEmail(invite.email);
     if (existing) {
-      return res.status(400).json({ error: 'User already exists — use login' });
+      if (
+        existing.deactivated_at &&
+        String(existing.organization_id) === String(invite.organization_id)
+      ) {
+        const invitedRole = invite.invited_role === 'admin' ? 'admin' : 'employee';
+        if (invitedRole === 'admin') {
+          const config = await LicenseConfig.getForOrganization(invite.organization_id);
+          if (config) {
+            const counts = await User.countActiveUsersByRoleForOrg(invite.organization_id);
+            if ((counts.admin || 0) + 1 > config.admin_user_limit) {
+              return res.status(402).json({
+                error: `Admin user limit reached for this licence (${config.admin_user_limit}). Contact the platform owner to raise the limit.`,
+              });
+            }
+          }
+        }
+        const okRe = await User.reactivateUserInOrg(existing.id, invite.organization_id);
+        if (!okRe) {
+          return res.status(400).json({ error: 'Invalid or expired invite' });
+        }
+        const hash = await bcrypt.hash(password, 12);
+        await User.updateUserPassword(existing.id, hash);
+        await User.updateStaffUserInOrg(existing.id, invite.organization_id, {
+          firstName: invite.first_name,
+          lastName: invite.last_name,
+          role: invitedRole,
+          loginEnabled: true,
+        });
+        await Invite.markInviteUsed(invite.id);
+        const full = await User.findUserByIdWithOrg(existing.id);
+        const jwt = signToken({
+          sub: full.id,
+          role: full.role,
+          organizationId: full.organization_id,
+          organizationKind: full.organization_kind,
+        });
+        return res.status(201).json({
+          token: jwt,
+          user: publicUser(full),
+        });
+      }
+      if (!existing.deactivated_at) {
+        return res.status(400).json({ error: 'User already exists — use login' });
+      }
+      return res.status(400).json({
+        error:
+          'This email is tied to an inactive account in another organization. Contact support if you need access.',
+      });
     }
     const invitedRole = invite.invited_role === 'admin' ? 'admin' : 'employee';
     if (invitedRole === 'admin') {

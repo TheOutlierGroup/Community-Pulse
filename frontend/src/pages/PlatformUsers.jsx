@@ -172,9 +172,12 @@ export default function PlatformUsers() {
       const createdEmail = formEmail.trim();
       const createdName = [formFirst, formLast].map((s) => s.trim()).filter(Boolean).join(' ');
       const sent = Boolean(data?.welcomeEmailSent);
-      const baseMsg = createdName
-        ? `${createdName} was added.`
-        : `${createdEmail} was added.`;
+      const reactivated = Boolean(data?.reactivated);
+      const baseMsg = reactivated
+        ? `${createdName || createdEmail} was re-added.`
+        : createdName
+          ? `${createdName} was added.`
+          : `${createdEmail} was added.`;
       showToast(
         sent
           ? `${baseMsg} A welcome email with sign-in and create-password links was sent.`
@@ -217,6 +220,26 @@ export default function PlatformUsers() {
       closeEditModal();
     } catch (err) {
       setError(err.response?.data?.error || 'Could not save user.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resendWelcomeEmailForEditUser() {
+    if (!editUser) return;
+    setBusy(true);
+    setError('');
+    try {
+      const { data } = await api.post(`/api/platform/users/${editUser.id}/resend-welcome-email`);
+      const sent = Boolean(data?.welcomeEmailSent);
+      showToast(
+        sent
+          ? 'Welcome email sent with sign-in and create-password links.'
+          : 'Email could not be sent — check RESEND_API_KEY and CRM_APP_URL.',
+        { variant: sent ? 'success' : 'warning' }
+      );
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not send email.');
     } finally {
       setBusy(false);
     }
@@ -326,6 +349,7 @@ export default function PlatformUsers() {
         setRemoveAccessStep={setRemoveAccessStep}
         onClose={closeEditModal}
         onSave={saveEditUser}
+        onResendWelcomeEmail={resendWelcomeEmailForEditUser}
         onConfirmRemoveAccess={confirmRemoveAccess}
       />
     </Layout>

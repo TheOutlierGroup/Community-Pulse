@@ -179,6 +179,16 @@ export async function deactivateUserInOrg(userId, organizationId) {
   return rowCount > 0;
 }
 
+/** Clears deactivation so the row can sign in again (same org only). */
+export async function reactivateUserInOrg(userId, organizationId) {
+  const { rowCount } = await query(
+    `UPDATE users SET deactivated_at = NULL
+     WHERE id = $1 AND organization_id = $2 AND deactivated_at IS NOT NULL`,
+    [userId, organizationId]
+  );
+  return rowCount > 0;
+}
+
 export async function getPasswordHashByUserId(userId) {
   const { rows } = await query(`SELECT password_hash FROM users WHERE id = $1`, [userId]);
   return rows[0]?.password_hash || null;

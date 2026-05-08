@@ -201,34 +201,65 @@ export function registerPlatformStaffRoutes(router) {
         });
       }
     }
-    const existing = await User.findUserByEmail(String(email));
+    const emailNorm = String(email).trim().toLowerCase();
+    const existing = await User.findUserByEmail(emailNorm);
+    let reactivated = false;
+    let rowId;
+
     if (existing) {
-      return res.status(409).json({ error: 'A user with this email already exists' });
+      const sameOrg = String(existing.organization_id) === String(req.user.organizationId);
+      if (!existing.deactivated_at || !sameOrg) {
+        return res.status(409).json({ error: 'A user with this email already exists' });
+      }
+      if (role === 'admin') {
+        const limitError = await assertAdminUserLimitOrError(req.user.organizationId);
+        if (limitError) return res.status(limitError.status).json({ error: limitError.error });
+      }
+      const okRe = await User.reactivateUserInOrg(existing.id, req.user.organizationId);
+      if (!okRe) {
+        return res.status(409).json({ error: 'A user with this email already exists' });
+      }
+      reactivated = true;
+      rowId = existing.id;
+      const hash =
+        trimmedPassword.length >= 8
+          ? await bcrypt.hash(trimmedPassword, 12)
+          : await bcrypt.hash(randomBytes(32).toString('base64url'), 12);
+      await User.updateUserPassword(rowId, hash);
+      await User.updateStaffUserInOrg(rowId, req.user.organizationId, {
+        firstName,
+        lastName,
+        role,
+        loginEnabled: true,
+      });
+    } else {
+      if (role === 'admin') {
+        const limitError = await assertAdminUserLimitOrError(req.user.organizationId);
+        if (limitError) return res.status(limitError.status).json({ error: limitError.error });
+      }
+      const hash =
+        trimmedPassword.length >= 8
+          ? await bcrypt.hash(trimmedPassword, 12)
+          : await bcrypt.hash(randomBytes(32).toString('base64url'), 12);
+      const row = await User.createUserWithProfile({
+        email: emailNorm,
+        passwordHash: hash,
+        role,
+        organizationId: req.user.organizationId,
+        firstName,
+        lastName,
+      });
+      rowId = row.id;
     }
-    if (role === 'admin') {
-      const limitError = await assertAdminUserLimitOrError(req.user.organizationId);
-      if (limitError) return res.status(limitError.status).json({ error: limitError.error });
-    }
-    const hash =
-      trimmedPassword.length >= 8
-        ? await bcrypt.hash(trimmedPassword, 12)
-        : await bcrypt.hash(randomBytes(32).toString('base64url'), 12);
-    const row = await User.createUserWithProfile({
-      email: String(email).trim(),
-      passwordHash: hash,
-      role,
-      organizationId: req.user.organizationId,
-      firstName,
-      lastName,
-    });
-    let outRow = await User.findUserById(row.id);
+
+    let outRow = await User.findUserById(rowId);
     if (req.file) {
       const ext = extensionForUpload(req.file);
-      const base = `${row.id}${ext || '.png'}`;
+      const base = `${rowId}${ext || '.png'}`;
       try {
         await fs.promises.writeFile(avatarFilePath(base), req.file.buffer);
-        await User.setProfileAvatarFilename(row.id, base);
-        outRow = await User.findUserById(row.id);
+        await User.setProfileAvatarFilename(rowId, base);
+        outRow = await User.findUserById(rowId);
       } catch (e) {
         console.error(e);
       }
@@ -237,7 +268,7 @@ export function registerPlatformStaffRoutes(router) {
     let welcomeEmailSent = false;
     if (baseUrl && isResendConfigured()) {
       try {
-        const resetToken = await PasswordResetToken.createResetToken(row.id, {
+        const resetToken = await PasswordResetToken.createResetToken(rowId, {
           expiresInMs: PLATFORM_WELCOME_RESET_MS,
         });
         const loginUrl = `${baseUrl}/login`;
@@ -248,7 +279,7 @@ export function registerPlatformStaffRoutes(router) {
           .filter(Boolean)
           .join(' ');
         await sendPlatformWelcomeEmail(
-          String(email).trim(),
+          emailNorm,
           displayName,
           loginUrl,
           setPasswordUrl,
@@ -265,10 +296,76 @@ export function registerPlatformStaffRoutes(router) {
       targetType: 'user',
       targetId: outRow.id,
       targetOrganizationId: req.user.organizationId,
-      metadata: { role, welcomeEmailSent, hasInitialPassword: trimmedPassword.length > 0 },
+      metadata: {
+        role,
+        welcomeEmailSent,
+        hasInitialPassword: trimmedPassword.length > 0,
+        reactivated,
+      },
     });
-    res.status(201).json({ user: publicStaffUser(outRow), welcomeEmailSent });
+    res
+      .status(reactivated ? 200 : 201)
+      .json({ user: publicStaffUser(outRow), welcomeEmailSent, reactivated });
   });
+
+  router.post(
+    '/users/:userId/resend-welcome-email',
+    inviteSendLimiter,
+    async (req, res) => {
+      const { userId } = req.params;
+      const target = await User.findUserById(userId);
+      if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (target.login_enabled === false) {
+        return res.status(400).json({ error: 'Login is disabled for this user; enable login before sending email.' });
+      }
+      const baseUrl = resolvePublicAppBaseUrl();
+      if (!baseUrl) {
+        return res.status(400).json({
+          error:
+            'Set CRM_APP_URL (or APP_URL/FRONTEND_ORIGIN fallback) to send welcome email.',
+        });
+      }
+      if (!isResendConfigured()) {
+        return res.status(503).json({
+          error: 'Email is not configured',
+          details: 'Add RESEND_API_KEY to send welcome email.',
+        });
+      }
+      let welcomeEmailSent = false;
+      try {
+        const resetToken = await PasswordResetToken.createResetToken(target.id, {
+          expiresInMs: PLATFORM_WELCOME_RESET_MS,
+        });
+        const loginUrl = `${baseUrl}/login`;
+        const setPasswordUrl = `${baseUrl}/reset-password/${resetToken}`;
+        const org = await Organization.getOrganization(req.user.organizationId);
+        const displayName = [target.first_name, target.last_name]
+          .map((s) => String(s || '').trim())
+          .filter(Boolean)
+          .join(' ');
+        await sendPlatformWelcomeEmail(
+          String(target.email).trim(),
+          displayName,
+          loginUrl,
+          setPasswordUrl,
+          org?.name || 'Outlier'
+        );
+        welcomeEmailSent = true;
+      } catch (e) {
+        console.error('Platform resend welcome email failed:', e);
+      }
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.USER_INVITE_RESEND,
+        targetType: 'user',
+        targetId: target.id,
+        targetOrganizationId: req.user.organizationId,
+        metadata: { welcomeEmailSent },
+      });
+      res.json({ welcomeEmailSent });
+    }
+  );
 
   router.patch('/users/:userId', async (req, res) => {
     const { userId } = req.params;

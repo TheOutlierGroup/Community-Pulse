@@ -1,4 +1,4 @@
-import { KeyRound } from 'lucide-react';
+import { KeyRound, Mail } from 'lucide-react';
 import ModalDialog from '../../components/shared/ModalDialog.jsx';
 import RemoveAccessConfirm from '../../components/shared/RemoveAccessConfirm.jsx';
 
@@ -28,6 +28,7 @@ export default function EditUserModal({
   onClose,
   onSave,
   onSetPassword,
+  onResendWelcomeEmail,
   onConfirmRemoveAccess,
 }) {
   if (!editUser) return null;
@@ -155,6 +156,25 @@ export default function EditUserModal({
               </button>
             </div>
           </fieldset>
+          {editLoginEnabled ? (
+            <div className="field" style={{ marginTop: '0.25rem' }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busy}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onResendWelcomeEmail();
+                }}
+              >
+                <Mail size={16} aria-hidden style={{ marginRight: '0.35rem', verticalAlign: 'middle' }} />
+                Resend welcome email
+              </button>
+              <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                Sends sign-in and create-password links (same as a new invite).
+              </p>
+            </div>
+          ) : null}
           <div className="modal-dialog__actions">
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
               Cancel

@@ -1955,17 +1955,97 @@ export function registerPlatformOrgRoutes(router) {
     const requesterOrg = req.workspaceOrganization;
     const isLicenseeRequester = requesterOrg?.kind === 'licensee';
     const invitedRole = req.body.invitedRole === 'admin' ? 'admin' : 'employee';
-    const email = req.body.email;
+    const emailNorm = String(req.body.email || '').trim().toLowerCase();
     const firstName = req.body.firstName;
     const lastName = req.body.lastName;
-    const existing = await User.findUserByEmail(email);
+    const existing = await User.findUserByEmail(emailNorm);
+
     if (existing) {
-      return res.status(409).json({ error: 'A user with this email already exists' });
+      const sameOrg = String(existing.organization_id) === String(org.id);
+      if (!existing.deactivated_at || !sameOrg) {
+        return res.status(409).json({ error: 'A user with this email already exists' });
+      }
+      if (invitedRole === 'admin') {
+        const config = await LicenseConfig.getForOrganization(org.id);
+        if (config) {
+          const counts = await User.countActiveUsersByRoleForOrg(org.id);
+          if ((counts.admin || 0) + 1 > config.admin_user_limit) {
+            return res.status(402).json({
+              error: `Admin user limit reached for this licence (${config.admin_user_limit}). Contact the platform owner to raise the limit.`,
+            });
+          }
+        }
+      }
+      const okRe = await User.reactivateUserInOrg(existing.id, org.id);
+      if (!okRe) {
+        return res.status(409).json({ error: 'A user with this email already exists' });
+      }
+      const passwordHash = await bcrypt.hash(randomBytes(32).toString('base64url'), 12);
+      await User.updateUserPassword(existing.id, passwordHash);
+      await User.updateStaffUserInOrg(existing.id, org.id, {
+        firstName,
+        lastName,
+        role: invitedRole,
+        loginEnabled: !isLicenseeRequester,
+      });
+      const outRow = await User.findUserById(existing.id);
+      if (isLicenseeRequester) {
+        auditFromRequest(req)({
+          action: AUDIT_ACTIONS.USER_INVITE_SEND,
+          targetType: 'user',
+          targetId: outRow.id,
+          targetOrganizationId: org.id,
+          metadata: { invitedRole, reactivated: true, createdWithoutInvite: true },
+        });
+        return res.status(200).json({
+          user: publicStaffUser(outRow),
+          createdWithoutInvite: true,
+          reactivated: true,
+        });
+      }
+      let welcomeEmailSent = false;
+      const baseUrl = resolveCrmAppBaseUrl();
+      if (baseUrl && isResendConfigured()) {
+        try {
+          const resetToken = await PasswordResetToken.createResetToken(existing.id, {
+            expiresInMs: CLIENT_FIRST_ADMIN_WELCOME_RESET_MS,
+          });
+          const loginUrl = `${baseUrl}/login`;
+          const setPasswordUrl = `${baseUrl}/reset-password/${resetToken}`;
+          const displayName = [firstName, lastName]
+            .map((s) => String(s || '').trim())
+            .filter(Boolean)
+            .join(' ');
+          await sendPlatformWelcomeEmail(
+            emailNorm,
+            displayName,
+            loginUrl,
+            setPasswordUrl,
+            org.name
+          );
+          welcomeEmailSent = true;
+        } catch (e) {
+          console.error('Client org user reactivation welcome email failed:', e);
+        }
+      }
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.USER_INVITE_SEND,
+        targetType: 'user',
+        targetId: outRow.id,
+        targetOrganizationId: org.id,
+        metadata: { invitedRole, reactivated: true, welcomeEmailSent },
+      });
+      return res.status(200).json({
+        user: publicStaffUser(outRow),
+        welcomeEmailSent,
+        reactivated: true,
+      });
     }
+
     if (isLicenseeRequester) {
       const passwordHash = await bcrypt.hash(randomBytes(32).toString('base64url'), 12);
       const created = await User.createUserWithProfile({
-        email: String(email || '').trim(),
+        email: emailNorm,
         passwordHash,
         role: invitedRole,
         organizationId: org.id,
@@ -1982,7 +2062,7 @@ export function registerPlatformOrgRoutes(router) {
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
     const invite = await Invite.createInvite({
-      email,
+      email: emailNorm,
       token,
       organizationId: org.id,
       expiresAt,
@@ -2002,6 +2082,70 @@ export function registerPlatformOrgRoutes(router) {
       inviteUrl: `/invite/${token}`,
     });
   });
+
+  router.post(
+    '/organizations/:orgId/users/:userId/resend-welcome-email',
+    inviteSendLimiter,
+    async (req, res) => {
+      const { orgId, userId } = req.params;
+      const target = await assertClientUserInOrg(orgId, userId, req.user);
+      if (!target) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const org = await Organization.getOrganization(orgId);
+      if (!org) {
+        return res.status(404).json({ error: 'Organization not found' });
+      }
+      if (target.login_enabled === false) {
+        return res.status(400).json({
+          error: 'Login is disabled for this user; enable login before sending email.',
+        });
+      }
+      const baseUrl = resolveCrmAppBaseUrl();
+      if (!baseUrl) {
+        return res.status(400).json({
+          error:
+            'Set CRM_APP_URL (or APP_URL/FRONTEND_ORIGIN fallback) to send welcome email.',
+        });
+      }
+      if (!isResendConfigured()) {
+        return res.status(503).json({
+          error: 'Email is not configured',
+          details: 'Add RESEND_API_KEY to send welcome email.',
+        });
+      }
+      let welcomeEmailSent = false;
+      try {
+        const resetToken = await PasswordResetToken.createResetToken(target.id, {
+          expiresInMs: CLIENT_FIRST_ADMIN_WELCOME_RESET_MS,
+        });
+        const loginUrl = `${baseUrl}/login`;
+        const setPasswordUrl = `${baseUrl}/reset-password/${resetToken}`;
+        const displayName = [target.first_name, target.last_name]
+          .map((s) => String(s || '').trim())
+          .filter(Boolean)
+          .join(' ');
+        await sendPlatformWelcomeEmail(
+          String(target.email).trim(),
+          displayName,
+          loginUrl,
+          setPasswordUrl,
+          org.name
+        );
+        welcomeEmailSent = true;
+      } catch (e) {
+        console.error('Client org resend welcome email failed:', e);
+      }
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.USER_INVITE_RESEND,
+        targetType: 'user',
+        targetId: target.id,
+        targetOrganizationId: org.id,
+        metadata: { welcomeEmailSent },
+      });
+      res.json({ welcomeEmailSent });
+    }
+  );
 
   router.get('/organizations/:id', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);

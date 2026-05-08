@@ -103,7 +103,19 @@ export default function PlatformClientUsers() {
         firstName: inviteFirstName.trim() || undefined,
         lastName: inviteLastName.trim() || undefined,
       });
-      if (data?.createdWithoutInvite) {
+      if (data?.reactivated) {
+        if (isLicensee) {
+          showToast(`${invitedTo} was re-added.`, { variant: 'success' });
+        } else {
+          const sent = Boolean(data?.welcomeEmailSent);
+          showToast(
+            sent
+              ? `${invitedTo} was re-added. A welcome email with sign-in and create-password links was sent.`
+              : `${invitedTo} was re-added. Welcome email was not sent — check RESEND_API_KEY and CRM_APP_URL, or share credentials manually.`,
+            { variant: 'success' }
+          );
+        }
+      } else if (data?.createdWithoutInvite) {
         showToast(`User created for ${invitedTo}.`, { variant: 'success' });
       } else {
         const fullInvite = `${window.location.origin}${data.inviteUrl}`;
@@ -164,6 +176,28 @@ export default function PlatformClientUsers() {
       showToast('Password updated.', { variant: 'success' });
     } catch (err) {
       setError(err.response?.data?.error || 'Password update failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resendWelcomeEmailForEditUser() {
+    if (!editUser) return;
+    setBusy(true);
+    setError('');
+    try {
+      const { data } = await api.post(
+        `/api/platform/organizations/${orgId}/users/${editUser.id}/resend-welcome-email`
+      );
+      const sent = Boolean(data?.welcomeEmailSent);
+      showToast(
+        sent
+          ? 'Welcome email sent with sign-in and create-password links.'
+          : 'Email could not be sent — check RESEND_API_KEY and CRM_APP_URL.',
+        { variant: sent ? 'success' : 'warning' }
+      );
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not send email.');
     } finally {
       setBusy(false);
     }
@@ -266,6 +300,7 @@ export default function PlatformClientUsers() {
         onClose={closeEditModal}
         onSave={saveEditUser}
         onSetPassword={setPasswordForEditUser}
+        onResendWelcomeEmail={resendWelcomeEmailForEditUser}
         onConfirmRemoveAccess={confirmRemoveAccess}
       />
     </>

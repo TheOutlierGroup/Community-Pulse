@@ -1,5 +1,6 @@
 import ModalDialog from '../../components/shared/ModalDialog.jsx';
 import RemoveAccessConfirm from '../../components/shared/RemoveAccessConfirm.jsx';
+import { Mail } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 
 export default function EditUserModal({
@@ -30,6 +31,7 @@ export default function EditUserModal({
   setRemoveAccessStep,
   onClose,
   onSave,
+  onResendWelcomeEmail,
   onConfirmRemoveAccess,
 }) {
   const scopeSectionRef = useRef(null);
@@ -182,6 +184,23 @@ export default function EditUserModal({
                 Remove photo
               </button>
             )}
+          </div>
+          <div className="field" style={{ marginTop: '0.25rem' }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={busy}
+              onClick={(e) => {
+                e.preventDefault();
+                onResendWelcomeEmail();
+              }}
+            >
+              <Mail size={16} aria-hidden style={{ marginRight: '0.35rem', verticalAlign: 'middle' }} />
+              Resend welcome email
+            </button>
+            <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+              Sends sign-in and create-password links.
+            </p>
           </div>
           <div className="modal-dialog__actions">
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
