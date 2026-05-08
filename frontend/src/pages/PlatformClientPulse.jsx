@@ -12,6 +12,7 @@ const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable b
 const DIMENSION_ORDER = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'];
 const PERCEPTION_GAP_THRESHOLD = 1.5;
 const INTRA_DIMENSION_DIVERGENCE_THRESHOLD = 1.5;
+const PERCEPTION_GAP_MIN_SAMPLES = 5;
 const DIMENSION_COMPARISON_META = {
   '1A': {
     sharedConstruct: 'Does the team have skills to absorb the change?',
@@ -631,6 +632,11 @@ export default function PlatformClientPulse() {
         : (comparable && employeeAvg != null && managerAvg != null
           ? Math.abs(employeeAvg - managerAvg)
           : null);
+      const employeeCount = Number.isFinite(base?.employee?.count) ? base.employee.count : 0;
+      const managerCount = Number.isFinite(base?.manager?.count) ? base.manager.count : 0;
+      const signalsSuppressed =
+        employeeCount < PERCEPTION_GAP_MIN_SAMPLES
+        || managerCount < PERCEPTION_GAP_MIN_SAMPLES;
       return {
         id,
         employeeLabel: base.label || '--',
@@ -642,10 +648,12 @@ export default function PlatformClientPulse() {
         q2Construct: meta.q2Construct || '',
         employeeQuestionIds,
         managerQuestionIds,
+        signalsSuppressed,
         employee: {
           q1Avg: employeeQ1Avg,
           q2Avg: employeeQ2Avg,
           avg: employeeAvg,
+          count: employeeCount,
           intraGap: employeeIntraGap,
           intraGapFlagged:
             typeof base?.employee?.intraGapFlagged === 'boolean'
@@ -656,6 +664,7 @@ export default function PlatformClientPulse() {
           q1Avg: managerQ1Avg,
           q2Avg: managerQ2Avg,
           avg: managerAvg,
+          count: managerCount,
           intraGap: managerIntraGap,
           intraGapFlagged:
             typeof base?.manager?.intraGapFlagged === 'boolean'
@@ -1913,9 +1922,11 @@ export default function PlatformClientPulse() {
               </thead>
               <tbody>
                 {dimensionHeatmapRows.map((dimension) => {
-                  const empIntra = dimension.employee.intraGapFlagged;
-                  const mgrIntra = dimension.manager.intraGapFlagged;
-                  const perceptionFlagged = dimension.comparable && dimension.perceptionGapFlagged;
+                  const suppressSignals = dimension.signalsSuppressed;
+                  const empIntra = !suppressSignals && dimension.employee.intraGapFlagged;
+                  const mgrIntra = !suppressSignals && dimension.manager.intraGapFlagged;
+                  const perceptionFlagged =
+                    !suppressSignals && dimension.comparable && dimension.perceptionGapFlagged;
                   const empAvg = dimension.employee.avg;
                   const mgrAvg = dimension.manager.avg;
                   const dimAvg = (Number.isFinite(empAvg) && Number.isFinite(mgrAvg))
@@ -1928,8 +1939,10 @@ export default function PlatformClientPulse() {
                   );
                   const q1Gap = computeQGap(dimension.employee.q1Avg, dimension.manager.q1Avg);
                   const q2Gap = computeQGap(dimension.employee.q2Avg, dimension.manager.q2Avg);
-                  const q1GapFlagged = q1Gap != null && q1Gap >= PERCEPTION_GAP_THRESHOLD;
-                  const q2GapFlagged = q2Gap != null && q2Gap >= PERCEPTION_GAP_THRESHOLD;
+                  const q1GapFlagged =
+                    !suppressSignals && q1Gap != null && q1Gap >= PERCEPTION_GAP_THRESHOLD;
+                  const q2GapFlagged =
+                    !suppressSignals && q2Gap != null && q2Gap >= PERCEPTION_GAP_THRESHOLD;
                   const empQ1Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 0);
                   const empQ2Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 1);
                   const mgrQ1Label = dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 0);
@@ -2041,6 +2054,22 @@ export default function PlatformClientPulse() {
               </tbody>
             </table>
           </div>
+          {dashboard?.perceptionGapAnalysis?.text
+            && dashboard.perceptionGapAnalysis.sampleSizeMet
+            && dashboard.perceptionGapAnalysis.flaggedCount > 0 ? (
+              <div className="pulse-clean-dimensions__analysis" role="note" aria-label="AI perception gap analysis">
+                <div className="pulse-clean-dimensions__analysis-header">
+                  <span className="pulse-clean-dimensions__analysis-label">AI · Perception Gap Analysis</span>
+                  <span className="pulse-clean-dimensions__analysis-meta">
+                    {dashboard.perceptionGapAnalysis.flaggedCount} flagged at {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ pts
+                    {dashboard.perceptionGapAnalysis.source === 'fallback' ? ' · deterministic summary' : ''}
+                  </span>
+                </div>
+                <p className="pulse-clean-dimensions__analysis-text">
+                  {dashboard.perceptionGapAnalysis.text}
+                </p>
+              </div>
+            ) : null}
         </section>
       ) : null}
 

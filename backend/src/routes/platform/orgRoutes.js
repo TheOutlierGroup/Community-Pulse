@@ -91,6 +91,12 @@ import { listSessionResponses } from '../../services/pulseDataContract.js';
 import { generatePulseSoWhatSummary } from '../../services/pulseSoWhatSummary.js';
 import { generatePulseTrendSignals } from '../../services/pulseTrendSignals.js';
 import {
+  buildPerceptionGapFallbackNarrative,
+  buildPerceptionGapFlaggedItems,
+  requestPerceptionGapAiNarrative,
+  PERCEPTION_GAP_ANALYSIS_MIN_SAMPLES,
+} from '../../services/pulsePerceptionGapAnalysis.js';
+import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
 } from '../../services/pulseInviteImportValidation.js';
@@ -2835,6 +2841,7 @@ export function registerPlatformOrgRoutes(router) {
           q1Avg: employeeQ1Avg,
           q2Avg: employeeQ2Avg,
           average: employeeAvg,
+          count: employeeDimensionValues.length,
           intraGap: employeeIntraGap,
           intraGapFlagged:
             Number.isFinite(employeeIntraGap)
@@ -2845,6 +2852,7 @@ export function registerPlatformOrgRoutes(router) {
           q1Avg: managerQ1Avg,
           q2Avg: managerQ2Avg,
           average: managerAvg,
+          count: managerDimensionValues.length,
           intraGap: managerIntraGap,
           intraGapFlagged:
             Number.isFinite(managerIntraGap)
@@ -3361,6 +3369,60 @@ export function registerPlatformOrgRoutes(router) {
       soWhatStatus = 'unavailable';
     }
 
+    const perceptionGapMinSamples = PERCEPTION_GAP_ANALYSIS_MIN_SAMPLES;
+    const perceptionGapSampleSizeMet =
+      employeeScoredRows.length >= perceptionGapMinSamples
+      && managerScoredRows.length >= perceptionGapMinSamples;
+    const perceptionGapFlaggedItems = perceptionGapSampleSizeMet
+      ? buildPerceptionGapFlaggedItems({
+        dimensions,
+        threshold: PERCEPTION_GAP_THRESHOLD,
+      })
+      : [];
+    const perceptionGapAiDeadlineMs = readPositiveIntEnv(
+      'CLAUDE_PERCEPTION_GAP_RENDER_DEADLINE_MS',
+      1500
+    );
+    let perceptionGapText = null;
+    let perceptionGapSource = 'none';
+    if (!perceptionGapSampleSizeMet) {
+      perceptionGapSource = 'suppressed';
+    } else if (perceptionGapFlaggedItems.length === 0) {
+      perceptionGapSource = 'none';
+    } else {
+      const fallbackNarrative = buildPerceptionGapFallbackNarrative({
+        items: perceptionGapFlaggedItems,
+        threshold: PERCEPTION_GAP_THRESHOLD,
+      });
+      perceptionGapText = fallbackNarrative;
+      perceptionGapSource = 'fallback';
+      const perceptionGapAttempt = await runWithDeadline(
+        () => requestPerceptionGapAiNarrative({
+          orgName: org.name,
+          items: perceptionGapFlaggedItems,
+          threshold: PERCEPTION_GAP_THRESHOLD,
+          employeeCount: employeeScoredRows.length,
+          managerCount: managerScoredRows.length,
+        }),
+        perceptionGapAiDeadlineMs
+      );
+      if (perceptionGapAttempt.value) {
+        perceptionGapText = perceptionGapAttempt.value;
+        perceptionGapSource = 'ai';
+      }
+    }
+    const perceptionGapAnalysis = {
+      threshold: PERCEPTION_GAP_THRESHOLD,
+      minSampleSize: perceptionGapMinSamples,
+      sampleSizeMet: perceptionGapSampleSizeMet,
+      employeeCount: employeeScoredRows.length,
+      managerCount: managerScoredRows.length,
+      flaggedCount: perceptionGapFlaggedItems.length,
+      flagged: perceptionGapFlaggedItems,
+      source: perceptionGapSource,
+      text: perceptionGapText,
+    };
+
     const executiveSummary = buildExecutiveSummaryContent({
       adoptionScore,
       sponsorshipScore,
@@ -3443,6 +3505,7 @@ export function registerPlatformOrgRoutes(router) {
       },
       byManager,
       sponsorshipAnalysis,
+      perceptionGapAnalysis,
       scoreCardSignals,
       likelihoodSignal,
       quadrantSignal: { ...quadrantSignal, context: quadrantSignalContext },
