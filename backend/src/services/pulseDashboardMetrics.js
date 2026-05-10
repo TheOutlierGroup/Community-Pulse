@@ -39,6 +39,22 @@ export const SCORE_CARD_SIGNAL_PROMPTS = Object.freeze({
     fallback:
       'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this programme can proceed with confidence.',
   }),
+  managerCohortAverages: Object.freeze({
+    system:
+      'You are a change readiness analyst writing a concise signal banner for a practitioner dashboard. Your output will be rendered as italicised prose. Write in plain English. Be direct and factual. Do not hedge. Do not use bullet points. Maximum 2 sentences. Wrap the single most important finding in <strong> tags.',
+    user:
+      'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Manager respondents: {{manager_count}}\nAvg Manager Adoption Score: {{adoption_score}}/40 | Status: {{adoption_threshold_status}}\nAvg Manager Sponsorship Score: {{sponsorship_score}}/40 | Status: {{sponsorship_threshold_status}}\nSponsorship Received: {{received_score}}/20 | Sponsorship Capacity: {{capacity_score}}/20 | Weaker sub-score: {{weaker_sub_score}}\n\nWrite a 2-sentence signal banner that: (1) states which of the two scores is the more significant finding and what it means for the management layer\'s readiness to lead the change, and (2) if sponsorship is the weaker score, names whether the deficit originates with senior leadership (Received) or manager support structures (Capacity) and states the intervention implication.',
+    fallback:
+      'Review both average scores relative to the 28-point threshold. Where either score is below threshold, identify whether the deficit sits with adoption conditions or sponsorship credibility before determining the intervention approach.',
+  }),
+  teamChainBreakdown: Object.freeze({
+    system:
+      'You are a change readiness analyst writing a concise signal banner for a practitioner dashboard. Your output will be rendered as italicised prose. Write in plain English. Be direct and factual. Do not hedge. Do not use bullet points. Maximum 2 sentences. Wrap the single most important finding in <strong> tags. If any team is simultaneously in Sponsorship Failed at Both Levels and At Capacity or Overloaded, this must be the primary finding.',
+    user:
+      'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Total teams: {{total_teams}} | Teams shown: {{teams_shown}}\nTeams and their classifications: {{team_list}} (Format per team: team_name | chain_state | load_band | received_avg | capacity_avg)\nCount of teams in Sponsorship Failed at Both Levels: {{failed_both_count}}\nCount of teams in Chain Functioning: {{functioning_count}}\nHighest urgency team (Failed at Both Levels + At Capacity or Overloaded): {{highest_urgency_team}}\n\nWrite a 2-sentence signal banner that: (1) names the highest urgency team and states why the combination of their chain state and load band makes them the priority intervention target, and (2) states what the spread of chain states across the remaining teams implies for the sequencing of pre-launch enablement.',
+    fallback:
+      'Review the team list for any team simultaneously showing Sponsorship Failed at Both Levels and At Capacity or Overloaded — this combination represents the highest urgency intervention target and should be addressed before any other pre-launch enablement activity.',
+  }),
 });
 
 function renderPromptTemplate(template, values) {
@@ -239,6 +255,11 @@ function formatScoreOutOf40(value) {
 }
 
 function formatScoreOutOf20(value) {
+  if (!Number.isFinite(value)) return '--';
+  return Number(value).toFixed(1);
+}
+
+function formatScoreOutOf5(value) {
   if (!Number.isFinite(value)) return '--';
   return Number(value).toFixed(1);
 }
@@ -635,6 +656,122 @@ function sponsorshipHeaderSignal({
   return '<strong>The weaker sponsorship sub-score is unavailable, so the primary sponsorship risk location cannot be confirmed.</strong>';
 }
 
+function managerCohortAvgThresholdStatus(score, threshold) {
+  if (!Number.isFinite(score) || !Number.isFinite(threshold)) return 'Unknown';
+  return score >= threshold ? 'Above Threshold' : 'Below Threshold';
+}
+
+function managerCohortAveragesSignal({
+  adoptionScore,
+  sponsorshipScore,
+  receivedScore,
+  capacityScore,
+  threshold = 28,
+}) {
+  const adoptionFinite = Number.isFinite(adoptionScore);
+  const sponsorshipFinite = Number.isFinite(sponsorshipScore);
+  const receivedFinite = Number.isFinite(receivedScore);
+  const capacityFinite = Number.isFinite(capacityScore);
+
+  const adoptionStatus = managerCohortAvgThresholdStatus(adoptionScore, threshold);
+  const sponsorshipStatus = managerCohortAvgThresholdStatus(sponsorshipScore, threshold);
+  const weakerSubScore = !receivedFinite || !capacityFinite
+    ? 'Unknown'
+    : (receivedScore <= capacityScore ? 'Received' : 'Capacity');
+  const fallback = SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.fallback;
+
+  let text = fallback;
+  if (adoptionFinite || sponsorshipFinite) {
+    const adoptionGap = adoptionFinite ? Math.abs(adoptionScore - threshold) : Number.POSITIVE_INFINITY;
+    const sponsorshipGap = sponsorshipFinite ? Math.abs(sponsorshipScore - threshold) : Number.POSITIVE_INFINITY;
+    const sponsorshipIsMoreSignificant = sponsorshipGap <= adoptionGap;
+
+    const sentence1 = sponsorshipIsMoreSignificant
+      ? sponsorshipStatus === 'Above Threshold'
+        ? '<strong>Manager Sponsorship is the stronger signal and is currently above threshold</strong>, which indicates leadership backing and local sponsorship capacity are sufficient to carry change through the management layer.'
+        : '<strong>Manager Sponsorship is the stronger signal and is currently below threshold</strong>, which means the management layer cannot credibly carry change through teams at the required pace.'
+      : adoptionStatus === 'Above Threshold'
+        ? '<strong>Manager Adoption is the stronger signal and is currently above threshold</strong>, which indicates managers have the baseline conditions to absorb and lead this change.'
+        : '<strong>Manager Adoption is the stronger signal and is currently below threshold</strong>, which means the management layer lacks the conditions needed to absorb and lead this change reliably.';
+
+    let sentence2;
+    if (sponsorshipStatus === 'Below Threshold') {
+      if (weakerSubScore === 'Received') {
+        sentence2 = 'The sponsorship deficit is anchored in Received, so intervention must start with more visible and consistent senior-leadership sponsorship before expecting managers to drive downstream adoption.';
+      } else if (weakerSubScore === 'Capacity') {
+        sentence2 = 'The sponsorship deficit is anchored in Capacity, so intervention must prioritise manager support structures, workload relief, and practical enablement before rollout pressure increases.';
+      } else {
+        sentence2 = 'Sponsorship is below threshold, so intervention must isolate whether the primary deficit is Received or Capacity before sequencing corrective action.';
+      }
+    } else if (adoptionStatus === 'Below Threshold') {
+      sentence2 = 'Sponsorship remains above threshold, but adoption conditions are below threshold, so intervention should focus on manager capability, capacity, change track record, and upward enablement.';
+    } else {
+      sentence2 = 'Both average scores are above threshold, so the management layer is positioned to lead change while maintaining sponsorship visibility and execution discipline.';
+    }
+
+    text = `${sentence1} ${sentence2}`;
+  }
+
+  return {
+    text,
+    fallback,
+    adoptionStatus,
+    sponsorshipStatus,
+    weakerSubScore,
+  };
+}
+
+function teamChainBreakdownSignal({
+  allRows,
+  shownRows,
+}) {
+  const fallback = SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.fallback;
+  const allTeams = Array.isArray(allRows) ? allRows : [];
+  const visibleTeams = Array.isArray(shownRows) ? shownRows : allTeams;
+  if (allTeams.length === 0) {
+    return {
+      text: fallback,
+      fallback,
+      failedBothCount: 0,
+      functioningCount: 0,
+      highestUrgencyTeam: 'None',
+      teamList: 'None',
+      totalTeams: 0,
+      teamsShown: 0,
+    };
+  }
+
+  const failedBothCount = allTeams.filter((row) => row.chainState === 'Sponsorship Failed at Both Levels').length;
+  const functioningCount = allTeams.filter((row) => row.chainState === 'Chain Functioning').length;
+  const highestUrgency = allTeams.find(
+    (row) =>
+      row.chainState === 'Sponsorship Failed at Both Levels'
+      && (row.loadBand === 'At Capacity' || row.loadBand === 'Overloaded')
+  ) || null;
+  const teamList = visibleTeams
+    .map(
+      (row) =>
+        `${row.teamName || 'Unknown'} | ${row.chainState || 'Unknown'} | ${row.loadBand || 'Unknown'} | ${formatScoreOutOf5(row.receivedAvg)} | ${formatScoreOutOf5(row.capacityAvg)}`
+    )
+    .join('; ');
+
+  const spreadSentence = `${failedBothCount} of ${allTeams.length} teams are in Sponsorship Failed at Both Levels, while ${functioningCount} are Chain Functioning, so pre-launch sequencing must prioritize fragile teams before broad enablement.`;
+  const text = highestUrgency
+    ? `<strong>${highestUrgency.teamName} is the highest urgency team because it combines Sponsorship Failed at Both Levels with ${highestUrgency.loadBand}, which signals simultaneous structural sponsorship failure and constrained execution capacity.</strong> ${spreadSentence}`
+    : `<strong>No team currently combines Sponsorship Failed at Both Levels with At Capacity or Overloaded load.</strong> ${spreadSentence}`;
+
+  return {
+    text,
+    fallback,
+    failedBothCount,
+    functioningCount,
+    highestUrgencyTeam: highestUrgency?.teamName || 'None',
+    teamList: teamList || 'None',
+    totalTeams: allTeams.length,
+    teamsShown: visibleTeams.length,
+  };
+}
+
 function matrixFallbackSignal(matrixRows) {
   const sustainableFunctioning = matrixRows
     .find((row) => row.loadBand === 'Sustainable')
@@ -721,10 +858,6 @@ export function buildSponsorshipSectionSignals({
   const capacity = Number(subScores?.capacity?.avg || 0);
   const receivedThreshold = subScores?.received?.threshold || 14;
   const capacityThreshold = subScores?.capacity?.threshold || 14;
-  const subscoreText =
-    received >= receivedThreshold && capacity >= capacityThreshold
-      ? `Both sub-scores are above threshold. Received (${received.toFixed(1)}) and Capacity (${capacity.toFixed(1)}) indicate a stable sponsorship base.`
-      : `One or both sub-scores are below threshold. Capacity (${capacity.toFixed(1)}) and Received (${received.toFixed(1)}) indicate sponsorship chain fragility that needs targeted intervention.`;
 
   const loadBands = Array.isArray(load?.bands) ? load.bands : [];
   const overloadedPct = loadBands.find((b) => b.name === 'Overloaded')?.percent || 0;
@@ -743,13 +876,22 @@ export function buildSponsorshipSectionSignals({
   const crossText = crossMatrixSignal(matrixRows);
 
   const teamRows = Array.isArray(teams?.rows) ? teams.rows : [];
-  const highRiskTeams = teamRows.filter(
-    (row) => row.chainState === 'Sponsorship Failed at Both Levels' || row.loadBand === 'Overloaded'
-  );
-  const teamText = `${highRiskTeams.length} teams are in critical sponsorship states. Use this list to target pre-launch enablement in sequence.`;
+  const shownTeamRows = Array.isArray(teams?.shownRows) ? teams.shownRows : teamRows;
+  const teamSignal = teamChainBreakdownSignal({
+    allRows: teamRows,
+    shownRows: shownTeamRows,
+  });
   const weakerSubScore = received <= capacity ? 'Sponsorship Received' : 'Sponsorship Capacity';
   const managerAdoptionScore = Number(header?.managerAdoptionScore);
+  const managerSponsorshipScore = Number(header?.managerSponsorshipScore);
   const managerThreshold = Number.isFinite(Number(header?.threshold)) ? Number(header.threshold) : 28;
+  const managerCohortSignal = managerCohortAveragesSignal({
+    adoptionScore: managerAdoptionScore,
+    sponsorshipScore: managerSponsorshipScore,
+    receivedScore: received,
+    capacityScore: capacity,
+    threshold: managerThreshold,
+  });
 
   return {
     headerAdoption: {
@@ -769,7 +911,20 @@ export function buildSponsorshipSectionSignals({
     },
     subScores: {
       variant: received < receivedThreshold || capacity < capacityThreshold ? 'amber' : 'green',
-      text: subscoreText,
+      text: managerCohortSignal.text,
+      fallback: managerCohortSignal.fallback,
+      promptContext: {
+        clientName: String(header?.clientName || '').trim() || null,
+        assessmentStage: normalizeAssessmentStageLabel(header?.stage),
+        managerCount: Number.isFinite(Number(header?.managerCount)) ? Number(header.managerCount) : null,
+        adoptionScore: formatScoreOutOf40(managerAdoptionScore),
+        adoptionThresholdStatus: managerCohortSignal.adoptionStatus,
+        sponsorshipScore: formatScoreOutOf40(managerSponsorshipScore),
+        sponsorshipThresholdStatus: managerCohortSignal.sponsorshipStatus,
+        receivedScore: formatScoreOutOf20(received),
+        capacityScore: formatScoreOutOf20(capacity),
+        weakerSubScore: managerCohortSignal.weakerSubScore,
+      },
     },
     load: {
       variant: overloadedPct >= 10 ? 'red' : 'amber',
@@ -785,7 +940,18 @@ export function buildSponsorshipSectionSignals({
     },
     teams: {
       variant: 'red',
-      text: teamText,
+      text: teamSignal.text,
+      fallback: teamSignal.fallback,
+      promptContext: {
+        clientName: String(header?.clientName || '').trim() || null,
+        assessmentStage: normalizeAssessmentStageLabel(header?.stage),
+        totalTeams: teamSignal.totalTeams,
+        teamsShown: teamSignal.teamsShown,
+        teamList: teamSignal.teamList,
+        failedBothCount: teamSignal.failedBothCount,
+        functioningCount: teamSignal.functioningCount,
+        highestUrgencyTeam: teamSignal.highestUrgencyTeam,
+      },
     },
   };
 }

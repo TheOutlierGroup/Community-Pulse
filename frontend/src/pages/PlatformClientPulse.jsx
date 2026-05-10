@@ -338,6 +338,44 @@ function sponsorshipSignalVariantClass(variant) {
   return 'pulse-sa-signal--amber';
 }
 
+function sponsorshipChainVerdictState(verdict, interventionRequired) {
+  const fromBackend = String(verdict?.state || '').trim().toLowerCase();
+  if (fromBackend === 'functioning' || fromBackend === 'monitoring' || fromBackend === 'failed') {
+    return fromBackend;
+  }
+
+  const headline = String(verdict?.headline || '').trim().toLowerCase();
+  if (headline.includes('not functioning') || headline.includes('failed')) return 'failed';
+  if (headline.includes('monitor')) return 'monitoring';
+  if (headline.includes('functioning')) return 'functioning';
+
+  return interventionRequired ? 'failed' : 'functioning';
+}
+
+function sponsorshipChainVerdictPresentation(state) {
+  if (state === 'failed') {
+    return {
+      statement: 'The sponsorship chain is not functioning.',
+      subLabel: 'Managers are absorbing pressure from both directions and need immediate intervention to restore sponsorship flow.',
+      className: 'pulse-sa-chain-verdict__statement--failed',
+    };
+  }
+
+  if (state === 'monitoring') {
+    return {
+      statement: 'The sponsorship chain is being monitored.',
+      subLabel: 'Core sponsorship conditions are holding, but active monitoring is required to prevent slippage in manager readiness.',
+      className: 'pulse-sa-chain-verdict__statement--monitoring',
+    };
+  }
+
+  return {
+    statement: 'The sponsorship chain is functioning.',
+    subLabel: 'Leaders are receiving support and have capacity to sponsor change through their teams.',
+    className: 'pulse-sa-chain-verdict__statement--functioning',
+  };
+}
+
 const chainMatrixQuadOrder = [
   {
     status: 'At-Risk Leadership',
@@ -698,7 +736,11 @@ export default function PlatformClientPulse() {
   const interventionRequired = (sponsorshipScore != null && sponsorshipScore < threshold)
     || overloadedPercent > 10
     || optimalPercent < 25;
-  const sponsorshipVerdict = interventionRequired ? 'Intervention Required' : 'Chain Stable';
+  const chainVerdictState = sponsorshipChainVerdictState(
+    dashboard?.sponsorshipAnalysis?.verdict,
+    interventionRequired
+  );
+  const chainVerdictPresentation = sponsorshipChainVerdictPresentation(chainVerdictState);
   const sponsorshipExecutiveSignal = interventionRequired
     ? 'Managers are absorbing pressure from both directions and need targeted sponsorship support.'
     : 'Sponsorship coverage is broadly holding; continue monitoring manager load pressure.';
@@ -723,32 +765,6 @@ export default function PlatformClientPulse() {
         percent: total > 0 ? (count / total) * 100 : 0,
       };
     });
-  }, [managerBreakdownRows]);
-  const loadByChainMatrix = useMemo(() => {
-    const bands = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
-    const statuses = [
-      'Chain Functioning',
-      'Resilient, Under-supported',
-      'At-Risk Leadership',
-      'Failed at Both Levels',
-    ];
-    const rows = bands.map((band) => ({
-      band,
-      cells: statuses.reduce((acc, status) => ({ ...acc, [status]: 0 }), {}),
-      total: 0,
-    }));
-    const rowMap = new Map(rows.map((row) => [row.band, row]));
-
-    managerBreakdownRows.forEach((row) => {
-      const band = String(row?.managerLoadBand || '').trim();
-      const matrixRow = rowMap.get(band);
-      if (!matrixRow) return;
-      const status = managerChainStatus(String(row?.quadrant || '').trim());
-      matrixRow.cells[status] += 1;
-      matrixRow.total += 1;
-    });
-
-    return { rows, statuses };
   }, [managerBreakdownRows]);
   const groupLevelLabels = useMemo(() => {
     const labels = Array.isArray(org?.settings?.groupLevelLabels) ? org.settings.groupLevelLabels : [];
@@ -822,13 +838,16 @@ export default function PlatformClientPulse() {
         return values.reduce((sum, value) => sum + (value.score * value.weight), 0) / sumWeight;
       });
 
+      const aggregateAdoption = weightedAverage((row) => row.adoptionScore);
+      const aggregateSponsorship = weightedAverage((row) => row.sponsorshipScore);
+
       node.aggregate = {
         allManagers,
         responses: allManagers.reduce((sum, row) => sum + (row.directReportCompletedCount || 0), 0),
-        adoption: weightedAverage((row) => row.adoptionScore),
-        sponsorship: weightedAverage((row) => row.sponsorshipScore),
+        adoption: aggregateAdoption,
+        sponsorship: aggregateSponsorship,
         loadBand: majorityLabel(allManagers.map((row) => row.managerLoadBand), '--'),
-        quadrant: majorityLabel(allManagers.map((row) => row.quadrant), '--'),
+        quadrant: quadrantForScores(aggregateAdoption, aggregateSponsorship, threshold) || '--',
         trend,
       };
       return node.aggregate;
@@ -1311,7 +1330,10 @@ export default function PlatformClientPulse() {
         <div className="pulse-clean-header__top">
           <div>
             <p className="pulse-clean-header__eyebrow">Client Administration</p>
-            <h2 className="pulse-clean-header__title">{pageTitle}</h2>
+            <div className="pulse-clean-header__title-row">
+              <h2 className="pulse-clean-header__title">{pageTitle}</h2>
+              <span className="pulse-clean-header__cohort-pill">Manager Cohort Only</span>
+            </div>
             <p className="pulse-clean-header__timepoint">{selectedTimepointLabel}</p>
           </div>
           <div className="pulse-clean-header__meta">
@@ -1323,6 +1345,9 @@ export default function PlatformClientPulse() {
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
+        </div>
+        <div className="pulse-clean-header__cohort-banner">
+          {'MANAGER COHORT VIEW \u2014 Scores on this page reflect manager responses only and will differ from organisation-wide figures.'}
         </div>
 
         <div className={`pulse-clean-header__kpis${showingFullDashboard ? ' pulse-clean-header__kpis--with-verdict' : ''}`}>
@@ -1587,46 +1612,14 @@ export default function PlatformClientPulse() {
 
       {showScoresSection ? (
         <section className="pulse-clean-scores pulse-sa">
-          {/* ─── OVERALL VERDICT ─── */}
-          <div className="pulse-sa-verdict">
-            <p className="pulse-sa-verdict__meta">
-              {dashboard?.sponsorshipAnalysis?.verdict?.provenance
-                || `Sponsorship Analysis · ${org?.name || 'Client'} · ${reportDateLabel}`}
-            </p>
-            <div className="pulse-sa-verdict__main">
-              <div>
-                <h3 className="pulse-sa-verdict__title">
-                  {dashboard?.sponsorshipAnalysis?.verdict?.headline
-                    || `The sponsorship chain is ${interventionRequired ? 'not functioning' : 'functioning'}.`}
-                </h3>
-                <p className="pulse-sa-verdict__body">
-                  {dashboard?.sponsorshipAnalysis?.verdict?.body || sponsorshipExecutiveSignal}
-                </p>
-              </div>
-              <span className={`pulse-sa-verdict__badge${!interventionRequired ? ' pulse-sa-verdict__badge--stable' : ''}`}>
-                {dashboard?.sponsorshipAnalysis?.verdict?.badge || (interventionRequired ? '⚠ Intervention Required' : sponsorshipVerdict)}
-              </span>
-            </div>
-            <div className="pulse-sa-verdict__foot">
-              <span className="pulse-sa-verdict__provenance">
-                Based on <strong>{dashboard?.sponsorshipAnalysis?.cohort?.managerRespondentCount ?? managerBreakdownRows.length} manager responses</strong>
-              </span>
-              <div className="pulse-sa-verdict__chips">
-                {(dashboard?.sponsorshipAnalysis?.verdict?.chips || []).map((chip) => (
-                  <span key={chip.label} className="pulse-sa-chip">{chip.label}: {chip.value}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-
           {/* ─── SECTION 1: SUB-SCORE OVERVIEW ─── */}
           <div className="pulse-sa-card">
             <p className="pulse-sa-card__label">
-              {dashboard?.sponsorshipAnalysis?.section1?.cardLabel || 'Section 1 — Sponsorship Sub-Score Overview'}
+              {dashboard?.sponsorshipAnalysis?.section1?.cardLabel || 'AVG SCORE OVERVIEW · MANAGER COHORT ONLY'}
             </p>
             <p className="pulse-sa-card__explainer">
               {dashboard?.sponsorshipAnalysis?.section1?.explainer
-                || 'Breaks the overall Sponsorship Credibility score into two distinct constructs: what managers are receiving from senior leadership above them, and whether managers have the conditions to sponsor their own teams below.'}
+                || 'The two average scores shown here reflect the manager cohort only and will differ from organisation-wide figures. Avg Adoption Score (0-40) measures whether the management layer has the capability, capacity, change track record, and upward enablement to absorb and drive the change across their teams. Avg Sponsorship Score (0-40) measures whether managers are both receiving credible sponsorship from senior leadership above them and have the capacity to sponsor their own teams below. A score of 28 or above in either dimension indicates HIGH classification. Both scores must be HIGH for the management layer to be considered ready.'}
             </p>
             <div className="pulse-sa-subscores">
               <article className="pulse-sa-subscore">
@@ -1706,6 +1699,14 @@ export default function PlatformClientPulse() {
                 {renderSignalMarkup(sponsorshipSignals.subScores.text)}
               </div>
             ) : null}
+            <div className="pulse-sa-chain-verdict">
+              <p className={`pulse-sa-chain-verdict__statement ${chainVerdictPresentation.className}`}>
+                {chainVerdictPresentation.statement}
+              </p>
+              <p className="pulse-sa-chain-verdict__sub-label">
+                {chainVerdictPresentation.subLabel || sponsorshipExecutiveSignal}
+              </p>
+            </div>
           </div>
 
           {/* ─── SECTION 2: MANAGER LOAD ─── */}
@@ -1787,59 +1788,6 @@ export default function PlatformClientPulse() {
             ) : null}
           </div>
 
-          {/* ─── SECTION 4: LOAD BAND × CHAIN STATE ─── */}
-          <div className="pulse-sa-card">
-            <p className="pulse-sa-card__label">
-              {dashboard?.sponsorshipAnalysis?.section4?.cardLabel || 'Section 4 — Load Band × Chain State'}
-            </p>
-            <p className="pulse-sa-card__explainer">
-              {dashboard?.sponsorshipAnalysis?.section4?.explainer
-                || 'Crosses manager capacity (load band) against sponsorship chain state to identify which specific managers are simultaneously overloaded and unsupported — the group where intervention is most urgent.'}
-            </p>
-            <div className="pulse-sa-table-wrap">
-              <table className="pulse-sa-matrix">
-                <thead>
-                  <tr>
-                    <th>Load Band</th>
-                    {(dashboard?.sponsorshipAnalysis?.section4?.columnOrder || loadByChainMatrix.statuses).map((col) => (
-                      <th key={`sa-col-${col}`}>{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(dashboard?.sponsorshipAnalysis?.section4?.rows || []).map((row) => (
-                    <tr key={row.loadBand}>
-                      <td style={{ textAlign: 'left', fontWeight: 600 }}>{row.loadBand}</td>
-                      {row.cells.map((cell) => (
-                        <td key={`${row.loadBand}-${cell.chainState}`} className={cell.className || ''}>
-                          <span className={`pulse-sa-matrix__count${cell.className === 'cx5' ? ' pulse-sa-matrix__count--critical' : ''}`}>
-                            {cell.count}
-                          </span>
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                  {!(dashboard?.sponsorshipAnalysis?.section4?.rows?.length) ? (
-                    loadByChainMatrix.rows.map((row) => (
-                      <tr key={row.band}>
-                        <td style={{ textAlign: 'left', fontWeight: 600 }}>{row.band}</td>
-                        {loadByChainMatrix.statuses.map((status) => (
-                          <td key={`${row.band}-${status}`}>{row.cells[status] || 0}</td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-            {sponsorshipSignals?.crossMatrix?.text ? (
-              <div className="pulse-sa-signal pulse-sa-signal--red">
-                <span className="pulse-sa-signal__label">Signal</span>
-                {renderSignalMarkup(sponsorshipSignals.crossMatrix.text)}
-              </div>
-            ) : null}
-          </div>
-
           {/* ─── SECTION 5: TEAM-LEVEL SPONSORSHIP CHAIN ─── */}
           {(dashboard?.sponsorshipAnalysis?.section5?.rows?.length > 0) ? (
             <div className="pulse-sa-card">
@@ -1891,7 +1839,7 @@ export default function PlatformClientPulse() {
               ) : null}
               {sponsorshipSignals?.teams?.text ? (
                 <div className="pulse-sa-signal pulse-sa-signal--red">
-                  <span className="pulse-sa-signal__label">Note</span>
+                  <span className="pulse-sa-signal__label">Signal</span>
                   {renderSignalMarkup(sponsorshipSignals.teams.text)}
                 </div>
               ) : null}

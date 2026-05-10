@@ -50,6 +50,40 @@ test('score card prompt templates are spec-locked', () => {
     SCORE_CARD_SIGNAL_PROMPTS.likelihood.fallback,
     'The quadrant distribution shows how individuals are spread across all four readiness states. Review the proportion outside Optimal to determine the scale and nature of intervention required.'
   );
+  assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.system,
+    'You are a change readiness analyst writing a concise signal banner for a practitioner dashboard. Your output will be rendered as italicised prose. Write in plain English. Be direct and factual. Do not hedge. Do not use bullet points. Maximum 2 sentences. Wrap the single most important finding in <strong> tags.'
+  );
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{client_name}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{assessment_stage}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{manager_count}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{adoption_score}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{adoption_threshold_status}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{sponsorship_score}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{sponsorship_threshold_status}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{received_score}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{capacity_score}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.user.includes('{{weaker_sub_score}}'));
+  assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.fallback,
+    'Review both average scores relative to the 28-point threshold. Where either score is below threshold, identify whether the deficit sits with adoption conditions or sponsorship credibility before determining the intervention approach.'
+  );
+  assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.system,
+    'You are a change readiness analyst writing a concise signal banner for a practitioner dashboard. Your output will be rendered as italicised prose. Write in plain English. Be direct and factual. Do not hedge. Do not use bullet points. Maximum 2 sentences. Wrap the single most important finding in <strong> tags. If any team is simultaneously in Sponsorship Failed at Both Levels and At Capacity or Overloaded, this must be the primary finding.'
+  );
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.user.includes('{{client_name}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.user.includes('{{assessment_stage}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.user.includes('{{total_teams}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.user.includes('{{teams_shown}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.user.includes('{{team_list}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.user.includes('{{failed_both_count}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.user.includes('{{functioning_count}}'));
+  assert.ok(SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.user.includes('{{highest_urgency_team}}'));
+  assert.equal(
+    SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.fallback,
+    'Review the team list for any team simultaneously showing Sponsorship Failed at Both Levels and At Capacity or Overloaded — this combination represents the highest urgency intervention target and should be addressed before any other pre-launch enablement activity.'
+  );
 });
 
 test('largest remainder percentages always sum to 100', () => {
@@ -186,6 +220,14 @@ test('dimension floor alerts skip null averages', () => {
 
 test('sponsorship section signals are derived from computed metrics', () => {
   const signals = buildSponsorshipSectionSignals({
+    header: {
+      clientName: 'Nexora Consulting Group',
+      stage: 'pre',
+      threshold: 28,
+      managerCount: 9,
+      managerAdoptionScore: 27.9,
+      managerSponsorshipScore: 27.6,
+    },
     subScores: {
       received: { avg: 13.2, threshold: 14 },
       capacity: { avg: 11.8, threshold: 14 },
@@ -221,15 +263,28 @@ test('sponsorship section signals are derived from computed metrics', () => {
     },
     teams: {
       rows: [
-        { chainState: 'Sponsorship Failed at Both Levels', loadBand: 'Overloaded' },
-        { chainState: 'Breaking at Manager Level', loadBand: 'Stretched' },
+        { teamName: 'Sales & Revenue', chainState: 'Sponsorship Failed at Both Levels', loadBand: 'Overloaded', receivedAvg: 2.5, capacityAvg: 2.4 },
+        { teamName: 'Innovation', chainState: 'Breaking at Manager Level', loadBand: 'Stretched', receivedAvg: 3.2, capacityAvg: 3.1 },
+      ],
+      shownRows: [
+        { teamName: 'Sales & Revenue', chainState: 'Sponsorship Failed at Both Levels', loadBand: 'Overloaded', receivedAvg: 2.5, capacityAvg: 2.4 },
       ],
     },
   });
   assert.equal(signals.load.variant, 'red');
   assert.equal(signals.crossMatrix.variant, 'red');
   assert.equal(signals.teams.variant, 'red');
-  assert.ok(signals.subScores.text.includes('13.2'));
+  assert.ok(signals.subScores.text.includes('<strong>'));
+  assert.equal(signals.subScores.fallback, SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.fallback);
+  assert.equal(signals.subScores.promptContext.clientName, 'Nexora Consulting Group');
+  assert.equal(signals.subScores.promptContext.assessmentStage, 'Pre-Change');
+  assert.equal(signals.subScores.promptContext.managerCount, 9);
+  assert.equal(signals.subScores.promptContext.weakerSubScore, 'Capacity');
+  assert.ok(signals.teams.text.includes('Sales & Revenue'));
+  assert.equal(signals.teams.fallback, SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.fallback);
+  assert.equal(signals.teams.promptContext.totalTeams, 2);
+  assert.equal(signals.teams.promptContext.teamsShown, 1);
+  assert.equal(signals.teams.promptContext.highestUrgencyTeam, 'Sales & Revenue');
 });
 
 test('adoption score card signal highlights absorption implication', () => {

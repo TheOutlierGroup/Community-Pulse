@@ -5232,16 +5232,26 @@ input[type='range'] {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   border: 0;
-  background: var(--pulse-red);
-  color: var(--pulse-on-red);
+  background: var(--pulse-amber, #f5a623);
+  color: var(--pulse-on-amber, #000000);
   border-radius: 4px;
   padding: 0.4rem 0.72rem;
   white-space: nowrap;
 }
 
-.pulse-sa-verdict__badge--stable {
-  background: var(--pulse-green);
-  color: var(--pulse-on-green);
+.pulse-sa-verdict__badge--amber {
+  background: var(--pulse-amber, #f5a623);
+  color: var(--pulse-on-amber, #000000);
+}
+
+.pulse-sa-verdict__badge--red {
+  background: var(--pulse-red, #e52235);
+  color: var(--pulse-on-red, #ffffff);
+}
+
+.pulse-sa-verdict__badge--critical {
+  background: var(--pulse-red-deep, #b50e23);
+  color: var(--pulse-on-red, #ffffff);
 }
 
 .pulse-sa-verdict__foot {
@@ -5504,6 +5514,37 @@ input[type='range'] {
   font-style: normal;
   font-weight: 700;
   color: var(--pulse-text);
+}
+
+.pulse-sa-chain-verdict {
+  margin-top: 0.55rem;
+}
+
+.pulse-sa-chain-verdict__statement {
+  margin: 0;
+  font-family: var(--pulse-font-ui);
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.pulse-sa-chain-verdict__statement--functioning {
+  color: #1e855d;
+}
+
+.pulse-sa-chain-verdict__statement--monitoring {
+  color: #f5a623;
+}
+
+.pulse-sa-chain-verdict__statement--failed {
+  color: #e52235;
+}
+
+.pulse-sa-chain-verdict__sub-label {
+  margin: 0.28rem 0 0;
+  color: #8a95a8;
+  font-family: var(--pulse-font-body);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .pulse-sa-load-bar {
@@ -6321,6 +6362,30 @@ input[type='range'] {
   font-size: 1.12rem;
 }
 
+.pulse-clean-header__title-row {
+  margin-top: 0.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pulse-clean-header__title-row .pulse-clean-header__title {
+  margin: 0;
+}
+
+.pulse-clean-header__cohort-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  background: #7f77dd;
+  color: #ffffff;
+  font-family: var(--pulse-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  padding: 2px 8px;
+}
+
 .pulse-clean-header__timepoint {
   margin: 0.3rem 0 0;
   color: var(--muted);
@@ -6333,6 +6398,18 @@ input[type='range'] {
   gap: 0.45rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.pulse-clean-header__cohort-banner {
+  border-left: 3px solid #7f77dd;
+  background: rgba(127, 119, 221, 0.09);
+  color: #8a95a8;
+  font-family: var(--pulse-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.35;
+  padding: 0.42rem 0.7rem 0.4rem;
 }
 
 .pulse-clean-header__chip {

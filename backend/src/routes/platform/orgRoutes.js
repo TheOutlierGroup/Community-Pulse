@@ -3294,6 +3294,7 @@ export function registerPlatformOrgRoutes(router) {
 
     const sponsorshipSignals = buildSponsorshipSectionSignals({
       header: {
+        clientName: org.name,
         stage: requestedTimepoint,
         threshold: READINESS_THRESHOLD,
         managerCount: managerRespondentCount,
@@ -3307,13 +3308,15 @@ export function registerPlatformOrgRoutes(router) {
       load: { bands: loadBandsV3 },
       chain: { states: chainStates },
       crossMatrix: { rows: crossMatrixRows },
-      teams: { rows: sortedTeamRows },
+      teams: { rows: sortedTeamRows, shownRows: teamRowsLimited },
     });
     const sponsorshipAnalysis = {
       verdict: {
+        state: interventionRequired ? 'failed' : 'functioning',
         headline: verdictHeadline,
         body: verdictBody,
         badge: interventionRequired ? 'Intervention Required' : 'Monitoring',
+        badgeVariant: interventionRequired ? 'red' : 'amber',
         interventionRequired,
         provenance: `Based on ${managerRespondentCount} manager responses · Derived from MQ9-MQ16 · Threshold: ${sponsorshipConfig.receivedThreshold}/20 per sub-score`,
         chips: [
@@ -3333,9 +3336,9 @@ export function registerPlatformOrgRoutes(router) {
         managerRespondentCount,
       },
       section1: {
-        cardLabel: 'Section 1 — Sponsorship Sub-Score Overview · Manager cohort only',
+        cardLabel: 'AVG SCORE OVERVIEW · MANAGER COHORT ONLY',
         explainer:
-          'Breaks the overall Sponsorship Credibility score into two distinct constructs: what managers are receiving from senior leadership above them, and whether managers have the conditions to sponsor their own teams below.',
+          'The two average scores shown here reflect the manager cohort only and will differ from organisation-wide figures. Avg Adoption Score (0-40) measures whether the management layer has the capability, capacity, change track record, and upward enablement to absorb and drive the change across their teams. Avg Sponsorship Score (0-40) measures whether managers are both receiving credible sponsorship from senior leadership above them and have the capacity to sponsor their own teams below. A score of 28 or above in either dimension indicates HIGH classification. Both scores must be HIGH for the management layer to be considered ready.',
         whatThisMeasures: {
           received:
             'Whether senior leaders are visibly modelling the change, staying present under pressure, communicating the rationale clearly, and speaking with one voice.',
