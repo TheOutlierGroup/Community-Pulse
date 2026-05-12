@@ -1122,9 +1122,6 @@ export async function buildReportDocx({
     : '';
 
   const doc = new Document({
-    features: {
-      updateFields: true,
-    },
     styles: {
       default: {
         document: {
@@ -1194,7 +1191,7 @@ export async function buildReportDocx({
           new Paragraph({ pageBreakBefore: true }),
           h1('Table of Contents'),
           new TableOfContents('Contents', { hyperlink: true, headingStyleRange: '1-3' }),
-          bodySmallItalic('Note: Page numbers are configured to refresh automatically when the DOCX is opened in Microsoft Word.'),
+          bodySmallItalic("Note: Right-click the table of contents and select 'Update Field' to refresh page numbers after any edits."),
 
           // ── Executive Summary ─────────────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),
