@@ -65,7 +65,8 @@ async function seed() {
 
     await client.query('BEGIN');
     const org = await client.query(
-      `INSERT INTO organizations (name, settings, kind) VALUES ($1, $2, 'platform') RETURNING id`,
+      `INSERT INTO organizations (name, settings, kind, client_status)
+       VALUES ($1, $2, 'platform', 'active') RETURNING id`,
       [ORG_NAME, JSON.stringify({})]
     );
     const orgId = org.rows[0].id;
