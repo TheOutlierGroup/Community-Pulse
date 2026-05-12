@@ -1792,11 +1792,11 @@ export default function PlatformClientPulse() {
             ) : null}
           </div>
 
-          {/* ─── SECTION 5: TEAM-LEVEL SPONSORSHIP CHAIN ─── */}
+          {/* ─── SECTION 4: TEAM-LEVEL SPONSORSHIP CHAIN ─── */}
           {(dashboard?.sponsorshipAnalysis?.section5?.rows?.length > 0) ? (
             <div className="pulse-sa-card">
               <p className="pulse-sa-card__label">
-                {dashboard.sponsorshipAnalysis.section5.cardLabel || 'Section 5 — Team-Level Sponsorship Chain Breakdown'}
+                {dashboard.sponsorshipAnalysis.section5.cardLabel || 'Section 4 — Team-Level Sponsorship Chain Breakdown'}
               </p>
               <p className="pulse-sa-card__explainer">
                 {dashboard.sponsorshipAnalysis.section5.explainer

@@ -125,9 +125,13 @@ const COLOUR = {
   rowStripe: 'FAF6EC',
   white: 'FFFFFF',
 
-  // Quadrant matrix — only the active quadrant is colour-highlighted
-  quadActiveBg: 'FFF2CC',
-  quadInactiveBg: 'FFFFFF',
+  // Quadrant matrix — match dashboard quadrant colour coding.
+  quadOptimalBg: '1E855D',
+  quadMotivatedBg: 'CC4E0F',
+  quadHighRiskBg: 'E52235',
+  quadWaryBg: 'F5A623',
+  quadOnDark: 'FFFFFF',
+  quadOnAmber: '000000',
 
   // Verdict header band — navy block with white description text
   verdictBg: '1F3864',
@@ -460,25 +464,32 @@ function quadrantMatrix(activeCode) {
   const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: COLOUR.text };
   const borders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
 
-  // Style guide: only the active quadrant is highlighted (pale yellow
-  // fill); inactive quadrants stay white. All text is the brand ink
-  // colour so the matrix reads as a single typographic unit.
+  const quadrantStyle = (code) => {
+    if (code === 'optimal') return { bg: COLOUR.quadOptimalBg, fg: COLOUR.quadOnDark };
+    if (code === 'motivated_lost') return { bg: COLOUR.quadMotivatedBg, fg: COLOUR.quadOnDark };
+    if (code === 'high_risk') return { bg: COLOUR.quadHighRiskBg, fg: COLOUR.quadOnDark };
+    if (code === 'capable_wary') return { bg: COLOUR.quadWaryBg, fg: COLOUR.quadOnAmber };
+    return { bg: COLOUR.white, fg: COLOUR.text };
+  };
+
+  // Style guide: every quadrant cell is colour-coded to mirror the
+  // dashboard. The active quadrant is indicated with the arrow marker.
   function qCell(code, label, desc, isHighlighted) {
-    const bg = isHighlighted ? COLOUR.quadActiveBg : COLOUR.quadInactiveBg;
+    const style = quadrantStyle(code);
     return new TableCell({
       borders,
-      shading: { type: ShadingType.CLEAR, color: 'auto', fill: bg },
+      shading: { type: ShadingType.CLEAR, color: 'auto', fill: style.bg },
       margins: { top: 80, bottom: 80, left: 100, right: 100 },
       children: [
         new Paragraph({
           children: [
-            ...(isHighlighted ? [new TextRun({ text: '\u25B6 ', font: FONT.body, size: 20, color: COLOUR.text })] : []),
-            new TextRun({ text: label, font: FONT.heading, size: 20, bold: true, color: COLOUR.text }),
+            ...(isHighlighted ? [new TextRun({ text: '\u25B6 ', font: FONT.body, size: 20, color: style.fg })] : []),
+            new TextRun({ text: label, font: FONT.heading, size: 20, bold: true, color: style.fg }),
           ],
           spacing: { after: 40 },
         }),
         new Paragraph({
-          children: [new TextRun({ text: desc, font: FONT.body, size: 17, italics: true, color: COLOUR.text })],
+          children: [new TextRun({ text: desc, font: FONT.body, size: 17, italics: true, color: style.fg })],
         }),
       ],
     });
@@ -1111,6 +1122,9 @@ export async function buildReportDocx({
     : '';
 
   const doc = new Document({
+    features: {
+      updateFields: true,
+    },
     styles: {
       default: {
         document: {
@@ -1180,7 +1194,7 @@ export async function buildReportDocx({
           new Paragraph({ pageBreakBefore: true }),
           h1('Table of Contents'),
           new TableOfContents('Contents', { hyperlink: true, headingStyleRange: '1-3' }),
-          bodySmallItalic("Note: Right-click the table of contents and select 'Update Field' to refresh page numbers after any edits."),
+          bodySmallItalic('Note: Page numbers are configured to refresh automatically when the DOCX is opened in Microsoft Word.'),
 
           // ── Executive Summary ─────────────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),

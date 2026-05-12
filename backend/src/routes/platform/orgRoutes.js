@@ -3388,7 +3388,7 @@ export function registerPlatformOrgRoutes(router) {
         totalCellCount: crossMatrixTotal,
       },
       section5: {
-        cardLabel: `Section 5 — Team-Level Sponsorship Chain Breakdown · Showing ${teamRowsLimited.length} of ${sortedTeamRows.length} teams`,
+        cardLabel: `Section 4 — Team-Level Sponsorship Chain Breakdown · Showing ${teamRowsLimited.length} of ${sortedTeamRows.length} teams`,
         explainer:
           'Maps the sponsorship chain state to each team — distinguishing teams with local failure from those experiencing the broader organisational pattern, and identifying which teams require targeted pre-launch engagement.',
         rows: teamRowsLimited,
