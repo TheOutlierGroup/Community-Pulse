@@ -70,6 +70,41 @@ async function injectTheme(docxBuffer) {
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
+// The docx library emits a TOC StructuredDocumentTag (SDT) with the
+// field's `begin`/`separate` chars in one paragraph and `end` in the
+// next, and with no placeholder text inside the SDT content. Word for
+// Mac flags this layout as "unreadable content" on open and prompts to
+// repair the file. We rewrite the SDT block to a single, well-formed
+// paragraph that contains the entire field plus a human-readable
+// placeholder, which Word both renders cleanly and is happy to refresh
+// via Update Field.
+async function repairTocField(docxBuffer) {
+  const zip = await JSZip.loadAsync(docxBuffer);
+  const docXml = await zip.file('word/document.xml').async('string');
+
+  const tocSdtPattern = /<w:sdt>\s*<w:sdtPr><w:alias w:val="Contents"\/><\/w:sdtPr>\s*<w:sdtContent>[\s\S]*?<\/w:sdtContent>\s*<\/w:sdt>/g;
+
+  const placeholder = 'Page numbers populate when this report is opened in Microsoft Word — right-click here and choose "Update Field" if the table below is empty.';
+  const replacement = (
+    '<w:p>'
+    + '<w:pPr><w:spacing w:after="200"/></w:pPr>'
+    + '<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="20"/><w:i/></w:rPr>'
+    + '<w:fldChar w:fldCharType="begin" w:dirty="true"/>'
+    + '<w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText>'
+    + '<w:fldChar w:fldCharType="separate"/>'
+    + `<w:t xml:space="preserve">${placeholder}</w:t>`
+    + '<w:fldChar w:fldCharType="end"/>'
+    + '</w:r>'
+    + '</w:p>'
+  );
+
+  const updatedXml = docXml.replace(tocSdtPattern, replacement);
+  if (updatedXml === docXml) return docxBuffer;
+
+  zip.file('word/document.xml', updatedXml);
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
 // Palette aligned with the Outlier report style guide:
 // - Single ink colour (#1F1C2E) for ALL body, heading, and label text.
 // - Status colours are reserved for in-cell score/severity badges where
@@ -1402,5 +1437,6 @@ export async function buildReportDocx({
   });
 
   const rawBuffer = await Packer.toBuffer(doc);
-  return injectTheme(rawBuffer);
+  const themedBuffer = await injectTheme(rawBuffer);
+  return repairTocField(themedBuffer);
 }
