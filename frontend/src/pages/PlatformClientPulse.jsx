@@ -1332,7 +1332,9 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-header__eyebrow">Client Administration</p>
             <div className="pulse-clean-header__title-row">
               <h2 className="pulse-clean-header__title">{pageTitle}</h2>
-              <span className="pulse-clean-header__cohort-pill">Manager Cohort Only</span>
+              {showingSponsorshipOnly ? (
+                <span className="pulse-clean-header__cohort-pill">Manager Cohort Only</span>
+              ) : null}
             </div>
             <p className="pulse-clean-header__timepoint">{selectedTimepointLabel}</p>
           </div>
@@ -1346,9 +1348,11 @@ export default function PlatformClientPulse() {
             </button>
           </div>
         </div>
-        <div className="pulse-clean-header__cohort-banner">
-          {'MANAGER COHORT VIEW \u2014 Scores on this page reflect manager responses only and will differ from organisation-wide figures.'}
-        </div>
+        {showingSponsorshipOnly ? (
+          <div className="pulse-clean-header__cohort-banner">
+            {'MANAGER COHORT VIEW \u2014 Scores on this page reflect manager responses only and will differ from organisation-wide figures.'}
+          </div>
+        ) : null}
 
         <div className={`pulse-clean-header__kpis${showingFullDashboard ? ' pulse-clean-header__kpis--with-verdict' : ''}`}>
           <div className="pulse-clean-header__kpi">
