@@ -14,6 +14,7 @@ import platformAnnouncementRoutes from './platform/announcementRoutes.js';
 import platformBusinessUnitRoutes from './platform/businessUnitRoutes.js';
 import platformAccountRoutes from './platform/accountRoutes.js';
 import platformLeadRoutes from './platform/leadRoutes.js';
+import platformProjectRoutes from './platform/projectRoutes.js';
 import { checkPulseSoWhatSummaryHealth } from '../services/pulseSoWhatSummary.js';
 
 const router = Router();
@@ -80,6 +81,7 @@ router.get('/health/ai-summary', async (req, res) => {
 router.use('/business-units', platformBusinessUnitRoutes);
 router.use('/accounts', platformAccountRoutes);
 router.use(platformLeadRoutes);
+router.use(platformProjectRoutes);
 
 router.use(requirePlatformOnlyUser, platformComplianceRoutes);
 router.use(requirePlatformOnlyUser, platformPrivacyRoutes);
