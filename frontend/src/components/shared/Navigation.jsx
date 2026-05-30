@@ -15,6 +15,10 @@ import {
   UserPlus,
   SlidersHorizontal,
   Plus,
+  Briefcase,
+  Users2,
+  FolderKanban,
+  Webhook,
 } from 'lucide-react';
 import {
   CLIENT_SERVICE_PULSE,
@@ -372,6 +376,10 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
               <NavLink to="/platform/users" className={sidebarLinkClass}>
                 <Users size={20} strokeWidth={1.75} aria-hidden />
                 Users
+              </NavLink>
+              <NavLink to="/platform/crm" className={sidebarLinkClass}>
+                <Briefcase size={20} strokeWidth={1.75} aria-hidden />
+                CRM
               </NavLink>
               {user.role === 'admin' && !isLicensee && (
                 <NavLink to="/platform/settings" className={sidebarLinkClass}>

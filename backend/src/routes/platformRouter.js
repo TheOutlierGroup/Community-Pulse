@@ -11,6 +11,11 @@ import platformPrivacyRoutes from './platform/privacyRoutes.js';
 import platformStatusIncidentRoutes from './platform/statusIncidentRoutes.js';
 import platformSupportTaskRoutes from './platform/supportTaskRoutes.js';
 import platformAnnouncementRoutes from './platform/announcementRoutes.js';
+import platformBusinessUnitRoutes from './platform/businessUnitRoutes.js';
+import platformAccountRoutes from './platform/accountRoutes.js';
+import platformLeadRoutes from './platform/leadRoutes.js';
+import platformProjectRoutes from './platform/projectRoutes.js';
+import platformWebhookRoutes from './platform/webhookRoutes.js';
 import { checkPulseSoWhatSummaryHealth } from '../services/pulseSoWhatSummary.js';
 
 const router = Router();
@@ -73,6 +78,13 @@ router.get('/health/ai-summary', async (req, res) => {
 // Platform-only sub-surfaces (compliance, privacy, work-task board) are not
 // part of the licensee product. Reject licensees at the router boundary so
 // individual route files can stay focused on their happy path.
+// CRM surfaces: BU, accounts, leads — available to both platform and licensee workspaces
+router.use('/business-units', platformBusinessUnitRoutes);
+router.use('/accounts', platformAccountRoutes);
+router.use(platformLeadRoutes);
+router.use(platformProjectRoutes);
+router.use(platformWebhookRoutes);
+
 router.use(requirePlatformOnlyUser, platformComplianceRoutes);
 router.use(requirePlatformOnlyUser, platformPrivacyRoutes);
 router.use(requirePlatformOnlyUser, platformTaskRoutes);
