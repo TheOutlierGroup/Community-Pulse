@@ -5,6 +5,7 @@ import * as BusinessUnit from '../../models/BusinessUnit.js';
 import * as Account from '../../models/Account.js';
 import { requirePlatformAdminRole } from '../../middleware/auth.js';
 import { logActivity } from '../../models/Lead.js';
+import { dispatchEvent } from '../../services/webhookDispatchService.js';
 
 const router = Router();
 
@@ -158,6 +159,9 @@ router.post('/leads', async (req, res, next) => {
     });
     await logActivity(lead.id, req.user.id, Lead.LEAD_ACTIVITY_TYPES.CREATED, { title: lead.title });
     const full = await Lead.getLead(lead.id);
+    dispatchEvent(req.workspaceOrganization.id, 'lead.created', {
+      leadId: full.id, title: full.title, businessUnitId: full.business_unit_id, buName: full.bu_name,
+    });
     res.status(201).json({ lead: publicLead(full) });
   } catch (e) { next(e); }
 });
@@ -213,6 +217,7 @@ router.post('/leads/:leadId/mark-won', async (req, res, next) => {
     if (!won) return res.status(409).json({ error: 'Could not mark lead as won' });
     await logActivity(won.id, req.user.id, Lead.LEAD_ACTIVITY_TYPES.WON, {});
     const full = await Lead.getLead(won.id);
+    dispatchEvent(req.workspaceOrganization.id, 'lead.won', { leadId: full.id, title: full.title });
     res.json({ lead: publicLead(full) });
   } catch (e) { next(e); }
 });
@@ -229,6 +234,7 @@ router.post('/leads/:leadId/mark-lost', async (req, res, next) => {
     if (!lost) return res.status(409).json({ error: 'Could not mark lead as lost' });
     await logActivity(lost.id, req.user.id, Lead.LEAD_ACTIVITY_TYPES.LOST, { reason: req.body.reason });
     const full = await Lead.getLead(lost.id);
+    dispatchEvent(req.workspaceOrganization.id, 'lead.lost', { leadId: full.id, title: full.title, reason: req.body.reason || null });
     res.json({ lead: publicLead(full) });
   } catch (e) { next(e); }
 });

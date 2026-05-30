@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import * as Project from '../../models/Project.js';
 import * as Lead from '../../models/Lead.js';
+import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import { convertLeadToProject } from '../../services/leadConversionService.js';
+import { dispatchEvent } from '../../services/webhookDispatchService.js';
 
 const router = Router();
 
@@ -75,6 +77,10 @@ router.post('/leads/:leadId/convert', async (req, res, next) => {
     const result = await convertLeadToProject(req.params.leadId, req.user.id);
     if (result.error) return res.status(409).json({ error: result.error });
 
+    dispatchEvent(orgId, 'project.created', {
+      projectId: result.project.id, projectName: result.project.name,
+      leadId: result.lead.id, businessUnitId: result.project.business_unit_id,
+    });
     res.status(201).json({
       project: publicProject(result.project),
       lead: { id: result.lead.id, lockedAt: result.lead.locked_at, wonAt: result.lead.won_at },
@@ -129,6 +135,9 @@ router.patch('/projects/:projectId', async (req, res, next) => {
       await Project.logActivity(project.id, req.user.id, Project.PROJECT_ACTIVITY_TYPES.STATUS_CHANGED, {
         from: prevStatus, to: status,
       });
+      dispatchEvent(project.organization_id, 'project.status_changed', {
+        projectId: project.id, projectName: project.name, from: prevStatus, to: status,
+      });
     }
 
     const full = await Project.getProject(updated.id);
@@ -173,6 +182,20 @@ router.post('/projects/:projectId/time-logs', async (req, res, next) => {
       hours: Number(hours), taskId: taskId || null, description: description || null,
     });
 
+    // Fire over-budget webhook if actual cost now exceeds baseline
+    if (Number(project.baseline_cost) > 0) {
+      const summary = await Project.getTimeSummary(project.id);
+      if (summary.actualCost > Number(project.baseline_cost)) {
+        dispatchEvent(project.organization_id, 'project.over_budget', {
+          projectId: project.id,
+          projectName: project.name,
+          baselineCost: Number(project.baseline_cost),
+          actualCost: summary.actualCost,
+          overBy: summary.actualCost - Number(project.baseline_cost),
+        });
+      }
+    }
+
     res.status(201).json({ timeLog: publicTimeLog({ ...log, user_email: null, user_first_name: null, user_last_name: null, task_title: null, line_cost: Number(hours) * Number(costRate || 0) }) });
   } catch (e) { next(e); }
 });
@@ -201,6 +224,66 @@ router.delete('/projects/:projectId/time-logs/:logId', async (req, res, next) =>
     }
     await Project.deleteTimeLog(req.params.logId);
     res.status(204).end();
+  } catch (e) { next(e); }
+});
+
+// ── Project tasks (Kanban + List) ─────────────────────────────────────────────
+
+// GET /api/platform/projects/:projectId/tasks
+// Returns all tasks grouped by status for Kanban, or flat for List view.
+// Query param: view=kanban (default) | list
+router.get('/projects/:projectId/tasks', async (req, res, next) => {
+  try {
+    const project = await Project.getProject(req.params.projectId);
+    if (!project || project.organization_id !== req.workspaceOrganization.id) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const { limit, offset } = req.query;
+    const tasks = await ClientWorkTask.listTasksForProject(project.id, project.organization_id, { limit, offset });
+    const counts = await ClientWorkTask.countTasksByStatusForProject(project.id);
+
+    if (req.query.view === 'list') {
+      return res.json({ tasks, counts });
+    }
+    // Kanban: group by status column
+    const columns = ClientWorkTask.TASK_BOARD_STATUSES.reduce((acc, s) => {
+      acc[s] = tasks.filter((t) => t.status === s);
+      return acc;
+    }, {});
+    res.json({ columns, counts });
+  } catch (e) { next(e); }
+});
+
+// POST /api/platform/projects/:projectId/tasks
+router.post('/projects/:projectId/tasks', async (req, res, next) => {
+  try {
+    const project = await Project.getProject(req.params.projectId);
+    if (!project || project.organization_id !== req.workspaceOrganization.id) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const { title } = req.body;
+    if (!title || !String(title).trim()) return res.status(400).json({ error: 'title is required' });
+
+    const task = await ClientWorkTask.createProjectTask(
+      project.organization_id,
+      project.id,
+      req.body,
+      req.user.id
+    );
+    if (!task) return res.status(400).json({ error: 'Could not create task' });
+    res.status(201).json({ task });
+  } catch (e) { next(e); }
+});
+
+// PATCH /api/platform/projects/:projectId/tasks/reorder
+router.patch('/projects/:projectId/tasks/reorder', async (req, res, next) => {
+  try {
+    const project = await Project.getProject(req.params.projectId);
+    if (!project || project.organization_id !== req.workspaceOrganization.id) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    await ClientWorkTask.reorderTasksForOrg(project.organization_id, req.body.updates || [], req.user.id);
+    res.json({ ok: true });
   } catch (e) { next(e); }
 });
 

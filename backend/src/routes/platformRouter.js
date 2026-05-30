@@ -15,6 +15,7 @@ import platformBusinessUnitRoutes from './platform/businessUnitRoutes.js';
 import platformAccountRoutes from './platform/accountRoutes.js';
 import platformLeadRoutes from './platform/leadRoutes.js';
 import platformProjectRoutes from './platform/projectRoutes.js';
+import platformWebhookRoutes from './platform/webhookRoutes.js';
 import { checkPulseSoWhatSummaryHealth } from '../services/pulseSoWhatSummary.js';
 
 const router = Router();
@@ -82,6 +83,7 @@ router.use('/business-units', platformBusinessUnitRoutes);
 router.use('/accounts', platformAccountRoutes);
 router.use(platformLeadRoutes);
 router.use(platformProjectRoutes);
+router.use(platformWebhookRoutes);
 
 router.use(requirePlatformOnlyUser, platformComplianceRoutes);
 router.use(requirePlatformOnlyUser, platformPrivacyRoutes);

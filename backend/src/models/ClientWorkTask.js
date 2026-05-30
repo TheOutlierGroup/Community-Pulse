@@ -968,3 +968,121 @@ export function newTaskImageFilename(taskId, ext) {
 export function newCommentImageFilename(commentId, ext) {
   return `c-${commentId}-${randomUUID()}${ext || '.png'}`;
 }
+
+// ── Project-scoped task helpers ───────────────────────────────────────────────
+
+export async function listTasksForProject(projectId, organizationId, { limit, offset } = {}) {
+  const cappedLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 200;
+  const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
+  const { rows } = await query(
+    `WITH scoped_tasks AS (
+       SELECT t.id, t.organization_id, t.title, t.body, t.status, t.position,
+              t.start_date, t.due_date, t.assigned_to, t.created_at, t.updated_at,
+              t.created_by, t.project_id
+       FROM client_work_tasks t
+       WHERE t.project_id = $1 AND t.organization_id = $2
+       ${TASK_LIST_ORDER_BY}
+       LIMIT $3 OFFSET $4
+     )
+     SELECT t.id, t.organization_id, t.project_id, t.title, t.body, t.status, t.position,
+            t.start_date, t.due_date, t.assigned_to, t.created_at, t.updated_at, t.created_by,
+            u.email AS created_by_email, u.first_name AS created_by_first_name,
+            u.last_name AS created_by_last_name,
+            ua.id AS assignee_id, ua.email AS assignee_email,
+            ua.first_name AS assignee_first_name, ua.last_name AS assignee_last_name,
+            oa.kind AS assignee_org_kind,
+            (SELECT COUNT(*)::int FROM client_work_task_images i WHERE i.task_id = t.id) AS image_count,
+            (SELECT COUNT(*)::int FROM client_work_task_comments c WHERE c.task_id = t.id) AS comment_count,
+            (SELECT COUNT(*)::int FROM client_work_task_checklist_items ci WHERE ci.task_id = t.id) AS checklist_count,
+            COALESCE(
+              (SELECT json_agg(json_build_object('id', lb.id, 'name', lb.name) ORDER BY lb.created_at ASC)
+               FROM client_work_task_labels lb WHERE lb.task_id = t.id),
+              '[]'::json
+            ) AS labels_json,
+            COALESCE(
+              (SELECT json_agg(json_build_object('id', tu.id, 'email', tu.email, 'firstName', tu.first_name, 'lastName', tu.last_name) ORDER BY tu.email)
+               FROM client_work_task_tags tt JOIN users tu ON tu.id = tt.user_id WHERE tt.task_id = t.id),
+              '[]'::json
+            ) AS tagged_users_json
+     FROM scoped_tasks t
+     LEFT JOIN users u ON u.id = t.created_by
+     LEFT JOIN users ua ON ua.id = t.assigned_to
+     LEFT JOIN organizations oa ON oa.id = ua.organization_id
+     ${TASK_LIST_ORDER_BY}`,
+    [projectId, organizationId, cappedLimit, safeOffset]
+  );
+  return rows;
+}
+
+export async function createProjectTask(
+  organizationId,
+  projectId,
+  { title, body, notes, startDate, dueDate, assignedTo, taggedUserIds, status },
+  createdByUserId
+) {
+  const t = trimTitle(title);
+  if (!t) return null;
+  const b = trimBody(notes !== undefined ? notes : body);
+  const sd = parseDateInput(startDate);
+  const dd = parseDateInput(dueDate);
+  if (sd === false || dd === false) return null;
+  const st = normalizeTaskStatus(status);
+
+  const { rows: posRows } = await query(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
+     FROM client_work_tasks WHERE project_id = $1 AND status = $2`,
+    [projectId, st]
+  );
+  const nextPos = posRows[0]?.next_pos ?? 0;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `INSERT INTO client_work_tasks
+         (organization_id, project_id, title, body, created_by, status, position,
+          start_date, due_date, assigned_to)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id`,
+      [
+        organizationId, projectId, t, b, createdByUserId, st, nextPos,
+        sd === undefined ? null : sd,
+        dd === undefined ? null : dd,
+        assignedTo || null,
+      ]
+    );
+    const id = rows[0]?.id;
+    if (!id) throw new Error('no id');
+    await client.query(
+      `INSERT INTO client_work_task_activity (task_id, organization_id, actor_id, activity_type, payload)
+       VALUES ($1, $2, $3, $4, '{}'::jsonb)`,
+      [id, organizationId, createdByUserId || null, TASK_ACTIVITY_CREATED]
+    );
+    if (taggedUserIds?.length) {
+      const unique = [...new Set(taggedUserIds.map((x) => String(x)))].slice(0, MAX_TAGGED_USERS);
+      for (const uid of unique) {
+        await client.query(
+          `INSERT INTO client_work_task_tags (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [id, uid]
+        );
+      }
+    }
+    await client.query('COMMIT');
+    return getTaskListRow(id, organizationId);
+  } catch {
+    await client.query('ROLLBACK').catch(() => {});
+    return null;
+  } finally {
+    client.release();
+  }
+}
+
+export async function countTasksByStatusForProject(projectId) {
+  const { rows } = await query(
+    `SELECT status, COUNT(*)::int AS c FROM client_work_tasks WHERE project_id = $1 GROUP BY status`,
+    [projectId]
+  );
+  const counts = { todo: 0, working: 0, review: 0, completed: 0 };
+  for (const r of rows) counts[r.status] = r.c;
+  return counts;
+}
