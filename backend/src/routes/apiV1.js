@@ -3,6 +3,7 @@ import { requireApiKey } from '../middleware/apiKey.js';
 import { getLicenseeHealthForOrg } from '../services/licenseeHealth.js';
 import { buildLicenseeDataExport } from '../services/licenseeDataExport.js';
 import { dataExportLimiter } from '../middleware/sensitiveRateLimit.js';
+import apiV1LeadRoutes from './apiV1Leads.js';
 
 /**
  * SEC-03 public read-only API surface for licensees, authenticated via
@@ -52,5 +53,8 @@ router.get('/me/data-export', requireApiKey, dataExportLimiter, async (req, res,
     next(error);
   }
 });
+
+// Lead ingestion — POST /api/v1/leads/ingest
+router.use(apiV1LeadRoutes);
 
 export default router;
