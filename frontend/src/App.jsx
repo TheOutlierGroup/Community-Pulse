@@ -31,6 +31,12 @@ const PublicRhythmEngine = lazy(() => import('./pages/PublicRhythmEngine.jsx'));
 const PlatformClientAccount = lazy(() => import('./pages/PlatformClientAccount.jsx'));
 const PlatformUsers = lazy(() => import('./pages/PlatformUsers.jsx'));
 const PlatformSettings = lazy(() => import('./pages/PlatformSettings.jsx'));
+const PlatformCRM = lazy(() => import('./pages/PlatformCRM.jsx'));
+const PlatformLeads = lazy(() => import('./pages/PlatformLeads.jsx'));
+const PlatformAccounts = lazy(() => import('./pages/PlatformAccounts.jsx'));
+const PlatformProjects = lazy(() => import('./pages/PlatformProjects.jsx'));
+const PlatformProjectDetail = lazy(() => import('./pages/PlatformProjectDetail.jsx'));
+const PlatformCRMSettings = lazy(() => import('./pages/PlatformCRMSettings.jsx'));
 const PublicStatus = lazy(() => import('./pages/PublicStatus.jsx'));
 const ClientHome = lazy(() => import('./pages/ClientHome.jsx'));
 const AccountPage = lazyWithReload(
@@ -76,6 +82,12 @@ export default function App() {
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/clients" element={<PlatformClients />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/users" element={<PlatformUsers />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/settings" element={<PlatformSettings />} />}
+            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm" element={<PlatformCRM />} />}
+            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/leads" element={<PlatformLeads />} />}
+            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/accounts" element={<PlatformAccounts />} />}
+            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/projects" element={<PlatformProjects />} />}
+            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/projects/:projectId" element={<PlatformProjectDetail />} />}
+            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/settings" element={<PlatformCRMSettings />} />}
             <Route path="/account" element={<AccountPage />} />
             <Route path="/settings" element={<Navigate to="/account" replace />} />
             <Route path="/client" element={<ClientHome />} />

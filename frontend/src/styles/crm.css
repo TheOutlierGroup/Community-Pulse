@@ -1,0 +1,377 @@
+/* ── CRM module styles ──────────────────────────────────────────────────────── */
+
+/* Pipeline board */
+.pipeline-board {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+  align-items: flex-start;
+  min-height: 60vh;
+}
+
+.pipeline-col {
+  flex: 0 0 260px;
+  background: var(--surface2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+
+.pipeline-col__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  gap: 0.5rem;
+}
+
+.pipeline-col__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.pipeline-col__count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--border);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.pipeline-col__body {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.pipeline-col--won .pipeline-col__title { color: #1e855d; }
+.pipeline-col--won .pipeline-col__count { background: rgba(30,133,93,0.12); color: #1e855d; }
+.pipeline-col--lost .pipeline-col__title { color: var(--danger); }
+.pipeline-col--lost .pipeline-col__count { background: rgba(220,38,38,0.12); color: var(--danger); }
+
+/* Lead card */
+.lead-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  transition: box-shadow 0.12s, border-color 0.12s;
+}
+
+.lead-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  border-color: var(--accent);
+}
+
+.lead-card__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  line-height: 1.35;
+}
+
+.lead-card__meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.lead-card__account {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.lead-card__locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #1e855d;
+  margin-top: 0.4rem;
+}
+
+/* Budget panel — Baseline vs Actual */
+.budget-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+.budget-panel__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 1rem;
+}
+
+.budget-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  gap: 1rem;
+}
+
+.budget-row:last-child { border-bottom: none; }
+
+.budget-row__label { color: var(--muted); }
+
+.budget-row__value { font-weight: 600; }
+
+.budget-row__value--over { color: var(--danger); }
+
+.budget-row__value--ok { color: #1e855d; }
+
+.budget-bar {
+  margin-top: 1rem;
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.budget-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #1e855d;
+  transition: width 0.4s ease;
+}
+
+.budget-bar__fill--over { background: var(--danger); }
+
+/* CRM status badges */
+.badge-won   { background: rgba(30,133,93,0.14); color: #1e855d; }
+.badge-lost  { background: rgba(220,38,38,0.12); color: var(--danger); }
+.badge-open  { background: rgba(var(--accent-rgb,254,202,118),0.2); color: #8b6914; }
+.badge-planning   { background: var(--surface2); color: var(--muted); }
+.badge-active-proj { background: rgba(30,133,93,0.14); color: #1e855d; }
+.badge-on-hold { background: rgba(217,119,6,0.12); color: var(--warn); }
+.badge-completed  { background: rgba(30,133,93,0.14); color: #1e855d; }
+.badge-archived { background: var(--surface2); color: var(--muted); }
+
+/* CRM page header row */
+.crm-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.crm-page-header h1 {
+  margin: 0;
+}
+
+/* View toggle (Kanban / List) */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.view-toggle__btn {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--muted);
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: background 0.1s, color 0.1s;
+}
+
+.view-toggle__btn--active {
+  background: var(--accent);
+  color: #18181b;
+}
+
+.view-toggle__btn:hover:not(.view-toggle__btn--active) {
+  background: var(--surface2);
+}
+
+/* CRM filter bar */
+.crm-filter-bar {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+  align-items: center;
+}
+
+.crm-filter-bar select,
+.crm-filter-bar input {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  min-height: 38px;
+}
+
+/* Project task board — reuses pipeline-board layout inside project detail */
+.project-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .project-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* CRM summary cards on hub */
+.crm-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.crm-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.12s, border-color 0.12s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.crm-stat-card:hover {
+  box-shadow: var(--shadow);
+  border-color: var(--accent);
+}
+
+.crm-stat-card__label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.crm-stat-card__value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.crm-stat-card__sub {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+/* Time log list */
+.time-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.time-log-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border);
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.time-log-item:last-child { border-bottom: none; }
+
+.time-log-item__left { flex: 1; min-width: 0; }
+
+.time-log-item__desc {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.time-log-item__meta { color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
+
+.time-log-item__right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.time-log-item__hours { font-weight: 700; }
+
+.time-log-item__cost { color: var(--muted); font-size: 0.78rem; }
+
+/* Activity feed */
+.activity-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.activity-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.activity-item:last-child { border-bottom: none; }
+
+.activity-item__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+  margin-top: 0.35rem;
+}
+
+.activity-item__body { flex: 1; min-width: 0; }
+
+.activity-item__text { line-height: 1.4; }
+
+.activity-item__time {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
