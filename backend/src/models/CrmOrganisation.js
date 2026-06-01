@@ -1,0 +1,115 @@
+import pool from '../db.js';
+
+export const BUSINESS_UNITS = [
+  'Outlier Core',
+  'Outlier Skate',
+  'Rhythm Engine',
+  'Adoption Accelerator',
+  'AI-Human Workforce Design',
+  'ET Inc',
+];
+
+export const LEAD_STATUSES = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost', 'On Hold'];
+
+export async function listOrganisations(platformOrgId, { search, businessUnit, leadStatus, limit = 100, offset = 0 } = {}) {
+  const conditions = ['o.platform_org_id = $1'];
+  const values = [platformOrgId];
+  let i = 2;
+
+  if (search) {
+    conditions.push(`o.organisation_name ILIKE $${i++}`);
+    values.push(`%${search}%`);
+  }
+  if (businessUnit) {
+    conditions.push(`o.business_unit = $${i++}`);
+    values.push(businessUnit);
+  }
+  if (leadStatus) {
+    conditions.push(`o.lead_status = $${i++}`);
+    values.push(leadStatus);
+  }
+
+  const { rows } = await pool.query(
+    `SELECT o.*,
+            COUNT(c.contact_id) AS contact_count
+       FROM crm_organisations o
+       LEFT JOIN crm_contacts c ON c.organisation_id = o.organisation_id
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY o.organisation_id
+      ORDER BY o.updated_at DESC
+      LIMIT $${i++} OFFSET $${i++}`,
+    [...values, limit, offset],
+  );
+  return rows;
+}
+
+export async function getOrganisation(platformOrgId, organisationId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM crm_organisations WHERE organisation_id = $1 AND platform_org_id = $2`,
+    [organisationId, platformOrgId],
+  );
+  return rows[0] || null;
+}
+
+export async function createOrganisation(platformOrgId, data) {
+  const { organisation_name, industry, website, phone, business_unit, lead_status, lead_source, expected_close_date } = data;
+  const { rows } = await pool.query(
+    `INSERT INTO crm_organisations
+       (organisation_name, industry, website, phone, business_unit, lead_status, lead_source, expected_close_date, platform_org_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     RETURNING *`,
+    [
+      organisation_name,
+      industry || null,
+      website || null,
+      phone || null,
+      business_unit || 'Outlier Core',
+      lead_status || 'New',
+      lead_source || null,
+      expected_close_date || null,
+      platformOrgId,
+    ],
+  );
+  return rows[0];
+}
+
+export async function updateOrganisation(platformOrgId, organisationId, data) {
+  const allowed = ['organisation_name', 'industry', 'website', 'phone', 'business_unit', 'lead_status', 'lead_source', 'expected_close_date'];
+  const sets = [];
+  const values = [];
+  let i = 1;
+
+  for (const key of allowed) {
+    if (key in data) {
+      sets.push(`${key} = $${i++}`);
+      values.push(data[key] ?? null);
+    }
+  }
+  if (sets.length === 0) return getOrganisation(platformOrgId, organisationId);
+
+  sets.push(`updated_at = NOW()`);
+  values.push(organisationId, platformOrgId);
+
+  const { rows } = await pool.query(
+    `UPDATE crm_organisations SET ${sets.join(', ')}
+      WHERE organisation_id = $${i++} AND platform_org_id = $${i++}
+      RETURNING *`,
+    values,
+  );
+  return rows[0] || null;
+}
+
+export async function deleteOrganisation(platformOrgId, organisationId) {
+  await pool.query(
+    `DELETE FROM crm_organisations WHERE organisation_id = $1 AND platform_org_id = $2`,
+    [organisationId, platformOrgId],
+  );
+}
+
+export async function organisationBelongsToOrg(platformOrgId, organisationId) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM crm_organisations WHERE organisation_id = $1 AND platform_org_id = $2`,
+    [organisationId, platformOrgId],
+  );
+  return rows.length > 0;
+}
