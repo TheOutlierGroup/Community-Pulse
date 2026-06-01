@@ -2,7 +2,7 @@ import { query } from '../config/database.js';
 
 export async function listNotesForOrg(organisationId) {
   const { rows } = await query(
-    `SELECT n.*, u.name AS author_name
+    `SELECT n.*, u.first_name || ' ' || COALESCE(u.last_name, '') AS author_name
        FROM crm_notes n
        LEFT JOIN users u ON u.id = n.created_by
       WHERE n.organisation_id = $1
@@ -14,7 +14,7 @@ export async function listNotesForOrg(organisationId) {
 
 export async function listNotesForContact(contactId) {
   const { rows } = await query(
-    `SELECT n.*, u.name AS author_name
+    `SELECT n.*, u.first_name || ' ' || COALESCE(u.last_name, '') AS author_name
        FROM crm_notes n
        LEFT JOIN users u ON u.id = n.created_by
       WHERE n.contact_id = $1
