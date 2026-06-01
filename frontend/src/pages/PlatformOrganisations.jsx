@@ -11,7 +11,7 @@ import { BUSINESS_UNITS, LEAD_STATUSES, LEAD_STATUS_BADGE } from '../config/crmC
 import '../styles/crm.css';
 
 function fmtDate(d) {
-  if (!d) return '';
+  if (!d) return '—';
   return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
@@ -100,7 +100,7 @@ export default function PlatformOrganisations() {
         </div>
 
         <div className="table-wrap">
-          <table className="platform-users-table">
+          <table className="crm-table">
             <thead>
               <tr>
                 <th>Organisation</th>
@@ -108,31 +108,29 @@ export default function PlatformOrganisations() {
                 <th>Status</th>
                 <th>Industry</th>
                 <th>Last Updated</th>
-                <th></th>
+                <th style={{ width: 32 }}></th>
               </tr>
             </thead>
             <tbody>
               {fetching && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>Loading…</td></tr>
+                <tr><td colSpan={6} className="crm-table__empty">Loading…</td></tr>
               )}
               {!fetching && orgs.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: '2rem' }}>
-                  No organisations yet. Add one to get started.
-                </td></tr>
+                <tr><td colSpan={6} className="crm-table__empty">No organisations yet. Add one to get started.</td></tr>
               )}
               {orgs.map((o) => (
                 <tr
                   key={o.organisation_id}
-                  className="platform-users-table__row--clickable"
+                  className="crm-table__row--clickable"
                   onClick={() => navigate(`/platform/crm/organisations/${o.organisation_id}`)}
                   tabIndex={0}
                   onKeyDown={(e) => e.key === 'Enter' && navigate(`/platform/crm/organisations/${o.organisation_id}`)}
                 >
-                  <td style={{ fontWeight: 600 }}>{o.organisation_name}</td>
-                  <td style={{ color: 'var(--muted)' }}>{o.business_unit}</td>
+                  <td className="crm-table__primary">{o.organisation_name}</td>
+                  <td>{o.business_unit}</td>
                   <td><span className={LEAD_STATUS_BADGE[o.lead_status] || 'badge'}>{o.lead_status}</span></td>
-                  <td style={{ color: 'var(--muted)' }}>{o.industry || '—'}</td>
-                  <td style={{ color: 'var(--muted)', fontSize: '0.82rem' }}>{fmtDate(o.updated_at)}</td>
+                  <td>{o.industry || '—'}</td>
+                  <td>{fmtDate(o.updated_at)}</td>
                   <td><ChevronRight size={16} strokeWidth={2} color="var(--muted)" aria-hidden /></td>
                 </tr>
               ))}
@@ -143,12 +141,12 @@ export default function PlatformOrganisations() {
 
       {createOpen && (
         <div className="modal-backdrop" onClick={() => setCreateOpen(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal aria-labelledby="create-org-title">
+          <div className="modal-dialog modal-dialog--wide card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal aria-labelledby="create-org-title">
             <div className="modal-dialog__head">
-              <h2 id="create-org-title">New Organisation</h2>
+              <h2 id="create-org-title" style={{ fontSize: '1.15rem', fontWeight: 700 }}>New Organisation</h2>
               <button className="modal-dialog__close" onClick={() => setCreateOpen(false)} aria-label="Close" />
             </div>
-            <form onSubmit={create}>
+            <form onSubmit={create} style={{ marginTop: '1rem' }}>
               <div className="field">
                 <label htmlFor="org-name">Organisation name *</label>
                 <input id="org-name" value={form.organisation_name} onChange={(e) => setForm((p) => ({ ...p, organisation_name: e.target.value }))} required autoFocus />
