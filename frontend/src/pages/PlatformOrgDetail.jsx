@@ -15,13 +15,18 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function fmtDateTime(d) {
+  if (!d) return '';
+  return new Date(d).toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
 function NoteItem({ note, onDelete }) {
   return (
     <div style={{ display: 'flex', gap: '0.6rem', padding: '0.65rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.875rem' }}>
       <div style={{ flex: 1 }}>
         <p style={{ margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.note_text}</p>
         <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.3rem' }}>
-          {fmtDate(note.created_at)}{note.author_name ? ` · ${note.author_name}` : ''}
+          {fmtDateTime(note.created_at)}{note.author_name?.trim() ? ` · ${note.author_name.trim()}` : ''}
         </div>
       </div>
       <button className="btn btn-ghost" style={{ padding: '0.25rem', alignSelf: 'flex-start', flexShrink: 0 }} onClick={() => onDelete(note.note_id)} aria-label="Delete note">
