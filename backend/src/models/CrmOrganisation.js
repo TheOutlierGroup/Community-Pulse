@@ -1,4 +1,4 @@
-import pool from '../db.js';
+import { query } from '../config/database.js';
 
 export const BUSINESS_UNITS = [
   'Outlier Core',
@@ -29,7 +29,7 @@ export async function listOrganisations(platformOrgId, { search, businessUnit, l
     values.push(leadStatus);
   }
 
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `SELECT o.*,
             COUNT(c.contact_id) AS contact_count
        FROM crm_organisations o
@@ -44,7 +44,7 @@ export async function listOrganisations(platformOrgId, { search, businessUnit, l
 }
 
 export async function getOrganisation(platformOrgId, organisationId) {
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `SELECT * FROM crm_organisations WHERE organisation_id = $1 AND platform_org_id = $2`,
     [organisationId, platformOrgId],
   );
@@ -53,7 +53,7 @@ export async function getOrganisation(platformOrgId, organisationId) {
 
 export async function createOrganisation(platformOrgId, data) {
   const { organisation_name, industry, website, phone, business_unit, lead_status, lead_source, expected_close_date } = data;
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `INSERT INTO crm_organisations
        (organisation_name, industry, website, phone, business_unit, lead_status, lead_source, expected_close_date, platform_org_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -90,7 +90,7 @@ export async function updateOrganisation(platformOrgId, organisationId, data) {
   sets.push(`updated_at = NOW()`);
   values.push(organisationId, platformOrgId);
 
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `UPDATE crm_organisations SET ${sets.join(', ')}
       WHERE organisation_id = $${i++} AND platform_org_id = $${i++}
       RETURNING *`,
@@ -100,14 +100,14 @@ export async function updateOrganisation(platformOrgId, organisationId, data) {
 }
 
 export async function deleteOrganisation(platformOrgId, organisationId) {
-  await pool.query(
+  await query(
     `DELETE FROM crm_organisations WHERE organisation_id = $1 AND platform_org_id = $2`,
     [organisationId, platformOrgId],
   );
 }
 
 export async function organisationBelongsToOrg(platformOrgId, organisationId) {
-  const { rows } = await pool.query(
+  const { rows } = await query(
     `SELECT 1 FROM crm_organisations WHERE organisation_id = $1 AND platform_org_id = $2`,
     [organisationId, platformOrgId],
   );
