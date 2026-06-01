@@ -16,9 +16,6 @@ import {
   SlidersHorizontal,
   Plus,
   Briefcase,
-  Users2,
-  FolderKanban,
-  Webhook,
 } from 'lucide-react';
 import {
   CLIENT_SERVICE_PULSE,
@@ -377,7 +374,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 <Users size={20} strokeWidth={1.75} aria-hidden />
                 Users
               </NavLink>
-              <NavLink to="/platform/crm" className={sidebarLinkClass}>
+              <NavLink to="/platform/crm/organisations" className={sidebarLinkClass}>
                 <Briefcase size={20} strokeWidth={1.75} aria-hidden />
                 CRM
               </NavLink>

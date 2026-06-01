@@ -16,6 +16,7 @@ import platformAccountRoutes from './platform/accountRoutes.js';
 import platformLeadRoutes from './platform/leadRoutes.js';
 import platformProjectRoutes from './platform/projectRoutes.js';
 import platformWebhookRoutes from './platform/webhookRoutes.js';
+import crmOrgRoutes from './platform/crmOrgRoutes.js';
 import { checkPulseSoWhatSummaryHealth } from '../services/pulseSoWhatSummary.js';
 
 const router = Router();
@@ -80,6 +81,7 @@ router.get('/health/ai-summary', async (req, res) => {
 // individual route files can stay focused on their happy path.
 // CRM surfaces: BU, accounts, leads — available to both platform and licensee workspaces
 router.use('/business-units', platformBusinessUnitRoutes);
+router.use('/crm', crmOrgRoutes);
 router.use('/accounts', platformAccountRoutes);
 router.use(platformLeadRoutes);
 router.use(platformProjectRoutes);
