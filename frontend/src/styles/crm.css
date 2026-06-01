@@ -1,5 +1,65 @@
 /* ── CRM module styles ──────────────────────────────────────────────────────── */
 
+/* CRM data table */
+.crm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.crm-table thead tr {
+  border-bottom: 2px solid var(--border);
+}
+
+.crm-table th {
+  padding: 0.75rem 1rem;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.crm-table th:first-child { text-align: left; }
+
+.crm-table td {
+  padding: 0.85rem 1rem;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  vertical-align: middle;
+}
+
+.crm-table td:first-child { text-align: left; }
+.crm-table td:last-child { padding: 0.85rem 0.75rem; }
+
+.crm-table__primary {
+  font-weight: 600;
+  color: var(--text) !important;
+}
+
+.crm-table__empty {
+  text-align: center !important;
+  color: var(--muted);
+  padding: 2.5rem 1rem !important;
+}
+
+.crm-table__row--clickable {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.crm-table__row--clickable:hover td {
+  background: var(--surface2);
+}
+
+.crm-table__row--clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* Pipeline board */
 .pipeline-board {
   display: flex;

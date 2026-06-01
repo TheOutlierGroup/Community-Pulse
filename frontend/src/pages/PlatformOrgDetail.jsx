@@ -193,6 +193,7 @@ export default function PlatformOrgDetail() {
   const [contacts, setContacts] = useState([]);
   const [orgNotes, setOrgNotes] = useState([]);
   const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -224,7 +225,8 @@ export default function PlatformOrgDetail() {
         expected_close_date: data.organisation.expected_close_date?.slice(0, 10) || '',
       });
     } catch (e) {
-      showToast(e.response?.data?.error || 'Failed to load organisation.', 'error');
+      const msg = e.response?.data?.error || e.message || 'Failed to load organisation.';
+      setFetchError(msg);
     } finally { setFetching(false); }
   }, [id, showToast]);
 
@@ -309,6 +311,12 @@ export default function PlatformOrgDetail() {
         </div>
 
         {fetching && <p className="muted">Loading…</p>}
+        {fetchError && (
+          <div className="card" style={{ padding: '1.5rem', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'rgba(220,38,38,0.05)' }}>
+            <strong>Could not load organisation:</strong> {fetchError}
+            <br /><span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>This may be a temporary issue — try refreshing, or check that the database migration has run.</span>
+          </div>
+        )}
 
         {org && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1.5rem', alignItems: 'start' }}>

@@ -48,8 +48,8 @@ router.get('/organisations/:id', async (req, res) => {
     ]);
     res.json({ organisation: org, contacts, notes });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Failed to load organisation.' });
+    console.error('[CRM] GET organisation error:', e.message);
+    res.status(500).json({ error: e.message || 'Failed to load organisation.' });
   }
 });
 
