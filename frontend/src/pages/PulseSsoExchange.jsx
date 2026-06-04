@@ -5,6 +5,7 @@ import Layout from '../components/shared/Layout.jsx';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { crmLoginUrl } from '../config/appSurface.js';
 import { getPostLoginPath } from '../utils/postLogin.js';
+import { isWorkspaceUser } from '../hooks/usePlatformAccess.js';
 
 export default function PulseSsoExchange() {
   const { setUserFromLogin, logout } = useAuth();
@@ -32,7 +33,7 @@ export default function PulseSsoExchange() {
         setUserFromLogin(data);
 
         const targetOrgId = data.targetOrganizationId || queryOrgId;
-        if (data.user?.organizationKind === 'platform' && targetOrgId) {
+        if (isWorkspaceUser(data.user) && targetOrgId) {
           navigate(`/platform/clients/${targetOrgId}/rhythm-engine`, { replace: true });
           return;
         }

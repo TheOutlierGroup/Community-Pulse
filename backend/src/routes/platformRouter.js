@@ -58,6 +58,8 @@ if (isPulseSurface) {
       || /^\/organizations\/[^/]+\/logo$/.test(path)
       || /^\/organizations\/[^/]+\/pulse-dashboard$/.test(path)
       || /^\/organizations\/[^/]+\/pulse-link-invites(?:\/.*)?$/.test(path)
+      || /^\/organizations\/[^/]+\/pulse-sessions(?:\/.*)?$/.test(path)
+      || /^\/organizations\/[^/]+\/pulse-timepoints(?:\/.*)?$/.test(path)
       || /^\/health\/ai-summary$/.test(path);
 
     if (!allowed) return res.status(404).json({ error: 'Not found' });
