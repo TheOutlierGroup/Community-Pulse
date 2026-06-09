@@ -9,6 +9,12 @@ import { crmAppBaseUrl } from '../config/appSurface.js';
 
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
+const QUADRANT_DESCRIPTORS = {
+  'Optimal': 'Both adoption readiness and sponsorship credibility are strong. The organisation is positioned to absorb and sustain the change.',
+  'High Risk': 'Both adoption readiness and sponsorship credibility are weak. Fundamental conditions for successful change are not in place.',
+  'Motivated but Lost': 'People are willing to change but lack credible leadership support. Sponsorship is the primary risk.',
+  'Capable but Wary': 'Leadership is driving the change credibly, but the workforce needs more support to build readiness.',
+};
 const DIMENSION_ORDER = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'];
 const PERCEPTION_GAP_THRESHOLD = 1.5;
 const INTRA_DIMENSION_DIVERGENCE_THRESHOLD = 1.5;
@@ -599,7 +605,9 @@ export default function PlatformClientPulse() {
   const normalizedPulseHash = useMemo(() => normalizePulseHash(location.hash), [location.hash]);
   const pageTitle = sectionLabel(pulseFocusedSection);
   const showingFullDashboard = !normalizedPulseHash || normalizedPulseHash === 'organisation-dashboard';
-  const showingSponsorshipOnly = !showingFullDashboard && pulseFocusedSection === 'sponsorship-analysis';
+  const showingSponsorshipOnly = !showingFullDashboard
+    && pulseFocusedSection === 'sponsorship-analysis'
+    && (normalizedPulseHash === 'sponsorship-analysis' || normalizedPulseHash === 'manager-load-report');
   const showTopSummaryCard = showingFullDashboard || showingSponsorshipOnly;
   const showTopSummaryScoreKpis = showingSponsorshipOnly;
   const showTopSummarySponsorshipSignals = showingSponsorshipOnly;
@@ -1409,16 +1417,34 @@ export default function PlatformClientPulse() {
           ) : null}
         </div>
 
-        {showTopSummarySponsorshipSignals && sponsorshipSignals?.headerAdoption?.text ? (
-          <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals.headerAdoption.variant)}`} style={{ marginTop: '0.8rem' }}>
-            <span className="pulse-sa-signal__label">{sponsorshipSignals.headerAdoption.cardLabel || 'Signal'}</span>
-            {renderSignalMarkup(sponsorshipSignals.headerAdoption.text)}
+        {showTopSummarySponsorshipSignals ? (
+          <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals?.headerAdoption?.variant)}`} style={{ marginTop: '0.8rem' }}>
+            <span className="pulse-sa-signal__label">
+              {sponsorshipSignals?.headerAdoption?.cardLabel || 'Avg Adoption Score · Manager Cohort'}
+            </span>
+            {renderSignalMarkup(
+              sponsorshipSignals?.headerAdoption?.text
+              || (Number.isFinite(topCardAdoptionScore)
+                ? (topCardAdoptionScore >= threshold
+                  ? 'The management layer is ready to absorb and drive adoption across teams.'
+                  : 'The management layer needs support to build the adoption capability required for this change.')
+                : 'Adoption score data is not yet available for this cohort.')
+            )}
           </div>
         ) : null}
-        {showTopSummarySponsorshipSignals && sponsorshipSignals?.headerSponsorship?.text ? (
-          <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals.headerSponsorship.variant)}`} style={{ marginTop: '0.55rem' }}>
-            <span className="pulse-sa-signal__label">{sponsorshipSignals.headerSponsorship.cardLabel || 'Signal'}</span>
-            {renderSignalMarkup(sponsorshipSignals.headerSponsorship.text)}
+        {showTopSummarySponsorshipSignals ? (
+          <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals?.headerSponsorship?.variant)}`} style={{ marginTop: '0.55rem' }}>
+            <span className="pulse-sa-signal__label">
+              {sponsorshipSignals?.headerSponsorship?.cardLabel || 'Avg Sponsorship Score · Manager Cohort'}
+            </span>
+            {renderSignalMarkup(
+              sponsorshipSignals?.headerSponsorship?.text
+              || (Number.isFinite(topCardSponsorshipScore)
+                ? (topCardSponsorshipScore >= threshold
+                  ? 'Sponsorship credibility is strong — managers are receiving and passing on adequate leadership support.'
+                  : 'Sponsorship credibility is below threshold — review which sub-score is weaker to identify where the chain is breaking.')
+                : 'Sponsorship score data is not yet available for this cohort.')
+            )}
           </div>
         ) : null}
 
@@ -1545,6 +1571,9 @@ export default function PlatformClientPulse() {
                   >
                     <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
                     <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
+                    {QUADRANT_DESCRIPTORS[quadrant.name] ? (
+                      <p className="pulse-clean-readiness__quadrant-desc">{QUADRANT_DESCRIPTORS[quadrant.name]}</p>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1860,7 +1889,7 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-dimensions__explainer">
               Each dimension expands into its two underlying questions so question-level divergence is visible at a glance.
               Diverged employee or manager chips outline in red; the Dim avg chip flags when the perception gap crosses {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ points.
-              An AI signal appears next to a question whenever its employee/manager gap crosses {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ points,
+              A signal flag appears next to a question whenever its employee/manager gap crosses {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ points,
               and intra-dimension divergence flags trigger at {INTRA_DIMENSION_DIVERGENCE_THRESHOLD.toFixed(1)}+ points.
             </p>
           </div>

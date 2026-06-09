@@ -6839,7 +6839,8 @@ input[type='range'] {
 
 .pulse-clean-exec__scenario-title {
   margin: 0.02rem 0 0.08rem;
-  font-size: 0.66rem;
+  font-size: 0.9rem;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -7068,6 +7069,14 @@ input[type='range'] {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.pulse-clean-readiness__quadrant-desc {
+  margin: 0.4rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: inherit;
+  opacity: 0.9;
 }
 
 .pulse-clean-readiness__statement {
