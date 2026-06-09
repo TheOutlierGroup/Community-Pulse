@@ -300,7 +300,7 @@ function sponsorshipConfigFromOrgSettings(settings) {
     stretchedMin: Number(boundaries.stretchedMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.stretchedMin),
     atCapacityMin: Number(boundaries.atCapacityMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.atCapacityMin),
   };
-  const teamTableDisplayLimit = Number(source.teamTableDisplayLimit ?? 5);
+  const teamTableDisplayLimit = Number(source.teamTableDisplayLimit ?? 50);
   const aiSignalsEnabled = source.aiSignalsEnabled !== false;
   return {
     receivedThreshold,
@@ -309,7 +309,7 @@ function sponsorshipConfigFromOrgSettings(settings) {
     teamTableDisplayLimit:
       Number.isInteger(teamTableDisplayLimit) && teamTableDisplayLimit > 0
         ? teamTableDisplayLimit
-        : 5,
+        : 50,
     aiSignalsEnabled,
   };
 }
