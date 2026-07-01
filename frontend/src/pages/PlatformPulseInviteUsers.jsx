@@ -396,6 +396,7 @@ export default function PlatformPulseInviteUsers() {
   const [testDataStaffCount, setTestDataStaffCount] = useState('0');
   const [testDataManagerCount, setTestDataManagerCount] = useState('0');
   const [testDataGroupCounts, setTestDataGroupCounts] = useState([]);
+  const [testDataGroupNames, setTestDataGroupNames] = useState([]);
   const [testDataMode, setTestDataMode] = useState('generate');
   const [testDataDocFile, setTestDataDocFile] = useState(null);
 
@@ -472,6 +473,12 @@ export default function PlatformPulseInviteUsers() {
         const existing = Number.parseInt(String(previous[index] ?? ''), 10);
         if (Number.isInteger(existing) && existing >= 0) return String(existing);
         return '3';
+      })
+    );
+    setTestDataGroupNames((previous) =>
+      configuredGroupLabels.map((_, index) => {
+        const existing = previous[index];
+        return Array.isArray(existing) && existing.length > 0 ? existing : ['', '', ''];
       })
     );
   }, [configuredGroupLabels, testDataOpen]);
@@ -844,15 +851,14 @@ export default function PlatformPulseInviteUsers() {
       setTestDataError('At least one manager is required when creating staff test users.');
       return;
     }
-    const parsedGroupCounts = configuredGroupLabels.map((_, index) => {
-      const parsed = Number.parseInt(String(testDataGroupCounts[index] ?? '').trim(), 10);
-      if (!Number.isInteger(parsed) || parsed < 0) return 0;
-      return parsed;
+    const parsedGroupNames = configuredGroupLabels.map((_, index) => {
+      const level = Array.isArray(testDataGroupNames[index]) ? testDataGroupNames[index] : [];
+      return level.map((n) => String(n ?? '').trim()).filter(Boolean);
     });
     const groupSummary = configuredGroupLabels
       .map((label, index) => {
-        const count = parsedGroupCounts[index];
-        return `${label}: ${count}`;
+        const names = parsedGroupNames[index];
+        return `${label}: ${names.length > 0 ? names.join(', ') : '(none)'}`;
       })
       .join('\n');
     const confirmed = window.confirm(
@@ -861,7 +867,7 @@ export default function PlatformPulseInviteUsers() {
         '',
         `Managers: ${managerCount}`,
         `Staff: ${staffCount}`,
-        configuredGroupLabels.length > 0 ? `Group counts:\n${groupSummary}` : 'Group counts: none configured',
+        configuredGroupLabels.length > 0 ? `Group names:\n${groupSummary}` : 'Groups: none configured',
         '',
         'This will create users and completed survey responses for this timepoint.',
       ].join('\n')
@@ -876,7 +882,7 @@ export default function PlatformPulseInviteUsers() {
         {
           staffCount,
           managerCount,
-          groupCounts: parsedGroupCounts,
+          groupNames: parsedGroupNames,
         },
         { params: inviteRequestParams }
       );
@@ -1523,25 +1529,63 @@ export default function PlatformPulseInviteUsers() {
                   Total users created = staff + managers.
                 </p>
               </div>
-              {configuredGroupLabels.map((label, index) => (
-                <div className="field" key={`pulse-test-group-count-${index}`}>
-                  <label htmlFor={`pulse-test-group-count-${index}`}>Number of groups for {label}</label>
-                  <input
-                    id={`pulse-test-group-count-${index}`}
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputMode="numeric"
-                    value={testDataGroupCounts[index] ?? ''}
-                    onChange={(e) =>
-                      setTestDataGroupCounts((prev) => {
-                        const next = [...prev];
-                        next[index] = e.target.value;
+              {configuredGroupLabels.map((label, levelIndex) => (
+                <div className="field" key={`pulse-test-group-names-${levelIndex}`}>
+                  <label>{label} names</label>
+                  <p className="muted" style={{ margin: '-0.2rem 0 0.5rem', fontSize: '0.8rem' }}>
+                    Enter the actual {label.toLowerCase()} names for this demo — users will be distributed across them.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    {(testDataGroupNames[levelIndex] ?? ['']).map((name, nameIndex) => (
+                      <div key={nameIndex} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        <input
+                          type="text"
+                          placeholder={`${label} ${nameIndex + 1}`}
+                          value={name}
+                          onChange={(e) =>
+                            setTestDataGroupNames((prev) => {
+                              const next = prev.map((arr) => [...arr]);
+                              if (!Array.isArray(next[levelIndex])) next[levelIndex] = [];
+                              next[levelIndex][nameIndex] = e.target.value;
+                              return next;
+                            })}
+                          disabled={testDataBusy}
+                          style={{ flex: 1 }}
+                        />
+                        {(testDataGroupNames[levelIndex] ?? []).length > 1 ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                            disabled={testDataBusy}
+                            onClick={() =>
+                              setTestDataGroupNames((prev) => {
+                                const next = prev.map((arr) => [...arr]);
+                                next[levelIndex] = next[levelIndex].filter((_, i) => i !== nameIndex);
+                                return next;
+                              })}
+                          >
+                            ✕
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ marginTop: '0.4rem', fontSize: '0.8rem' }}
+                    disabled={testDataBusy}
+                    onClick={() =>
+                      setTestDataGroupNames((prev) => {
+                        const next = prev.map((arr) => [...arr]);
+                        if (!Array.isArray(next[levelIndex])) next[levelIndex] = [];
+                        next[levelIndex] = [...next[levelIndex], ''];
                         return next;
                       })}
-                    disabled={testDataBusy}
-                    required={testDataMode === 'generate'}
-                  />
+                  >
+                    + Add {label}
+                  </button>
                 </div>
               ))}
             </>

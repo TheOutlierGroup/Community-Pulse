@@ -457,16 +457,17 @@ function normalizeGroupCountInput(rawCount) {
   return Math.min(parsed, 100);
 }
 
-function buildTestGroupValues(groupLabels, groupCounts, index) {
-  return groupLabels.map((label, groupIndex) => {
-    const distinctCount = normalizeGroupCountInput(groupCounts?.[groupIndex]);
-    if (distinctCount <= 0) return null;
-    const bucket = (index % distinctCount) + 1;
-    return `${label} ${bucket}`;
+function buildTestGroupValues(groupLabels, groupNames, index) {
+  return groupLabels.map((_, groupIndex) => {
+    const names = Array.isArray(groupNames?.[groupIndex])
+      ? groupNames[groupIndex].filter((n) => String(n ?? '').trim())
+      : [];
+    if (names.length === 0) return null;
+    return names[index % names.length];
   });
 }
 
-function buildTestRecipients({ managerCount, staffCount, groupLabels, groupCounts, datasetToken }) {
+function buildTestRecipients({ managerCount, staffCount, groupLabels, groupNames, datasetToken }) {
   const recipients = [];
   const managerEmails = [];
   let absoluteIndex = 0;
@@ -478,7 +479,7 @@ function buildTestRecipients({ managerCount, staffCount, groupLabels, groupCount
       name: `Test Manager ${i + 1}`,
       email,
       role: 'manager',
-      groupValues: buildTestGroupValues(groupLabels, groupCounts, absoluteIndex),
+      groupValues: buildTestGroupValues(groupLabels, groupNames, absoluteIndex),
     });
     absoluteIndex += 1;
   }
@@ -490,7 +491,7 @@ function buildTestRecipients({ managerCount, staffCount, groupLabels, groupCount
       email: `test-staff-${datasetToken}-${i + 1}@example.com`,
       role: 'staff',
       managerId: managerEmail,
-      groupValues: buildTestGroupValues(groupLabels, groupCounts, absoluteIndex),
+      groupValues: buildTestGroupValues(groupLabels, groupNames, absoluteIndex),
     });
     absoluteIndex += 1;
   }
@@ -4133,15 +4134,18 @@ export function registerPlatformOrgRoutes(router) {
     const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
     if (duringSessionError) return res.status(400).json({ error: duringSessionError });
     const groupLabels = normalizedGroupLevelLabelsFromSettings(org.settings);
-    const groupCounts = Array.isArray(req.body?.groupCounts) ? req.body.groupCounts : [];
-    const normalizedGroupCounts = groupLabels.map((_, index) => normalizeGroupCountInput(groupCounts[index]));
+    const rawGroupNames = Array.isArray(req.body?.groupNames) ? req.body.groupNames : [];
+    const normalizedGroupNames = groupLabels.map((_, index) => {
+      const level = Array.isArray(rawGroupNames[index]) ? rawGroupNames[index] : [];
+      return level.map((n) => String(n ?? '').trim()).filter(Boolean);
+    });
     const datasetToken = randomUUID().replace(/-/g, '').slice(0, 12);
 
     const recipients = buildTestRecipients({
       managerCount,
       staffCount,
       groupLabels,
-      groupCounts: normalizedGroupCounts,
+      groupNames: normalizedGroupNames,
       datasetToken,
     });
     const upsertResult = await upsertPulseInviteRecipients({

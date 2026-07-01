@@ -10,10 +10,10 @@ import { crmAppBaseUrl } from '../config/appSurface.js';
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
 const QUADRANT_DESCRIPTORS = {
-  'Optimal': 'Both adoption readiness and sponsorship credibility are strong. The organisation is positioned to absorb and sustain the change.',
-  'High Risk': 'Both adoption readiness and sponsorship credibility are weak. Fundamental conditions for successful change are not in place.',
-  'Motivated but Lost': 'People are willing to change but lack credible leadership support. Sponsorship is the primary risk.',
-  'Capable but Wary': 'Leadership is driving the change credibly, but the workforce needs more support to build readiness.',
+  'Optimal': ['Both adoption readiness and sponsorship credibility are strong.', 'The organisation is positioned to absorb and sustain the change.'],
+  'High Risk': ['Both adoption readiness and sponsorship credibility are weak.', 'Fundamental conditions for successful change are not in place.'],
+  'Motivated but Lost': ['People are willing to change but lack credible leadership support.', 'Sponsorship is the primary risk.'],
+  'Capable but Wary': ['Leadership is driving the change credibly,', 'but the workforce needs more support to build readiness.'],
 };
 const DIMENSION_ORDER = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'];
 const PERCEPTION_GAP_THRESHOLD = 1.5;
@@ -217,7 +217,7 @@ async function fetchPulseDashboardWithRetry(orgId, params) {
 function sectionLabel(sectionId) {
   if (sectionId === 'organisation-scores') return 'Organisation Scores';
   if (sectionId === 'trend-analysis') return 'Trend Analysis';
-  if (sectionId === 'sponsorship-analysis') return 'Sponsorship Analysis';
+  if (sectionId === 'sponsorship-analysis') return 'Performance Analysis';
   if (sectionId === 'employee-breakdown') return 'Employee Breakdown';
   if (sectionId === 'team-level-view') return 'Team-Level View';
   if (sectionId === 'reports') return 'Reports';
@@ -1418,33 +1418,37 @@ export default function PlatformClientPulse() {
         </div>
 
         {showTopSummarySponsorshipSignals ? (
-          <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals?.headerAdoption?.variant)}`} style={{ marginTop: '0.8rem' }}>
-            <span className="pulse-sa-signal__label">
-              {sponsorshipSignals?.headerAdoption?.cardLabel || 'Avg Adoption Score · Manager Cohort'}
-            </span>
-            {renderSignalMarkup(
-              sponsorshipSignals?.headerAdoption?.text
-              || (Number.isFinite(topCardAdoptionScore)
-                ? (topCardAdoptionScore >= threshold
-                  ? 'The management layer is ready to absorb and drive adoption across teams.'
-                  : 'The management layer needs support to build the adoption capability required for this change.')
-                : 'Adoption score data is not yet available for this cohort.')
-            )}
-          </div>
-        ) : null}
-        {showTopSummarySponsorshipSignals ? (
-          <div className={`pulse-sa-signal ${sponsorshipSignalVariantClass(sponsorshipSignals?.headerSponsorship?.variant)}`} style={{ marginTop: '0.55rem' }}>
-            <span className="pulse-sa-signal__label">
-              {sponsorshipSignals?.headerSponsorship?.cardLabel || 'Avg Sponsorship Score · Manager Cohort'}
-            </span>
-            {renderSignalMarkup(
-              sponsorshipSignals?.headerSponsorship?.text
-              || (Number.isFinite(topCardSponsorshipScore)
-                ? (topCardSponsorshipScore >= threshold
-                  ? 'Sponsorship credibility is strong — managers are receiving and passing on adequate leadership support.'
-                  : 'Sponsorship credibility is below threshold — review which sub-score is weaker to identify where the chain is breaking.')
-                : 'Sponsorship score data is not yet available for this cohort.')
-            )}
+          <div className="pulse-clean-header__score-callouts">
+            <div className="pulse-clean-header__score-callout">
+              <p className="pulse-clean-header__score-callout-label">
+                {sponsorshipSignals?.headerAdoption?.cardLabel || 'Avg Adoption Score · Manager Cohort'}
+              </p>
+              <p className="pulse-clean-header__score-callout-text">
+                {renderSignalMarkup(
+                  sponsorshipSignals?.headerAdoption?.text
+                  || (Number.isFinite(topCardAdoptionScore)
+                    ? (topCardAdoptionScore >= threshold
+                      ? 'The management layer is ready to absorb and drive adoption across teams.'
+                      : 'The management layer needs support to build the adoption capability required for this change.')
+                    : 'Adoption score data is not yet available for this cohort.')
+                )}
+              </p>
+            </div>
+            <div className="pulse-clean-header__score-callout">
+              <p className="pulse-clean-header__score-callout-label">
+                {sponsorshipSignals?.headerSponsorship?.cardLabel || 'Avg Sponsorship Score · Manager Cohort'}
+              </p>
+              <p className="pulse-clean-header__score-callout-text">
+                {renderSignalMarkup(
+                  sponsorshipSignals?.headerSponsorship?.text
+                  || (Number.isFinite(topCardSponsorshipScore)
+                    ? (topCardSponsorshipScore >= threshold
+                      ? 'Sponsorship credibility is strong — managers are receiving and passing on adequate leadership support.'
+                      : 'Sponsorship credibility is below threshold — review which sub-score is weaker to identify where the chain is breaking.')
+                    : 'Sponsorship score data is not yet available for this cohort.')
+                )}
+              </p>
+            </div>
           </div>
         ) : null}
 
@@ -1558,7 +1562,7 @@ export default function PlatformClientPulse() {
                 role="note"
                 aria-label="Quadrant signal banner"
               >
-                <span className="pulse-quadrant-signal__label">Signal</span>
+                <span className="pulse-quadrant-signal__label">Insight</span>
                 <p className="pulse-quadrant-signal__text">
                   {renderSignalMarkup(quadrantSignalText)}
                 </p>
@@ -1572,7 +1576,11 @@ export default function PlatformClientPulse() {
                     <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
                     <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
                     {QUADRANT_DESCRIPTORS[quadrant.name] ? (
-                      <p className="pulse-clean-readiness__quadrant-desc">{QUADRANT_DESCRIPTORS[quadrant.name]}</p>
+                      <p className="pulse-clean-readiness__quadrant-desc">
+                        {QUADRANT_DESCRIPTORS[quadrant.name][0]}
+                        <br />
+                        {QUADRANT_DESCRIPTORS[quadrant.name][1]}
+                      </p>
                     ) : null}
                   </div>
                 ))}
@@ -1728,7 +1736,7 @@ export default function PlatformClientPulse() {
             </div>
             {sponsorshipSignals?.subScores?.text ? (
               <div className="pulse-sa-signal pulse-sa-signal--amber">
-                <span className="pulse-sa-signal__label">Signal</span>
+                <span className="pulse-sa-signal__label">Insight</span>
                 {renderSignalMarkup(sponsorshipSignals.subScores.text)}
               </div>
             ) : null}
@@ -1776,7 +1784,7 @@ export default function PlatformClientPulse() {
             </div>
             {sponsorshipSignals?.load?.text ? (
               <div className="pulse-sa-signal pulse-sa-signal--red">
-                <span className="pulse-sa-signal__label">Signal</span>
+                <span className="pulse-sa-signal__label">Insight</span>
                 {sponsorshipSignals.load.text}
               </div>
             ) : null}
@@ -1798,8 +1806,7 @@ export default function PlatformClientPulse() {
                   || (!dashboard?.sponsorshipAnalysis?.section3?.majorityState && item.percent > 0
                     && item.percent === Math.max(...chainStatusDistribution.map((s) => s.percent)));
                 return (
-                  <article key={quad.status} className={`pulse-sa-chain-tile ${quad.className}`}>
-                    {isMajority ? <span className="pulse-sa-chain-tile__majority">◀ Majority</span> : null}
+                  <article key={quad.status} className={`pulse-sa-chain-tile ${quad.className}${isMajority ? ' pulse-sa-chain-tile--majority' : ''}`}>
                     <p className="pulse-sa-chain-tile__pct">
                       {formatPercent(item.percent)}
                     </p>
@@ -1872,7 +1879,7 @@ export default function PlatformClientPulse() {
               ) : null}
               {sponsorshipSignals?.teams?.text ? (
                 <div className="pulse-sa-signal pulse-sa-signal--red">
-                  <span className="pulse-sa-signal__label">Signal</span>
+                  <span className="pulse-sa-signal__label">Insight</span>
                   {renderSignalMarkup(sponsorshipSignals.teams.text)}
                 </div>
               ) : null}
@@ -1887,10 +1894,7 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-dimensions__eyebrow">Team-Level Overview</p>
             <h3 className="pulse-clean-dimensions__title">Employee/Manager Dimension Heatmap</h3>
             <p className="pulse-clean-dimensions__explainer">
-              Each dimension expands into its two underlying questions so question-level divergence is visible at a glance.
-              Diverged employee or manager chips outline in red; the Dim avg chip flags when the perception gap crosses {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ points.
-              A signal flag appears next to a question whenever its employee/manager gap crosses {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ points,
-              and intra-dimension divergence flags trigger at {INTRA_DIMENSION_DIVERGENCE_THRESHOLD.toFixed(1)}+ points.
+              The detail behind the dimension scores. Employee and manager responses sit side by side so you can see precisely what is driving a weak result and whether both groups are telling the same story.
             </p>
           </div>
 
