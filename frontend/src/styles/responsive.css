@@ -4486,15 +4486,15 @@ input[type='range'] {
 .platform-pulse-page .admin-table td {
   border-color: var(--pulse-border);
   color: var(--pulse-text);
-  font-size: 0.68rem;
-  padding: 0.42rem 0.5rem;
+  font-size: 0.61rem;
+  padding: 0.35rem 0.4rem;
 }
 
 .platform-pulse-page .admin-table th {
   color: var(--pulse-muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  font-size: 0.5rem;
   font-weight: 600;
 }
 

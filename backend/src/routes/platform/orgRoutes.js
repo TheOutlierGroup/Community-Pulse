@@ -4158,6 +4158,7 @@ export function registerPlatformOrgRoutes(router) {
     });
 
     const stage = internalTimepointToPulseStage(timepointPhase);
+    const sessionsByRole = new Map();
     let completedResponses = 0;
     const completionErrors = [];
     for (let index = 0; index < upsertResult.upsertedRows.length; index += 1) {
