@@ -5718,14 +5718,9 @@ input[type='range'] {
   color: inherit;
 }
 
-.pulse-sa-chain-tile__majority {
-  margin: 0 0 0.3rem;
-  font-family: var(--pulse-font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: inherit;
+.pulse-sa-chain-tile--majority {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: -3px;
 }
 
 .pulse-sa-chain-tile .pulse-sa-load-cell__desc {
@@ -6413,6 +6408,45 @@ input[type='range'] {
   padding: 0.42rem 0.7rem 0.4rem;
 }
 
+.pulse-clean-header__score-callouts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.pulse-clean-header__score-callout {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.pulse-clean-header__score-callout-label {
+  margin: 0;
+  font-family: var(--pulse-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 13rem;
+}
+
+.pulse-clean-header__score-callout-text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
 .pulse-clean-header__chip {
   font-size: 0.65rem;
   text-transform: uppercase;
@@ -6840,9 +6874,9 @@ input[type='range'] {
 
 .pulse-clean-exec__scenario-title {
   margin: 0.02rem 0 0.08rem;
-  font-size: 0.9rem;
+  font-size: 1.2rem;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.3;
 }
 
 .pulse-clean-exec__scenario-text {
@@ -7775,6 +7809,43 @@ input[type='range'] {
   color: var(--muted);
   font-size: 0.82rem;
   max-width: 74ch;
+}
+
+.pulse-clean-dimensions__guide {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem 1.5rem;
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 72ch;
+}
+
+.pulse-clean-dimensions__guide-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.pulse-clean-dimensions__guide-item--mid {
+  text-align: center;
+}
+
+.pulse-clean-dimensions__guide-key {
+  font-family: var(--pulse-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text);
+}
+
+.pulse-clean-dimensions__guide-val {
+  font-size: 0.77rem;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .pulse-clean-dimensions__table {
