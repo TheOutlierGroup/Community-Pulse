@@ -1894,26 +1894,8 @@ export default function PlatformClientPulse() {
             <p className="pulse-clean-dimensions__eyebrow">Team-Level Overview</p>
             <h3 className="pulse-clean-dimensions__title">Employee/Manager Dimension Heatmap</h3>
             <p className="pulse-clean-dimensions__explainer">
-              Each dimension expands into its two underlying questions so question-level divergence is visible at a glance.
+              The detail behind the dimension scores. Employee and manager responses sit side by side so you can see precisely what is driving a weak result and whether both groups are telling the same story.
             </p>
-            <div className="pulse-clean-dimensions__guide">
-              <div className="pulse-clean-dimensions__guide-item">
-                <span className="pulse-clean-dimensions__guide-key">Red outline</span>
-                <span className="pulse-clean-dimensions__guide-val">Employee or manager chip is diverged from the other cohort</span>
-              </div>
-              <div className="pulse-clean-dimensions__guide-item pulse-clean-dimensions__guide-item--mid">
-                <span className="pulse-clean-dimensions__guide-key">Dim avg flag</span>
-                <span className="pulse-clean-dimensions__guide-val">Perception gap between employee and manager averages exceeds {PERCEPTION_GAP_THRESHOLD.toFixed(1)} points</span>
-              </div>
-              <div className="pulse-clean-dimensions__guide-item">
-                <span className="pulse-clean-dimensions__guide-key">Q-level flag</span>
-                <span className="pulse-clean-dimensions__guide-val">Individual question gap crosses {PERCEPTION_GAP_THRESHOLD.toFixed(1)}+ points</span>
-              </div>
-              <div className="pulse-clean-dimensions__guide-item pulse-clean-dimensions__guide-item--mid">
-                <span className="pulse-clean-dimensions__guide-key">Intra flag</span>
-                <span className="pulse-clean-dimensions__guide-val">Two questions within the same dimension diverge by {INTRA_DIMENSION_DIVERGENCE_THRESHOLD.toFixed(1)}+ points</span>
-              </div>
-            </div>
           </div>
 
           <div className="table-wrap">
