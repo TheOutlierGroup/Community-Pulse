@@ -11,7 +11,7 @@ function sanitizeName(v) {
 
 export async function findUserByEmail(email) {
   const { rows } = await query(
-    `SELECT id, email, password_hash, role, organization_id FROM users WHERE email = $1`,
+    `SELECT id, email, password_hash, role, organization_id, deactivated_at FROM users WHERE email = $1`,
     [email.toLowerCase().trim()]
   );
   return rows[0] || null;
