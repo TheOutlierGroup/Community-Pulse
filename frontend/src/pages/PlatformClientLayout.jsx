@@ -127,12 +127,20 @@ export default function PlatformClientLayout() {
       .map((session) => {
         const phase = pulseTimepointFromSession(session?.sessionPurpose);
         if (!phase) return null;
-        const dateKey = sessionDateKey(session?.createdAt);
-        if (!dateKey) return null;
+        const name = String(session?.name || '').trim();
+        if (phase === 'during' && name === 'During' && session?.status === 'draft') {
+          // Untouched bootstrap placeholder created by ensureDefaultPulseSessionsForOrg —
+          // never a real checkpoint, so it shouldn't surface as one.
+          return null;
+        }
+        const rawDateKey = sessionDateKey(session?.createdAt);
+        if (!rawDateKey) return null;
+        const labelDate = /^\d{4}-\d{2}-\d{2}$/.test(String(session?.labelDate || '')) ? session.labelDate : '';
         return {
           id: String(session?.id || ''),
           phase,
-          dateKey,
+          dateKey: labelDate || rawDateKey,
+          labelDate,
           createdAt: session?.createdAt || '',
           isActive: session?.status === 'active',
           audience: session?.audience === 'manager' ? 'manager' : 'staff',
@@ -224,6 +232,25 @@ export default function PlatformClientLayout() {
       return { ok: true };
     } catch (e) {
       const message = e?.response?.data?.error || 'Could not delete during checkpoint.';
+      setPulseTimepointError(message);
+      return { ok: false, error: message };
+    } finally {
+      setPulseTimepointBusy(false);
+    }
+  }, [orgId, loadPulseTimepoints]);
+
+  const updatePulseSessionLabelDate = useCallback(async (sessionId, labelDate) => {
+    if (!orgId || !sessionId) return { ok: false, error: 'Missing checkpoint.' };
+    setPulseTimepointBusy(true);
+    setPulseTimepointError('');
+    try {
+      await api.patch(`/api/platform/organizations/${orgId}/rhythm-engine-sessions/${sessionId}/label-date`, {
+        labelDate: labelDate || null,
+      });
+      await loadPulseTimepoints();
+      return { ok: true };
+    } catch (e) {
+      const message = e?.response?.data?.error || 'Could not update the point-in-time date.';
       setPulseTimepointError(message);
       return { ok: false, error: message };
     } finally {
@@ -445,6 +472,7 @@ export default function PlatformClientLayout() {
           pulseTimepointError,
           createPulseDuringTimepoint,
           deletePulseDuringTimepoint,
+          updatePulseSessionLabelDate,
           trendAnalysisVisible,
         }}
       />

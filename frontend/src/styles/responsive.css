@@ -4641,6 +4641,16 @@ input[type='range'] {
   padding: 0;
 }
 
+.pulse-settings-section-title {
+  margin: 1.4rem 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.pulse-settings-section-title:first-of-type {
+  margin-top: 0.9rem;
+}
+
 .pulse-settings-list {
   display: flex;
   flex-direction: column;
@@ -4658,11 +4668,14 @@ input[type='range'] {
   background: var(--surface2);
 }
 
-.pulse-settings-row__title {
-  font-weight: 600;
+.pulse-settings-row__heading {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+}
+
+.pulse-settings-row__title {
+  font-weight: 600;
 }
 
 .pulse-settings-row__delete {
@@ -4670,6 +4683,10 @@ input[type='range'] {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.pulse-settings-empty {
+  padding: 0.15rem 0.1rem;
 }
 
 .pulse-refresh-btn::after {
