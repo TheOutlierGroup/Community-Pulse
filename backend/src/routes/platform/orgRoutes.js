@@ -2668,7 +2668,7 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ session: publicPulseSessionRow(updated) });
   });
 
-  router.post('/organizations/:id/pulse-timepoints/during', async (req, res, next) => {
+  router.post('/organizations/:id/pulse-timepoints/during', requirePlatformAdminRole, async (req, res, next) => {
     try {
       const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
       if (!org) return res.status(404).json({ error: 'Organization not found' });
@@ -2749,6 +2749,53 @@ export function registerPlatformOrgRoutes(router) {
       return next(error);
     }
   });
+
+  // Rhythm Engine settings: platform admins only, matching the settings
+  // panel that owns During checkpoint creation/deletion. Soft-deletes the
+  // selected checkpoint and its paired staff/manager session so it drops
+  // out of the Point in Time selector and dashboards, without losing the
+  // underlying session/response rows.
+  router.delete(
+    '/organizations/:id/pulse-timepoints/during/:sessionId',
+    requirePlatformAdminRole,
+    async (req, res) => {
+      const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+      if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
+        return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
+      }
+
+      const sessions = await PulseSession.listSessionsForOrg(org.id);
+      const pair = pairedDuringSessionsForSelection(sessions, req.params.sessionId);
+      if (pair.length === 0) {
+        return res.status(404).json({ error: 'During checkpoint not found' });
+      }
+
+      const deleted = [];
+      for (const session of pair) {
+        const updated = await PulseSession.softDeleteDuringSession(session.id, org.id, {
+          actorUserId: req.user?.id || null,
+          metadata: { route: 'platform.during_checkpoint.delete' },
+        });
+        if (updated) deleted.push(updated);
+      }
+      if (deleted.length === 0) {
+        return res.status(404).json({ error: 'During checkpoint not found' });
+      }
+
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.PULSE_DURING_CHECKPOINT_DELETE,
+        targetType: 'pulse_session',
+        targetId: req.params.sessionId,
+        targetOrganizationId: org.id,
+        metadata: {
+          checkpointDate: pulseSessionDateKey(deleted[0]),
+          deletedSessionIds: deleted.map((s) => s.id),
+        },
+      });
+      return res.json({ deletedSessionIds: deleted.map((s) => s.id) });
+    }
+  );
 
   router.get('/organizations/:id/pulse-dashboard', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);

@@ -14,7 +14,6 @@ import {
   CircleUser,
   UserPlus,
   SlidersHorizontal,
-  Plus,
   Briefcase,
 } from 'lucide-react';
 import {
@@ -75,7 +74,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const activePulseSection = isPlatformPulseRoute
     ? location.pathname.endsWith('/rhythm-engine/users')
       ? 'pulse-users'
-      : (location.hash || '#organisation-dashboard').replace(/^#/, '')
+      : location.pathname.endsWith('/rhythm-engine/settings')
+        ? 'pulse-settings'
+        : (location.hash || '#organisation-dashboard').replace(/^#/, '')
     : '';
   const pulseClientName = String(navContext?.clientOrganization?.name || '').trim();
   const pulseTimepoint = String(navContext?.pulseTimepoint || 'pre');
@@ -88,7 +89,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     : [];
   const pulseTimepointBusy = Boolean(navContext?.pulseTimepointBusy);
   const pulseTimepointError = String(navContext?.pulseTimepointError || '');
-  const createPulseDuringTimepoint = navContext?.createPulseDuringTimepoint;
   const trendAnalysisVisible = Boolean(navContext?.trendAnalysisVisible);
   const preOption = pulseTimepointOptions.find((row) => row.phase === 'pre');
   const completedOption = pulseTimepointOptions.find((row) => row.phase === 'completed');
@@ -117,7 +117,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     return `sidebar-nav-link${activePulseSection === sectionId ? ' sidebar-nav-link--active' : ''}`;
   }
 
-  async function onPulseTimepointSelect(nextValue) {
+  function onPulseTimepointSelect(nextValue) {
     if (typeof setPulseTimepoint !== 'function') return;
     if (nextValue === 'pre') {
       setPulseTimepoint('pre');
@@ -133,20 +133,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     }
     if (nextValue === 'during') {
       setPulseTimepoint('during');
-      if (typeof createPulseDuringTimepoint === 'function') {
-        await createPulseDuringTimepoint();
-      }
+      if (typeof setPulseDuringDate === 'function') setPulseDuringDate('');
+      if (typeof setPulseDuringSessionId === 'function') setPulseDuringSessionId('');
       return;
     }
     const dateKey = nextValue.startsWith('during:') ? nextValue.slice('during:'.length) : '';
     const matchingDuring = duringOptions.find((option) => option.id === dateKey);
-    if (!dateKey) {
-      setPulseTimepoint('during');
-      if (typeof createPulseDuringTimepoint === 'function') {
-        await createPulseDuringTimepoint();
-      }
-      return;
-    }
     setPulseTimepoint('during');
     if (typeof setPulseDuringDate === 'function') setPulseDuringDate(matchingDuring?.dateKey || '');
     if (typeof setPulseDuringSessionId === 'function') setPulseDuringSessionId(dateKey);
@@ -215,20 +207,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                   <section className="sidebar-pulse-timepoint" aria-label="Rhythm Engine point in time">
                     <div className="sidebar-pulse-timepoint__head">
                       <span className="sidebar-pulse-timepoint__title">Point in time</span>
-                      {pulseTimepoint === 'during' ? (
-                        <button
-                          type="button"
-                          className="sidebar-pulse-timepoint__add"
-                          onClick={() => {
-                            if (typeof createPulseDuringTimepoint === 'function') createPulseDuringTimepoint();
-                          }}
-                          disabled={pulseTimepointBusy}
-                          aria-label="Create new during checkpoint"
-                          title="Create new during checkpoint"
-                        >
-                          <Plus size={14} strokeWidth={2.25} aria-hidden />
-                        </button>
-                      ) : null}
                     </div>
                     <select
                       className="sidebar-pulse-timepoint__select"
@@ -306,6 +284,15 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <FileText size={20} strokeWidth={1.75} aria-hidden />
                     Reports
                   </Link>
+                  {user.role === 'admin' ? (
+                    <NavLink
+                      to={`/platform/clients/${platformClientOrgId}/rhythm-engine/settings`}
+                      className={pulseSectionLinkClass('pulse-settings')}
+                    >
+                      <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
+                      Settings
+                    </NavLink>
+                  ) : null}
                 </>
               ) : (
                 <>

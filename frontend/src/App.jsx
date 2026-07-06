@@ -27,6 +27,7 @@ const PlatformClientTasks = lazy(() => import('./pages/PlatformClientTasks.jsx')
 const PlatformClientRhythmEngineShell = lazy(() => import('./pages/PlatformClientRhythmEngineShell.jsx'));
 const PlatformClientRhythmEngine = lazy(() => import('./pages/PlatformClientRhythmEngine.jsx'));
 const PlatformRhythmEngineInviteUsers = lazy(() => import('./pages/PlatformRhythmEngineInviteUsers.jsx'));
+const PlatformRhythmEngineSettings = lazy(() => import('./pages/PlatformRhythmEngineSettings.jsx'));
 const PublicRhythmEngine = lazy(() => import('./pages/PublicRhythmEngine.jsx'));
 const PlatformClientAccount = lazy(() => import('./pages/PlatformClientAccount.jsx'));
 const PlatformUsers = lazy(() => import('./pages/PlatformUsers.jsx'));
@@ -71,6 +72,7 @@ export default function App() {
               <Route path="rhythm-engine" element={<PlatformClientRhythmEngineShell />}>
                 <Route index element={<PlatformClientRhythmEngine />} />
                 <Route path="users" element={<PlatformRhythmEngineInviteUsers />} />
+                <Route path="settings" element={<PlatformRhythmEngineSettings />} />
               </Route>
               <Route path="pulse/*" element={<Navigate to="rhythm-engine" replace />} />
               {!IS_RHYTHM_ENGINE_SURFACE && <Route path="account" element={<PlatformClientAccount />} />}
