@@ -5418,14 +5418,14 @@ input[type='range'] {
 }
 
 .pulse-sa-subscore__denom {
-  margin-top: 0.25rem;
+  margin-top: 0.15rem;
   font-family: var(--pulse-font-mono);
   font-size: 0.72rem;
   color: var(--pulse-text-muted);
 }
 
 .pulse-sa-subscore__what {
-  margin-top: 0.6rem;
+  margin-top: 0.4rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface2);
@@ -5448,7 +5448,7 @@ input[type='range'] {
 }
 
 .pulse-sa-track {
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
   height: 6px;
   border-radius: 999px;
   background: #d5deea;
@@ -5462,7 +5462,7 @@ input[type='range'] {
 }
 
 .pulse-sa-threshold-tag {
-  margin-top: 0.4rem;
+  margin-top: 0.3rem;
   display: inline-block;
   border: 0;
   border-radius: 999px;
@@ -5682,6 +5682,7 @@ input[type='range'] {
   border-radius: 10px;
   padding: 0.75rem 0.8rem;
   color: var(--pulse-on-green);
+  text-align: center;
 }
 
 .pulse-sa-chain-tile.cp-fn {
@@ -5710,7 +5711,7 @@ input[type='range'] {
 
 .pulse-sa-chain-tile__pct {
   font-family: var(--pulse-font-mono);
-  font-size: 36px;
+  font-size: 48px;
   font-weight: 700;
   line-height: 1;
   margin: 0;
@@ -5722,7 +5723,7 @@ input[type='range'] {
   font-size: 14px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   line-height: 1.3;
   color: inherit;
 }
@@ -5734,6 +5735,7 @@ input[type='range'] {
 
 .pulse-sa-chain-tile .pulse-sa-load-cell__desc {
   color: inherit;
+  font-style: normal;
 }
 
 .pulse-sa-table-wrap {
