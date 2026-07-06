@@ -217,7 +217,7 @@ async function fetchPulseDashboardWithRetry(orgId, params) {
 function sectionLabel(sectionId) {
   if (sectionId === 'organisation-scores') return 'Organisation Scores';
   if (sectionId === 'trend-analysis') return 'Trend Analysis';
-  if (sectionId === 'sponsorship-analysis') return 'Performance Analysis';
+  if (sectionId === 'sponsorship-analysis') return 'Manager Analysis';
   if (sectionId === 'employee-breakdown') return 'Employee Breakdown';
   if (sectionId === 'team-level-view') return 'Team-Level View';
   if (sectionId === 'reports') return 'Reports';
