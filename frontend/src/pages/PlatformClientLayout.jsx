@@ -182,7 +182,7 @@ export default function PlatformClientLayout() {
   }, [orgId]);
 
   const createPulseDuringTimepoint = useCallback(async () => {
-    if (!orgId) return;
+    if (!orgId) return { ok: false, error: 'Missing organization.' };
     setPulseTimepointBusy(true);
     setPulseTimepointError('');
     try {
@@ -204,8 +204,28 @@ export default function PlatformClientLayout() {
         setPulseDuringDate(createdDate);
         setPulseDuringSessionId('');
       }
+      return { ok: true };
     } catch (e) {
-      setPulseTimepointError(e?.response?.data?.error || 'Could not create a new during checkpoint.');
+      const message = e?.response?.data?.error || 'Could not create a new during checkpoint.';
+      setPulseTimepointError(message);
+      return { ok: false, error: message };
+    } finally {
+      setPulseTimepointBusy(false);
+    }
+  }, [orgId, loadPulseTimepoints]);
+
+  const deletePulseDuringTimepoint = useCallback(async (sessionId) => {
+    if (!orgId || !sessionId) return { ok: false, error: 'Missing checkpoint.' };
+    setPulseTimepointBusy(true);
+    setPulseTimepointError('');
+    try {
+      await api.delete(`/api/platform/organizations/${orgId}/rhythm-engine-timepoints/during/${sessionId}`);
+      await loadPulseTimepoints();
+      return { ok: true };
+    } catch (e) {
+      const message = e?.response?.data?.error || 'Could not delete during checkpoint.';
+      setPulseTimepointError(message);
+      return { ok: false, error: message };
     } finally {
       setPulseTimepointBusy(false);
     }
@@ -329,6 +349,8 @@ export default function PlatformClientLayout() {
       section = 'Account';
     } else if (tail.startsWith('rhythm-engine/users')) {
       section = 'Rhythm Engine · Invites';
+    } else if (tail.startsWith('rhythm-engine/settings')) {
+      section = 'Rhythm Engine · Settings';
     } else if (tail.startsWith('rhythm-engine')) {
       section = 'Rhythm Engine';
     }
@@ -357,7 +379,6 @@ export default function PlatformClientLayout() {
       pulseTimepointOptions,
       pulseTimepointBusy,
       pulseTimepointError,
-      createPulseDuringTimepoint,
       trendAnalysisVisible,
     }),
     [
@@ -371,7 +392,6 @@ export default function PlatformClientLayout() {
       pulseTimepointOptions,
       pulseTimepointBusy,
       pulseTimepointError,
-      createPulseDuringTimepoint,
       trendAnalysisVisible,
     ]
   );
@@ -421,6 +441,10 @@ export default function PlatformClientLayout() {
           pulseDuringDate,
           pulseDuringSessionId,
           pulseTimepointOptions,
+          pulseTimepointBusy,
+          pulseTimepointError,
+          createPulseDuringTimepoint,
+          deletePulseDuringTimepoint,
           trendAnalysisVisible,
         }}
       />

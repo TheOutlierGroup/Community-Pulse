@@ -24,6 +24,7 @@ export const AUDIT_ACTIONS = Object.freeze({
 
   PULSE_SESSION_CREATE: 'pulse.session.create',
   PULSE_DURING_CHECKPOINT_OPEN: 'pulse.during_checkpoint.open',
+  PULSE_DURING_CHECKPOINT_DELETE: 'pulse.during_checkpoint.delete',
   PULSE_RESPONDENT_CAP_OVERRIDE: 'pulse.respondent_cap.override',
 
   ASSESSMENT_CONSUME: 'assessment.consume',

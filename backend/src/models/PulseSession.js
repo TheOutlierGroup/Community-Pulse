@@ -9,7 +9,7 @@ import {
 
 export async function listSessionsForOrg(organizationId) {
   const { rows } = await query(
-    `SELECT * FROM pulse_sessions WHERE organization_id = $1 ORDER BY created_at DESC`,
+    `SELECT * FROM pulse_sessions WHERE organization_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
     [organizationId]
   );
   return rows;
@@ -117,11 +117,46 @@ export async function getActiveSessionForOrg(organizationId, audience = 'staff')
   const aud = audience === 'manager' ? 'manager' : 'staff';
   const { rows } = await query(
     `SELECT * FROM pulse_sessions
-     WHERE organization_id = $1 AND status = 'active' AND audience = $2
+     WHERE organization_id = $1 AND status = 'active' AND audience = $2 AND deleted_at IS NULL
      ORDER BY created_at DESC LIMIT 1`,
     [organizationId, aud]
   );
   return rows[0] || null;
+}
+
+/**
+ * Soft-deletes a During checkpoint so it disappears from the Point in Time
+ * selector and dashboards while keeping the row (and any responses that
+ * reference it) intact for audit/recovery. Only During checkpoints are
+ * deletable — Pre/Post are singleton system sessions.
+ */
+export async function softDeleteDuringSession(id, organizationId, options = {}) {
+  const actorUserId = options?.actorUserId || null;
+  const existing = await getSessionById(id, organizationId);
+  if (!existing || existing.deleted_at) return null;
+  if (normalizeSessionPurpose(existing.session_purpose) !== 'during_project') return null;
+
+  const { rows } = await query(
+    `UPDATE pulse_sessions
+     SET deleted_at = NOW(),
+         status = CASE WHEN status = 'active' THEN 'closed' ELSE status END,
+         closed_at = COALESCE(closed_at, NOW())
+     WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL
+     RETURNING *`,
+    [id, organizationId]
+  );
+  const updated = rows[0] || null;
+  if (updated) {
+    await PulseSessionStatusEvent.createStatusEvent({
+      sessionId: updated.id,
+      organizationId,
+      actorUserId,
+      fromStatus: existing.status,
+      toStatus: 'deleted',
+      metadata: { ...(options?.metadata || {}), source: 'softDeleteDuringSession' },
+    });
+  }
+  return updated;
 }
 
 export async function getSessionById(id, organizationId) {
