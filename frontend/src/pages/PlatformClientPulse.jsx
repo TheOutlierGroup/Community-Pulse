@@ -280,6 +280,132 @@ function dimensionQuestionLabel(questionIds = [], fallbackPrefix = 'Q', fallback
   return questionIds[fallbackIndex] || `${fallbackPrefix}${fallbackIndex + 1}`;
 }
 
+function renderDimensionGroup(dimension) {
+  const suppressSignals = dimension.signalsSuppressed;
+  const empIntra = !suppressSignals && dimension.employee.intraGapFlagged;
+  const mgrIntra = !suppressSignals && dimension.manager.intraGapFlagged;
+  const perceptionFlagged =
+    !suppressSignals && dimension.comparable && dimension.perceptionGapFlagged;
+  const empAvg = dimension.employee.avg;
+  const mgrAvg = dimension.manager.avg;
+  const dimAvg = (Number.isFinite(empAvg) && Number.isFinite(mgrAvg))
+    ? (empAvg + mgrAvg) / 2
+    : (Number.isFinite(empAvg) ? empAvg : (Number.isFinite(mgrAvg) ? mgrAvg : null));
+  const computeQGap = (e, m) => (
+    dimension.comparable && Number.isFinite(e) && Number.isFinite(m)
+      ? Math.abs(e - m)
+      : null
+  );
+  const q1Gap = computeQGap(dimension.employee.q1Avg, dimension.manager.q1Avg);
+  const q2Gap = computeQGap(dimension.employee.q2Avg, dimension.manager.q2Avg);
+  const q1GapFlagged =
+    !suppressSignals && q1Gap != null && q1Gap >= PERCEPTION_GAP_THRESHOLD;
+  const q2GapFlagged =
+    !suppressSignals && q2Gap != null && q2Gap >= PERCEPTION_GAP_THRESHOLD;
+  const empQ1Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 0);
+  const empQ2Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 1);
+  const mgrQ1Label = dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 0);
+  const mgrQ2Label = dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 1);
+  const heatClass = (value, extra) => [
+    'pulse-clean-dimensions__heat',
+    `pulse-clean-dimensions__heat--${heatTone(value)}`,
+    extra,
+  ].filter(Boolean).join(' ');
+  const constructLabel = `${dimension.employeeLabel} <-> ${dimension.managerLabel}`;
+  const q1Construct = dimension.q1Construct
+    || `${empQ1Label} / ${mgrQ1Label}`;
+  const q2Construct = dimension.q2Construct
+    || `${empQ2Label} / ${mgrQ2Label}`;
+  return (
+    <Fragment key={dimension.id}>
+      <tr className="pulse-clean-dimensions__dim-header">
+        <td className="pulse-clean-dimensions__id">{dimension.id}</td>
+        <td colSpan={5} className="pulse-clean-dimensions__dim-header-cell">
+          <div className="pulse-clean-dimensions__construct-row">
+            <div className="pulse-clean-dimensions__construct-heading">
+              <p className="pulse-clean-dimensions__construct-label">{constructLabel}</p>
+              {dimension.sharedConstruct ? (
+                <p className="pulse-clean-dimensions__construct-subtitle">{dimension.sharedConstruct}</p>
+              ) : null}
+            </div>
+            <div className="pulse-clean-dimensions__construct-flags">
+              <span className={`pulse-clean-dimensions__pair pulse-clean-dimensions__pair--${dimension.comparable ? 'comparable' : 'non'}`}>
+                {dimension.comparable ? 'Comparable pair' : 'Non-comparable pair'}
+              </span>
+              {empIntra ? (
+                <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (emp)</span>
+              ) : null}
+              {mgrIntra ? (
+                <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (mgr)</span>
+              ) : null}
+              {perceptionFlagged ? (
+                <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Perception gap</span>
+              ) : null}
+            </div>
+          </div>
+        </td>
+      </tr>
+      <tr className="pulse-clean-dimensions__q-row">
+        <td className="pulse-clean-dimensions__q-id">
+          <span className="pulse-clean-dimensions__q-id-text">{empQ1Label}/{mgrQ1Label}</span>
+        </td>
+        <td className="pulse-clean-dimensions__construct-cell">
+          <div className="pulse-clean-dimensions__construct-cell-row">
+            <p className="pulse-clean-dimensions__construct-cell-label">{q1Construct}</p>
+            {q1GapFlagged ? (
+              <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Q1 gap</span>
+            ) : null}
+          </div>
+        </td>
+        <td>
+          <span className={heatClass(dimension.employee.q1Avg, empIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
+            {formatScore(dimension.employee.q1Avg)}
+          </span>
+        </td>
+        <td>
+          <span className={heatClass(dimension.manager.q1Avg, mgrIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
+            {formatScore(dimension.manager.q1Avg)}
+          </span>
+        </td>
+        <td className={q1GapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
+          {q1Gap != null ? formatScore(q1Gap) : '—'}
+        </td>
+        <td rowSpan={2} className="pulse-clean-dimensions__dim-avg-cell">
+          <span className={heatClass(dimAvg, ['pulse-clean-dimensions__heat--dim', perceptionFlagged ? 'pulse-clean-dimensions__heat--flagged' : ''].filter(Boolean).join(' '))}>
+            {formatScore(dimAvg)}
+          </span>
+        </td>
+      </tr>
+      <tr className="pulse-clean-dimensions__q-row pulse-clean-dimensions__q-row--last">
+        <td className="pulse-clean-dimensions__q-id">
+          <span className="pulse-clean-dimensions__q-id-text">{empQ2Label}/{mgrQ2Label}</span>
+        </td>
+        <td className="pulse-clean-dimensions__construct-cell">
+          <div className="pulse-clean-dimensions__construct-cell-row">
+            <p className="pulse-clean-dimensions__construct-cell-label">{q2Construct}</p>
+            {q2GapFlagged ? (
+              <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Q2 gap</span>
+            ) : null}
+          </div>
+        </td>
+        <td>
+          <span className={heatClass(dimension.employee.q2Avg, empIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
+            {formatScore(dimension.employee.q2Avg)}
+          </span>
+        </td>
+        <td>
+          <span className={heatClass(dimension.manager.q2Avg, mgrIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
+            {formatScore(dimension.manager.q2Avg)}
+          </span>
+        </td>
+        <td className={q2GapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
+          {q2Gap != null ? formatScore(q2Gap) : '—'}
+        </td>
+      </tr>
+    </Fragment>
+  );
+}
+
 function normalizeThresholdStatus(status) {
   const normalized = String(status || '').trim().toLowerCase();
   if (normalized.includes('above')) return 'above';
@@ -725,6 +851,10 @@ export default function PlatformClientPulse() {
       };
     });
   }, [dimensions]);
+  const dimensionHeatmapColumns = useMemo(() => {
+    const midpoint = Math.ceil(dimensionHeatmapRows.length / 2);
+    return [dimensionHeatmapRows.slice(0, midpoint), dimensionHeatmapRows.slice(midpoint)];
+  }, [dimensionHeatmapRows]);
   const managerLoadDistribution = useMemo(() => {
     const total = managerBreakdownRows.length;
     const bands = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
@@ -1898,160 +2028,39 @@ export default function PlatformClientPulse() {
             </p>
           </div>
 
-          <div className="table-wrap">
-            <table className="pulse-clean-dimensions__table">
-              <colgroup>
-                <col className="pulse-clean-dimensions__col-id" />
-                <col className="pulse-clean-dimensions__col-construct" />
-                <col className="pulse-clean-dimensions__col-score" />
-                <col className="pulse-clean-dimensions__col-score" />
-                <col className="pulse-clean-dimensions__col-gap" />
-                <col className="pulse-clean-dimensions__col-dim-avg" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Question / Construct</th>
-                  <th>Employee</th>
-                  <th>Manager</th>
-                  <th>Gap</th>
-                  <th>Dim avg</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dimensionHeatmapRows.map((dimension) => {
-                  const suppressSignals = dimension.signalsSuppressed;
-                  const empIntra = !suppressSignals && dimension.employee.intraGapFlagged;
-                  const mgrIntra = !suppressSignals && dimension.manager.intraGapFlagged;
-                  const perceptionFlagged =
-                    !suppressSignals && dimension.comparable && dimension.perceptionGapFlagged;
-                  const empAvg = dimension.employee.avg;
-                  const mgrAvg = dimension.manager.avg;
-                  const dimAvg = (Number.isFinite(empAvg) && Number.isFinite(mgrAvg))
-                    ? (empAvg + mgrAvg) / 2
-                    : (Number.isFinite(empAvg) ? empAvg : (Number.isFinite(mgrAvg) ? mgrAvg : null));
-                  const computeQGap = (e, m) => (
-                    dimension.comparable && Number.isFinite(e) && Number.isFinite(m)
-                      ? Math.abs(e - m)
-                      : null
-                  );
-                  const q1Gap = computeQGap(dimension.employee.q1Avg, dimension.manager.q1Avg);
-                  const q2Gap = computeQGap(dimension.employee.q2Avg, dimension.manager.q2Avg);
-                  const q1GapFlagged =
-                    !suppressSignals && q1Gap != null && q1Gap >= PERCEPTION_GAP_THRESHOLD;
-                  const q2GapFlagged =
-                    !suppressSignals && q2Gap != null && q2Gap >= PERCEPTION_GAP_THRESHOLD;
-                  const empQ1Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 0);
-                  const empQ2Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 1);
-                  const mgrQ1Label = dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 0);
-                  const mgrQ2Label = dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 1);
-                  const heatClass = (value, extra) => [
-                    'pulse-clean-dimensions__heat',
-                    `pulse-clean-dimensions__heat--${heatTone(value)}`,
-                    extra,
-                  ].filter(Boolean).join(' ');
-                  const constructLabel = `${dimension.employeeLabel} <-> ${dimension.managerLabel}`;
-                  const q1Construct = dimension.q1Construct
-                    || `${empQ1Label} / ${mgrQ1Label}`;
-                  const q2Construct = dimension.q2Construct
-                    || `${empQ2Label} / ${mgrQ2Label}`;
-                  return (
-                    <Fragment key={dimension.id}>
-                      <tr className="pulse-clean-dimensions__dim-header">
-                        <td className="pulse-clean-dimensions__id">{dimension.id}</td>
-                        <td colSpan={5} className="pulse-clean-dimensions__dim-header-cell">
-                          <div className="pulse-clean-dimensions__construct-row">
-                            <div className="pulse-clean-dimensions__construct-heading">
-                              <p className="pulse-clean-dimensions__construct-label">{constructLabel}</p>
-                              {dimension.sharedConstruct ? (
-                                <p className="pulse-clean-dimensions__construct-subtitle">{dimension.sharedConstruct}</p>
-                              ) : null}
-                            </div>
-                            <div className="pulse-clean-dimensions__construct-flags">
-                              <span className={`pulse-clean-dimensions__pair pulse-clean-dimensions__pair--${dimension.comparable ? 'comparable' : 'non'}`}>
-                                {dimension.comparable ? 'Comparable pair' : 'Non-comparable pair'}
-                              </span>
-                              {empIntra ? (
-                                <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (emp)</span>
-                              ) : null}
-                              {mgrIntra ? (
-                                <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Intra (mgr)</span>
-                              ) : null}
-                              {perceptionFlagged ? (
-                                <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Perception gap</span>
-                              ) : null}
-                            </div>
-                          </div>
-                        </td>
+          {dimensionHeatmapRows.length === 0 ? (
+            <p className="muted">No dimension data available yet.</p>
+          ) : (
+            <div className="pulse-clean-dimensions__columns">
+              {dimensionHeatmapColumns.map((columnRows, columnIndex) => (
+                <div className="table-wrap pulse-clean-dimensions__column" key={columnIndex}>
+                  <table className="pulse-clean-dimensions__table pulse-clean-dimensions__table--split">
+                    <colgroup>
+                      <col className="pulse-clean-dimensions__col-id" />
+                      <col className="pulse-clean-dimensions__col-construct" />
+                      <col className="pulse-clean-dimensions__col-score" />
+                      <col className="pulse-clean-dimensions__col-score" />
+                      <col className="pulse-clean-dimensions__col-gap" />
+                      <col className="pulse-clean-dimensions__col-dim-avg" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Question / Construct</th>
+                        <th>Emp</th>
+                        <th>Mgr</th>
+                        <th>Gap</th>
+                        <th>Dim avg</th>
                       </tr>
-                      <tr className="pulse-clean-dimensions__q-row">
-                        <td className="pulse-clean-dimensions__q-id">
-                          <span className="pulse-clean-dimensions__q-id-text">{empQ1Label} / {mgrQ1Label}</span>
-                        </td>
-                        <td className="pulse-clean-dimensions__construct-cell">
-                          <div className="pulse-clean-dimensions__construct-cell-row">
-                            <p className="pulse-clean-dimensions__construct-cell-label">{q1Construct}</p>
-                            {q1GapFlagged ? (
-                              <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Q1 gap</span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td>
-                          <span className={heatClass(dimension.employee.q1Avg, empIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
-                            {formatScore(dimension.employee.q1Avg)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={heatClass(dimension.manager.q1Avg, mgrIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
-                            {formatScore(dimension.manager.q1Avg)}
-                          </span>
-                        </td>
-                        <td className={q1GapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
-                          {q1Gap != null ? formatScore(q1Gap) : '—'}
-                        </td>
-                        <td rowSpan={2} className="pulse-clean-dimensions__dim-avg-cell">
-                          <span className={heatClass(dimAvg, ['pulse-clean-dimensions__heat--dim', perceptionFlagged ? 'pulse-clean-dimensions__heat--flagged' : ''].filter(Boolean).join(' '))}>
-                            {formatScore(dimAvg)}
-                          </span>
-                        </td>
-                      </tr>
-                      <tr className="pulse-clean-dimensions__q-row pulse-clean-dimensions__q-row--last">
-                        <td className="pulse-clean-dimensions__q-id">
-                          <span className="pulse-clean-dimensions__q-id-text">{empQ2Label} / {mgrQ2Label}</span>
-                        </td>
-                        <td className="pulse-clean-dimensions__construct-cell">
-                          <div className="pulse-clean-dimensions__construct-cell-row">
-                            <p className="pulse-clean-dimensions__construct-cell-label">{q2Construct}</p>
-                            {q2GapFlagged ? (
-                              <span className="pulse-clean-dimensions__flag pulse-clean-dimensions__flag--ai">AI · Q2 gap</span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td>
-                          <span className={heatClass(dimension.employee.q2Avg, empIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
-                            {formatScore(dimension.employee.q2Avg)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={heatClass(dimension.manager.q2Avg, mgrIntra ? 'pulse-clean-dimensions__heat--diverged' : '')}>
-                            {formatScore(dimension.manager.q2Avg)}
-                          </span>
-                        </td>
-                        <td className={q2GapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
-                          {q2Gap != null ? formatScore(q2Gap) : '—'}
-                        </td>
-                      </tr>
-                    </Fragment>
-                  );
-                })}
-                {dimensionHeatmapRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="muted">No dimension data available yet.</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+                    </thead>
+                    <tbody>
+                      {columnRows.map(renderDimensionGroup)}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
           {dashboard?.perceptionGapAnalysis?.text
             && dashboard.perceptionGapAnalysis.sampleSizeMet
             && dashboard.perceptionGapAnalysis.flaggedCount > 0 ? (
