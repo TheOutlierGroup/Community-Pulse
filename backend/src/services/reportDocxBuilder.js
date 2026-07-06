@@ -1315,7 +1315,7 @@ export async function buildReportDocx({
           signalBox('Manager Load', signals.managerLoad, COLOUR.signalBorderOrange),
           spacer(200),
 
-          h2('Performance Analysis'),
+          h2('Manager Analysis'),
           body('This analysis disaggregates the Sponsorship Credibility score into two constructs with distinct intervention owners: what managers are receiving from senior leadership above, and whether managers have the conditions to sponsor their own teams below.'),
           spacer(80),
           h3('Sponsorship Sub-Score Overview'),
