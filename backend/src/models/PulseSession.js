@@ -159,6 +159,24 @@ export async function softDeleteDuringSession(id, organizationId, options = {}) 
   return updated;
 }
 
+/**
+ * Cosmetic display-date override for Pre/Post checkpoints, whose created_at
+ * otherwise just reflects when the org record was bootstrapped rather than
+ * the real engagement start/end date. Purely a label — never used for
+ * filtering or cutoffs, so it's restricted to the singleton Pre/Post
+ * sessions where that distinction actually matters.
+ */
+export async function setLabelDate(id, organizationId, labelDate) {
+  const { rows } = await query(
+    `UPDATE pulse_sessions
+     SET label_date = $3
+     WHERE id = $1 AND organization_id = $2 AND session_purpose IN ('pre_project', 'completed_project')
+     RETURNING *`,
+    [id, organizationId, labelDate]
+  );
+  return rows[0] || null;
+}
+
 export async function getSessionById(id, organizationId) {
   const { rows } = await query(
     `SELECT * FROM pulse_sessions WHERE id = $1 AND organization_id = $2`,

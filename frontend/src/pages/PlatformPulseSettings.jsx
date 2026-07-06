@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Plus, TriangleAlert, Trash2 } from 'lucide-react';
+import { CalendarClock, Plus, TriangleAlert, Trash2 } from 'lucide-react';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
@@ -20,11 +20,23 @@ export default function PlatformPulseSettings() {
     pulseTimepointError,
     createPulseDuringTimepoint,
     deletePulseDuringTimepoint,
+    updatePulseSessionLabelDate,
   } = useOutletContext();
   const { user } = useAuth();
   const { showToast } = useToast();
   const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [dateEditTarget, setDateEditTarget] = useState(null);
+  const [dateEditValue, setDateEditValue] = useState('');
+
+  const preOption = useMemo(
+    () => (Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : []).find((row) => row?.phase === 'pre'),
+    [pulseTimepointOptions]
+  );
+  const completedOption = useMemo(
+    () => (Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : []).find((row) => row?.phase === 'completed'),
+    [pulseTimepointOptions]
+  );
 
   const duringOptions = useMemo(
     () =>
@@ -43,6 +55,12 @@ export default function PlatformPulseSettings() {
         <p className="error">Only platform admins can manage Rhythm Engine point-in-time settings.</p>
       </div>
     );
+  }
+
+  function openEditDate(option, label) {
+    if (!option?.id) return;
+    setDateEditValue(option.labelDate || option.dateKey || '');
+    setDateEditTarget({ ...option, label });
   }
 
   async function handleConfirmCreate() {
@@ -66,6 +84,18 @@ export default function PlatformPulseSettings() {
     }
   }
 
+  async function handleConfirmDateEdit() {
+    if (!dateEditTarget) return;
+    const result = await updatePulseSessionLabelDate(dateEditTarget.id, dateEditValue);
+    const label = dateEditTarget.label;
+    setDateEditTarget(null);
+    if (result?.ok) {
+      showToast(`${label} date updated.`, { variant: 'success' });
+    } else {
+      showToast(result?.error || `Could not update the ${label} date.`, { variant: 'error' });
+    }
+  }
+
   return (
     <div className="pulse-prototype-page">
       <div className="pulse-platform-header">
@@ -73,8 +103,8 @@ export default function PlatformPulseSettings() {
           <div className="pulse-platform-header__eyebrow">Client administration</div>
           <h1 className="pulse-platform-header__title">Point in time settings</h1>
           <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-            Create or delete During checkpoints. The Point in Time selector in the sidebar only switches
-            between existing checkpoints — manage them here.
+            Create or delete During checkpoints, and set the real engagement dates for Pre and Post. The Point
+            in Time selector in the sidebar only switches between existing checkpoints — manage them here.
           </p>
         </div>
         <div className="pulse-platform-header__right">
@@ -92,18 +122,57 @@ export default function PlatformPulseSettings() {
 
       {pulseTimepointError ? <p className="error">{pulseTimepointError}</p> : null}
 
+      <h2 className="pulse-settings-section-title">Pre &amp; Post dates</h2>
+      <p className="muted" style={{ margin: '0 0 0.6rem' }}>
+        Pre and Post are single ongoing checkpoints, so their date defaults to when this client was set up.
+        Set the real engagement start/end date here — it only changes the label shown elsewhere, not which
+        responses count toward each.
+      </p>
+      <div className="card pulse-settings-list">
+        {[
+          { option: preOption, label: 'Pre' },
+          { option: completedOption, label: 'Post' },
+        ].map(({ option, label }) => (
+          <div key={label} className="pulse-settings-row">
+            <div className="pulse-settings-row__heading">
+              <span className="pulse-settings-row__title">
+                {label} · {option ? formatCheckpointDate(option.dateKey) : 'Not available yet'}
+              </span>
+              {option?.labelDate ? <span className="badge badge-draft">Custom date</span> : null}
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => openEditDate(option, label)}
+              disabled={pulseTimepointBusy || !option}
+            >
+              <CalendarClock size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+              Edit date
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <h2 className="pulse-settings-section-title">During checkpoints</h2>
       <div className="card pulse-settings-list">
         {duringOptions.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
-            No During checkpoints yet. Create one to start collecting During responses.
-          </p>
+          <div className="pulse-settings-empty">
+            <p style={{ margin: 0, fontWeight: 600 }}>No During checkpoints yet</p>
+            <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+              Create one whenever you want a fresh mid-engagement read on how the rollout is landing — for
+              example partway through a change programme, after a major milestone, or before a go/no-go
+              decision. Each new checkpoint opens a clean During session for both staff and managers (closing
+              any previous one) and consumes one assessment against this client&rsquo;s licence, so only create
+              one when you&rsquo;re ready to invite recipients to it.
+            </p>
+          </div>
         ) : (
           duringOptions.map((option) => (
             <div key={option.id} className="pulse-settings-row">
-              <div>
-                <div className="pulse-settings-row__title">
+              <div className="pulse-settings-row__heading">
+                <span className="pulse-settings-row__title">
                   During · {formatCheckpointDate(option.dateKey)}
-                </div>
+                </span>
                 {option.isActive ? <span className="badge badge-active">Active</span> : null}
               </div>
               <button
@@ -192,6 +261,49 @@ export default function PlatformPulseSettings() {
               disabled={pulseTimepointBusy}
             >
               {pulseTimepointBusy ? 'Deleting…' : 'Delete checkpoint'}
+            </button>
+          </div>
+        </div>
+      </ModalDialog>
+
+      <ModalDialog
+        open={Boolean(dateEditTarget)}
+        title={`Set the ${dateEditTarget?.label || ''} date`}
+        titleId="pulse-edit-label-date-title"
+        onClose={() => {
+          if (!pulseTimepointBusy) setDateEditTarget(null);
+        }}
+      >
+        <div style={{ padding: '0 0 1rem' }}>
+          <p className="muted" style={{ margin: '0 0 0.8rem' }}>
+            This only changes the date shown next to {dateEditTarget?.label} in the Point in Time selector and
+            this settings screen &mdash; it has no effect on which responses count toward it.
+          </p>
+          <label className="field" style={{ margin: 0 }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Date</span>
+            <input
+              type="date"
+              value={dateEditValue}
+              onChange={(e) => setDateEditValue(e.target.value)}
+              disabled={pulseTimepointBusy}
+            />
+          </label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '1rem' }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setDateEditTarget(null)}
+              disabled={pulseTimepointBusy}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleConfirmDateEdit}
+              disabled={pulseTimepointBusy || !dateEditValue}
+            >
+              {pulseTimepointBusy ? 'Saving…' : 'Save date'}
             </button>
           </div>
         </div>

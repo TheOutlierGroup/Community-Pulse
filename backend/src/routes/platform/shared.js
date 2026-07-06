@@ -190,6 +190,7 @@ export function publicPulseSessionRow(row) {
     stage,
     createdAt: row.created_at,
     closedAt: row.closed_at,
+    labelDate: row.label_date || null,
     respondentCapOverride:
       row.respondent_cap_override == null ? null : Number(row.respondent_cap_override),
   };

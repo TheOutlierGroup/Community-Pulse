@@ -2668,6 +2668,40 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ session: publicPulseSessionRow(updated) });
   });
 
+  // Cosmetic display-date override for the singleton Pre/Post sessions —
+  // their created_at is just when the org record was bootstrapped, not the
+  // real engagement start/end date, so this lets admins re-label them from
+  // the Rhythm Engine Settings screen.
+  router.patch(
+    '/organizations/:id/pulse-sessions/:sessionId/label-date',
+    requirePlatformAdminRole,
+    async (req, res) => {
+      const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+      const raw = req.body?.labelDate;
+      let labelDate = null;
+      if (raw !== null && raw !== undefined && String(raw).trim() !== '') {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(raw).trim())) {
+          return res.status(400).json({ error: 'labelDate must be an ISO date (YYYY-MM-DD) or null' });
+        }
+        labelDate = String(raw).trim();
+      }
+      const updated = await PulseSession.setLabelDate(req.params.sessionId, org.id, labelDate);
+      if (!updated) {
+        return res.status(404).json({ error: 'Session not found or not eligible for a custom date' });
+      }
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.PULSE_SESSION_LABEL_DATE_UPDATE,
+        targetType: 'pulse_session',
+        targetId: updated.id,
+        targetOrganizationId: org.id,
+        metadata: { labelDate },
+      });
+      res.json({ session: publicPulseSessionRow(updated) });
+    }
+  );
+
   router.post('/organizations/:id/pulse-timepoints/during', requirePlatformAdminRole, async (req, res, next) => {
     try {
       const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
