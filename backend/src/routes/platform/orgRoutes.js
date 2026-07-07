@@ -1760,17 +1760,22 @@ export function registerPlatformOrgRoutes(router) {
         return res.status(400).json({ error: 'settings.groupLevelLabels length must match settings.groupLevels' });
       }
       if (Object.prototype.hasOwnProperty.call(settingsPatch, 'services')) {
+        // The Rhythm Engine Licensee service can only take effect at company
+        // creation time, where it flips a brand-new org into a licensee
+        // tenant. An existing org's kind never changes after creation, so
+        // granting this service here would silently do nothing while
+        // implying the client gained licensee/Rhythm Engine access.
+        if (
+          Array.isArray(settingsPatch.services) &&
+          settingsPatch.services.includes(CLIENT_SERVICE_LICENSEE)
+        ) {
+          return res.status(403).json({
+            error: 'The Rhythm Engine Licensee service can only be granted when creating a new company.',
+          });
+        }
         let allowedServiceIds;
         if (isLicenseeRequester) {
           allowedServiceIds = new Set(LICENSEE_DOWNSTREAM_SERVICE_IDS);
-          if (
-            Array.isArray(settingsPatch.services) &&
-            settingsPatch.services.includes(CLIENT_SERVICE_LICENSEE)
-          ) {
-            return res.status(403).json({
-              error: 'Licensees cannot grant the Rhythm Engine Licensee service',
-            });
-          }
         } else {
           const platformOrg = await Organization.getOrganization(req.user.organizationId);
           const catalog = clientServiceCatalogFromPlatformSettings(platformOrg?.settings);

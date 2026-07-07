@@ -296,14 +296,21 @@ function apiErrorDetail(err, fallback) {
   return msg;
 }
 
-function formatInviteImportError(errorCode) {
+function formatInviteImportError(entry) {
+  const errorCode = entry?.error;
   if (errorCode === 'invalid_role') return 'invalid role value';
   if (errorCode === 'manager_required') return 'staff row missing manager';
-  if (errorCode === 'manager_not_found') return 'manager not found';
+  if (errorCode === 'manager_not_found') {
+    return entry?.managerId ? `manager "${entry.managerId}" not found` : 'manager not found';
+  }
   if (errorCode === 'invalid_manager_invite') return 'invalid manager reference';
   if (errorCode === 'self_manager_not_allowed') return 'user cannot be their own manager';
   if (errorCode === 'duplicate_manager_id') return 'duplicate manager email reference';
-  if (errorCode === 'invalid_group_levels') return 'too many group values';
+  if (errorCode === 'invalid_group_levels') {
+    return Number.isInteger(entry?.expected) && Number.isInteger(entry?.actual)
+      ? `too many group values (this client is set up for ${entry.expected}, row has ${entry.actual})`
+      : 'too many group values';
+  }
   if (errorCode === 'missing_during_session') return 'missing during session';
   return String(errorCode || 'unknown error');
 }
@@ -316,7 +323,7 @@ function summarizeInviteImportErrors(errors, limit = 3) {
       Number.isInteger(entry?.index) && entry.index >= 0
         ? `Row ${entry.index + 1}`
         : 'Row ?';
-    return `${rowLabel}: ${formatInviteImportError(entry?.error)}`;
+    return `${rowLabel}: ${formatInviteImportError(entry)}`;
   });
   const remaining = Math.max(0, list.length - limit);
   return remaining > 0

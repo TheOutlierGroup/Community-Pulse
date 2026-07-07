@@ -179,7 +179,7 @@ export default function PlatformClients() {
           }}
         >
           <Plus size={20} strokeWidth={2} aria-hidden />
-          Create company
+          New Client
         </button>
       </div>
 
@@ -211,7 +211,7 @@ export default function PlatformClients() {
             }}
           >
             <Plus size={18} strokeWidth={2} aria-hidden />
-            Create company
+            New Client
           </button>
         </div>
       )}
@@ -296,17 +296,16 @@ export default function PlatformClients() {
       </div>
 
       {modalOpen && (
-        <div className="modal-backdrop" role="presentation" onClick={closeCreateModal}>
+        <div className="modal-backdrop" role="presentation">
           <div
             className="modal-dialog modal-dialog--wide card"
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-company-title"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-dialog__head">
               <h2 id="create-company-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-                Create company
+                New Client
               </h2>
               <button
                 type="button"
