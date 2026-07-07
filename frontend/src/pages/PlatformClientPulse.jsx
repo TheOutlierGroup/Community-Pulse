@@ -929,7 +929,7 @@ export default function PlatformClientPulse() {
       const path = managerGroups
         .map((value) => String(value || '').trim())
         .filter(Boolean);
-      const normalizedPath = path.length > 0 ? path : ['Executive'];
+      const normalizedPath = path.length > 0 ? path : ['Unassigned'];
 
       let cursor = root;
       normalizedPath.forEach((segment, index) => {
