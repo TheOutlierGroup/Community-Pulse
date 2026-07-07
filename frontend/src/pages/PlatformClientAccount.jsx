@@ -371,7 +371,7 @@ export default function PlatformClientAccount() {
       <div className="platform-client-dashboard-grid">
         <div className="card platform-client-dashboard__card">
           <h1 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>
-            Account
+            Configurations
           </h1>
           <p className="muted" style={{ marginTop: '-0.25rem', marginBottom: '1.25rem' }}>
             Company profile for this client workspace. Admins see the logo in their account, too.

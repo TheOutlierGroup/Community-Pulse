@@ -132,6 +132,81 @@ a:hover {
   object-position: left center;
 }
 
+.sidebar-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.sidebar-brand-row .sidebar-brand {
+  margin-bottom: 0;
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  margin-bottom: 1.25rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sidebar-collapse-toggle:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+/* Collapsed sidebar: icon-only rail, hides labels and secondary widgets to
+   free up horizontal space for wide dashboards/tables. */
+.app-shell--sidebar-collapsed .app-sidebar {
+  width: 68px;
+}
+
+.app-shell--sidebar-collapsed .app-content {
+  margin-left: 68px;
+}
+
+.app-shell--sidebar-collapsed .sidebar-brand-row {
+  justify-content: center;
+}
+
+.app-shell--sidebar-collapsed .sidebar-brand {
+  display: none;
+}
+
+.app-shell--sidebar-collapsed .sidebar-collapse-toggle {
+  margin-bottom: 0.75rem;
+}
+
+.app-shell--sidebar-collapsed .sidebar-nav-link,
+.app-shell--sidebar-collapsed .sidebar-nav-label {
+  justify-content: center;
+  gap: 0;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  font-size: 0;
+}
+
+.app-shell--sidebar-collapsed .sidebar-nav-avatar {
+  margin: 0 auto;
+}
+
+.app-shell--sidebar-collapsed .sidebar-pulse-timepoint,
+.app-shell--sidebar-collapsed .sidebar-nav-divider,
+.app-shell--sidebar-collapsed .nav-email {
+  display: none;
+}
+
 .app-content {
   flex: 1;
   margin-left: 260px;
@@ -466,6 +541,14 @@ a:hover {
 
 .sidebar-nav-link--button {
   margin-top: 0.35rem;
+}
+
+.sidebar-nav-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .sidebar-nav-label {
