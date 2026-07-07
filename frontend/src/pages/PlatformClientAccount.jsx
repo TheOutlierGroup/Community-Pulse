@@ -9,6 +9,7 @@ import { Building2, Sparkles, Trash2 } from 'lucide-react';
 import LicenseConfigPanel from '../components/platform/LicenseConfigPanel.jsx';
 import RecentActivityPanel from '../components/platform/RecentActivityPanel.jsx';
 import {
+  CLIENT_SERVICE_LICENSEE,
   CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
   CLIENT_STATUS_PARENT_OPTIONS,
@@ -78,7 +79,9 @@ export default function PlatformClientAccount() {
   );
   const [address, setAddress] = useState(() => readCompanyAddress(org.settings));
   const [serviceCatalog, setServiceCatalog] = useState([]);
-  const [selectedServices, setSelectedServices] = useState(() => normalizeServices(org.settings));
+  const [selectedServices, setSelectedServices] = useState(() =>
+    normalizeServices(org.settings).filter((id) => id !== CLIENT_SERVICE_LICENSEE)
+  );
   const [groupLevels, setGroupLevels] = useState(() => readGroupLevels(org.settings));
   const [groupLevelLabels, setGroupLevelLabels] = useState(() => readGroupLevelLabels(org.settings));
   const [otherServiceDisplayValue, setOtherServiceDisplayValue] = useState('');
@@ -94,7 +97,7 @@ export default function PlatformClientAccount() {
     setClientStatusParentId(nextParentId);
     setClientStatusSubId(composeClientStatus(nextParentId, normalizedStatus));
     setAddress(readCompanyAddress(org.settings));
-    setSelectedServices(normalizeServices(org.settings));
+    setSelectedServices(normalizeServices(org.settings).filter((id) => id !== CLIENT_SERVICE_LICENSEE));
     setGroupLevels(readGroupLevels(org.settings));
     setGroupLevelLabels(readGroupLevelLabels(org.settings));
     setOtherServiceDisplayValue('');
@@ -440,12 +443,22 @@ export default function PlatformClientAccount() {
               Select the services enabled for this client.
             </p>
             <div style={{ display: 'grid', gap: '0.45rem' }}>
-              {serviceCatalog.length === 0 ? (
-                <p className="muted" style={{ margin: 0 }}>
-                  No services have been defined in platform settings yet.
-                </p>
-              ) : (
-                serviceCatalog.map((service) => (
+              {(() => {
+                // Rhythm Engine Licensee only ever takes effect at company
+                // creation time (it flips a new org into a licensee tenant).
+                // An existing client's kind can't change here, so offering
+                // it as a toggle would silently do nothing.
+                const assignableServices = serviceCatalog.filter(
+                  (service) => service.id !== CLIENT_SERVICE_LICENSEE
+                );
+                if (assignableServices.length === 0) {
+                  return (
+                    <p className="muted" style={{ margin: 0 }}>
+                      No services have been defined in platform settings yet.
+                    </p>
+                  );
+                }
+                return assignableServices.map((service) => (
                   <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
                     <input
                       type="checkbox"
@@ -455,8 +468,8 @@ export default function PlatformClientAccount() {
                     />
                     <span>{service.name}</span>
                   </label>
-                ))
-              )}
+                ));
+              })()}
             </div>
             {selectedServices.includes(CLIENT_SERVICE_OTHER) ? (
               <div className="field" style={{ marginTop: '0.9rem' }}>
