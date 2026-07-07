@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ChevronRight } from 'lucide-react';
+import { Plus, ChevronRight, X } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
@@ -80,7 +80,7 @@ export default function PlatformOrganisations() {
         <div className="crm-page-header">
           <h1>Organisations</h1>
           <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-            <Plus size={18} strokeWidth={2} aria-hidden /> New Organisation
+            <Plus size={18} strokeWidth={2} aria-hidden /> New Prospect
           </button>
         </div>
 
@@ -140,11 +140,13 @@ export default function PlatformOrganisations() {
       </div>
 
       {createOpen && (
-        <div className="modal-backdrop" onClick={() => setCreateOpen(false)}>
-          <div className="modal-dialog modal-dialog--wide card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal aria-labelledby="create-org-title">
+        <div className="modal-backdrop">
+          <div className="modal-dialog modal-dialog--wide card" role="dialog" aria-modal aria-labelledby="create-org-title">
             <div className="modal-dialog__head">
-              <h2 id="create-org-title" style={{ fontSize: '1.15rem', fontWeight: 700 }}>New Organisation</h2>
-              <button className="modal-dialog__close" onClick={() => setCreateOpen(false)} aria-label="Close" />
+              <h2 id="create-org-title" style={{ fontSize: '1.15rem', fontWeight: 700 }}>New Prospect</h2>
+              <button type="button" className="btn btn-ghost modal-dialog__close" onClick={() => setCreateOpen(false)} aria-label="Close">
+                <X size={22} aria-hidden />
+              </button>
             </div>
             <form onSubmit={create} style={{ marginTop: '1rem' }}>
               <div className="field">

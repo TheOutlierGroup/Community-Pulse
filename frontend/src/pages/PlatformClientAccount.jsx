@@ -20,6 +20,8 @@ import {
   normalizeClientStatus,
 } from './platformClientUtils.js';
 
+const SUGGESTED_GROUP_LEVEL_LABELS = ['Business Unit', 'Division', 'Team'];
+
 function readClientSettings(settings) {
   if (settings == null) return null;
   let s = settings;
@@ -518,7 +520,11 @@ export default function PlatformClientAccount() {
                           return next;
                         })
                       }
-                      placeholder={`e.g. Level ${index + 1}`}
+                      placeholder={
+                        SUGGESTED_GROUP_LEVEL_LABELS[index]
+                          ? `e.g. ${SUGGESTED_GROUP_LEVEL_LABELS[index]}`
+                          : ''
+                      }
                       disabled={busy}
                       required
                     />
@@ -636,9 +642,6 @@ export default function PlatformClientAccount() {
           borderStyle: 'solid',
         }}
       >
-        <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0, color: 'var(--danger, #dc3545)' }}>
-          Danger zone
-        </h2>
         <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
           Permanently delete this client and all associated data including users, pulse sessions, tasks, and invites. This action cannot be undone.
         </p>

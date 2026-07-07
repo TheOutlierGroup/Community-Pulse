@@ -3,7 +3,7 @@ import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
-import { ClipboardList, Users } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Eye, Hammer, ListTodo, Users } from 'lucide-react';
 import {
   clientServiceLabel,
   clientStatusBadgeClass,
@@ -50,6 +50,13 @@ const STATUS_LABEL = {
   working: 'Working on',
   review: 'Review',
   completed: 'Completed',
+};
+
+const STATUS_ICON = {
+  todo: ListTodo,
+  working: Hammer,
+  review: Eye,
+  completed: CheckCircle2,
 };
 
 function assigneeLabel(a) {
@@ -152,12 +159,18 @@ export default function PlatformClientOverview() {
                   <div className="platform-client-stats__label">Tasks (all)</div>
                 </div>
                 {counts &&
-                  ['todo', 'working', 'review', 'completed'].map((key) => (
-                    <div key={key} className="platform-client-stats__tile platform-client-stats__tile--status">
-                      <div className="platform-client-stats__value">{counts[key] ?? 0}</div>
-                      <div className="platform-client-stats__label">{STATUS_LABEL[key]}</div>
-                    </div>
-                  ))}
+                  ['todo', 'working', 'review', 'completed'].map((key) => {
+                    const StatusIcon = STATUS_ICON[key];
+                    return (
+                      <div key={key} className="platform-client-stats__tile platform-client-stats__tile--status">
+                        <div className="platform-client-stats__icon" aria-hidden>
+                          <StatusIcon size={22} strokeWidth={1.75} />
+                        </div>
+                        <div className="platform-client-stats__value">{counts[key] ?? 0}</div>
+                        <div className="platform-client-stats__label">{STATUS_LABEL[key]}</div>
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>
