@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import Navigation from './Navigation.jsx';
 import PlatformNotificationBell from './PlatformNotificationBell.jsx';
 import StatusBanner from './StatusBanner.jsx';
@@ -9,10 +11,30 @@ import { sidebarBrandTargetForRoute } from './layoutRouteTarget.js';
 import outlierLogo from '../../images/outlier-logo.png';
 import { useAuth } from './Auth.jsx';
 
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'pulse_sidebar_collapsed';
+
+function readStoredSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export default function Layout({ children, user, onLogout, hideHeader = false, navContext = null }) {
   const location = useLocation();
   const params = useParams();
   const { brand } = useAuth();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, sidebarCollapsed ? '1' : '0');
+    } catch {
+      // Ignore storage errors (private browsing, quota, etc.) — the toggle
+      // still works for the current page, it just won't persist.
+    }
+  }, [sidebarCollapsed]);
 
   // INF-06: white-label chrome when the user is on a licensee workspace
   // or on a downstream client of one. `brand.logoUrl` falls back to the
@@ -36,22 +58,37 @@ export default function Layout({ children, user, onLogout, hideHeader = false, n
     });
 
     return (
-      <div className="app-shell app-shell--with-sidebar">
+      <div className={`app-shell app-shell--with-sidebar${sidebarCollapsed ? ' app-shell--sidebar-collapsed' : ''}`}>
         <aside className="app-sidebar" aria-label="Main navigation">
           <div className="app-sidebar__inner">
-            <Link
-              to={sidebarBrandTarget}
-              className="sidebar-brand"
-              aria-label={`${brandLabel} home`}
-              title={brandLabel}
-            >
-              <img
-                src={brandLogoSrc}
-                alt=""
-                className="sidebar-brand-logo"
-                decoding="async"
-              />
-            </Link>
+            <div className="sidebar-brand-row">
+              <Link
+                to={sidebarBrandTarget}
+                className="sidebar-brand"
+                aria-label={`${brandLabel} home`}
+                title={brandLabel}
+              >
+                <img
+                  src={brandLogoSrc}
+                  alt=""
+                  className="sidebar-brand-logo"
+                  decoding="async"
+                />
+              </Link>
+              <button
+                type="button"
+                className="sidebar-collapse-toggle"
+                onClick={() => setSidebarCollapsed((current) => !current)}
+                aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {sidebarCollapsed ? (
+                  <PanelLeftOpen size={18} strokeWidth={1.75} aria-hidden />
+                ) : (
+                  <PanelLeftClose size={18} strokeWidth={1.75} aria-hidden />
+                )}
+              </button>
+            </div>
             <Navigation user={user} onLogout={onLogout} variant="sidebar" navContext={navContext} />
           </div>
         </aside>

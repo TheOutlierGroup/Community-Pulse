@@ -13,7 +13,7 @@ import AccountCard from './settingsPage/AccountCard.jsx';
 import NotificationPreferencesCard from './settingsPage/NotificationPreferencesCard.jsx';
 import { normalizeServices } from '../utils/clientServices.js';
 
-export default function AccountPage() {
+export default function AccountPage({ standalone = true }) {
   const { user, logout, loading, setCurrentUser } = useAuth();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
@@ -534,8 +534,8 @@ export default function AccountPage() {
     }
   }
 
-  return (
-    <Layout user={user} onLogout={logout}>
+  const content = (
+    <>
       <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <CircleUser size={28} strokeWidth={1.75} aria-hidden />
         Account
@@ -663,6 +663,13 @@ export default function AccountPage() {
           </form>
         </div>
       ) : null}
+    </>
+  );
+
+  if (!standalone) return content;
+  return (
+    <Layout user={user} onLogout={logout}>
+      {content}
     </Layout>
   );
 }

@@ -12,6 +12,7 @@ import {
   ClipboardList,
   FileText,
   CircleUser,
+  Cog,
   UserPlus,
   SlidersHorizontal,
   Briefcase,
@@ -24,6 +25,7 @@ import {
 import api from '../../services/api.js';
 import { rhythmEngineAppBaseUrl } from '../../config/appSurface.js';
 import { isWorkspaceUser, isLicenseeUser } from '../../hooks/usePlatformAccess.js';
+import AuthenticatedBlobImage from '../platform/AuthenticatedBlobImage.jsx';
 
 function sidebarLinkClass({ isActive }) {
   return `sidebar-nav-link${isActive ? ' sidebar-nav-link--active' : ''}`;
@@ -66,6 +68,13 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const isWorkspace = isWorkspaceUser(user);
   const isLicensee = isLicenseeUser(user);
   const platformClientOrgId = isWorkspace && params.orgId ? params.orgId : null;
+  const myAccountHref = platformClientOrgId ? `/platform/clients/${platformClientOrgId}/my-account` : '/account';
+  const myAccountLabel = user?.firstName?.trim() || user?.email || 'Account';
+  const myAccountAvatar = user?.hasProfileAvatar ? (
+    <AuthenticatedBlobImage path="/api/auth/me/avatar" alt="" className="sidebar-nav-avatar" />
+  ) : (
+    <CircleUser size={20} strokeWidth={1.75} aria-hidden />
+  );
   const clientPulseEnabled = userHasService(user, CLIENT_SERVICE_PULSE);
   const platformViewedClientPulseEnabled = hasService(navContext?.clientOrganization?.settings, CLIENT_SERVICE_PULSE);
   const isPlatformPulseRoute =
@@ -334,8 +343,8 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                   )}
                   {pulseLaunchError && <p className="muted">{pulseLaunchError}</p>}
                   <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
-                    <CircleUser size={20} strokeWidth={1.75} aria-hidden />
-                    Account
+                    <Cog size={20} strokeWidth={1.75} aria-hidden />
+                    Configurations
                   </NavLink>
                 </>
               )}
@@ -394,9 +403,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         </nav>
         {!isPlatformPulseRoute && (
           <div className="sidebar-footer">
-            <NavLink to="/account" className={sidebarLinkClass}>
-              <CircleUser size={20} strokeWidth={1.75} aria-hidden />
-              Account
+            <NavLink to={myAccountHref} className={sidebarLinkClass}>
+              {myAccountAvatar}
+              {myAccountLabel}
             </NavLink>
             <button
               type="button"
@@ -441,9 +450,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
           My Rhythm Engine
         </Link>
       )}
-      <Link to="/account" className="btn btn-ghost nav-link-btn">
-        <CircleUser size={18} strokeWidth={2} aria-hidden />
-        Account
+      <Link to={myAccountHref} className="btn btn-ghost nav-link-btn">
+        {myAccountAvatar}
+        {myAccountLabel}
       </Link>
       <span className="muted nav-email">{user.email}</span>
       <button

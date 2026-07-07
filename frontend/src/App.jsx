@@ -76,6 +76,7 @@ export default function App() {
               </Route>
               <Route path="pulse/*" element={<Navigate to="rhythm-engine" replace />} />
               {!IS_RHYTHM_ENGINE_SURFACE && <Route path="account" element={<PlatformClientAccount />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="my-account" element={<AccountPage standalone={false} />} />}
             </Route>
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/clients" element={<PlatformClients />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/users" element={<PlatformUsers />} />}

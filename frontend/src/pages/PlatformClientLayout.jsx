@@ -373,6 +373,8 @@ export default function PlatformClientLayout() {
     } else if (tail.startsWith('tasks')) {
       section = 'Tasks';
     } else if (tail === 'account') {
+      section = 'Configurations';
+    } else if (tail === 'my-account') {
       section = 'Account';
     } else if (tail.startsWith('rhythm-engine/users')) {
       section = 'Rhythm Engine · Invites';
