@@ -1,18 +1,26 @@
 import { useRef, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { Building2, Sparkles, Trash2 } from 'lucide-react';
+import { Building2, Sparkles, TrendingUp, Trash2 } from 'lucide-react';
 import api from '../services/api.js';
+import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
+import NewClientModal from '../components/platform/NewClientModal.jsx';
+import { isLicenseeUser } from '../hooks/usePlatformAccess.js';
+import { RELATIONSHIP_STATUS_OPTIONS, normalizeRelationshipStatus } from './platformClientUtils.js';
+import { serviceIdForBusinessUnit } from '../utils/prospectPromotion.js';
 import { BUSINESS_UNITS, LEAD_STATUSES } from '../config/crmConstants.js';
 
 export default function PlatformProspectConfigurations() {
-  const { org, orgId, refreshOrg, bumpLogoRev } = useOutletContext();
+  const { org, orgId, contacts, refreshOrg, bumpLogoRev } = useOutletContext();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { showToast } = useToast();
+  const isLicensee = isLicenseeUser(user);
   const logoInputRef = useRef(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoRev, setLogoRev] = useState(0);
+  const [promoteModalOpen, setPromoteModalOpen] = useState(false);
 
   const [editForm, setEditForm] = useState({
     organisation_name: org.organisation_name,
@@ -21,6 +29,7 @@ export default function PlatformProspectConfigurations() {
     phone: org.phone || '',
     business_unit: org.business_unit,
     lead_status: org.lead_status,
+    relationship_status: normalizeRelationshipStatus(org.relationship_status),
     lead_source: org.lead_source || '',
     expected_close_date: org.expected_close_date?.slice(0, 10) || '',
     do_not_contact: Boolean(org.do_not_contact),
@@ -37,6 +46,19 @@ export default function PlatformProspectConfigurations() {
     } catch (err) {
       showToast(err.response?.data?.error || 'Failed to update.', { variant: 'error' });
     } finally { setSaveBusy(false); }
+  }
+
+  async function handlePromoted(data) {
+    const clientOrg = data.organization;
+    try {
+      await api.post(`/api/platform/crm/organisations/${orgId}/promote`, { clientOrgId: clientOrg.id });
+      showToast(`${org.organisation_name} was promoted to Client.`, { variant: 'success' });
+      navigate(`/platform/clients/${clientOrg.id}`);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Client was created, but promotion linking failed.', { variant: 'error' });
+      setPromoteModalOpen(false);
+      await refreshOrg();
+    }
   }
 
   async function onLogoFile(e) {
@@ -83,8 +105,43 @@ export default function PlatformProspectConfigurations() {
     } catch { showToast('Failed to delete organisation.', { variant: 'error' }); }
   }
 
+  const firstContact = contacts?.[0] || null;
+  const promoteInitialValues = {
+    name: org.organisation_name,
+    adminEmail: firstContact?.contact_email || '',
+    adminFirstName: firstContact?.contact_firstname || '',
+    adminLastName: firstContact?.contact_lastname || '',
+    serviceIds: [serviceIdForBusinessUnit(org.business_unit)].filter(Boolean),
+  };
+
   return (
     <div>
+      {!org.promoted_to_org_id && (
+        <div
+          className="card"
+          style={{
+            padding: '1.25rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Promote to Client</div>
+            <p className="muted" style={{ fontSize: '0.9rem', margin: 0 }}>
+              Won this prospect? Create the matching client, prefilled from this prospect.
+            </p>
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => setPromoteModalOpen(true)}>
+            <TrendingUp size={16} strokeWidth={2} aria-hidden style={{ marginRight: '0.35rem' }} />
+            Promote to Client
+          </button>
+        </div>
+      )}
+
       <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
         <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: '1rem' }}>
           Prospect details
@@ -109,6 +166,12 @@ export default function PlatformProspectConfigurations() {
               <label>Lead status</label>
               <select value={editForm.lead_status} onChange={(e) => setEditForm((p) => ({ ...p, lead_status: e.target.value }))}>
                 {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Relationship Status</label>
+              <select value={editForm.relationship_status} onChange={(e) => setEditForm((p) => ({ ...p, relationship_status: e.target.value }))}>
+                {RELATIONSHIP_STATUS_OPTIONS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
             </div>
             <div className="field">
@@ -225,6 +288,18 @@ export default function PlatformProspectConfigurations() {
           Delete prospect
         </button>
       </div>
+
+      <NewClientModal
+        open={promoteModalOpen}
+        onClose={() => setPromoteModalOpen(false)}
+        onCreated={handlePromoted}
+        isLicensee={isLicensee}
+        canCreateLicensees={!isLicensee}
+        title="Promote to Client"
+        submitLabel="Create client"
+        helperText={`Promoting "${org.organisation_name}" from Prospects. Review the prefilled details before creating the client — lead status, relationship status, website, phone, lead source, and expected close date will be preserved in the new client's Recent Activity log.`}
+        initialValues={promoteInitialValues}
+      />
     </div>
   );
 }

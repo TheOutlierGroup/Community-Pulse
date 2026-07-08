@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
@@ -8,16 +8,58 @@ import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImag
 import NewClientModal from '../components/platform/NewClientModal.jsx';
 import { isLicenseeUser, usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
-import { Building2, Plus } from 'lucide-react';
+import { Building2, ChevronDown, ChevronUp, ChevronsUpDown, Plus } from 'lucide-react';
 import {
+  clientCompositeStatusLabel,
   clientServiceLabel,
-  clientStatusBadgeClass,
-  clientStatusLabel,
   normalizeServices,
+  relationshipStatusBadgeClass,
 } from './platformClientUtils.js';
+import '../styles/crm.css';
 
 function activeServiceLabels(settings, serviceCatalog) {
   return normalizeServices(settings).map((serviceId) => clientServiceLabel(serviceId, serviceCatalog));
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// Same 3-state sort cycle as the Prospects table: default -> ascending ->
+// descending -> default, where "default" always renders most-recently-
+// updated-first regardless of which column was last explicitly sorted.
+const SORTABLE_COLUMNS = {
+  client: (o) => String(o.name || ''),
+  updated: (o) => new Date(o.updated_at || o.created_at || 0).getTime(),
+};
+
+function nextSortState(current, column) {
+  if (current.column !== column) return { column, direction: 'asc' };
+  if (current.direction === 'asc') return { column, direction: 'desc' };
+  return { column: null, direction: null };
+}
+
+function effectiveSort(sort) {
+  return sort.column
+    ? { column: sort.column, direction: sort.direction }
+    : { column: 'updated', direction: 'desc' };
+}
+
+function sortIndicator(sort, column) {
+  const eff = effectiveSort(sort);
+  if (eff.column !== column) {
+    return <ChevronsUpDown size={14} strokeWidth={2} className="crm-table__sort-icon crm-table__sort-icon--inactive" aria-hidden />;
+  }
+  return eff.direction === 'asc'
+    ? <ChevronUp size={14} strokeWidth={2.25} className="crm-table__sort-icon" aria-hidden />
+    : <ChevronDown size={14} strokeWidth={2.25} className="crm-table__sort-icon" aria-hidden />;
+}
+
+function ariaSortFor(sort, column) {
+  const eff = effectiveSort(sort);
+  if (eff.column !== column) return 'none';
+  return eff.direction === 'asc' ? 'ascending' : 'descending';
 }
 
 export default function PlatformClients() {
@@ -29,6 +71,7 @@ export default function PlatformClients() {
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [sort, setSort] = useState({ column: null, direction: null });
 
   const isLicensee = isLicenseeUser(user);
   const canCreateLicensees = !isLicensee;
@@ -57,6 +100,22 @@ export default function PlatformClients() {
   }, [ok, loadOrgs]);
 
   useDocumentTitle(!loading && ok ? `Clients | ${DEFAULT_TAB}` : null);
+
+  function toggleSort(column) {
+    setSort((current) => nextSortState(current, column));
+  }
+
+  const sortedOrgs = useMemo(() => {
+    const eff = effectiveSort(sort);
+    const dirMultiplier = eff.direction === 'asc' ? 1 : -1;
+    const getValue = SORTABLE_COLUMNS[eff.column];
+    return [...orgs].sort((a, b) => {
+      const av = getValue(a);
+      const bv = getValue(b);
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dirMultiplier;
+      return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * dirMultiplier;
+    });
+  }, [orgs, sort]);
 
   function openClient(orgId) {
     navigate(`/platform/clients/${orgId}`);
@@ -138,10 +197,18 @@ export default function PlatformClients() {
           <table className="admin-table platform-clients-table">
             <thead>
               <tr>
-                <th scope="col">Client</th>
+                <th scope="col" aria-sort={ariaSortFor(sort, 'client')}>
+                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('client')}>
+                    Client {sortIndicator(sort, 'client')}
+                  </button>
+                </th>
                 <th scope="col">Status</th>
                 <th scope="col">Active services</th>
-                <th scope="col">Created</th>
+                <th scope="col" aria-sort={ariaSortFor(sort, 'updated')}>
+                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('updated')}>
+                    Last Updated {sortIndicator(sort, 'updated')}
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -154,7 +221,7 @@ export default function PlatformClients() {
                   </td>
                 </tr>
               )}
-              {orgs.map((o) => (
+              {sortedOrgs.map((o) => (
                 <tr
                   key={o.id}
                   className="platform-clients-table__row platform-clients-table__row--clickable"
@@ -189,21 +256,15 @@ export default function PlatformClients() {
                     </div>
                   </td>
                   <td>
-                    <span className={`badge badge-${clientStatusBadgeClass(o.client_status)}`}>
-                      {clientStatusLabel(o.client_status)}
+                    <span className={`badge ${relationshipStatusBadgeClass(o.relationship_status)}`}>
+                      {clientCompositeStatusLabel(o.client_status, o.relationship_status)}
                     </span>
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
                     {activeServiceLabels(o.settings, serviceCatalog).join(', ') || '—'}
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
-                    {o.created_at
-                      ? new Date(o.created_at).toLocaleDateString(undefined, {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                        })
-                      : '—'}
+                    {fmtDate(o.updated_at || o.created_at)}
                   </td>
                 </tr>
               ))}

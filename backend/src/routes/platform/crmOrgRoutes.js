@@ -175,6 +175,7 @@ router.post('/organisations/:id/promote', async (req, res) => {
         prospectId: prospect.organisation_id,
         prospectName: prospect.organisation_name,
         leadStatus: prospect.lead_status,
+        relationshipStatus: prospect.relationship_status,
         website: prospect.website,
         phone: prospect.phone,
         leadSource: prospect.lead_source,
