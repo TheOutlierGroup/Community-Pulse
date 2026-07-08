@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Building2 } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Building2, TrendingUp } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
-import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
+import NewClientModal from '../components/platform/NewClientModal.jsx';
+import { useToast } from '../components/shared/ToastProvider.jsx';
+import { isLicenseeUser, usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { LEAD_STATUS_BADGE } from '../config/crmConstants.js';
+import { serviceIdForBusinessUnit } from '../utils/prospectPromotion.js';
 import '../styles/crm.css';
 
 export default function PlatformProspectLayout() {
@@ -15,7 +18,9 @@ export default function PlatformProspectLayout() {
   const location = useLocation();
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const ok = usePlatformAccess(user, loading, navigate);
+  const isLicensee = isLicenseeUser(user);
 
   const [org, setOrg] = useState(null);
   const [contacts, setContacts] = useState([]);
@@ -25,6 +30,9 @@ export default function PlatformProspectLayout() {
   const [orgLoading, setOrgLoading] = useState(true);
   const [logoRev, setLogoRev] = useState(0);
   const bumpLogoRev = useCallback(() => setLogoRev((v) => v + 1), []);
+  const [promotedClientName, setPromotedClientName] = useState('');
+  const [promoteModalOpen, setPromoteModalOpen] = useState(false);
+  const [promoting, setPromoting] = useState(false);
 
   const refreshOrg = useCallback(async () => {
     const { data } = await api.get(`/api/platform/crm/organisations/${id}`);
@@ -59,6 +67,25 @@ export default function PlatformProspectLayout() {
   }, [ok, id, refreshOrg]);
 
   useEffect(() => {
+    if (!org?.promoted_to_org_id) {
+      setPromotedClientName('');
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/platform/organizations/${org.promoted_to_org_id}`);
+        if (!cancelled) setPromotedClientName(data.organization?.name || 'this client');
+      } catch {
+        if (!cancelled) setPromotedClientName('this client');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [org?.promoted_to_org_id]);
+
+  useEffect(() => {
     if (!ok || loading || !id) return undefined;
     const previous = document.title;
     if (notFound) {
@@ -86,6 +113,22 @@ export default function PlatformProspectLayout() {
     };
   }, [ok, loading, id, notFound, orgLoading, org, location.pathname]);
 
+  async function handlePromoted(data) {
+    const clientOrg = data.organization;
+    setPromoting(true);
+    try {
+      await api.post(`/api/platform/crm/organisations/${id}/promote`, { clientOrgId: clientOrg.id });
+      showToast(`${org.organisation_name} was promoted to Client.`, { variant: 'success' });
+      navigate(`/platform/clients/${clientOrg.id}`);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Client was created, but promotion linking failed.', { variant: 'error' });
+      setPromoteModalOpen(false);
+      await refreshOrg();
+    } finally {
+      setPromoting(false);
+    }
+  }
+
   if (loading || !ok) return null;
 
   if (notFound) {
@@ -107,6 +150,15 @@ export default function PlatformProspectLayout() {
       </Layout>
     );
   }
+
+  const firstContact = contacts[0] || null;
+  const promoteInitialValues = {
+    name: org.organisation_name,
+    adminEmail: firstContact?.contact_email || '',
+    adminFirstName: firstContact?.contact_firstname || '',
+    adminLastName: firstContact?.contact_lastname || '',
+    serviceIds: [serviceIdForBusinessUnit(org.business_unit)].filter(Boolean),
+  };
 
   return (
     <Layout user={user} onLogout={logout}>
@@ -134,8 +186,55 @@ export default function PlatformProspectLayout() {
         >
           {org.business_unit}
         </span>
+        {!org.promoted_to_org_id && (
+          <button type="button" className="btn btn-primary" onClick={() => setPromoteModalOpen(true)}>
+            <TrendingUp size={16} strokeWidth={2} aria-hidden style={{ marginRight: '0.35rem' }} />
+            Promote to Client
+          </button>
+        )}
       </div>
+
+      {org.promoted_to_org_id && (
+        <div
+          className="card"
+          style={{
+            marginBottom: '1.25rem',
+            padding: '0.85rem 1.1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            flexWrap: 'wrap',
+            background: 'var(--surface2)',
+          }}
+        >
+          <span>
+            Promoted to Client{promotedClientName ? ` — ${promotedClientName}` : ''}.
+          </span>
+          <Link
+            to={`/platform/clients/${org.promoted_to_org_id}`}
+            className="btn btn-ghost"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+          >
+            View client
+            <ArrowUpRight size={16} strokeWidth={2} aria-hidden />
+          </Link>
+        </div>
+      )}
+
       <Outlet context={{ org, orgId: id, contacts, setContacts, notes, setNotes, refreshOrg, bumpLogoRev }} />
+
+      <NewClientModal
+        open={promoteModalOpen}
+        onClose={() => !promoting && setPromoteModalOpen(false)}
+        onCreated={handlePromoted}
+        isLicensee={isLicensee}
+        canCreateLicensees={!isLicensee}
+        title="Promote to Client"
+        submitLabel="Create client"
+        helperText={`Promoting "${org.organisation_name}" from Prospects. Review the prefilled details before creating the client — lead status, website, phone, lead source, and expected close date will be preserved in the new client's Recent Activity log.`}
+        initialValues={promoteInitialValues}
+      />
     </Layout>
   );
 }

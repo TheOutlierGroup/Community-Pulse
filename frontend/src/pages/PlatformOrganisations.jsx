@@ -209,6 +209,11 @@ export default function PlatformOrganisations() {
                         </span>
                       ) : null}
                       <span>{o.organisation_name}</span>
+                      {o.do_not_contact && (
+                        <span className="badge badge-closed" style={{ marginLeft: '0.4rem' }}>
+                          Do not contact
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td>{o.business_unit}</td>
