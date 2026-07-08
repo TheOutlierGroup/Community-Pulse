@@ -82,7 +82,10 @@ export async function updateOrganisation(platformOrgId, organisationId, data) {
   for (const key of allowed) {
     if (key in data) {
       sets.push(`${key} = $${i++}`);
-      values.push(data[key] ?? null);
+      // expected_close_date is a DATE column; Postgres rejects '' (only
+      // accepts a valid date or NULL), so an empty string must map to null.
+      const value = key === 'expected_close_date' && data[key] === '' ? null : data[key];
+      values.push(value ?? null);
     }
   }
   if (sets.length === 0) return getOrganisation(platformOrgId, organisationId);

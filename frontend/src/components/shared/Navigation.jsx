@@ -372,7 +372,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
               </NavLink>
               <NavLink to="/platform/crm/organisations" className={sidebarLinkClass}>
                 <Briefcase size={20} strokeWidth={1.75} aria-hidden />
-                CRM
+                Prospects
               </NavLink>
               {user.role === 'admin' && !isLicensee && (
                 <NavLink to="/platform/settings" className={sidebarLinkClass}>

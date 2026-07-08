@@ -9,10 +9,16 @@ import {
   listNotesForOrg, listNotesForContact,
   createNoteForOrg, createNoteForContact, deleteNote,
 } from '../../models/CrmNote.js';
+import { auditFromRequest, AUDIT_ACTIONS, listRecentAuditEvents, publicAuditEvent } from '../../services/auditLog.js';
 
 const router = Router();
 
 function orgId(req) { return req.user.organizationId; }
+
+function noteExcerpt(text) {
+  const trimmed = String(text || '').trim();
+  return trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
+}
 
 // ── Organisations ──────────────────────────────────────────────────────────
 
@@ -31,6 +37,13 @@ router.post('/organisations', async (req, res) => {
   try {
     if (!req.body.organisation_name?.trim()) return res.status(400).json({ error: 'organisation_name is required.' });
     const org = await createOrganisation(orgId(req), req.body);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_ORGANISATION_CREATE,
+      targetType: 'crm_organisation',
+      targetId: String(org.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: { name: org.organisation_name, businessUnit: org.business_unit },
+    });
     res.status(201).json({ organisation: org });
   } catch (e) {
     console.error(e);
@@ -57,6 +70,13 @@ router.patch('/organisations/:id', async (req, res) => {
   try {
     const org = await updateOrganisation(orgId(req), req.params.id, req.body);
     if (!org) return res.status(404).json({ error: 'Organisation not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_ORGANISATION_UPDATE,
+      targetType: 'crm_organisation',
+      targetId: String(org.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: { patchedFields: Object.keys(req.body || {}) },
+    });
     res.json({ organisation: org });
   } catch (e) {
     console.error(e);
@@ -66,13 +86,39 @@ router.patch('/organisations/:id', async (req, res) => {
 
 router.delete('/organisations/:id', async (req, res) => {
   try {
-    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
-      return res.status(404).json({ error: 'Organisation not found.' });
+    const org = await getOrganisation(orgId(req), req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organisation not found.' });
     await deleteOrganisation(orgId(req), req.params.id);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_ORGANISATION_DELETE,
+      targetType: 'crm_organisation',
+      targetId: String(org.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: { name: org.organisation_name },
+    });
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to delete organisation.' });
+  }
+});
+
+// ── Recent activity ─────────────────────────────────────────────────────────
+
+router.get('/organisations/:id/audit-events', async (req, res) => {
+  try {
+    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
+      return res.status(404).json({ error: 'Organisation not found.' });
+    const limit = Number.parseInt(req.query?.limit, 10) || 50;
+    const rows = await listRecentAuditEvents({
+      organizationId: orgId(req),
+      targetId: req.params.id,
+      limit,
+    });
+    res.json({ events: rows.map(publicAuditEvent) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load recent activity.' });
   }
 });
 
@@ -95,6 +141,13 @@ router.post('/organisations/:id/notes', async (req, res) => {
     if (!await organisationBelongsToOrg(orgId(req), req.params.id))
       return res.status(404).json({ error: 'Organisation not found.' });
     const note = await createNoteForOrg(req.params.id, req.body.note_text, req.user.id);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_NOTE_CREATE,
+      targetType: 'crm_note',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { kind: 'organisation note', excerpt: noteExcerpt(req.body.note_text) },
+    });
     res.status(201).json({ note });
   } catch (e) {
     res.status(500).json({ error: 'Failed to add note.' });
@@ -106,6 +159,13 @@ router.delete('/organisations/:id/notes/:noteId', async (req, res) => {
     if (!await organisationBelongsToOrg(orgId(req), req.params.id))
       return res.status(404).json({ error: 'Organisation not found.' });
     await deleteNote(req.params.noteId, { organisationId: req.params.id });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_NOTE_DELETE,
+      targetType: 'crm_note',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { kind: 'organisation note' },
+    });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete note.' });
@@ -120,6 +180,13 @@ router.post('/organisations/:id/contacts', async (req, res) => {
     if (!await organisationBelongsToOrg(orgId(req), req.params.id))
       return res.status(404).json({ error: 'Organisation not found.' });
     const contact = await createContact(req.params.id, req.body);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_CONTACT_CREATE,
+      targetType: 'crm_contact',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { name: [contact.contact_firstname, contact.contact_lastname].filter(Boolean).join(' ') },
+    });
     res.status(201).json({ contact });
   } catch (e) {
     res.status(500).json({ error: 'Failed to add contact.' });
@@ -132,6 +199,16 @@ router.patch('/organisations/:id/contacts/:contactId', async (req, res) => {
       return res.status(404).json({ error: 'Organisation not found.' });
     const contact = await updateContact(req.params.contactId, req.params.id, req.body);
     if (!contact) return res.status(404).json({ error: 'Contact not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_CONTACT_UPDATE,
+      targetType: 'crm_contact',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: {
+        name: [contact.contact_firstname, contact.contact_lastname].filter(Boolean).join(' '),
+        patchedFields: Object.keys(req.body || {}),
+      },
+    });
     res.json({ contact });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update contact.' });
@@ -145,6 +222,13 @@ router.delete('/organisations/:id/contacts/:contactId', async (req, res) => {
     if (!await contactBelongsToOrg(req.params.id, req.params.contactId))
       return res.status(404).json({ error: 'Contact not found.' });
     await deleteContact(req.params.contactId, req.params.id);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_CONTACT_DELETE,
+      targetType: 'crm_contact',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: {},
+    });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete contact.' });
@@ -172,6 +256,13 @@ router.post('/organisations/:id/contacts/:contactId/notes', async (req, res) => 
     if (!await contactBelongsToOrg(req.params.id, req.params.contactId))
       return res.status(404).json({ error: 'Contact not found.' });
     const note = await createNoteForContact(req.params.contactId, req.params.id, req.body.note_text, req.user.id);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_NOTE_CREATE,
+      targetType: 'crm_note',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { kind: 'contact note', excerpt: noteExcerpt(req.body.note_text) },
+    });
     res.status(201).json({ note });
   } catch (e) {
     res.status(500).json({ error: 'Failed to add note.' });
@@ -183,6 +274,13 @@ router.delete('/organisations/:id/contacts/:contactId/notes/:noteId', async (req
     if (!await contactBelongsToOrg(req.params.id, req.params.contactId))
       return res.status(404).json({ error: 'Contact not found.' });
     await deleteNote(req.params.noteId, { contactId: req.params.contactId });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_NOTE_DELETE,
+      targetType: 'crm_note',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { kind: 'contact note' },
+    });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete note.' });

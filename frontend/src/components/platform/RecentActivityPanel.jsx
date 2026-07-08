@@ -23,6 +23,14 @@ const ACTION_LABELS = {
   'status_incident.update': 'Status incident updated',
   'status_incident.resolve': 'Status incident resolved',
   'status_incident.delete': 'Status incident deleted',
+  'crm.organisation.create': 'Prospect created',
+  'crm.organisation.update': 'Prospect updated',
+  'crm.organisation.delete': 'Prospect deleted',
+  'crm.contact.create': 'Contact added',
+  'crm.contact.update': 'Contact updated',
+  'crm.contact.delete': 'Contact removed',
+  'crm.note.create': 'Note added',
+  'crm.note.delete': 'Note removed',
 };
 
 function describeAction(action) {
@@ -51,7 +59,10 @@ function describeMetadata(event) {
   if (!event?.metadata || typeof event.metadata !== 'object') return null;
   const m = event.metadata;
   const bits = [];
+  if (m.name) bits.push(m.name);
   if (m.kind) bits.push(m.kind);
+  if (m.businessUnit) bits.push(m.businessUnit);
+  if (m.excerpt) bits.push(`"${m.excerpt}"`);
   if (Array.isArray(m.patchedFields) && m.patchedFields.length > 0) {
     bits.push(`fields: ${m.patchedFields.slice(0, 4).join(', ')}${m.patchedFields.length > 4 ? '…' : ''}`);
   }
@@ -70,7 +81,7 @@ function describeMetadata(event) {
  * org; licensee admins see their own org and any owned client). Polls
  * once on mount; refresh button reloads on demand.
  */
-export default function RecentActivityPanel({ orgId, style }) {
+export default function RecentActivityPanel({ orgId, style, resourcePath = '/api/platform/organizations' }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -82,7 +93,7 @@ export default function RecentActivityPanel({ orgId, style }) {
     setLoading(true);
     setError('');
     try {
-      const { data } = await api.get(`/api/platform/organizations/${orgId}/audit-events?limit=${DISPLAY_LIMIT}`);
+      const { data } = await api.get(`${resourcePath}/${orgId}/audit-events?limit=${DISPLAY_LIMIT}`);
       setEvents(Array.isArray(data?.events) ? data.events : []);
     } catch (e) {
       setError(e?.response?.data?.error || 'Could not load recent activity.');
@@ -96,7 +107,7 @@ export default function RecentActivityPanel({ orgId, style }) {
     setExporting(true);
     setExportError('');
     try {
-      const { data } = await api.get(`/api/platform/organizations/${orgId}/audit-events?limit=${EXPORT_LIMIT}`);
+      const { data } = await api.get(`${resourcePath}/${orgId}/audit-events?limit=${EXPORT_LIMIT}`);
       const rows = Array.isArray(data?.events) ? data.events : [];
       const headers = ['Action', 'Detail', 'Result', 'Timestamp'];
       const lines = [headers.map(csvEscape).join(',')];
@@ -130,7 +141,7 @@ export default function RecentActivityPanel({ orgId, style }) {
 
   useEffect(() => {
     reload();
-  }, [orgId]);
+  }, [orgId, resourcePath]);
 
   return (
     <div className="card platform-client-dashboard__card" style={{ marginBottom: '1.5rem', ...style }}>

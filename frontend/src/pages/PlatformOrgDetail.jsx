@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, X, ChevronDown, ChevronRight, Pencil, Check } from 'lucide-react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Plus, X, ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
+import RecentActivityPanel from '../components/platform/RecentActivityPanel.jsx';
 import { BUSINESS_UNITS, LEAD_STATUSES, LEAD_STATUS_BADGE } from '../config/crmConstants.js';
 import '../styles/crm.css';
+
+const PROSPECT_TABS = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'configurations', label: 'Configurations' },
+  { id: 'activity', label: 'Recent activity' },
+];
+const PROSPECT_TAB_IDS = new Set(PROSPECT_TABS.map((tab) => tab.id));
+const DEFAULT_PROSPECT_TAB = 'dashboard';
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -93,11 +102,11 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
     setSaveBusy(true);
     try {
       const { data } = await api.patch(`/api/platform/crm/organisations/${orgId}/contacts/${contact.contact_id}`, form);
-      showToast('Contact updated.', 'success');
+      showToast('Contact updated.', { variant: 'success' });
       setEditing(false);
       onUpdated(data.contact);
     } catch (err) {
-      showToast(err.response?.data?.error || 'Failed to update contact.', 'error');
+      showToast(err.response?.data?.error || 'Failed to update contact.', { variant: 'error' });
     } finally { setSaveBusy(false); }
   }
 
@@ -105,9 +114,9 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
     if (!confirm('Delete this contact?')) return;
     try {
       await api.delete(`/api/platform/crm/organisations/${orgId}/contacts/${contact.contact_id}`);
-      showToast('Contact deleted.', 'success');
+      showToast('Contact deleted.', { variant: 'success' });
       onDeleted(contact.contact_id);
-    } catch { showToast('Failed to delete contact.', 'error'); }
+    } catch { showToast('Failed to delete contact.', { variant: 'error' }); }
   }
 
   async function addNote(text) {
@@ -115,8 +124,8 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
     try {
       const { data } = await api.post(`/api/platform/crm/organisations/${orgId}/contacts/${contact.contact_id}/notes`, { note_text: text });
       setNotes((p) => [data.note, ...(p || [])]);
-      showToast('Note added.', 'success');
-    } catch { showToast('Failed to add note.', 'error'); }
+      showToast('Note added.', { variant: 'success' });
+    } catch { showToast('Failed to add note.', { variant: 'error' }); }
     finally { setNoteBusy(false); }
   }
 
@@ -124,8 +133,8 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
     try {
       await api.delete(`/api/platform/crm/organisations/${orgId}/contacts/${contact.contact_id}/notes/${noteId}`);
       setNotes((p) => p.filter((n) => n.note_id !== noteId));
-      showToast('Note deleted.', 'success');
-    } catch { showToast('Failed to delete note.', 'error'); }
+      showToast('Note deleted.', { variant: 'success' });
+    } catch { showToast('Failed to delete note.', { variant: 'error' }); }
   }
 
   return (
@@ -191,8 +200,15 @@ export default function PlatformOrgDetail() {
   const { id } = useParams();
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const ok = usePlatformAccess(user, loading, navigate);
   const { showToast } = useToast();
+
+  const initialTab = (() => {
+    const fromHash = String(location.hash || '').replace(/^#/, '').trim().toLowerCase();
+    return PROSPECT_TAB_IDS.has(fromHash) ? fromHash : DEFAULT_PROSPECT_TAB;
+  })();
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const [org, setOrg] = useState(null);
   const [contacts, setContacts] = useState([]);
@@ -200,7 +216,6 @@ export default function PlatformOrgDetail() {
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState('');
 
-  const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [saveBusy, setSaveBusy] = useState(false);
 
@@ -211,6 +226,19 @@ export default function PlatformOrgDetail() {
   const [noteBusy, setNoteBusy] = useState(false);
 
   useDocumentTitle(!loading && ok && org ? `${org.organisation_name} | ${DEFAULT_TAB}` : null);
+
+  useEffect(() => {
+    const fromHash = String(location.hash || '').replace(/^#/, '').trim().toLowerCase();
+    if (PROSPECT_TAB_IDS.has(fromHash) && fromHash !== activeTab) {
+      setActiveTab(fromHash);
+    }
+  }, [location.hash, activeTab]);
+
+  function changeTab(nextTab) {
+    if (!PROSPECT_TAB_IDS.has(nextTab) || nextTab === activeTab) return;
+    setActiveTab(nextTab);
+    navigate(`#${nextTab}`, { replace: false });
+  }
 
   const load = useCallback(async () => {
     setFetching(true);
@@ -233,7 +261,7 @@ export default function PlatformOrgDetail() {
       const msg = e.response?.data?.error || e.message || 'Failed to load organisation.';
       setFetchError(msg);
     } finally { setFetching(false); }
-  }, [id, showToast]);
+  }, [id]);
 
   useEffect(() => { if (ok) load(); }, [ok, load]);
 
@@ -243,20 +271,19 @@ export default function PlatformOrgDetail() {
     try {
       const { data } = await api.patch(`/api/platform/crm/organisations/${id}`, editForm);
       setOrg(data.organisation);
-      setEditing(false);
-      showToast('Organisation updated.', 'success');
+      showToast('Organisation updated.', { variant: 'success' });
     } catch (err) {
-      showToast(err.response?.data?.error || 'Failed to update.', 'error');
+      showToast(err.response?.data?.error || 'Failed to update.', { variant: 'error' });
     } finally { setSaveBusy(false); }
   }
 
   async function deleteOrg() {
-    if (!confirm(`Delete "${org.organisation_name}"? This will also delete all contacts and notes.`)) return;
+    if (!confirm(`Permanently delete "${org.organisation_name}"? This will also delete all contacts and notes.`)) return;
     try {
       await api.delete(`/api/platform/crm/organisations/${id}`);
-      showToast('Organisation deleted.', 'success');
+      showToast('Organisation deleted.', { variant: 'success' });
       navigate('/platform/crm/organisations');
-    } catch { showToast('Failed to delete organisation.', 'error'); }
+    } catch { showToast('Failed to delete organisation.', { variant: 'error' }); }
   }
 
   async function addContact(e) {
@@ -268,9 +295,9 @@ export default function PlatformOrgDetail() {
       setContacts((p) => [...p, data.contact]);
       setContactForm({ contact_firstname: '', contact_lastname: '', contact_email: '', contact_phone: '', contact_role: '' });
       setAddingContact(false);
-      showToast('Contact added.', 'success');
+      showToast('Contact added.', { variant: 'success' });
     } catch (err) {
-      showToast(err.response?.data?.error || 'Failed to add contact.', 'error');
+      showToast(err.response?.data?.error || 'Failed to add contact.', { variant: 'error' });
     } finally { setContactBusy(false); }
   }
 
@@ -279,8 +306,8 @@ export default function PlatformOrgDetail() {
     try {
       const { data } = await api.post(`/api/platform/crm/organisations/${id}/notes`, { note_text: text });
       setOrgNotes((p) => [data.note, ...p]);
-      showToast('Note added.', 'success');
-    } catch { showToast('Failed to add note.', 'error'); }
+      showToast('Note added.', { variant: 'success' });
+    } catch { showToast('Failed to add note.', { variant: 'error' }); }
     finally { setNoteBusy(false); }
   }
 
@@ -288,8 +315,8 @@ export default function PlatformOrgDetail() {
     try {
       await api.delete(`/api/platform/crm/organisations/${id}/notes/${noteId}`);
       setOrgNotes((p) => p.filter((n) => n.note_id !== noteId));
-      showToast('Note deleted.', 'success');
-    } catch { showToast('Failed to delete note.', 'error'); }
+      showToast('Note deleted.', { variant: 'success' });
+    } catch { showToast('Failed to delete note.', { variant: 'error' }); }
   }
 
   if (!ok) return null;
@@ -298,7 +325,7 @@ export default function PlatformOrgDetail() {
     <Layout user={user} onLogout={logout}>
       <div className="app-main">
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost" style={{ padding: '0.4rem 0.7rem' }} onClick={() => navigate('/platform/crm/organisations')}>
             <ArrowLeft size={16} strokeWidth={2} aria-hidden />
           </button>
@@ -307,10 +334,6 @@ export default function PlatformOrgDetail() {
               <h1 style={{ margin: 0, flex: 1 }}>{org.organisation_name}</h1>
               <span className={LEAD_STATUS_BADGE[org.lead_status] || 'badge'}>{org.lead_status}</span>
               <span style={{ fontSize: '0.82rem', color: 'var(--muted)', background: 'var(--surface2)', padding: '0.25rem 0.65rem', borderRadius: 999, border: '1px solid var(--border)' }}>{org.business_unit}</span>
-              <button className="btn btn-ghost" style={{ fontSize: '0.85rem' }} onClick={() => setEditing((v) => !v)}>
-                {editing ? 'Cancel' : <><Pencil size={14} /> Edit</>}
-              </button>
-              <button className="btn btn-ghost" style={{ fontSize: '0.85rem', color: 'var(--danger)' }} onClick={deleteOrg}>Delete</button>
             </>
           )}
         </div>
@@ -324,16 +347,131 @@ export default function PlatformOrgDetail() {
         )}
 
         {org && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1.5rem', alignItems: 'start' }}>
+          <>
+            <div
+              className="pulse-template-mode-switch"
+              role="tablist"
+              aria-label="Prospect sections"
+              style={{ marginBottom: '1.25rem' }}
+            >
+              {PROSPECT_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  aria-controls={`prospect-tab-${tab.id}`}
+                  id={`prospect-tab-trigger-${tab.id}`}
+                  className={`pulse-template-mode-switch__pill${
+                    activeTab === tab.id ? ' pulse-template-mode-switch__pill--active' : ''
+                  }`}
+                  onClick={() => changeTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-            {/* Left: details + contacts */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {activeTab === 'dashboard' && (
+              <div
+                role="tabpanel"
+                id="prospect-tab-dashboard"
+                aria-labelledby="prospect-tab-trigger-dashboard"
+                style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1.5rem', alignItems: 'start' }}
+              >
+                {/* Left: details + contacts */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-              {/* Details card */}
-              <div className="card" style={{ padding: '1.25rem' }}>
-                <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: '1rem' }}>Details</div>
+                  {/* Details card */}
+                  <div className="card" style={{ padding: '1.25rem' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: '1rem' }}>Details</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem 1.5rem', fontSize: '0.875rem' }}>
+                      {[
+                        { label: 'Industry', value: org.industry },
+                        { label: 'Website', value: org.website, link: true },
+                        { label: 'Phone', value: org.phone },
+                        { label: 'Lead source', value: org.lead_source },
+                        { label: 'Created', value: fmtDate(org.created_date) },
+                        { label: 'Expected close', value: fmtDate(org.expected_close_date) },
+                      ].map(({ label, value, link }) => (
+                        <div key={label}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, marginBottom: '0.15rem' }}>{label}</div>
+                          <div>
+                            {link && value
+                              ? <a href={value} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>{value}</a>
+                              : value || <span style={{ color: 'var(--muted)' }}>—</span>
+                            }
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-                {editing ? (
+                  {/* Contacts */}
+                  <div className="card" style={{ padding: '1.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
+                        Contacts ({contacts.length})
+                      </div>
+                      <button className="btn btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.7rem' }} onClick={() => setAddingContact((v) => !v)}>
+                        {addingContact ? 'Cancel' : <><Plus size={13} /> Add contact</>}
+                      </button>
+                    </div>
+
+                    {addingContact && (
+                      <form onSubmit={addContact} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '1rem', marginBottom: '1rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                          {[
+                            { key: 'contact_firstname', label: 'First name *', required: true },
+                            { key: 'contact_lastname', label: 'Last name' },
+                            { key: 'contact_email', label: 'Email', type: 'email' },
+                            { key: 'contact_phone', label: 'Phone', type: 'tel' },
+                          ].map(({ key, label, type = 'text', required }) => (
+                            <div className="field" key={key} style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: '0.8rem' }}>{label}</label>
+                              <input type={type} value={contactForm[key]} onChange={(e) => setContactForm((p) => ({ ...p, [key]: e.target.value }))} required={required} />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="field" style={{ marginTop: '0.6rem' }}>
+                          <label style={{ fontSize: '0.8rem' }}>Role / title</label>
+                          <input value={contactForm.contact_role} onChange={(e) => setContactForm((p) => ({ ...p, contact_role: e.target.value }))} />
+                        </div>
+                        <button className="btn btn-primary" type="submit" disabled={contactBusy} style={{ marginTop: '0.5rem', width: '100%' }}>Add contact</button>
+                      </form>
+                    )}
+
+                    {contacts.length === 0 && !addingContact && <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>No contacts yet.</p>}
+                    {contacts.map((c) => (
+                      <ContactRow
+                        key={c.contact_id}
+                        contact={c}
+                        orgId={id}
+                        onUpdated={(updated) => setContacts((p) => p.map((x) => x.contact_id === updated.contact_id ? updated : x))}
+                        onDeleted={(cid) => setContacts((p) => p.filter((x) => x.contact_id !== cid))}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right: org notes */}
+                <div className="card" style={{ padding: '1.25rem' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: '1rem' }}>
+                    Organisation Notes
+                  </div>
+                  <AddNoteForm onAdd={addOrgNote} busy={noteBusy} />
+                  {orgNotes.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>No notes yet.</p>}
+                  {orgNotes.map((n) => <NoteItem key={n.note_id} note={n} onDelete={deleteOrgNote} />)}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'configurations' && (
+              <div role="tabpanel" id="prospect-tab-configurations" aria-labelledby="prospect-tab-trigger-configurations">
+                <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: '1rem' }}>
+                    Prospect details
+                  </div>
                   <form onSubmit={saveOrg}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                       <div className="field">
@@ -375,91 +513,47 @@ export default function PlatformOrgDetail() {
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
                       <button className="btn btn-primary" type="submit" disabled={saveBusy}>Save changes</button>
-                      <button className="btn btn-ghost" type="button" onClick={() => setEditing(false)}>Cancel</button>
                     </div>
                   </form>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem 1.5rem', fontSize: '0.875rem' }}>
-                    {[
-                      { label: 'Industry', value: org.industry },
-                      { label: 'Website', value: org.website, link: true },
-                      { label: 'Phone', value: org.phone },
-                      { label: 'Lead source', value: org.lead_source },
-                      { label: 'Created', value: fmtDate(org.created_date) },
-                      { label: 'Expected close', value: fmtDate(org.expected_close_date) },
-                    ].map(({ label, value, link }) => (
-                      <div key={label}>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, marginBottom: '0.15rem' }}>{label}</div>
-                        <div>
-                          {link && value
-                            ? <a href={value} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>{value}</a>
-                            : value || <span style={{ color: 'var(--muted)' }}>—</span>
-                          }
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Contacts */}
-              <div className="card" style={{ padding: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
-                    Contacts ({contacts.length})
-                  </div>
-                  <button className="btn btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.7rem' }} onClick={() => setAddingContact((v) => !v)}>
-                    {addingContact ? 'Cancel' : <><Plus size={13} /> Add contact</>}
-                  </button>
                 </div>
 
-                {addingContact && (
-                  <form onSubmit={addContact} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '1rem', marginBottom: '1rem' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
-                      {[
-                        { key: 'contact_firstname', label: 'First name *', required: true },
-                        { key: 'contact_lastname', label: 'Last name' },
-                        { key: 'contact_email', label: 'Email', type: 'email' },
-                        { key: 'contact_phone', label: 'Phone', type: 'tel' },
-                      ].map(({ key, label, type = 'text', required }) => (
-                        <div className="field" key={key} style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: '0.8rem' }}>{label}</label>
-                          <input type={type} value={contactForm[key]} onChange={(e) => setContactForm((p) => ({ ...p, [key]: e.target.value }))} required={required} />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="field" style={{ marginTop: '0.6rem' }}>
-                      <label style={{ fontSize: '0.8rem' }}>Role / title</label>
-                      <input value={contactForm.contact_role} onChange={(e) => setContactForm((p) => ({ ...p, contact_role: e.target.value }))} />
-                    </div>
-                    <button className="btn btn-primary" type="submit" disabled={contactBusy} style={{ marginTop: '0.5rem', width: '100%' }}>Add contact</button>
-                  </form>
-                )}
-
-                {contacts.length === 0 && !addingContact && <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>No contacts yet.</p>}
-                {contacts.map((c) => (
-                  <ContactRow
-                    key={c.contact_id}
-                    contact={c}
-                    orgId={id}
-                    onUpdated={(updated) => setContacts((p) => p.map((x) => x.contact_id === updated.contact_id ? updated : x))}
-                    onDeleted={(cid) => setContacts((p) => p.filter((x) => x.contact_id !== cid))}
-                  />
-                ))}
+                <div
+                  className="card"
+                  style={{
+                    borderColor: 'var(--danger, #dc3545)',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                  }}
+                >
+                  <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+                    Permanently delete this prospect and all associated contacts and notes. This action cannot be undone.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{
+                      backgroundColor: 'var(--danger, #dc3545)',
+                      color: '#fff',
+                      border: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                    }}
+                    onClick={deleteOrg}
+                  >
+                    <Trash2 size={16} strokeWidth={1.75} aria-hidden />
+                    Delete prospect
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Right: org notes */}
-            <div className="card" style={{ padding: '1.25rem' }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: '1rem' }}>
-                Organisation Notes
+            {activeTab === 'activity' && (
+              <div role="tabpanel" id="prospect-tab-activity" aria-labelledby="prospect-tab-trigger-activity">
+                <RecentActivityPanel orgId={id} resourcePath="/api/platform/crm/organisations" style={{ marginBottom: 0 }} />
               </div>
-              <AddNoteForm onAdd={addOrgNote} busy={noteBusy} />
-              {orgNotes.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>No notes yet.</p>}
-              {orgNotes.map((n) => <NoteItem key={n.note_id} note={n} onDelete={deleteOrgNote} />)}
-            </div>
-
-          </div>
+            )}
+          </>
         )}
       </div>
     </Layout>
