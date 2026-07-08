@@ -62,9 +62,18 @@ function csvEscape(value) {
   return `"${source.replace(/"/g, '""')}"`;
 }
 
+function titleCaseFromSlug(value) {
+  return String(value || '')
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 function describeProspectCarryover(m) {
   const bits = [];
   if (m.leadStatus) bits.push(`lead status: ${m.leadStatus}`);
+  if (m.relationshipStatus) bits.push(`relationship status: ${titleCaseFromSlug(m.relationshipStatus)}`);
   if (m.website) bits.push(`website: ${m.website}`);
   if (m.phone) bits.push(`phone: ${m.phone}`);
   if (m.leadSource) bits.push(`lead source: ${m.leadSource}`);

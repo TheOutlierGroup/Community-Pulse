@@ -66,13 +66,15 @@ export async function getFirstOrganizationByKind(kind) {
   return rows[0] || null;
 }
 
+const CLIENT_LIST_COLUMNS = `id, name, slug, kind, settings, created_at, updated_at, company_logo_filename,
+            client_status, relationship_status, hierarchy_levels, report_contact, parent_organization_id`;
+
 export async function listOrganizationsByKind(kind, { limit, offset } = {}) {
   const cappedLimit =
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 200;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
-    `SELECT id, name, slug, kind, settings, created_at, company_logo_filename, client_status,
-            hierarchy_levels, report_contact, parent_organization_id
+    `SELECT ${CLIENT_LIST_COLUMNS}
      FROM organizations
      WHERE kind = $1
      ORDER BY created_at ASC
@@ -87,8 +89,7 @@ export async function listClientAndLicenseeOrganizations({ limit, offset } = {})
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 200;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
-    `SELECT id, name, slug, kind, settings, created_at, company_logo_filename, client_status,
-            hierarchy_levels, report_contact, parent_organization_id
+    `SELECT ${CLIENT_LIST_COLUMNS}
      FROM organizations
      WHERE kind IN ('client', 'licensee')
      ORDER BY created_at ASC
@@ -104,8 +105,7 @@ export async function listClientOrganizationsForParent(parentOrganizationId, { l
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 200;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
-    `SELECT id, name, slug, kind, settings, created_at, company_logo_filename, client_status,
-            hierarchy_levels, report_contact, parent_organization_id
+    `SELECT ${CLIENT_LIST_COLUMNS}
      FROM organizations
      WHERE kind = 'client' AND parent_organization_id = $1
      ORDER BY created_at ASC
@@ -121,8 +121,7 @@ export async function listClientOrganizationsByIds(ids, { limit, offset } = {}) 
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 1000) : 500;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
   const { rows } = await query(
-    `SELECT id, name, slug, kind, settings, created_at, company_logo_filename, client_status,
-            hierarchy_levels, report_contact, parent_organization_id
+    `SELECT ${CLIENT_LIST_COLUMNS}
      FROM organizations
      WHERE kind = 'client' AND id = ANY($1::uuid[])
      ORDER BY created_at ASC
@@ -147,7 +146,7 @@ export async function isClientOrganizationOwnedByParent(clientOrgId, parentOrgan
 export async function setCompanyLogoFilename(id, filename) {
   const { rows } = await query(
     `UPDATE organizations
-     SET company_logo_filename = $2
+     SET company_logo_filename = $2, updated_at = NOW()
      WHERE id = $1 AND kind IN ('client', 'licensee')
      RETURNING *`,
     [id, filename]
@@ -158,16 +157,17 @@ export async function setCompanyLogoFilename(id, filename) {
 export async function clearCompanyLogoFilename(id) {
   const org = await getOrganization(id);
   const prev = org?.company_logo_filename || null;
-  await query(`UPDATE organizations SET company_logo_filename = NULL WHERE id = $1`, [id]);
+  await query(`UPDATE organizations SET company_logo_filename = NULL, updated_at = NOW() WHERE id = $1`, [id]);
   return prev;
 }
 
-export async function updateOrganizationClient(id, { name, settings, clientStatus } = {}) {
+export async function updateOrganizationClient(id, { name, settings, clientStatus, relationshipStatus } = {}) {
   const org = await getOrganization(id);
   if (!org || (org.kind !== 'client' && org.kind !== 'licensee')) return null;
   const nextName = name !== undefined ? name : org.name;
   const nextSlug = name !== undefined ? normalizeSlug(name) : org.slug;
   const nextClientStatus = clientStatus !== undefined ? clientStatus : org.client_status;
+  const nextRelationshipStatus = relationshipStatus !== undefined ? relationshipStatus : org.relationship_status;
   const base =
     org.settings && typeof org.settings === 'object' ? org.settings : {};
   let nextSettings = base;
@@ -176,10 +176,10 @@ export async function updateOrganizationClient(id, { name, settings, clientStatu
   }
   const { rows } = await query(
     `UPDATE organizations
-     SET name = $2, slug = $3, settings = $4::jsonb, client_status = $5
+     SET name = $2, slug = $3, settings = $4::jsonb, client_status = $5, relationship_status = $6, updated_at = NOW()
      WHERE id = $1 AND kind IN ('client', 'licensee')
      RETURNING *`,
-    [id, nextName, nextSlug, JSON.stringify(nextSettings), nextClientStatus]
+    [id, nextName, nextSlug, JSON.stringify(nextSettings), nextClientStatus, nextRelationshipStatus]
   );
   return rows[0] || null;
 }
@@ -195,7 +195,7 @@ export async function updateOrganizationSettings(id, settings) {
     settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {};
   const nextSettings = { ...base, ...patch };
   const { rows } = await query(
-    `UPDATE organizations SET settings = $2::jsonb WHERE id = $1 RETURNING *`,
+    `UPDATE organizations SET settings = $2::jsonb, updated_at = NOW() WHERE id = $1 RETURNING *`,
     [id, JSON.stringify(nextSettings)]
   );
   return rows[0] || null;

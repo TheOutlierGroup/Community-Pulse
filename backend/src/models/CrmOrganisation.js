@@ -76,8 +76,10 @@ export async function createOrganisation(platformOrgId, data) {
   return rows[0];
 }
 
+const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new', 'active-campaign']);
+
 export async function updateOrganisation(platformOrgId, organisationId, data) {
-  const allowed = ['organisation_name', 'industry', 'website', 'phone', 'business_unit', 'lead_status', 'lead_source', 'expected_close_date', 'do_not_contact'];
+  const allowed = ['organisation_name', 'industry', 'website', 'phone', 'business_unit', 'lead_status', 'lead_source', 'expected_close_date', 'do_not_contact', 'relationship_status'];
   const sets = [];
   const values = [];
   let i = 1;
@@ -89,6 +91,7 @@ export async function updateOrganisation(platformOrgId, organisationId, data) {
       // accepts a valid date or NULL), so an empty string must map to null.
       const value = key === 'expected_close_date' && data[key] === '' ? null
         : key === 'do_not_contact' ? Boolean(data[key])
+        : key === 'relationship_status' && !RELATIONSHIP_STATUSES.has(data[key]) ? 'new'
         : data[key];
       values.push(value ?? null);
     }

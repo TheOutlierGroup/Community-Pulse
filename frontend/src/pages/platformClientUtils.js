@@ -66,13 +66,13 @@ const CLIENT_STATUS_LOOKUP = new Map(
 
 const CLIENT_STATUS_SET = new Set(CLIENT_STATUS_LOOKUP.keys());
 
-// Clients now only ever track a Current/Previous relationship status —
-// "Prospect" and "Do not call/contact" statuses have moved entirely to the
-// CRM Prospects layer (lead status + the do-not-contact flag). Legacy
-// client_status values are still recognized above for label/badge lookups
-// on any existing org that hasn't been re-saved yet, but this is the only
-// option set offered in the editable picker going forward.
-export const CLIENT_RELATIONSHIP_STATUS_OPTIONS = CLIENT_STATUS_TREE.find(
+// client_status is now a simple Current/Previous flag — "Prospect" and "Do
+// not call/contact" statuses have moved entirely to the CRM Prospects layer
+// (lead status + the do-not-contact flag). Legacy client_status values are
+// still recognized above for label/badge lookups on any existing org that
+// hasn't been re-saved yet, but Current/Previous is the only option set
+// offered in the editable picker going forward.
+export const CURRENT_PREVIOUS_OPTIONS = CLIENT_STATUS_TREE.find(
   (group) => group.id === CLIENT_STATUS_PARENT_CLIENT
 ).options;
 
@@ -105,6 +105,53 @@ export function clientStatusBadgeClass(value) {
   if (parentId === CLIENT_STATUS_PARENT_CLIENT) return 'active';
   if (parentId === CLIENT_STATUS_PARENT_DO_NOT_CALL_CONTACT) return 'closed';
   return 'draft';
+}
+
+// Independent of client_status: a warm/cold/lost/new/active-campaign
+// relationship status, shared vocabulary between Prospects and Clients so
+// it can carry through cleanly on promotion.
+export const DEFAULT_RELATIONSHIP_STATUS = 'new';
+
+export const RELATIONSHIP_STATUS_OPTIONS = [
+  { id: 'warm', label: 'Warm' },
+  { id: 'cold', label: 'Cold' },
+  { id: 'lost', label: 'Lost' },
+  { id: 'new', label: 'New' },
+  { id: 'active-campaign', label: 'Active Campaign' },
+];
+
+const RELATIONSHIP_STATUS_SET = new Set(RELATIONSHIP_STATUS_OPTIONS.map((o) => o.id));
+
+const RELATIONSHIP_STATUS_BADGE_CLASS = {
+  warm: 'badge-open',
+  cold: 'badge-cold',
+  lost: 'badge-lost',
+  new: 'badge',
+  'active-campaign': 'badge-campaign',
+};
+
+export function normalizeRelationshipStatus(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  return RELATIONSHIP_STATUS_SET.has(raw) ? raw : DEFAULT_RELATIONSHIP_STATUS;
+}
+
+export function relationshipStatusLabel(value) {
+  const normalized = normalizeRelationshipStatus(value);
+  return RELATIONSHIP_STATUS_OPTIONS.find((o) => o.id === normalized)?.label || 'New';
+}
+
+export function relationshipStatusBadgeClass(value) {
+  return RELATIONSHIP_STATUS_BADGE_CLASS[normalizeRelationshipStatus(value)] || 'badge';
+}
+
+export function currentPreviousLabel(value) {
+  return normalizeClientStatus(value) === 'client-previous' ? 'Previous' : 'Current';
+}
+
+// Compound badge shown wherever a client's status is displayed:
+// "Current — Warm", colored by relationship status.
+export function clientCompositeStatusLabel(clientStatus, relationshipStatus) {
+  return `${currentPreviousLabel(clientStatus)} — ${relationshipStatusLabel(relationshipStatus)}`;
 }
 
 export function clientServiceLabel(serviceId, serviceCatalog = null) {

@@ -5,11 +5,12 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { CheckCircle2, ClipboardList, Eye, Hammer, ListTodo, Users } from 'lucide-react';
 import {
+  clientCompositeStatusLabel,
   clientServiceLabel,
-  clientStatusBadgeClass,
-  clientStatusLabel,
   normalizeServices,
+  relationshipStatusBadgeClass,
 } from './platformClientUtils.js';
+import '../styles/crm.css';
 import { isLicenseeUser } from '../hooks/usePlatformAccess.js';
 
 function getLocalWeekRange() {
@@ -129,8 +130,8 @@ export default function PlatformClientOverview() {
         className="card"
         style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}
       >
-        <span className={`badge badge-${clientStatusBadgeClass(org.client_status)}`}>
-          {clientStatusLabel(org.client_status)}
+        <span className={`badge ${relationshipStatusBadgeClass(org.relationship_status)}`}>
+          {clientCompositeStatusLabel(org.client_status, org.relationship_status)}
         </span>
         <span className="muted" style={{ fontSize: '0.9rem' }}>
           Active services: {activeServices.join(', ') || 'None'}

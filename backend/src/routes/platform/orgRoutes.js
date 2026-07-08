@@ -906,6 +906,7 @@ const CLIENT_STATUSES = new Set([
   'prospect-active-campaign',
   'do-not-call-contact-blocked',
 ]);
+const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new', 'active-campaign']);
 const CLIENT_STATUS_LEGACY_MAP = new Map([
   ['lead', 'prospect-new'],
   ['active', 'client-current'],
@@ -1194,6 +1195,12 @@ function normalizeClientStatus(value) {
   const status = CLIENT_STATUS_LEGACY_MAP.get(raw) || raw;
   if (!CLIENT_STATUSES.has(status)) return null;
   return status;
+}
+
+function normalizeRelationshipStatus(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!RELATIONSHIP_STATUSES.has(raw)) return null;
+  return raw;
 }
 
 function csvEscape(value) {
@@ -1697,8 +1704,8 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   router.patch('/organizations/:id', requirePlatformAdminRole, async (req, res) => {
-    const { name, settings, clientStatus } = req.body;
-    if (name === undefined && settings === undefined && clientStatus === undefined) {
+    const { name, settings, clientStatus, relationshipStatus } = req.body;
+    if (name === undefined && settings === undefined && clientStatus === undefined && relationshipStatus === undefined) {
       return res.status(400).json({ error: 'Nothing to update' });
     }
     const requesterOrg = req.workspaceOrganization;
@@ -1717,6 +1724,15 @@ export function registerPlatformOrgRoutes(router) {
         return res.status(400).json({
           error:
             'clientStatus must be one of: client-current, client-previous, prospect-warm, prospect-cold, prospect-lost, prospect-new, prospect-active-campaign, do-not-call-contact-blocked',
+        });
+      }
+    }
+    let normalizedRelationshipStatus;
+    if (relationshipStatus !== undefined) {
+      normalizedRelationshipStatus = normalizeRelationshipStatus(relationshipStatus);
+      if (!normalizedRelationshipStatus) {
+        return res.status(400).json({
+          error: 'relationshipStatus must be one of: warm, cold, lost, new, active-campaign',
         });
       }
     }
@@ -1795,6 +1811,7 @@ export function registerPlatformOrgRoutes(router) {
       name,
       settings: settingsPatch,
       clientStatus: normalizedClientStatus,
+      relationshipStatus: normalizedRelationshipStatus,
     });
     if (!updated) return res.status(404).json({ error: 'Organization not found' });
     if (
@@ -1817,6 +1834,7 @@ export function registerPlatformOrgRoutes(router) {
         nameChanged: name !== undefined,
         settingsKeys: settingsPatch ? Object.keys(settingsPatch) : [],
         clientStatusChanged: clientStatus !== undefined,
+        relationshipStatusChanged: relationshipStatus !== undefined,
       },
     });
     res.json(updated);

@@ -12,11 +12,14 @@ import {
   CLIENT_SERVICE_LICENSEE,
   CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
-  CLIENT_RELATIONSHIP_STATUS_OPTIONS,
+  CURRENT_PREVIOUS_OPTIONS,
+  RELATIONSHIP_STATUS_OPTIONS,
   clientStatusLabel,
   normalizeServices,
   normalizeClientStatus,
+  normalizeRelationshipStatus,
 } from './platformClientUtils.js';
+import '../styles/crm.css';
 
 const SUGGESTED_GROUP_LEVEL_LABELS = ['Business Unit', 'Division', 'Team'];
 
@@ -71,12 +74,13 @@ export default function PlatformClientAccount() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const isLegacyClientStatus = (status) =>
-    !CLIENT_RELATIONSHIP_STATUS_OPTIONS.some((option) => option.id === status);
+    !CURRENT_PREVIOUS_OPTIONS.some((option) => option.id === status);
   const initialStatus = normalizeClientStatus(org.client_status);
   const [editName, setEditName] = useState(org.name);
   const [clientStatus, setClientStatus] = useState(() =>
-    isLegacyClientStatus(initialStatus) ? CLIENT_RELATIONSHIP_STATUS_OPTIONS[0].id : initialStatus
+    isLegacyClientStatus(initialStatus) ? CURRENT_PREVIOUS_OPTIONS[0].id : initialStatus
   );
+  const [relationshipStatus, setRelationshipStatus] = useState(() => normalizeRelationshipStatus(org.relationship_status));
   const [address, setAddress] = useState(() => readCompanyAddress(org.settings));
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [selectedServices, setSelectedServices] = useState(() =>
@@ -91,13 +95,14 @@ export default function PlatformClientAccount() {
   useEffect(() => {
     const normalizedStatus = normalizeClientStatus(org.client_status);
     setEditName(org.name);
-    setClientStatus(isLegacyClientStatus(normalizedStatus) ? CLIENT_RELATIONSHIP_STATUS_OPTIONS[0].id : normalizedStatus);
+    setClientStatus(isLegacyClientStatus(normalizedStatus) ? CURRENT_PREVIOUS_OPTIONS[0].id : normalizedStatus);
+    setRelationshipStatus(normalizeRelationshipStatus(org.relationship_status));
     setAddress(readCompanyAddress(org.settings));
     setSelectedServices(normalizeServices(org.settings).filter((id) => id !== CLIENT_SERVICE_LICENSEE));
     setGroupLevels(readGroupLevels(org.settings));
     setGroupLevelLabels(readGroupLevelLabels(org.settings));
     setOtherServiceDisplayValue('');
-  }, [org.name, org.client_status, org.settings]);
+  }, [org.name, org.client_status, org.relationship_status, org.settings]);
 
   useEffect(() => {
     const count = Number.parseInt(groupLevels, 10);
@@ -200,17 +205,18 @@ export default function PlatformClientAccount() {
 
   async function saveClientStatus(e) {
     e.preventDefault();
-    if (!confirm('Save changes to this client’s relationship status?')) return;
+    if (!confirm('Save changes to this client’s status?')) return;
     setBusy(true);
     setError('');
     try {
       await api.patch(`/api/platform/organizations/${orgId}`, {
         clientStatus,
+        relationshipStatus,
       });
       await refreshOrg();
-      showToast('Relationship status saved.', { variant: 'success' });
+      showToast('Status saved.', { variant: 'success' });
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not save relationship status.');
+      setError(err.response?.data?.error || 'Could not save status.');
     } finally {
       setBusy(false);
     }
@@ -401,20 +407,37 @@ export default function PlatformClientAccount() {
                 Previous below to update).
               </p>
             ) : null}
-            <div className="field">
-              <label htmlFor="acct-client-status">Relationship Status</label>
-              <select
-                id="acct-client-status"
-                value={clientStatus}
-                onChange={(e) => setClientStatus(normalizeClientStatus(e.target.value))}
-                disabled={busy}
-              >
-                {CLIENT_RELATIONSHIP_STATUS_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div className="field">
+                <label htmlFor="acct-client-status">Status</label>
+                <select
+                  id="acct-client-status"
+                  value={clientStatus}
+                  onChange={(e) => setClientStatus(normalizeClientStatus(e.target.value))}
+                  disabled={busy}
+                >
+                  {CURRENT_PREVIOUS_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="acct-relationship-status">Relationship Status</label>
+                <select
+                  id="acct-relationship-status"
+                  value={relationshipStatus}
+                  onChange={(e) => setRelationshipStatus(e.target.value)}
+                  disabled={busy}
+                >
+                  {RELATIONSHIP_STATUS_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <button type="submit" className="btn btn-ghost" disabled={busy}>
               Save status
