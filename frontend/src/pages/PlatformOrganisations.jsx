@@ -167,8 +167,8 @@ export default function PlatformOrganisations() {
                     Organisation {sortIndicator(sort, 'organisation')}
                   </button>
                 </th>
-                <th>Business Unit</th>
                 <th>Status</th>
+                <th>Business Unit</th>
                 <th aria-sort={ariaSortFor(sort, 'industry')}>
                   <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('industry')}>
                     Industry {sortIndicator(sort, 'industry')}
@@ -216,8 +216,8 @@ export default function PlatformOrganisations() {
                       )}
                     </div>
                   </td>
-                  <td>{o.business_unit}</td>
                   <td><span className={LEAD_STATUS_BADGE[o.lead_status] || 'badge'}>{o.lead_status}</span></td>
+                  <td>{o.business_unit}</td>
                   <td>{o.industry || '—'}</td>
                   <td>{fmtDate(o.updated_at)}</td>
                   <td><ChevronRight size={16} strokeWidth={2} color="var(--muted)" aria-hidden /></td>

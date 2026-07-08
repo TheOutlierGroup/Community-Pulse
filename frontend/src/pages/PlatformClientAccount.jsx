@@ -326,6 +326,30 @@ export default function PlatformClientAccount() {
     }
   }
 
+  async function downloadProspectSnapshot() {
+    setError('');
+    try {
+      const response = await api.get(
+        `/api/platform/organizations/${orgId}/prospect-snapshot.csv`,
+        { responseType: 'blob' }
+      );
+      const fallbackName = `${org.name}-prospect-history.csv`;
+      const disposition = String(response.headers?.['content-disposition'] || '');
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || fallbackName;
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
+      const anchor = document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not download prospect history.');
+    }
+  }
+
   return (
     <>
       <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
@@ -634,6 +658,19 @@ export default function PlatformClientAccount() {
                 : '—'}
             </p>
           </div>
+
+          {org.prospect_snapshot ? (
+            <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+              <h2 className="platform-client-dashboard__h2">Prospect history</h2>
+              <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.5rem', marginBottom: '0.75rem' }}>
+                A static record of this client's details, notes, and activity from before it was
+                promoted from a prospect. Not updated after promotion.
+              </p>
+              <button type="button" className="btn btn-ghost" onClick={downloadProspectSnapshot}>
+                Download prospect history (CSV)
+              </button>
+            </div>
+          ) : null}
         </div>
 
       </div>

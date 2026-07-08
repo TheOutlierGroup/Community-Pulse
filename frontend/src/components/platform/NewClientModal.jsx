@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, X } from 'lucide-react';
 import api from '../../services/api.js';
-import { CLIENT_SERVICE_LICENSEE } from '../../utils/clientServices.js';
+import { CLIENT_SERVICE_LICENSEE, CLIENT_SERVICE_PULSE } from '../../utils/clientServices.js';
 
 const BLANK_FIELDS = {
   name: '',
@@ -11,6 +11,15 @@ const BLANK_FIELDS = {
   adminLastName: '',
   serviceIds: [],
 };
+
+function serviceSummary(selectedIds, catalog) {
+  if (selectedIds.length === 0) return 'Select services';
+  const names = selectedIds
+    .map((id) => catalog.find((s) => s.id === id)?.name)
+    .filter(Boolean);
+  if (names.length <= 2) return names.join(', ');
+  return `${names.length} services selected`;
+}
 
 export default function NewClientModal({
   open,
@@ -27,19 +36,20 @@ export default function NewClientModal({
   const [fields, setFields] = useState(BLANK_FIELDS);
   const [sendWelcomeEmail, setSendWelcomeEmail] = useState(false);
   const [enableLogin, setEnableLogin] = useState(true);
-  const [createAsLicensee, setCreateAsLicensee] = useState(false);
   const [logo, setLogo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [servicesOpen, setServicesOpen] = useState(false);
+  const servicesRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     setFields({ ...BLANK_FIELDS, ...initialValues });
     setSendWelcomeEmail(false);
     setEnableLogin(true);
-    setCreateAsLicensee(false);
     setLogo(null);
     setError('');
+    setServicesOpen(false);
     (async () => {
       try {
         const { data } = await api.get('/api/platform/service-catalog');
@@ -59,6 +69,15 @@ export default function NewClientModal({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (!servicesOpen) return undefined;
+    function onDocMouseDown(e) {
+      if (servicesRef.current && !servicesRef.current.contains(e.target)) setServicesOpen(false);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [servicesOpen]);
 
   if (!open) return null;
 
@@ -86,7 +105,11 @@ export default function NewClientModal({
         fd.append('sendWelcomeEmail', sendWelcomeEmail ? 'true' : 'false');
         fd.append('enableLogin', enableLogin ? 'true' : 'false');
       }
-      const serviceIds = canCreateLicensees && createAsLicensee
+      // Rhythm Engine access implies Rhythm Engine Licensee access — no
+      // separate opt-in. Licensee status can only be granted at creation
+      // time (it never changes after), so this has to happen here rather
+      // than later in Configurations.
+      const serviceIds = canCreateLicensees && fields.serviceIds.includes(CLIENT_SERVICE_PULSE)
         ? [...fields.serviceIds, CLIENT_SERVICE_LICENSEE]
         : fields.serviceIds;
       if (serviceIds.length) fd.append('clientServiceIds', JSON.stringify(serviceIds));
@@ -222,57 +245,39 @@ export default function NewClientModal({
             </div>
           ) : null}
           {serviceCatalog.length > 0 && (
-            <div className="field">
-              <p className="muted" style={{ fontSize: '0.85rem', margin: '0 0 0.5rem' }}>
-                Services (optional — more can be enabled later in Configurations)
-              </p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {serviceCatalog.map((service) => (
-                  <label
-                    key={service.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      padding: '0.3rem 0.6rem',
-                      borderRadius: 999,
-                      border: '1px solid var(--border)',
-                      background: fields.serviceIds.includes(service.id) ? 'var(--surface2)' : 'transparent',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={fields.serviceIds.includes(service.id)}
-                      disabled={busy}
-                      onChange={() => toggleService(service.id)}
-                    />
-                    {service.name}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-          {canCreateLicensees && (
-            <div className="field">
-              <p className="muted" style={{ fontSize: '0.85rem', margin: '0 0 0.5rem' }}>
-                Licensing
-              </p>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.35rem 0' }}>
-                <input
-                  type="checkbox"
-                  checked={createAsLicensee}
-                  disabled={busy}
-                  onChange={(e) => setCreateAsLicensee(e.target.checked)}
-                />
-                <span>
-                  Rhythm Engine Licensee
-                  <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-                    License this client to run their own Rhythm Engine workspace and manage their
-                    own client companies.
-                  </span>
-                </span>
-              </label>
+            <div className="field" ref={servicesRef} style={{ position: 'relative' }}>
+              <label htmlFor="ncm-services-trigger">Services (optional — more can be enabled later in Configurations)</label>
+              <button
+                id="ncm-services-trigger"
+                type="button"
+                className="platform-select-trigger"
+                disabled={busy}
+                onClick={() => setServicesOpen((v) => !v)}
+                aria-expanded={servicesOpen}
+              >
+                <span>{serviceSummary(fields.serviceIds, serviceCatalog)}</span>
+                <ChevronDown size={16} strokeWidth={2} aria-hidden />
+              </button>
+              {canCreateLicensees ? (
+                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                  Selecting Rhythm Engine also grants Rhythm Engine Licensee access.
+                </p>
+              ) : null}
+              {servicesOpen && (
+                <div className="platform-select-panel" role="listbox" aria-multiselectable="true">
+                  {serviceCatalog.map((service) => (
+                    <label key={service.id} className="platform-select-option">
+                      <input
+                        type="checkbox"
+                        checked={fields.serviceIds.includes(service.id)}
+                        disabled={busy}
+                        onChange={() => toggleService(service.id)}
+                      />
+                      {service.name}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div className="field">

@@ -21,6 +21,7 @@ import {
 import * as AssessmentConsumptionEvent from '../../models/AssessmentConsumptionEvent.js';
 const { SOURCE_PLATFORM_DURING_CHECKPOINT } = AssessmentConsumptionEvent;
 import { runLicenseExpirySweep } from '../../services/licenseExpirySweep.js';
+import { prospectSnapshotToCsv } from '../../services/prospectSnapshot.js';
 import {
   auditFromRequest,
   AUDIT_ACTIONS,
@@ -2299,6 +2300,25 @@ export function registerPlatformOrgRoutes(router) {
         action,
       });
       res.json({ events: rows.map(publicAuditEvent) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Static prospect record captured at promotion time — see
+  // services/prospectSnapshot.js. Separate from the live audit-events feed
+  // above, which keeps growing after promotion.
+  router.get('/organizations/:id/prospect-snapshot.csv', async (req, res, next) => {
+    try {
+      const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+      if (!org.prospect_snapshot) return res.status(404).json({ error: 'No prospect snapshot for this organization' });
+      const csv = prospectSnapshotToCsv(org.prospect_snapshot);
+      const safeName = String(org.name || 'client').replace(/[^a-zA-Z0-9-]+/g, '-');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Cache-Control', 'private, no-cache');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}-prospect-history.csv"`);
+      res.status(200).send(csv);
     } catch (error) {
       next(error);
     }

@@ -12,6 +12,8 @@ import { Building2, ChevronDown, ChevronUp, ChevronsUpDown, Plus } from 'lucide-
 import {
   clientCompositeStatusLabel,
   clientServiceLabel,
+  CURRENT_PREVIOUS_OPTIONS,
+  normalizeClientStatus,
   normalizeServices,
   relationshipStatusBadgeClass,
 } from './platformClientUtils.js';
@@ -72,6 +74,9 @@ export default function PlatformClients() {
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [sort, setSort] = useState({ column: null, direction: null });
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('');
 
   const isLicensee = isLicenseeUser(user);
   const canCreateLicensees = !isLicensee;
@@ -106,16 +111,23 @@ export default function PlatformClients() {
   }
 
   const sortedOrgs = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const filtered = orgs.filter((o) => {
+      if (term && !String(o.name || '').toLowerCase().includes(term)) return false;
+      if (statusFilter && normalizeClientStatus(o.client_status) !== statusFilter) return false;
+      if (serviceFilter && !normalizeServices(o.settings).includes(serviceFilter)) return false;
+      return true;
+    });
     const eff = effectiveSort(sort);
     const dirMultiplier = eff.direction === 'asc' ? 1 : -1;
     const getValue = SORTABLE_COLUMNS[eff.column];
-    return [...orgs].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const av = getValue(a);
       const bv = getValue(b);
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dirMultiplier;
       return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * dirMultiplier;
     });
-  }, [orgs, sort]);
+  }, [orgs, sort, search, statusFilter, serviceFilter]);
 
   function openClient(orgId) {
     navigate(`/platform/clients/${orgId}`);
@@ -192,6 +204,21 @@ export default function PlatformClients() {
         </div>
       )}
 
+      <div className="crm-filter-bar" style={{ marginBottom: '1rem' }}>
+        <input
+          type="search" placeholder="Search clients…" value={search}
+          onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 220 }}
+        />
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="">All statuses</option>
+          {CURRENT_PREVIOUS_OPTIONS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)}>
+          <option value="">All active services</option>
+          {serviceCatalog.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </div>
+
       <div className="card platform-users-card" style={{ marginBottom: '1.5rem' }}>
         <div className="table-wrap">
           <table className="admin-table platform-clients-table">
@@ -218,6 +245,13 @@ export default function PlatformClients() {
                     {isLicensee
                       ? 'No clients yet — use the prompt above to create your first one.'
                       : 'No clients yet. Create one to get started.'}
+                  </td>
+                </tr>
+              )}
+              {orgs.length > 0 && sortedOrgs.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="muted" style={{ padding: '1.5rem', textAlign: 'center' }}>
+                    No clients match your search or filters.
                   </td>
                 </tr>
               )}
