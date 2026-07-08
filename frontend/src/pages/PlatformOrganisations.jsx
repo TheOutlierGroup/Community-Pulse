@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ChevronRight, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { Plus, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, X } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
+import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
 import { BUSINESS_UNITS, LEAD_STATUSES, LEAD_STATUS_BADGE } from '../config/crmConstants.js';
 import '../styles/crm.css';
 
@@ -31,14 +32,28 @@ function nextSortState(current, column) {
   return { column: null, direction: null };
 }
 
+// The effective sort always has an active column/direction, even in the
+// "default" state, since default falls back to most-recently-updated-first.
+function effectiveSort(sort) {
+  return sort.column
+    ? { column: sort.column, direction: sort.direction }
+    : { column: 'updated', direction: 'desc' };
+}
+
 function sortIndicator(sort, column) {
-  if (sort.column !== column) return null;
-  return sort.direction === 'asc' ? <ChevronUp size={14} strokeWidth={2.25} /> : <ChevronDown size={14} strokeWidth={2.25} />;
+  const eff = effectiveSort(sort);
+  if (eff.column !== column) {
+    return <ChevronsUpDown size={14} strokeWidth={2} className="crm-table__sort-icon crm-table__sort-icon--inactive" aria-hidden />;
+  }
+  return eff.direction === 'asc'
+    ? <ChevronUp size={14} strokeWidth={2.25} className="crm-table__sort-icon" aria-hidden />
+    : <ChevronDown size={14} strokeWidth={2.25} className="crm-table__sort-icon" aria-hidden />;
 }
 
 function ariaSortFor(sort, column) {
-  if (sort.column !== column) return 'none';
-  return sort.direction === 'asc' ? 'ascending' : 'descending';
+  const eff = effectiveSort(sort);
+  if (eff.column !== column) return 'none';
+  return eff.direction === 'asc' ? 'ascending' : 'descending';
 }
 
 export default function PlatformOrganisations() {
@@ -182,7 +197,20 @@ export default function PlatformOrganisations() {
                   tabIndex={0}
                   onKeyDown={(e) => e.key === 'Enter' && navigate(`/platform/crm/organisations/${o.organisation_id}`)}
                 >
-                  <td className="crm-table__primary">{o.organisation_name}</td>
+                  <td className="crm-table__primary">
+                    <div className="platform-clients-table__company-cell">
+                      {o.logo_filename ? (
+                        <span className="platform-clients-table__logo-slot" aria-hidden>
+                          <AuthenticatedBlobImage
+                            path={`/api/platform/crm/organisations/${o.organisation_id}/logo`}
+                            alt=""
+                            className="platform-clients-table__logo"
+                          />
+                        </span>
+                      ) : null}
+                      <span>{o.organisation_name}</span>
+                    </div>
+                  </td>
                   <td>{o.business_unit}</td>
                   <td><span className={LEAD_STATUS_BADGE[o.lead_status] || 'badge'}>{o.lead_status}</span></td>
                   <td>{o.industry || '—'}</td>

@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { Trash2 } from 'lucide-react';
+import { Building2, Sparkles, Trash2 } from 'lucide-react';
 import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
+import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
 import { BUSINESS_UNITS, LEAD_STATUSES } from '../config/crmConstants.js';
 
 export default function PlatformProspectConfigurations() {
-  const { org, orgId, refreshOrg } = useOutletContext();
+  const { org, orgId, refreshOrg, bumpLogoRev } = useOutletContext();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const logoInputRef = useRef(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoRev, setLogoRev] = useState(0);
 
   const [editForm, setEditForm] = useState({
     organisation_name: org.organisation_name,
@@ -32,6 +36,41 @@ export default function PlatformProspectConfigurations() {
     } catch (err) {
       showToast(err.response?.data?.error || 'Failed to update.', { variant: 'error' });
     } finally { setSaveBusy(false); }
+  }
+
+  async function onLogoFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setLogoBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('logo', file);
+      await api.post(`/api/platform/crm/organisations/${orgId}/logo`, fd);
+      await refreshOrg();
+      setLogoRev((v) => v + 1);
+      bumpLogoRev();
+      showToast('Company logo updated.', { variant: 'success' });
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not upload logo.', { variant: 'error' });
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
+  async function removeLogo() {
+    setLogoBusy(true);
+    try {
+      await api.delete(`/api/platform/crm/organisations/${orgId}/logo`);
+      await refreshOrg();
+      setLogoRev((v) => v + 1);
+      bumpLogoRev();
+      showToast('Company logo removed.', { variant: 'success' });
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not remove logo.', { variant: 'error' });
+    } finally {
+      setLogoBusy(false);
+    }
   }
 
   async function deleteOrg() {
@@ -92,6 +131,56 @@ export default function PlatformProspectConfigurations() {
             <button className="btn btn-primary" type="submit" disabled={saveBusy}>Save changes</button>
           </div>
         </form>
+      </div>
+
+      <div className="card platform-client-dashboard__card" style={{ marginBottom: '1.5rem' }}>
+        <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Building2 size={20} strokeWidth={1.75} aria-hidden />
+          Company logo
+        </h2>
+        <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+          Shown next to the prospect name here and in the prospects list.
+        </p>
+        <div className="company-logo-preview-wrap">
+          {org.logo_filename ? (
+            <AuthenticatedBlobImage
+              path={`/api/platform/crm/organisations/${orgId}/logo?v=${logoRev}`}
+              alt=""
+              className="company-logo-preview"
+            />
+          ) : (
+            <span className="muted" style={{ fontSize: '0.9rem' }}>
+              No logo yet.
+            </span>
+          )}
+        </div>
+        <input
+          ref={logoInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          className="visually-hidden"
+          onChange={onLogoFile}
+          disabled={logoBusy}
+        />
+        <div className="btn-row" style={{ marginTop: 0 }}>
+          <button
+            type="button"
+            className="btn btn-primary platform-inline-primary"
+            disabled={logoBusy}
+            onClick={() => logoInputRef.current?.click()}
+          >
+            <Sparkles size={18} strokeWidth={1.75} aria-hidden style={{ marginRight: '0.35rem' }} />
+            {logoBusy ? 'Working…' : org.logo_filename ? 'Change logo' : 'Upload logo'}
+          </button>
+          {org.logo_filename ? (
+            <button type="button" className="btn btn-ghost" disabled={logoBusy} onClick={removeLogo}>
+              Remove logo
+            </button>
+          ) : null}
+        </div>
+        <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.75rem', marginBottom: 0 }}>
+          JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
+        </p>
       </div>
 
       <div

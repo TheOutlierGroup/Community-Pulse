@@ -116,3 +116,24 @@ export async function organisationBelongsToOrg(platformOrgId, organisationId) {
   );
   return rows.length > 0;
 }
+
+export async function setLogoFilename(platformOrgId, organisationId, filename) {
+  const { rows } = await query(
+    `UPDATE crm_organisations SET logo_filename = $1, updated_at = NOW()
+      WHERE organisation_id = $2 AND platform_org_id = $3
+      RETURNING *`,
+    [filename, organisationId, platformOrgId],
+  );
+  return rows[0] || null;
+}
+
+export async function clearLogoFilename(platformOrgId, organisationId) {
+  const org = await getOrganisation(platformOrgId, organisationId);
+  const prev = org?.logo_filename || null;
+  await query(
+    `UPDATE crm_organisations SET logo_filename = NULL, updated_at = NOW()
+      WHERE organisation_id = $1 AND platform_org_id = $2`,
+    [organisationId, platformOrgId],
+  );
+  return prev;
+}

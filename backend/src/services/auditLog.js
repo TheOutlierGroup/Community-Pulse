@@ -63,6 +63,8 @@ export const AUDIT_ACTIONS = Object.freeze({
   CRM_TASK_CREATE: 'crm.task.create',
   CRM_TASK_UPDATE: 'crm.task.update',
   CRM_TASK_DELETE: 'crm.task.delete',
+  CRM_ORGANISATION_LOGO_UPLOAD: 'crm.organisation.logo.upload',
+  CRM_ORGANISATION_LOGO_DELETE: 'crm.organisation.logo.delete',
 });
 
 function normalizeText(value, fallback = null) {

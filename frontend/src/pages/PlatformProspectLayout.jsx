@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Building2 } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
+import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { LEAD_STATUS_BADGE } from '../config/crmConstants.js';
@@ -22,6 +23,8 @@ export default function PlatformProspectLayout() {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState('');
   const [orgLoading, setOrgLoading] = useState(true);
+  const [logoRev, setLogoRev] = useState(0);
+  const bumpLogoRev = useCallback(() => setLogoRev((v) => v + 1), []);
 
   const refreshOrg = useCallback(async () => {
     const { data } = await api.get(`/api/platform/crm/organisations/${id}`);
@@ -108,9 +111,15 @@ export default function PlatformProspectLayout() {
   return (
     <Layout user={user} onLogout={logout}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-        <button className="btn btn-ghost" style={{ padding: '0.4rem 0.7rem' }} onClick={() => navigate('/platform/crm/organisations')}>
-          <ArrowLeft size={16} strokeWidth={2} aria-hidden />
-        </button>
+        {org.logo_filename ? (
+          <AuthenticatedBlobImage
+            path={`/api/platform/crm/organisations/${id}/logo?v=${logoRev}`}
+            alt=""
+            className="platform-client-header-logo"
+          />
+        ) : (
+          <Building2 size={28} strokeWidth={1.75} aria-hidden />
+        )}
         <h1 style={{ margin: 0, flex: 1 }}>{org.organisation_name}</h1>
         <span className={LEAD_STATUS_BADGE[org.lead_status] || 'badge'}>{org.lead_status}</span>
         <span
@@ -126,7 +135,7 @@ export default function PlatformProspectLayout() {
           {org.business_unit}
         </span>
       </div>
-      <Outlet context={{ org, orgId: id, contacts, setContacts, notes, setNotes, refreshOrg }} />
+      <Outlet context={{ org, orgId: id, contacts, setContacts, notes, setNotes, refreshOrg, bumpLogoRev }} />
     </Layout>
   );
 }
