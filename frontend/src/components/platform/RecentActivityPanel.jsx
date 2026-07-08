@@ -34,6 +34,8 @@ const ACTION_LABELS = {
   'crm.task.create': 'Task created',
   'crm.task.update': 'Task updated',
   'crm.task.delete': 'Task deleted',
+  'crm.organisation.logo.upload': 'Logo uploaded',
+  'crm.organisation.logo.delete': 'Logo removed',
 };
 
 function describeAction(action) {

@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import fs from 'fs';
 import {
   listOrganisations, getOrganisation, createOrganisation,
   updateOrganisation, deleteOrganisation, organisationBelongsToOrg,
+  setLogoFilename, clearLogoFilename,
   BUSINESS_UNITS, LEAD_STATUSES,
 } from '../../models/CrmOrganisation.js';
 import { listContacts, createContact, updateContact, deleteContact, contactBelongsToOrg } from '../../models/CrmContact.js';
@@ -14,6 +16,10 @@ import {
   listTasksForOrg, getTaskForOrg, createTask, updateTask, deleteTask, reorderTasks,
 } from '../../models/CrmOrganisationTask.js';
 import { listUsersForOrg } from '../../models/User.js';
+import { extensionForUpload } from '../../middleware/avatarUpload.js';
+import { orgLogoFilePath } from '../../config/storage.js';
+import { brandUploadLimiter } from '../../middleware/sensitiveRateLimit.js';
+import { handleOrgLogoPlatformUpload, sendOrgLogoFileOr404 } from './shared.js';
 
 const router = Router();
 
@@ -125,6 +131,76 @@ router.delete('/organisations/:id', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to delete organisation.' });
+  }
+});
+
+// ── Logo ────────────────────────────────────────────────────────────────────
+
+router.get('/organisations/:id/logo', async (req, res) => {
+  try {
+    const org = await getOrganisation(orgId(req), req.params.id);
+    if (!org || !org.logo_filename) return res.status(404).end();
+    sendOrgLogoFileOr404(res, org.logo_filename);
+  } catch (e) {
+    console.error(e);
+    res.status(500).end();
+  }
+});
+
+router.post('/organisations/:id/logo', brandUploadLimiter, handleOrgLogoPlatformUpload, async (req, res) => {
+  try {
+    const org = await getOrganisation(orgId(req), req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organisation not found.' });
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const ext = extensionForUpload(req.file);
+    const base = `crm-org-${org.organisation_id}${ext || '.png'}`;
+    if (org.logo_filename && org.logo_filename !== base) {
+      try {
+        await fs.promises.unlink(orgLogoFilePath(org.logo_filename));
+      } catch {
+        /* ignore */
+      }
+    }
+    await fs.promises.writeFile(orgLogoFilePath(base), req.file.buffer);
+    const updated = await setLogoFilename(orgId(req), req.params.id, base);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_ORGANISATION_LOGO_UPLOAD,
+      targetType: 'crm_organisation',
+      targetId: String(org.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: { name: org.organisation_name },
+    });
+    res.json({ organisation: updated });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Could not save logo' });
+  }
+});
+
+router.delete('/organisations/:id/logo', async (req, res) => {
+  try {
+    const org = await getOrganisation(orgId(req), req.params.id);
+    if (!org) return res.status(404).json({ error: 'Organisation not found.' });
+    const prev = await clearLogoFilename(orgId(req), req.params.id);
+    if (prev) {
+      try {
+        await fs.promises.unlink(orgLogoFilePath(prev));
+      } catch {
+        /* ignore */
+      }
+    }
+    const updated = await getOrganisation(orgId(req), req.params.id);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_ORGANISATION_LOGO_DELETE,
+      targetType: 'crm_organisation',
+      targetId: String(org.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: { name: org.organisation_name },
+    });
+    res.json({ organisation: updated });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Could not remove logo' });
   }
 });
 

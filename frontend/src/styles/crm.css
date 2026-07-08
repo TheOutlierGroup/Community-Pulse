@@ -48,6 +48,14 @@
   color: var(--text);
 }
 
+.crm-table__sort-icon--inactive {
+  opacity: 0.45;
+}
+
+.crm-table__sort-btn:hover .crm-table__sort-icon--inactive {
+  opacity: 0.75;
+}
+
 .crm-table td {
   padding: 0.85rem 1rem;
   text-align: center;
