@@ -11,11 +11,14 @@ export const BUSINESS_UNITS = [
 
 export const LEAD_STATUSES = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost', 'On Hold'];
 
-export async function listOrganisations(platformOrgId, { search, businessUnit, leadStatus, limit = 100, offset = 0 } = {}) {
+export async function listOrganisations(platformOrgId, { search, businessUnit, leadStatus, includePromoted = false, limit = 100, offset = 0 } = {}) {
   const conditions = ['o.platform_org_id = $1'];
   const values = [platformOrgId];
   let i = 2;
 
+  if (!includePromoted) {
+    conditions.push('o.promoted_to_org_id IS NULL');
+  }
   if (search) {
     conditions.push(`o.organisation_name ILIKE $${i++}`);
     values.push(`%${search}%`);
@@ -74,7 +77,7 @@ export async function createOrganisation(platformOrgId, data) {
 }
 
 export async function updateOrganisation(platformOrgId, organisationId, data) {
-  const allowed = ['organisation_name', 'industry', 'website', 'phone', 'business_unit', 'lead_status', 'lead_source', 'expected_close_date'];
+  const allowed = ['organisation_name', 'industry', 'website', 'phone', 'business_unit', 'lead_status', 'lead_source', 'expected_close_date', 'do_not_contact'];
   const sets = [];
   const values = [];
   let i = 1;
@@ -84,7 +87,9 @@ export async function updateOrganisation(platformOrgId, organisationId, data) {
       sets.push(`${key} = $${i++}`);
       // expected_close_date is a DATE column; Postgres rejects '' (only
       // accepts a valid date or NULL), so an empty string must map to null.
-      const value = key === 'expected_close_date' && data[key] === '' ? null : data[key];
+      const value = key === 'expected_close_date' && data[key] === '' ? null
+        : key === 'do_not_contact' ? Boolean(data[key])
+        : data[key];
       values.push(value ?? null);
     }
   }
@@ -136,4 +141,15 @@ export async function clearLogoFilename(platformOrgId, organisationId) {
     [organisationId, platformOrgId],
   );
   return prev;
+}
+
+export async function markPromoted(platformOrgId, organisationId, clientOrgId) {
+  const { rows } = await query(
+    `UPDATE crm_organisations
+        SET promoted_to_org_id = $1, promoted_at = NOW(), updated_at = NOW()
+      WHERE organisation_id = $2 AND platform_org_id = $3
+      RETURNING *`,
+    [clientOrgId, organisationId, platformOrgId],
+  );
+  return rows[0] || null;
 }

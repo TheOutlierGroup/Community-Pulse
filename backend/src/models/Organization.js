@@ -10,7 +10,10 @@ function normalizeSlug(value) {
 }
 
 function defaultClientStatusForKind(kind) {
-  if (kind === 'client' || kind === 'licensee') return 'prospect-new';
+  // Client status is now Current/Previous only — "Prospect" statuses live
+  // exclusively in the CRM Prospects layer, so a freshly created client or
+  // licensee org starts out as an active/current relationship.
+  if (kind === 'client' || kind === 'licensee') return 'client-current';
   return 'active';
 }
 

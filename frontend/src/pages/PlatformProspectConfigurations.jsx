@@ -23,6 +23,7 @@ export default function PlatformProspectConfigurations() {
     lead_status: org.lead_status,
     lead_source: org.lead_source || '',
     expected_close_date: org.expected_close_date?.slice(0, 10) || '',
+    do_not_contact: Boolean(org.do_not_contact),
   });
   const [saveBusy, setSaveBusy] = useState(false);
 
@@ -127,6 +128,19 @@ export default function PlatformProspectConfigurations() {
               <input type="date" value={editForm.expected_close_date} onChange={(e) => setEditForm((p) => ({ ...p, expected_close_date: e.target.value }))} />
             </div>
           </div>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', marginTop: '0.75rem' }}>
+            <input
+              type="checkbox"
+              checked={editForm.do_not_contact}
+              onChange={(e) => setEditForm((p) => ({ ...p, do_not_contact: e.target.checked }))}
+            />
+            <span>
+              Do not contact
+              <span className="muted" style={{ display: 'block', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                Flags this prospect as one we should not reach out to.
+              </span>
+            </span>
+          </label>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
             <button className="btn btn-primary" type="submit" disabled={saveBusy}>Save changes</button>
           </div>

@@ -12,10 +12,8 @@ import {
   CLIENT_SERVICE_LICENSEE,
   CLIENT_SERVICE_OTHER,
   CLIENT_SERVICE_PULSE,
-  CLIENT_STATUS_PARENT_OPTIONS,
-  clientStatusParent,
-  clientStatusSubOptions,
-  composeClientStatus,
+  CLIENT_RELATIONSHIP_STATUS_OPTIONS,
+  clientStatusLabel,
   normalizeServices,
   normalizeClientStatus,
 } from './platformClientUtils.js';
@@ -72,12 +70,12 @@ export default function PlatformClientAccount() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const isLegacyClientStatus = (status) =>
+    !CLIENT_RELATIONSHIP_STATUS_OPTIONS.some((option) => option.id === status);
   const initialStatus = normalizeClientStatus(org.client_status);
-  const initialStatusParent = clientStatusParent(initialStatus);
   const [editName, setEditName] = useState(org.name);
-  const [clientStatusParentId, setClientStatusParentId] = useState(initialStatusParent);
-  const [clientStatusSubId, setClientStatusSubId] = useState(() =>
-    composeClientStatus(initialStatusParent, initialStatus)
+  const [clientStatus, setClientStatus] = useState(() =>
+    isLegacyClientStatus(initialStatus) ? CLIENT_RELATIONSHIP_STATUS_OPTIONS[0].id : initialStatus
   );
   const [address, setAddress] = useState(() => readCompanyAddress(org.settings));
   const [serviceCatalog, setServiceCatalog] = useState([]);
@@ -89,15 +87,11 @@ export default function PlatformClientAccount() {
   const [otherServiceDisplayValue, setOtherServiceDisplayValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const clientStatusSubStatusOptions = clientStatusSubOptions(clientStatusParentId);
-  const showClientSubStatus = clientStatusSubStatusOptions.length > 1;
 
   useEffect(() => {
     const normalizedStatus = normalizeClientStatus(org.client_status);
-    const nextParentId = clientStatusParent(normalizedStatus);
     setEditName(org.name);
-    setClientStatusParentId(nextParentId);
-    setClientStatusSubId(composeClientStatus(nextParentId, normalizedStatus));
+    setClientStatus(isLegacyClientStatus(normalizedStatus) ? CLIENT_RELATIONSHIP_STATUS_OPTIONS[0].id : normalizedStatus);
     setAddress(readCompanyAddress(org.settings));
     setSelectedServices(normalizeServices(org.settings).filter((id) => id !== CLIENT_SERVICE_LICENSEE));
     setGroupLevels(readGroupLevels(org.settings));
@@ -135,14 +129,15 @@ export default function PlatformClientAccount() {
 
   async function saveOrgName(e) {
     e.preventDefault();
+    if (!confirm('Save changes to this client’s name?')) return;
     setBusy(true);
     setError('');
     try {
       await api.patch(`/api/platform/organizations/${orgId}`, { name: editName.trim() });
       await refreshOrg();
-      showToast('Company name saved.', { variant: 'success' });
+      showToast('Client name saved.', { variant: 'success' });
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not update company.');
+      setError(err.response?.data?.error || 'Could not update client.');
     } finally {
       setBusy(false);
     }
@@ -150,6 +145,7 @@ export default function PlatformClientAccount() {
 
   async function saveAddress(e) {
     e.preventDefault();
+    if (!confirm('Save changes to this client’s address?')) return;
     setBusy(true);
     setError('');
     try {
@@ -182,6 +178,7 @@ export default function PlatformClientAccount() {
       setError('Provide a name for each group level.');
       return;
     }
+    if (!confirm('Save changes to this client’s services?')) return;
     setBusy(true);
     setError('');
     try {
@@ -203,17 +200,17 @@ export default function PlatformClientAccount() {
 
   async function saveClientStatus(e) {
     e.preventDefault();
-    const nextStatus = composeClientStatus(clientStatusParentId, clientStatusSubId);
+    if (!confirm('Save changes to this client’s relationship status?')) return;
     setBusy(true);
     setError('');
     try {
       await api.patch(`/api/platform/organizations/${orgId}`, {
-        clientStatus: nextStatus,
+        clientStatus,
       });
       await refreshOrg();
-      showToast('Client status saved.', { variant: 'success' });
+      showToast('Relationship status saved.', { variant: 'success' });
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not save client status.');
+      setError(err.response?.data?.error || 'Could not save relationship status.');
     } finally {
       setBusy(false);
     }
@@ -235,6 +232,7 @@ export default function PlatformClientAccount() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    if (!confirm('Save changes to this client’s logo?')) return;
     setBusy(true);
     setError('');
     try {
@@ -243,7 +241,7 @@ export default function PlatformClientAccount() {
       await api.post(`/api/platform/organizations/${orgId}/logo`, fd);
       await refreshOrg();
       bumpClientLogo();
-      showToast('Company logo updated.', { variant: 'success' });
+      showToast('Client logo updated.', { variant: 'success' });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not upload logo.');
     } finally {
@@ -251,14 +249,15 @@ export default function PlatformClientAccount() {
     }
   }
 
-  async function removeCompanyLogo() {
+  async function removeClientLogo() {
+    if (!confirm('Remove this client’s logo?')) return;
     setBusy(true);
     setError('');
     try {
       await api.delete(`/api/platform/organizations/${orgId}/logo`);
       await refreshOrg();
       bumpClientLogo();
-      showToast('Company logo removed.', { variant: 'success' });
+      showToast('Client logo removed.', { variant: 'success' });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not remove logo.');
     } finally {
@@ -373,13 +372,13 @@ export default function PlatformClientAccount() {
             Configurations
           </h1>
           <p className="muted" style={{ marginTop: '-0.25rem', marginBottom: '1.25rem' }}>
-            Company profile for this client workspace. Admins see the logo in their account, too.
+            Client profile for this client workspace. Admins see the logo in their account, too.
           </p>
 
-          <h2 className="platform-client-dashboard__h2">Company</h2>
+          <h2 className="platform-client-dashboard__h2">Client</h2>
           <form onSubmit={saveOrgName}>
             <div className="field">
-              <label htmlFor="acct-ename">Company name</label>
+              <label htmlFor="acct-ename">Client name</label>
               <input
                 id="acct-ename"
                 value={editName}
@@ -396,43 +395,27 @@ export default function PlatformClientAccount() {
             onSubmit={saveClientStatus}
             style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}
           >
+            {isLegacyClientStatus(initialStatus) ? (
+              <p className="muted" style={{ fontSize: '0.85rem', marginTop: 0 }}>
+                Currently: {clientStatusLabel(org.client_status)} (legacy status — pick Current or
+                Previous below to update).
+              </p>
+            ) : null}
             <div className="field">
-              <label htmlFor="acct-client-status-parent">Client status</label>
+              <label htmlFor="acct-client-status">Relationship Status</label>
               <select
-                id="acct-client-status-parent"
-                value={clientStatusParentId}
-                onChange={(e) => {
-                  const nextParentId = e.target.value;
-                  const nextOptions = clientStatusSubOptions(nextParentId);
-                  setClientStatusParentId(nextParentId);
-                  setClientStatusSubId(nextOptions[0]?.id || '');
-                }}
+                id="acct-client-status"
+                value={clientStatus}
+                onChange={(e) => setClientStatus(normalizeClientStatus(e.target.value))}
                 disabled={busy}
               >
-                {CLIENT_STATUS_PARENT_OPTIONS.map((option) => (
+                {CLIENT_RELATIONSHIP_STATUS_OPTIONS.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
                 ))}
               </select>
             </div>
-            {showClientSubStatus ? (
-              <div className="field">
-                <label htmlFor="acct-client-status-sub">Sub status</label>
-                <select
-                  id="acct-client-status-sub"
-                  value={composeClientStatus(clientStatusParentId, clientStatusSubId)}
-                  onChange={(e) => setClientStatusSubId(normalizeClientStatus(e.target.value))}
-                  disabled={busy}
-                >
-                  {clientStatusSubStatusOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
             <button type="submit" className="btn btn-ghost" disabled={busy}>
               Save status
             </button>
@@ -552,7 +535,7 @@ export default function PlatformClientAccount() {
         <div className="card platform-client-dashboard__card">
           <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Building2 size={20} strokeWidth={1.75} aria-hidden />
-            Company logo
+            Client logo
           </h2>
           <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
             Shown in the client workspace header and in client accounts for their admins.
@@ -585,7 +568,7 @@ export default function PlatformClientAccount() {
               {busy ? 'Working…' : org.company_logo_filename ? 'Change logo' : 'Upload logo'}
             </button>
             {org.company_logo_filename ? (
-              <button type="button" className="btn btn-ghost" disabled={busy} onClick={removeCompanyLogo}>
+              <button type="button" className="btn btn-ghost" disabled={busy} onClick={removeClientLogo}>
                 Remove logo
               </button>
             ) : null}

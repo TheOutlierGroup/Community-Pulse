@@ -14,7 +14,7 @@ export {
 export const CLIENT_STATUS_PARENT_CLIENT = 'client';
 export const CLIENT_STATUS_PARENT_PROSPECT = 'prospect';
 export const CLIENT_STATUS_PARENT_DO_NOT_CALL_CONTACT = 'do-not-call-contact';
-export const DEFAULT_CLIENT_STATUS = 'prospect-new';
+export const DEFAULT_CLIENT_STATUS = 'client-current';
 
 const CLIENT_STATUS_LEGACY_MAP = new Map([
   ['lead', 'prospect-new'],
@@ -66,11 +66,15 @@ const CLIENT_STATUS_LOOKUP = new Map(
 
 const CLIENT_STATUS_SET = new Set(CLIENT_STATUS_LOOKUP.keys());
 
-export const CLIENT_STATUS_OPTIONS = CLIENT_STATUS_TREE.flatMap((group) => group.options);
-export const CLIENT_STATUS_PARENT_OPTIONS = CLIENT_STATUS_TREE.map((group) => ({
-  id: group.id,
-  label: group.label,
-}));
+// Clients now only ever track a Current/Previous relationship status —
+// "Prospect" and "Do not call/contact" statuses have moved entirely to the
+// CRM Prospects layer (lead status + the do-not-contact flag). Legacy
+// client_status values are still recognized above for label/badge lookups
+// on any existing org that hasn't been re-saved yet, but this is the only
+// option set offered in the editable picker going forward.
+export const CLIENT_RELATIONSHIP_STATUS_OPTIONS = CLIENT_STATUS_TREE.find(
+  (group) => group.id === CLIENT_STATUS_PARENT_CLIENT
+).options;
 
 export function normalizeClientStatus(value) {
   const raw = String(value || '')
@@ -87,28 +91,6 @@ function getStatusMeta(value) {
     CLIENT_STATUS_LOOKUP.get(normalized) ||
     CLIENT_STATUS_LOOKUP.get(DEFAULT_CLIENT_STATUS)
   );
-}
-
-export function clientStatusSubOptions(parentId) {
-  const normalizedParentId = String(parentId || '')
-    .trim()
-    .toLowerCase();
-  const group = CLIENT_STATUS_TREE.find((entry) => entry.id === normalizedParentId);
-  if (!group || group.options.length === 0) {
-    return CLIENT_STATUS_TREE.find((entry) => entry.id === CLIENT_STATUS_PARENT_PROSPECT).options;
-  }
-  return group.options;
-}
-
-export function composeClientStatus(parentId, subStatusId) {
-  const options = clientStatusSubOptions(parentId);
-  const requested = normalizeClientStatus(subStatusId);
-  const valid = options.find((option) => option.id === requested);
-  return valid?.id || options[0]?.id || DEFAULT_CLIENT_STATUS;
-}
-
-export function clientStatusParent(value) {
-  return getStatusMeta(value).parentId;
 }
 
 export function clientStatusLabel(value) {

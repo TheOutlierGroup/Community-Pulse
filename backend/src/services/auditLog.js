@@ -65,6 +65,8 @@ export const AUDIT_ACTIONS = Object.freeze({
   CRM_TASK_DELETE: 'crm.task.delete',
   CRM_ORGANISATION_LOGO_UPLOAD: 'crm.organisation.logo.upload',
   CRM_ORGANISATION_LOGO_DELETE: 'crm.organisation.logo.delete',
+  CRM_ORGANISATION_PROMOTE: 'crm.organisation.promote',
+  ORG_PROMOTED_FROM_PROSPECT: 'org.promoted_from_prospect',
 });
 
 function normalizeText(value, fallback = null) {
@@ -170,7 +172,7 @@ export function auditFromRequest(req) {
     : null;
   const ipAddress = req?.ip || null;
   const userAgent = req?.get?.('user-agent') || null;
-  return function record({ action, targetType, targetId = null, targetOrganizationId = null, result = 'ok', metadata = {} }) {
+  return function record({ action, targetType, targetId = null, targetOrganizationId = null, result = 'ok', metadata = {}, occurredAt = undefined }) {
     return recordAuditEvent({
       actor,
       action,
@@ -181,6 +183,7 @@ export function auditFromRequest(req) {
       ipAddress,
       userAgent,
       metadata,
+      ...(occurredAt !== undefined ? { occurredAt } : {}),
     });
   };
 }

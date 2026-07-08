@@ -36,6 +36,8 @@ const ACTION_LABELS = {
   'crm.task.delete': 'Task deleted',
   'crm.organisation.logo.upload': 'Logo uploaded',
   'crm.organisation.logo.delete': 'Logo removed',
+  'crm.organisation.promote': 'Promoted to Client',
+  'org.promoted_from_prospect': 'Promoted from Prospect',
 };
 
 function describeAction(action) {
@@ -60,9 +62,21 @@ function csvEscape(value) {
   return `"${source.replace(/"/g, '""')}"`;
 }
 
+function describeProspectCarryover(m) {
+  const bits = [];
+  if (m.leadStatus) bits.push(`lead status: ${m.leadStatus}`);
+  if (m.website) bits.push(`website: ${m.website}`);
+  if (m.phone) bits.push(`phone: ${m.phone}`);
+  if (m.leadSource) bits.push(`lead source: ${m.leadSource}`);
+  if (m.prospectCreatedDate) bits.push(`prospect created: ${m.prospectCreatedDate}`);
+  if (m.expectedCloseDate) bits.push(`expected close: ${m.expectedCloseDate}`);
+  return bits.length === 0 ? null : `From prospect "${m.prospectName || 'unknown'}" — ${bits.join(' · ')}`;
+}
+
 function describeMetadata(event) {
   if (!event?.metadata || typeof event.metadata !== 'object') return null;
   const m = event.metadata;
+  if (event.action === 'org.promoted_from_prospect') return describeProspectCarryover(m);
   const bits = [];
   if (m.name) bits.push(m.name);
   if (m.title) bits.push(m.title);

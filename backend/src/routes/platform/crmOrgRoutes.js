@@ -3,7 +3,7 @@ import fs from 'fs';
 import {
   listOrganisations, getOrganisation, createOrganisation,
   updateOrganisation, deleteOrganisation, organisationBelongsToOrg,
-  setLogoFilename, clearLogoFilename,
+  setLogoFilename, clearLogoFilename, markPromoted,
   BUSINESS_UNITS, LEAD_STATUSES,
 } from '../../models/CrmOrganisation.js';
 import { listContacts, createContact, updateContact, deleteContact, contactBelongsToOrg } from '../../models/CrmContact.js';
@@ -19,7 +19,8 @@ import { listUsersForOrg } from '../../models/User.js';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { orgLogoFilePath } from '../../config/storage.js';
 import { brandUploadLimiter } from '../../middleware/sensitiveRateLimit.js';
-import { handleOrgLogoPlatformUpload, sendOrgLogoFileOr404 } from './shared.js';
+import { handleOrgLogoPlatformUpload, sendOrgLogoFileOr404, assertClientOrganizationPlatformForUser } from './shared.js';
+import * as Organization from '../../models/Organization.js';
 
 const router = Router();
 
@@ -131,6 +132,70 @@ router.delete('/organisations/:id', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to delete organisation.' });
+  }
+});
+
+// ── Promotion ────────────────────────────────────────────────────────────────
+
+router.post('/organisations/:id/promote', async (req, res) => {
+  try {
+    const prospect = await getOrganisation(orgId(req), req.params.id);
+    if (!prospect) return res.status(404).json({ error: 'Organisation not found.' });
+    if (prospect.promoted_to_org_id) {
+      return res.status(409).json({ error: 'This prospect has already been promoted.' });
+    }
+    const clientOrgId = req.body?.clientOrgId;
+    if (!clientOrgId) return res.status(400).json({ error: 'clientOrgId is required.' });
+    const clientOrg = await assertClientOrganizationPlatformForUser(clientOrgId, req.user);
+    if (!clientOrg) return res.status(404).json({ error: 'Client not found.' });
+
+    // Carry the prospect's logo over if the new client doesn't already have one.
+    if (prospect.logo_filename && !clientOrg.company_logo_filename) {
+      try {
+        const ext = String(prospect.logo_filename).match(/\.[a-z0-9]+$/i)?.[0] || '.png';
+        const base = `org-${clientOrg.id}${ext}`;
+        const bytes = await fs.promises.readFile(orgLogoFilePath(prospect.logo_filename));
+        await fs.promises.writeFile(orgLogoFilePath(base), bytes);
+        await Organization.setCompanyLogoFilename(clientOrg.id, base);
+      } catch (e) {
+        console.error('Failed to carry prospect logo to new client:', e);
+      }
+    }
+
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.ORG_PROMOTED_FROM_PROSPECT,
+      targetType: 'organization',
+      targetId: clientOrg.id,
+      targetOrganizationId: clientOrg.id,
+      // Backdated to just before the client's own creation event so this
+      // carryover record always sinks to the bottom of the client's Recent
+      // Activity feed, instead of floating to the top as the newest entry.
+      occurredAt: new Date(new Date(clientOrg.created_at).getTime() - 1000),
+      metadata: {
+        prospectId: prospect.organisation_id,
+        prospectName: prospect.organisation_name,
+        leadStatus: prospect.lead_status,
+        website: prospect.website,
+        phone: prospect.phone,
+        leadSource: prospect.lead_source,
+        prospectCreatedDate: prospect.created_date,
+        expectedCloseDate: prospect.expected_close_date,
+      },
+    });
+
+    const updated = await markPromoted(orgId(req), req.params.id, clientOrg.id);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_ORGANISATION_PROMOTE,
+      targetType: 'crm_organisation',
+      targetId: String(prospect.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: { name: prospect.organisation_name, clientOrgId: clientOrg.id },
+    });
+
+    res.json({ organisation: updated });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to promote prospect.' });
   }
 });
 
