@@ -367,7 +367,6 @@ export default function PlatformClientAccount() {
           </div>
         </>
       )}
-      <RecentActivityPanel orgId={orgId} />
       <div className="platform-client-dashboard-grid">
         <div className="card platform-client-dashboard__card">
           <h1 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>
@@ -632,6 +631,8 @@ export default function PlatformClientAccount() {
         </div>
 
       </div>
+
+      <RecentActivityPanel orgId={orgId} style={{ marginTop: '1.5rem' }} />
 
       <div
         className="card"
