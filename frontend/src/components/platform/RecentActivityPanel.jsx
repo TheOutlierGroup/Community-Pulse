@@ -38,6 +38,15 @@ function formatDate(value) {
   });
 }
 
+const DISPLAY_LIMIT = 3;
+const EXPORT_LIMIT = 500;
+
+function csvEscape(value) {
+  const source = String(value ?? '');
+  if (!/[",\n]/.test(source)) return source;
+  return `"${source.replace(/"/g, '""')}"`;
+}
+
 function describeMetadata(event) {
   if (!event?.metadata || typeof event.metadata !== 'object') return null;
   const m = event.metadata;
@@ -61,17 +70,19 @@ function describeMetadata(event) {
  * org; licensee admins see their own org and any owned client). Polls
  * once on mount; refresh button reloads on demand.
  */
-export default function RecentActivityPanel({ orgId }) {
+export default function RecentActivityPanel({ orgId, style }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   async function reload() {
     if (!orgId) return;
     setLoading(true);
     setError('');
     try {
-      const { data } = await api.get(`/api/platform/organizations/${orgId}/audit-events?limit=50`);
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/audit-events?limit=${DISPLAY_LIMIT}`);
       setEvents(Array.isArray(data?.events) ? data.events : []);
     } catch (e) {
       setError(e?.response?.data?.error || 'Could not load recent activity.');
@@ -80,30 +91,79 @@ export default function RecentActivityPanel({ orgId }) {
     }
   }
 
+  async function exportCsv() {
+    if (!orgId) return;
+    setExporting(true);
+    setExportError('');
+    try {
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/audit-events?limit=${EXPORT_LIMIT}`);
+      const rows = Array.isArray(data?.events) ? data.events : [];
+      const headers = ['Action', 'Detail', 'Result', 'Timestamp'];
+      const lines = [headers.map(csvEscape).join(',')];
+      for (const event of rows) {
+        lines.push(
+          [
+            describeAction(event.action),
+            describeMetadata(event) || '',
+            event.result || 'ok',
+            event.occurredAt || '',
+          ]
+            .map(csvEscape)
+            .join(',')
+        );
+      }
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `org-${orgId}-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError(e?.response?.data?.error || 'Could not export activity.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   useEffect(() => {
     reload();
   }, [orgId]);
 
   return (
-    <div className="card platform-client-dashboard__card" style={{ marginBottom: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
+    <div className="card platform-client-dashboard__card" style={{ marginBottom: '1.5rem', ...style }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem', gap: '0.5rem' }}>
         <h2 className="platform-client-dashboard__h2" style={{ margin: 0 }}>
           Recent activity
         </h2>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={reload}
-          disabled={loading}
-          style={{ fontSize: '0.8rem', padding: '0.2rem 0.6rem' }}
-        >
-          {loading ? 'Loading…' : 'Refresh'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={exportCsv}
+            disabled={exporting}
+            style={{ fontSize: '0.8rem', padding: '0.2rem 0.6rem' }}
+          >
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={reload}
+            disabled={loading}
+            style={{ fontSize: '0.8rem', padding: '0.2rem 0.6rem' }}
+          >
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
       </div>
       <p className="muted" style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>
-        Audit-logged changes and lifecycle events for this organisation.
+        The {DISPLAY_LIMIT} most recent audit-logged changes for this organisation. Export CSV for the full history.
       </p>
       {error && <p className="error" style={{ marginBottom: '0.5rem' }}>{error}</p>}
+      {exportError && <p className="error" style={{ marginBottom: '0.5rem' }}>{exportError}</p>}
       {!loading && events.length === 0 && (
         <p className="muted" style={{ margin: 0 }}>No recent activity recorded.</p>
       )}
