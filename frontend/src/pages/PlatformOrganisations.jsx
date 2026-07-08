@@ -35,7 +35,7 @@ export default function PlatformOrganisations() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
 
-  useDocumentTitle(!loading && ok ? `Organisations | ${DEFAULT_TAB}` : null);
+  useDocumentTitle(!loading && ok ? `Prospects | ${DEFAULT_TAB}` : null);
 
   const load = useCallback(async () => {
     setFetching(true);
@@ -47,7 +47,7 @@ export default function PlatformOrganisations() {
       const { data } = await api.get('/api/platform/crm/organisations', { params });
       setOrgs(data.organisations || []);
     } catch (e) {
-      showToast(e.response?.data?.error || 'Failed to load organisations.', 'error');
+      showToast(e.response?.data?.error || 'Failed to load organisations.', { variant: 'error' });
     } finally {
       setFetching(false);
     }
@@ -61,7 +61,7 @@ export default function PlatformOrganisations() {
     setBusy(true); setFormError('');
     try {
       const { data } = await api.post('/api/platform/crm/organisations', form);
-      showToast('Organisation created.', 'success');
+      showToast('Organisation created.', { variant: 'success' });
       setCreateOpen(false);
       setForm({ organisation_name: '', industry: '', website: '', phone: '', business_unit: BUSINESS_UNITS[0], lead_status: 'New', lead_source: '', expected_close_date: '' });
       navigate(`/platform/crm/organisations/${data.organisation.organisation_id}`);
@@ -78,7 +78,7 @@ export default function PlatformOrganisations() {
     <Layout user={user} onLogout={logout}>
       <div className="app-main">
         <div className="crm-page-header">
-          <h1>Organisations</h1>
+          <h1>Prospects</h1>
           <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
             <Plus size={18} strokeWidth={2} aria-hidden /> New Prospect
           </button>
@@ -116,7 +116,7 @@ export default function PlatformOrganisations() {
                 <tr><td colSpan={6} className="crm-table__empty">Loading…</td></tr>
               )}
               {!fetching && orgs.length === 0 && (
-                <tr><td colSpan={6} className="crm-table__empty">No organisations yet. Add one to get started.</td></tr>
+                <tr><td colSpan={6} className="crm-table__empty">No prospects yet. Add one to get started.</td></tr>
               )}
               {orgs.map((o) => (
                 <tr

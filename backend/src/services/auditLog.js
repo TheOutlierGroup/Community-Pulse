@@ -51,6 +51,15 @@ export const AUDIT_ACTIONS = Object.freeze({
 
   API_KEY_CREATE: 'api_key.create',
   API_KEY_REVOKE: 'api_key.revoke',
+
+  CRM_ORGANISATION_CREATE: 'crm.organisation.create',
+  CRM_ORGANISATION_UPDATE: 'crm.organisation.update',
+  CRM_ORGANISATION_DELETE: 'crm.organisation.delete',
+  CRM_CONTACT_CREATE: 'crm.contact.create',
+  CRM_CONTACT_UPDATE: 'crm.contact.update',
+  CRM_CONTACT_DELETE: 'crm.contact.delete',
+  CRM_NOTE_CREATE: 'crm.note.create',
+  CRM_NOTE_DELETE: 'crm.note.delete',
 });
 
 function normalizeText(value, fallback = null) {
@@ -193,6 +202,8 @@ export async function listRecentAuditEvents({
   limit = 100,
   offset = 0,
   action = null,
+  targetId = null,
+  targetType = null,
 }) {
   const cappedLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 100;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
@@ -207,6 +218,14 @@ export async function listRecentAuditEvents({
   if (action) {
     where += ` AND action = $${idx++}`;
     params.push(action);
+  }
+  if (targetId) {
+    where += ` AND target_id = $${idx++}`;
+    params.push(String(targetId));
+  }
+  if (targetType) {
+    where += ` AND target_type = $${idx++}`;
+    params.push(targetType);
   }
 
   const { rows } = await query(
