@@ -68,6 +68,10 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const isWorkspace = isWorkspaceUser(user);
   const isLicensee = isLicenseeUser(user);
   const platformClientOrgId = isWorkspace && params.orgId ? params.orgId : null;
+  const platformProspectId =
+    isWorkspace && params.id && location.pathname.startsWith('/platform/crm/organisations/')
+      ? params.id
+      : null;
   const myAccountHref = platformClientOrgId ? `/platform/clients/${platformClientOrgId}/my-account` : '/account';
   const myAccountLabel = user?.firstName?.trim() || user?.email || 'Account';
   const myAccountAvatar = user?.hasProfileAvatar ? (
@@ -350,7 +354,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
               )}
             </>
           )}
-          {isWorkspace && !platformClientOrgId && (
+          {isWorkspace && !platformClientOrgId && !platformProspectId && (
             <>
               <NavLink to="/platform" className={sidebarLinkClass} end>
                 <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
@@ -359,6 +363,10 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
               <NavLink to="/platform/clients" className={sidebarLinkClass}>
                 <Building2 size={20} strokeWidth={1.75} aria-hidden />
                 Clients
+              </NavLink>
+              <NavLink to="/platform/crm/organisations" className={sidebarLinkClass}>
+                <Briefcase size={20} strokeWidth={1.75} aria-hidden />
+                Prospects
               </NavLink>
               {!isLicensee && (
                 <NavLink to="/platform/tasks" className={sidebarLinkClass}>
@@ -370,16 +378,37 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 <Users size={20} strokeWidth={1.75} aria-hidden />
                 Users
               </NavLink>
-              <NavLink to="/platform/crm/organisations" className={sidebarLinkClass}>
-                <Briefcase size={20} strokeWidth={1.75} aria-hidden />
-                Prospects
-              </NavLink>
               {user.role === 'admin' && !isLicensee && (
                 <NavLink to="/platform/settings" className={sidebarLinkClass}>
                   <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
                   Settings
                 </NavLink>
               )}
+            </>
+          )}
+          {isWorkspace && platformProspectId && (
+            <>
+              <NavLink to="/platform/crm/organisations" className={sidebarLinkClass}>
+                <ArrowLeft size={20} strokeWidth={1.75} aria-hidden />
+                All prospects
+              </NavLink>
+              <div className="sidebar-nav-divider" aria-hidden />
+              <NavLink to={`/platform/crm/organisations/${platformProspectId}`} className={sidebarLinkClass} end>
+                <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
+                Dashboard
+              </NavLink>
+              <NavLink to={`/platform/crm/organisations/${platformProspectId}/tasks`} className={sidebarLinkClass}>
+                <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
+                Tasks
+              </NavLink>
+              <NavLink to={`/platform/crm/organisations/${platformProspectId}/configurations`} className={sidebarLinkClass}>
+                <Cog size={20} strokeWidth={1.75} aria-hidden />
+                Configurations
+              </NavLink>
+              <NavLink to={`/platform/crm/organisations/${platformProspectId}/activity`} className={sidebarLinkClass}>
+                <FileText size={20} strokeWidth={1.75} aria-hidden />
+                Recent activity
+              </NavLink>
             </>
           )}
           {user.organizationKind === 'client' && user.role === 'admin' && (

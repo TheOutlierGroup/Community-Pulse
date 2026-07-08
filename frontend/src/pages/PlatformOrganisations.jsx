@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ChevronRight, X } from 'lucide-react';
+import { Plus, ChevronRight, ChevronUp, ChevronDown, X } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
@@ -15,6 +15,32 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// Sortable columns cycle through 3 states per click: default -> ascending ->
+// descending -> default. `column: null` represents "default", which always
+// renders as most-recently-updated-first regardless of which column was
+// last explicitly sorted.
+const SORTABLE_COLUMNS = {
+  organisation: (o) => String(o.organisation_name || ''),
+  industry: (o) => String(o.industry || ''),
+  updated: (o) => new Date(o.updated_at || 0).getTime(),
+};
+
+function nextSortState(current, column) {
+  if (current.column !== column) return { column, direction: 'asc' };
+  if (current.direction === 'asc') return { column, direction: 'desc' };
+  return { column: null, direction: null };
+}
+
+function sortIndicator(sort, column) {
+  if (sort.column !== column) return null;
+  return sort.direction === 'asc' ? <ChevronUp size={14} strokeWidth={2.25} /> : <ChevronDown size={14} strokeWidth={2.25} />;
+}
+
+function ariaSortFor(sort, column) {
+  if (sort.column !== column) return 'none';
+  return sort.direction === 'asc' ? 'ascending' : 'descending';
+}
+
 export default function PlatformOrganisations() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
@@ -26,6 +52,7 @@ export default function PlatformOrganisations() {
   const [search, setSearch] = useState('');
   const [buFilter, setBuFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [sort, setSort] = useState({ column: null, direction: null });
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({
@@ -54,6 +81,23 @@ export default function PlatformOrganisations() {
   }, [search, buFilter, statusFilter, showToast]);
 
   useEffect(() => { if (ok) load(); }, [ok, load]);
+
+  function toggleSort(column) {
+    setSort((current) => nextSortState(current, column));
+  }
+
+  const sortedOrgs = useMemo(() => {
+    const activeColumn = sort.column || 'updated';
+    const direction = sort.column ? sort.direction : 'desc';
+    const dirMultiplier = direction === 'asc' ? 1 : -1;
+    const getValue = SORTABLE_COLUMNS[activeColumn];
+    return [...orgs].sort((a, b) => {
+      const av = getValue(a);
+      const bv = getValue(b);
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dirMultiplier;
+      return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * dirMultiplier;
+    });
+  }, [orgs, sort]);
 
   async function create(e) {
     e.preventDefault();
@@ -103,11 +147,23 @@ export default function PlatformOrganisations() {
           <table className="crm-table">
             <thead>
               <tr>
-                <th>Organisation</th>
+                <th aria-sort={ariaSortFor(sort, 'organisation')}>
+                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('organisation')}>
+                    Organisation {sortIndicator(sort, 'organisation')}
+                  </button>
+                </th>
                 <th>Business Unit</th>
                 <th>Status</th>
-                <th>Industry</th>
-                <th>Last Updated</th>
+                <th aria-sort={ariaSortFor(sort, 'industry')}>
+                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('industry')}>
+                    Industry {sortIndicator(sort, 'industry')}
+                  </button>
+                </th>
+                <th aria-sort={ariaSortFor(sort, 'updated')}>
+                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('updated')}>
+                    Last Updated {sortIndicator(sort, 'updated')}
+                  </button>
+                </th>
                 <th style={{ width: 32 }}></th>
               </tr>
             </thead>
@@ -118,7 +174,7 @@ export default function PlatformOrganisations() {
               {!fetching && orgs.length === 0 && (
                 <tr><td colSpan={6} className="crm-table__empty">No prospects yet. Add one to get started.</td></tr>
               )}
-              {orgs.map((o) => (
+              {sortedOrgs.map((o) => (
                 <tr
                   key={o.organisation_id}
                   className="crm-table__row--clickable"
