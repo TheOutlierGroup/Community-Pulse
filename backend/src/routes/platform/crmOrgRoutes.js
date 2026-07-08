@@ -10,6 +10,10 @@ import {
   createNoteForOrg, createNoteForContact, deleteNote,
 } from '../../models/CrmNote.js';
 import { auditFromRequest, AUDIT_ACTIONS, listRecentAuditEvents, publicAuditEvent } from '../../services/auditLog.js';
+import {
+  listTasksForOrg, getTaskForOrg, createTask, updateTask, deleteTask, reorderTasks,
+} from '../../models/CrmOrganisationTask.js';
+import { listUsersForOrg } from '../../models/User.js';
 
 const router = Router();
 
@@ -18,6 +22,27 @@ function orgId(req) { return req.user.organizationId; }
 function noteExcerpt(text) {
   const trimmed = String(text || '').trim();
   return trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
+}
+
+function publicTask(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    position: row.position,
+    dueDate: row.due_date,
+    assignedTo: row.assigned_to,
+    assignee: row.assigned_to
+      ? {
+          id: row.assigned_to,
+          email: row.assignee_email,
+          firstName: row.assignee_first_name,
+          lastName: row.assignee_last_name,
+        }
+      : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 // ── Organisations ──────────────────────────────────────────────────────────
@@ -119,6 +144,130 @@ router.get('/organisations/:id/audit-events', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to load recent activity.' });
+  }
+});
+
+// ── Tasks ────────────────────────────────────────────────────────────────
+
+router.get('/organisations/:id/tasks', async (req, res) => {
+  try {
+    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
+      return res.status(404).json({ error: 'Organisation not found.' });
+    const rows = await listTasksForOrg(req.params.id);
+    res.json({ tasks: rows.map(publicTask) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load tasks.' });
+  }
+});
+
+router.get('/organisations/:id/tasks/assignable-users', async (req, res) => {
+  try {
+    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
+      return res.status(404).json({ error: 'Organisation not found.' });
+    const rows = await listUsersForOrg(orgId(req));
+    res.json({
+      users: rows.map((u) => ({
+        id: u.id,
+        email: u.email,
+        firstName: u.first_name,
+        lastName: u.last_name,
+      })),
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load assignable users.' });
+  }
+});
+
+router.post('/organisations/:id/tasks', async (req, res) => {
+  try {
+    if (!req.body.title?.trim()) return res.status(400).json({ error: 'title is required.' });
+    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
+      return res.status(404).json({ error: 'Organisation not found.' });
+    const task = await createTask(
+      req.params.id,
+      {
+        title: req.body.title.trim(),
+        status: req.body.status,
+        assignedTo: req.body.assignedTo || null,
+        dueDate: req.body.dueDate || null,
+      },
+      req.user.id
+    );
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_TASK_CREATE,
+      targetType: 'crm_task',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { title: task.title },
+    });
+    res.status(201).json({ task: publicTask(task) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to create task.' });
+  }
+});
+
+router.patch('/organisations/:id/tasks/reorder', async (req, res) => {
+  try {
+    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
+      return res.status(404).json({ error: 'Organisation not found.' });
+    const updates = Array.isArray(req.body?.tasks) ? req.body.tasks : null;
+    if (!updates) return res.status(400).json({ error: 'tasks must be an array.' });
+    const ok = await reorderTasks(req.params.id, updates);
+    if (!ok) return res.status(400).json({ error: 'Could not reorder tasks.' });
+    const rows = await listTasksForOrg(req.params.id);
+    res.json({ tasks: rows.map(publicTask) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to reorder tasks.' });
+  }
+});
+
+router.patch('/organisations/:id/tasks/:taskId', async (req, res) => {
+  try {
+    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
+      return res.status(404).json({ error: 'Organisation not found.' });
+    const patch = {};
+    if ('title' in req.body) patch.title = String(req.body.title || '').trim();
+    if ('status' in req.body) patch.status = req.body.status;
+    if ('assignedTo' in req.body) patch.assignedTo = req.body.assignedTo || null;
+    if ('dueDate' in req.body) patch.dueDate = req.body.dueDate || null;
+    const task = await updateTask(req.params.taskId, req.params.id, patch);
+    if (!task) return res.status(404).json({ error: 'Task not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_TASK_UPDATE,
+      targetType: 'crm_task',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { title: task.title, patchedFields: Object.keys(patch) },
+    });
+    res.json({ task: publicTask(task) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to update task.' });
+  }
+});
+
+router.delete('/organisations/:id/tasks/:taskId', async (req, res) => {
+  try {
+    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
+      return res.status(404).json({ error: 'Organisation not found.' });
+    const task = await getTaskForOrg(req.params.taskId, req.params.id);
+    if (!task) return res.status(404).json({ error: 'Task not found.' });
+    await deleteTask(req.params.taskId, req.params.id);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_TASK_DELETE,
+      targetType: 'crm_task',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { title: task.title },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to delete task.' });
   }
 });
 

@@ -33,7 +33,11 @@ const PlatformClientAccount = lazy(() => import('./pages/PlatformClientAccount.j
 const PlatformUsers = lazy(() => import('./pages/PlatformUsers.jsx'));
 const PlatformSettings = lazy(() => import('./pages/PlatformSettings.jsx'));
 const PlatformOrganisations = lazy(() => import('./pages/PlatformOrganisations.jsx'));
-const PlatformOrgDetail = lazy(() => import('./pages/PlatformOrgDetail.jsx'));
+const PlatformProspectLayout = lazy(() => import('./pages/PlatformProspectLayout.jsx'));
+const PlatformProspectDashboard = lazy(() => import('./pages/PlatformProspectDashboard.jsx'));
+const PlatformProspectTasks = lazy(() => import('./pages/PlatformProspectTasks.jsx'));
+const PlatformProspectConfigurations = lazy(() => import('./pages/PlatformProspectConfigurations.jsx'));
+const PlatformProspectActivity = lazy(() => import('./pages/PlatformProspectActivity.jsx'));
 const PublicStatus = lazy(() => import('./pages/PublicStatus.jsx'));
 const ClientHome = lazy(() => import('./pages/ClientHome.jsx'));
 const AccountPage = lazyWithReload(
@@ -83,7 +87,14 @@ export default function App() {
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/settings" element={<PlatformSettings />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm" element={<Navigate to="/platform/crm/organisations" replace />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/organisations" element={<PlatformOrganisations />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/organisations/:id" element={<PlatformOrgDetail />} />}
+            {!IS_RHYTHM_ENGINE_SURFACE && (
+              <Route path="/platform/crm/organisations/:id" element={<PlatformProspectLayout />}>
+                <Route index element={<PlatformProspectDashboard />} />
+                <Route path="tasks" element={<PlatformProspectTasks />} />
+                <Route path="configurations" element={<PlatformProspectConfigurations />} />
+                <Route path="activity" element={<PlatformProspectActivity />} />
+              </Route>
+            )}
             <Route path="/account" element={<AccountPage />} />
             <Route path="/settings" element={<Navigate to="/account" replace />} />
             <Route path="/client" element={<ClientHome />} />

@@ -60,6 +60,9 @@ export const AUDIT_ACTIONS = Object.freeze({
   CRM_CONTACT_DELETE: 'crm.contact.delete',
   CRM_NOTE_CREATE: 'crm.note.create',
   CRM_NOTE_DELETE: 'crm.note.delete',
+  CRM_TASK_CREATE: 'crm.task.create',
+  CRM_TASK_UPDATE: 'crm.task.update',
+  CRM_TASK_DELETE: 'crm.task.delete',
 });
 
 function normalizeText(value, fallback = null) {

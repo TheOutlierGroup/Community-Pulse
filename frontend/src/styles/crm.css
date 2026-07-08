@@ -24,6 +24,30 @@
 
 .crm-table th:first-child { text-align: left; }
 
+.crm-table__sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.crm-table__sort-btn:hover {
+  color: var(--text);
+}
+
+.crm-table th[aria-sort="ascending"] .crm-table__sort-btn,
+.crm-table th[aria-sort="descending"] .crm-table__sort-btn {
+  color: var(--text);
+}
+
 .crm-table td {
   padding: 0.85rem 1rem;
   text-align: center;

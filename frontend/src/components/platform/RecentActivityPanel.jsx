@@ -31,6 +31,9 @@ const ACTION_LABELS = {
   'crm.contact.delete': 'Contact removed',
   'crm.note.create': 'Note added',
   'crm.note.delete': 'Note removed',
+  'crm.task.create': 'Task created',
+  'crm.task.update': 'Task updated',
+  'crm.task.delete': 'Task deleted',
 };
 
 function describeAction(action) {
@@ -60,6 +63,7 @@ function describeMetadata(event) {
   const m = event.metadata;
   const bits = [];
   if (m.name) bits.push(m.name);
+  if (m.title) bits.push(m.title);
   if (m.kind) bits.push(m.kind);
   if (m.businessUnit) bits.push(m.businessUnit);
   if (m.excerpt) bits.push(`"${m.excerpt}"`);
