@@ -5,6 +5,7 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { CheckCircle2, ClipboardList, Eye, Hammer, ListTodo, Users } from 'lucide-react';
 import {
+  CLIENT_SERVICE_LICENSEE,
   clientCompositeStatusLabel,
   clientServiceLabel,
   normalizeServices,
@@ -119,9 +120,9 @@ export default function PlatformClientOverview() {
   }, []);
 
   const counts = dash?.taskCountsByStatus;
-  const activeServices = normalizeServices(org?.settings).map((serviceId) =>
-    clientServiceLabel(serviceId, serviceCatalog)
-  );
+  const activeServices = normalizeServices(org?.settings)
+    .filter((serviceId) => serviceId !== CLIENT_SERVICE_LICENSEE)
+    .map((serviceId) => clientServiceLabel(serviceId, serviceCatalog));
 
   return (
     <>

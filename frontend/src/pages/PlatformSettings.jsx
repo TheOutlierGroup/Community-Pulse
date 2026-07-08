@@ -283,6 +283,11 @@ export default function PlatformSettings() {
   const [serviceSaving, setServiceSaving] = useState(false);
   const [serviceMessage, setServiceMessage] = useState('');
   const [serviceError, setServiceError] = useState('');
+  // Rhythm Engine Licensee is granted automatically whenever Rhythm Engine
+  // is selected for a licensee account (see NewClientModal) — it has no
+  // independent existence a platform admin can configure, so it's hidden
+  // here to avoid presenting it as a second, separately-managed service.
+  const visibleServiceCatalog = serviceCatalog.filter((service) => service.id !== CLIENT_SERVICE_LICENSEE);
   const [loadingDefaultTemplates, setLoadingDefaultTemplates] = useState(false);
   const [savingDefaultTemplates, setSavingDefaultTemplates] = useState({
     staff: false,
@@ -743,14 +748,14 @@ export default function PlatformSettings() {
                       Loading services...
                     </td>
                   </tr>
-                ) : serviceCatalog.length === 0 ? (
+                ) : visibleServiceCatalog.length === 0 ? (
                   <tr>
                     <td colSpan={2} className="muted" style={{ padding: '1rem' }}>
                       No services yet. Add your first service below.
                     </td>
                   </tr>
                 ) : (
-                  serviceCatalog.map((service) => (
+                  visibleServiceCatalog.map((service) => (
                     <tr key={service.key}>
                       <td>
                         <div className="service-catalog-name-cell">

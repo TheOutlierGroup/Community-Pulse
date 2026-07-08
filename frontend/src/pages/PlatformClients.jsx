@@ -10,6 +10,7 @@ import { isLicenseeUser, usePlatformAccess } from '../hooks/usePlatformAccess.js
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { Building2, ChevronDown, ChevronUp, ChevronsUpDown, Plus } from 'lucide-react';
 import {
+  CLIENT_SERVICE_LICENSEE,
   clientCompositeStatusLabel,
   clientServiceLabel,
   CURRENT_PREVIOUS_OPTIONS,
@@ -19,8 +20,14 @@ import {
 } from './platformClientUtils.js';
 import '../styles/crm.css';
 
+// Rhythm Engine Licensee is granted automatically alongside Rhythm Engine
+// for licensee accounts (see NewClientModal) — it's not a separate,
+// independently-managed service, so it's folded into the Rhythm Engine
+// label here rather than shown as its own duplicate entry.
 function activeServiceLabels(settings, serviceCatalog) {
-  return normalizeServices(settings).map((serviceId) => clientServiceLabel(serviceId, serviceCatalog));
+  return normalizeServices(settings)
+    .filter((serviceId) => serviceId !== CLIENT_SERVICE_LICENSEE)
+    .map((serviceId) => clientServiceLabel(serviceId, serviceCatalog));
 }
 
 function fmtDate(d) {
