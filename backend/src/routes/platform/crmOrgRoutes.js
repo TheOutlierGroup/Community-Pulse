@@ -21,6 +21,7 @@ import { orgLogoFilePath } from '../../config/storage.js';
 import { brandUploadLimiter } from '../../middleware/sensitiveRateLimit.js';
 import { handleOrgLogoPlatformUpload, sendOrgLogoFileOr404, assertClientOrganizationPlatformForUser } from './shared.js';
 import * as Organization from '../../models/Organization.js';
+import { buildProspectSnapshot } from '../../services/prospectSnapshot.js';
 
 const router = Router();
 
@@ -192,6 +193,15 @@ router.post('/organisations/:id/promote', async (req, res) => {
       targetOrganizationId: orgId(req),
       metadata: { name: prospect.organisation_name, clientOrgId: clientOrg.id },
     });
+
+    // Static, point-in-time record of the prospect — captured last so it
+    // includes the promotion event itself, then never regenerated.
+    try {
+      const snapshot = await buildProspectSnapshot({ prospect, platformOrgId: orgId(req) });
+      await Organization.setProspectSnapshot(clientOrg.id, snapshot);
+    } catch (e) {
+      console.error('Failed to capture prospect snapshot:', e);
+    }
 
     res.json({ organisation: updated });
   } catch (e) {

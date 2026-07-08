@@ -44,17 +44,23 @@ function describeAction(action) {
   return ACTION_LABELS[action] || action;
 }
 
+// Fixed to Australia/Brisbane (AEST year-round, no daylight saving) rather
+// than the viewer's local browser timezone, so both the on-screen list and
+// the exported CSV always read in AEST regardless of where someone opens
+// them from.
 function formatDate(value) {
   if (!value) return '';
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return '';
   return dt.toLocaleString('en-AU', {
     day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+    timeZone: 'Australia/Brisbane', timeZoneName: 'short',
   });
 }
 
 const DISPLAY_LIMIT = 3;
 const EXPORT_LIMIT = 500;
+const BOM = '﻿';
 
 function csvEscape(value) {
   const source = String(value ?? '');
@@ -146,13 +152,15 @@ export default function RecentActivityPanel({ orgId, style, resourcePath = '/api
             describeAction(event.action),
             describeMetadata(event) || '',
             event.result || 'ok',
-            event.occurredAt || '',
+            formatDate(event.occurredAt),
           ]
             .map(csvEscape)
             .join(',')
         );
       }
-      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      // Leading BOM so Excel detects UTF-8 and renders the — / · characters
+      // in the detail column correctly instead of as mojibake.
+      const blob = new Blob([BOM + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;

@@ -201,6 +201,14 @@ export async function updateOrganizationSettings(id, settings) {
   return rows[0] || null;
 }
 
+export async function setProspectSnapshot(id, snapshot) {
+  const { rows } = await query(
+    `UPDATE organizations SET prospect_snapshot = $2::jsonb WHERE id = $1 RETURNING *`,
+    [id, JSON.stringify(snapshot)]
+  );
+  return rows[0] || null;
+}
+
 export async function markOrganizationArchived(id, { disposalYears = 7 } = {}) {
   const years = Number.isFinite(disposalYears) && disposalYears > 0 ? Math.floor(disposalYears) : 7;
   const { rows } = await query(

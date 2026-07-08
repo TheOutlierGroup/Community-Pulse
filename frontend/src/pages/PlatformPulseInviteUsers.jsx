@@ -367,6 +367,7 @@ export default function PlatformPulseInviteUsers() {
   const [deleteConfirmRow, setDeleteConfirmRow] = useState(null);
   const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
   const [deleteWorking, setDeleteWorking] = useState(false);
+  const [sendAllConfirmOpen, setSendAllConfirmOpen] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -1227,14 +1228,15 @@ export default function PlatformPulseInviteUsers() {
     }
   }
 
-  async function bulkSendAll() {
+  function closeSendAllConfirm() {
+    if (bulkSending) return;
+    setSendAllConfirmOpen(false);
+  }
+
+  async function confirmBulkSendAll() {
     const snapshot = sendableInviteIds;
     if (snapshot.length === 0) return;
-    const ok = window.confirm(
-      `Send Rhythm Engine links to ${snapshot.length} recipient${snapshot.length === 1 ? '' : 's'} who have not completed the survey?\n\nEach person receives an email. Sends run one at a time with a short pause between each to avoid hitting email API rate limits, so a long list may take a few minutes.`
-    );
-    if (!ok) return;
-
+    setSendAllConfirmOpen(false);
     setBulkSending(true);
     let success = 0;
     let failed = 0;
@@ -1843,6 +1845,38 @@ export default function PlatformPulseInviteUsers() {
       </ModalDialog>
 
       <ModalDialog
+        open={sendAllConfirmOpen}
+        title="Send links to all pending recipients?"
+        titleId="pulse-send-all-recipients-title"
+        onClose={closeSendAllConfirm}
+      >
+        <div style={{ padding: '0 0 0.25rem' }}>
+          <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.55 }}>
+            Each person receives an email with their personal Rhythm Engine link. Sends run one at a
+            time with a short pause between each to avoid hitting email API rate limits, so a long
+            list may take a few minutes.
+          </p>
+          <p style={{ margin: '0 0 1.35rem', fontWeight: 700 }}>
+            This will send a link to everyone who has not completed the survey —{' '}
+            {sendableInviteIds.length} recipient{sendableInviteIds.length === 1 ? '' : 's'}.
+          </p>
+          <div className="modal-dialog__actions">
+            <button type="button" className="btn btn-ghost" onClick={closeSendAllConfirm} disabled={bulkSending}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary modal-dialog__submit"
+              onClick={confirmBulkSendAll}
+              disabled={bulkSending}
+            >
+              {bulkSending ? 'Sending…' : 'Send all'}
+            </button>
+          </div>
+        </div>
+      </ModalDialog>
+
+      <ModalDialog
         open={deleteAllConfirmOpen}
         title="Remove all recipients?"
         titleId="pulse-delete-all-recipients-title"
@@ -2087,7 +2121,7 @@ export default function PlatformPulseInviteUsers() {
               disabled={
                 loading || invites.length === 0 || sendableInviteIds.length === 0 || bulkSending || busyImport
               }
-              onClick={bulkSendAll}
+              onClick={() => setSendAllConfirmOpen(true)}
               style={{ fontSize: '0.9rem' }}
             >
               <Mail size={18} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
@@ -2105,6 +2139,20 @@ export default function PlatformPulseInviteUsers() {
               Delete all
             </button>
           </div>
+          {!loading && invites.length > 0 && sendableInviteIds.length === 0 ? (
+            <p
+              className="muted"
+              style={{
+                fontSize: '0.82rem',
+                fontFamily: 'inherit',
+                letterSpacing: 'normal',
+                textTransform: 'none',
+                margin: '0.5rem 0 0',
+              }}
+            >
+              Send all and Delete all are disabled because every recipient has already completed the survey.
+            </p>
+          ) : null}
         </div>
         {loading ? (
           <p className="muted">Loading…</p>

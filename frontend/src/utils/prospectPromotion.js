@@ -10,9 +10,9 @@ import {
 // Business Unit (CRM Prospects) -> Service (Clients) mapping used to prefill
 // the New Client modal when promoting a prospect. "Outlier Core" becomes
 // "Project Resources" per the CRM-to-Client naming convention; "Outlier
-// Skate" has no single matching service (there are 4 separate OG Skate
-// services) so it defaults to "OG Skate - Other" and staff pick the exact
-// one before creating the client.
+// Skate" has no single matching service (there are 4 separate Outlier
+// Skate services) so it defaults to "Outlier Skate - Other" and staff pick
+// the exact one before creating the client.
 const BUSINESS_UNIT_TO_SERVICE_ID = {
   'Outlier Core': CLIENT_SERVICE_PROJECT_RESOURCES,
   'Outlier Skate': CLIENT_SERVICE_OG_SKATE_OTHER,

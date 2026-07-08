@@ -17,10 +17,10 @@ export const CLIENT_SERVICE_OPTIONS = [
   { id: CLIENT_SERVICE_HUMAN_AI, label: 'AI-Human Workforce Design' },
   { id: CLIENT_SERVICE_ADOPTION_ACCELERATOR, label: 'Adoption Accelerator' },
   { id: CLIENT_SERVICE_PROJECT_RESOURCES, label: 'Project Resources' },
-  { id: CLIENT_SERVICE_OG_SKATE_AUDIT, label: 'OG Skate - Audit' },
-  { id: CLIENT_SERVICE_OG_SKATE_STRATEGY, label: 'OG Skate - Strategy' },
-  { id: CLIENT_SERVICE_OG_SKATE_COMMUNITY_ENGAGEMENT, label: 'OG Skate - Community Engagement' },
-  { id: CLIENT_SERVICE_OG_SKATE_OTHER, label: 'OG Skate - Other' },
+  { id: CLIENT_SERVICE_OG_SKATE_AUDIT, label: 'Outlier Skate - Audit' },
+  { id: CLIENT_SERVICE_OG_SKATE_STRATEGY, label: 'Outlier Skate - Strategy' },
+  { id: CLIENT_SERVICE_OG_SKATE_COMMUNITY_ENGAGEMENT, label: 'Outlier Skate - Community Engagement' },
+  { id: CLIENT_SERVICE_OG_SKATE_OTHER, label: 'Outlier Skate - Other' },
   { id: CLIENT_SERVICE_ET_INC, label: 'ET Inc' },
 ];
 
