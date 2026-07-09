@@ -12,6 +12,7 @@ import { Building2, ChevronDown, ChevronUp, ChevronsUpDown, Plus } from 'lucide-
 import {
   CLIENT_SERVICE_LICENSEE,
   clientServiceLabel,
+  clientServiceBadgeClass,
   normalizeClientStatus,
   normalizeServices,
   relationshipStatusBadgeClass,
@@ -328,8 +329,20 @@ export default function PlatformClients() {
                       {relationshipStatusLabel(o.relationship_status)}
                     </span>
                   </td>
-                  <td className="muted" style={{ fontSize: '0.9rem' }}>
-                    {activeServiceLabels(o.settings, serviceCatalog).join(', ') || '—'}
+                  <td>
+                    {activeServiceLabels(o.settings, serviceCatalog).length > 0 ? (
+                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                        {normalizeServices(o.settings)
+                          .filter((id) => id !== CLIENT_SERVICE_LICENSEE)
+                          .map((id) => (
+                            <span key={id} className={`badge ${clientServiceBadgeClass(id)}`}>
+                              {clientServiceLabel(id, serviceCatalog)}
+                            </span>
+                          ))}
+                      </div>
+                    ) : (
+                      <span className="muted" style={{ fontSize: '0.9rem' }}>—</span>
+                    )}
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
                     {fmtDate(o.updated_at || o.created_at)}

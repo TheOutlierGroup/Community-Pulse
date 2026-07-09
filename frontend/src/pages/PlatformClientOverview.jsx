@@ -9,6 +9,7 @@ import {
   CLIENT_SERVICE_LICENSEE,
   clientCompositeStatusLabel,
   clientServiceLabel,
+  clientServiceBadgeClass,
   normalizeServices,
   relationshipStatusBadgeClass,
 } from './platformClientUtils.js';
@@ -121,9 +122,7 @@ export default function PlatformClientOverview() {
   }, []);
 
   const counts = dash?.taskCountsByStatus;
-  const activeServices = normalizeServices(org?.settings)
-    .filter((serviceId) => serviceId !== CLIENT_SERVICE_LICENSEE)
-    .map((serviceId) => clientServiceLabel(serviceId, serviceCatalog));
+  const activeServiceIds = normalizeServices(org?.settings).filter((serviceId) => serviceId !== CLIENT_SERVICE_LICENSEE);
 
   return (
     <>
@@ -135,9 +134,16 @@ export default function PlatformClientOverview() {
         <span className={`badge ${relationshipStatusBadgeClass(org.relationship_status)}`}>
           {clientCompositeStatusLabel(org.client_status, org.relationship_status)}
         </span>
-        <span className="muted" style={{ fontSize: '0.9rem' }}>
-          Active services: {activeServices.join(', ') || 'None'}
-        </span>
+        <span className="muted" style={{ fontSize: '0.9rem' }}>Active services:</span>
+        {activeServiceIds.length > 0 ? (
+          activeServiceIds.map((id) => (
+            <span key={id} className={`badge ${clientServiceBadgeClass(id)}`}>
+              {clientServiceLabel(id, serviceCatalog)}
+            </span>
+          ))
+        ) : (
+          <span className="muted" style={{ fontSize: '0.9rem' }}>None</span>
+        )}
       </div>
       {dashError && <p className="error" style={{ marginBottom: '1rem' }}>{dashError}</p>}
       <div className="platform-client-dashboard-grid">

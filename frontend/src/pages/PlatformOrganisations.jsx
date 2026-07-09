@@ -67,6 +67,8 @@ export default function PlatformOrganisations() {
   const [search, setSearch] = useState('');
   const [buFilter, setBuFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [industryFilter, setIndustryFilter] = useState('');
+  const [industryOptions, setIndustryOptions] = useState([]);
   const [sort, setSort] = useState({ column: null, direction: null });
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -93,6 +95,7 @@ export default function PlatformOrganisations() {
       if (search) params.search = search;
       if (buFilter) params.businessUnit = buFilter;
       if (statusFilter) params.leadStatus = statusFilter;
+      if (industryFilter) params.industry = industryFilter;
       const { data } = await api.get('/api/platform/crm/organisations', { params });
       setOrgs(data.organisations || []);
     } catch (e) {
@@ -100,9 +103,16 @@ export default function PlatformOrganisations() {
     } finally {
       setFetching(false);
     }
-  }, [search, buFilter, statusFilter, showToast]);
+  }, [search, buFilter, statusFilter, industryFilter, showToast]);
 
   useEffect(() => { if (ok) load(); }, [ok, load]);
+
+  useEffect(() => {
+    if (!ok) return;
+    api.get('/api/platform/crm/meta')
+      .then(({ data }) => setIndustryOptions(data.industries || []))
+      .catch(() => setIndustryOptions([]));
+  }, [ok]);
 
   function toggleSort(column) {
     setSort((current) => nextSortState(current, column));
@@ -191,6 +201,10 @@ export default function PlatformOrganisations() {
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">All statuses</option>
             {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={industryFilter} onChange={(e) => setIndustryFilter(e.target.value)}>
+            <option value="">All industries</option>
+            {industryOptions.map((i) => <option key={i} value={i}>{i}</option>)}
           </select>
         </div>
 

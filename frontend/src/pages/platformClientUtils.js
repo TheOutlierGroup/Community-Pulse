@@ -9,6 +9,7 @@ export {
   normalizeSettings,
   normalizeServices,
   hasService,
+  clientServiceBadgeClass,
 } from '../utils/clientServices.js';
 
 export const CLIENT_STATUS_PARENT_CLIENT = 'client';
