@@ -7,7 +7,7 @@ import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
 import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
-import { normalizeClientServiceIds } from '../../services/clientServices.js';
+import { normalizeClientServiceIds, organizationVisibleToBusinessUnits } from '../../services/clientServices.js';
 import { normalizePulseStage } from '../../services/pulseStage.js';
 
 function platformUploadError(err, fileSizeMessage) {
@@ -109,15 +109,19 @@ export function canPlatformUserAccessClientOrgPure({
   targetOrg,
   hasAssignment = false,
   hasTaskStake = false,
+  businessUnitVisible = false,
 }) {
   if (!user || !requesterOrg || !targetOrg) return false;
   if (targetOrg.kind !== 'client' && targetOrg.kind !== 'licensee') return false;
   if (requesterOrg.kind === 'platform') {
-    if (user.role === 'admin') return true;
-    // Non-admin platform users (e.g. consultants) may only see clients
-    // they have been deliberately granted, never licensee orgs.
+    // Admin and Platform tier get unrestricted visibility (BU tags are
+    // cosmetic for them, same as the Clients list).
+    if (user.role === 'admin' || user.role === 'platform') return true;
+    // Non-admin/non-platform users (Basic tier, and any legacy 'employee'
+    // row) may only see clients they've been deliberately granted, never
+    // licensee orgs.
     if (targetOrg.kind === 'licensee') return false;
-    return Boolean(hasAssignment || hasTaskStake);
+    return Boolean(hasAssignment || hasTaskStake || businessUnitVisible);
   }
   if (requesterOrg.kind === 'licensee') {
     // Licensees can only see their *own* downstream clients. They cannot
@@ -140,20 +144,28 @@ export async function canPlatformUserAccessClientOrg(user, clientOrgId) {
   // actually consult them — this preserves the previous lazy behaviour.
   let hasAssignment = false;
   let hasTaskStake = false;
+  let businessUnitVisible = false;
   if (
     requesterOrg.kind === 'platform' &&
     user.role !== 'admin' &&
+    user.role !== 'platform' &&
     targetOrg.kind === 'client'
   ) {
-    hasAssignment = await PlatformUserClientAssignment.userHasClientOrgAssignment(
-      user.id,
-      clientOrgId
-    );
-    if (!hasAssignment) {
-      hasTaskStake = await ClientWorkTask.platformUserHasStakeInClientOrgTasks(
+    if (user.role === 'basic') {
+      const businessUnits = await User.getBusinessUnitsForUser(user.id);
+      businessUnitVisible = organizationVisibleToBusinessUnits(targetOrg.settings, businessUnits);
+    }
+    if (!businessUnitVisible) {
+      hasAssignment = await PlatformUserClientAssignment.userHasClientOrgAssignment(
         user.id,
         clientOrgId
       );
+      if (!hasAssignment) {
+        hasTaskStake = await ClientWorkTask.platformUserHasStakeInClientOrgTasks(
+          user.id,
+          clientOrgId
+        );
+      }
     }
   }
   return canPlatformUserAccessClientOrgPure({
@@ -162,6 +174,7 @@ export async function canPlatformUserAccessClientOrg(user, clientOrgId) {
     targetOrg,
     hasAssignment,
     hasTaskStake,
+    businessUnitVisible,
   });
 }
 

@@ -11,6 +11,8 @@ const platformDirectClient = { id: 'client-direct', kind: 'client', parent_organ
 
 const platformAdmin = { id: 'u-pa', role: 'admin', organizationId: 'p-1' };
 const platformConsultant = { id: 'u-pc', role: 'employee', organizationId: 'p-1' };
+const platformTierUser = { id: 'u-pt', role: 'platform', organizationId: 'p-1' };
+const basicTierUser = { id: 'u-bt', role: 'basic', organizationId: 'p-1' };
 const licenseeAdminA = { id: 'u-la', role: 'admin', organizationId: 'lic-A' };
 const licenseeAdminB = { id: 'u-lb', role: 'admin', organizationId: 'lic-B' };
 
@@ -66,6 +68,63 @@ test('platform non-admin needs assignment OR task stake for a client', () => {
       hasTaskStake: true,
     }),
     true
+  );
+});
+
+test('Platform-tier user gets unrestricted client access, like admin, but not licensee orgs', () => {
+  // Regression: a real rollout hit "Client not found" for a Platform-tier
+  // user because this function used to only special-case role === 'admin'
+  // and fell through to the assignment/task-stake check for everyone else
+  // — including the new Platform tier, which per spec should see every
+  // client without needing an explicit assignment.
+  for (const target of [clientOfA, clientOfB, platformDirectClient]) {
+    assert.equal(
+      canPlatformUserAccessClientOrgPure({
+        user: platformTierUser,
+        requesterOrg: platformOrg,
+        targetOrg: target,
+      }),
+      true,
+      `platform tier should access ${target.id}`
+    );
+  }
+  assert.equal(
+    canPlatformUserAccessClientOrgPure({
+      user: platformTierUser,
+      requesterOrg: platformOrg,
+      targetOrg: licenseeOrgA,
+    }),
+    false
+  );
+});
+
+test('Basic-tier user needs assignment, task stake, OR Business Unit visibility for a client', () => {
+  assert.equal(
+    canPlatformUserAccessClientOrgPure({
+      user: basicTierUser,
+      requesterOrg: platformOrg,
+      targetOrg: clientOfA,
+    }),
+    false
+  );
+  assert.equal(
+    canPlatformUserAccessClientOrgPure({
+      user: basicTierUser,
+      requesterOrg: platformOrg,
+      targetOrg: clientOfA,
+      businessUnitVisible: true,
+    }),
+    true
+  );
+  assert.equal(
+    canPlatformUserAccessClientOrgPure({
+      user: basicTierUser,
+      requesterOrg: platformOrg,
+      targetOrg: licenseeOrgA,
+      businessUnitVisible: true,
+    }),
+    false,
+    'BU visibility never grants access to a licensee org'
   );
 });
 
