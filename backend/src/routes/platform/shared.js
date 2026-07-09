@@ -47,6 +47,17 @@ export function handleOrgLogoPlatformUpload(req, res, next) {
   });
 }
 
+/**
+ * Returns null for admin/platform-tier platform-org users (unrestricted
+ * Clients/Prospects visibility). Returns the user's tagged Business Units
+ * (possibly []) for basic-tier users, who are scoped to only Clients/
+ * Prospects tagged with one of those units.
+ */
+export async function resolveBasicTierBusinessUnitScope(user) {
+  if (!user || user.role !== 'basic') return null;
+  return User.getBusinessUnitsForUser(user.id);
+}
+
 export function publicStaffUser(row) {
   return {
     id: row.id,

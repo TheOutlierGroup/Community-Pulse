@@ -1,6 +1,12 @@
 import PlatformUserAvatar from '../../components/platform/PlatformUserAvatar.jsx';
 import { formatJoinedDate, roleLabel, scopeLabel, userDisplayName } from './helpers.js';
 
+function roleBadgeClass(role) {
+  if (role === 'admin') return 'badge-active';
+  if (role === 'platform') return 'badge-cold';
+  return 'badge-draft';
+}
+
 export default function PlatformUsersTable({
   staff,
   avatarListRev,
@@ -58,12 +64,12 @@ export default function PlatformUsersTable({
                 </td>
                 <td>{u.email}</td>
                 <td>
-                  <span className={`badge badge-${u.role === 'admin' ? 'active' : 'draft'}`}>
+                  <span className={`badge ${roleBadgeClass(u.role)}`}>
                     {roleLabel(u.role)}
                   </span>
                 </td>
                 <td className="muted" style={{ fontSize: '0.9rem' }}>
-                  {u.role === 'employee' ? (
+                  {u.role === 'employee' || u.role === 'basic' ? (
                     <div className="platform-scope-cell">
                       <span>{scopeLabel(u)}</span>
                       <button

@@ -117,6 +117,7 @@ import {
   clientServiceCatalogFromPlatformSettings,
   normalizeClientServiceCatalog,
   organizationHasService,
+  organizationVisibleToBusinessUnits,
 } from '../../services/clientServices.js';
 
 function parsePagination(query) {
@@ -1257,10 +1258,22 @@ export function registerPlatformOrgRoutes(router) {
       );
       return res.json({ organizations: rows });
     }
-    if (req.user?.role === 'admin') {
+    // Platform-org Admin and Platform tiers get full, unrestricted visibility
+    // (BU tags are cosmetic for them). Basic tier is scoped to Clients whose
+    // enabled service catalog maps into one of their tagged Business Units.
+    if (req.user?.role === 'admin' || req.user?.role === 'platform') {
       const rows = await Organization.listClientAndLicenseeOrganizations(parsePagination(req.query));
       return res.json({ organizations: rows });
     }
+    if (req.user?.role === 'basic') {
+      const businessUnits = await User.getBusinessUnitsForUser(req.user.id);
+      if (!businessUnits.length) return res.json({ organizations: [] });
+      const rows = await Organization.listClientAndLicenseeOrganizations(parsePagination(req.query));
+      const scoped = rows.filter((row) => organizationVisibleToBusinessUnits(row.settings, businessUnits));
+      return res.json({ organizations: scoped });
+    }
+    // Legacy fallback for the historical 'employee' role, which platform-org
+    // users no longer use post-migration — kept only for safety.
     const assignedOrgIds = await PlatformUserClientAssignment.listAssignedClientOrgIdsForUser(req.user.id);
     if (!assignedOrgIds.length) return res.json({ organizations: [] });
     const rows = await Organization.listClientOrganizationsByIds(assignedOrgIds, parsePagination(req.query));

@@ -43,6 +43,43 @@ export const LICENSEE_DOWNSTREAM_SERVICE_CATALOG = [
   { id: CLIENT_SERVICE_OTHER, name: 'Other' },
 ];
 
+// Maps the granular client service catalog onto the coarser Business Unit
+// vocabulary crm_organisations (Prospects) and user_business_units use, so a
+// Basic-tier platform user's BU tags can also scope which Clients they see.
+// CLIENT_SERVICE_OTHER and CLIENT_SERVICE_PROJECT_RESOURCES have no BU
+// equivalent and are intentionally left unmapped (invisible to BU-scoped
+// Basic users unless the client also has a mapped service).
+const CLIENT_SERVICE_TO_BUSINESS_UNIT = {
+  [CLIENT_SERVICE_PULSE]: 'Rhythm Engine',
+  [CLIENT_SERVICE_LICENSEE]: 'Rhythm Engine',
+  [CLIENT_SERVICE_HUMAN_AI]: 'AI-Human Workforce Design',
+  [CLIENT_SERVICE_ADOPTION_ACCELERATOR]: 'Adoption Accelerator',
+  [CLIENT_SERVICE_OG_SKATE_AUDIT]: 'Outlier Skate',
+  [CLIENT_SERVICE_OG_SKATE_STRATEGY]: 'Outlier Skate',
+  [CLIENT_SERVICE_OG_SKATE_COMMUNITY_ENGAGEMENT]: 'Outlier Skate',
+  [CLIENT_SERVICE_OG_SKATE_OTHER]: 'Outlier Skate',
+  [CLIENT_SERVICE_ET_INC]: 'ET Inc',
+};
+
+/** Business Units represented by a client's enabled service catalog. */
+export function businessUnitsForEnabledServices(enabledServiceIds) {
+  const ids = Array.isArray(enabledServiceIds) ? enabledServiceIds : [];
+  const units = new Set();
+  for (const id of ids) {
+    const bu = CLIENT_SERVICE_TO_BUSINESS_UNIT[id];
+    if (bu) units.add(bu);
+  }
+  return [...units];
+}
+
+/** True if any of a client's enabled services map into the given BU tag set. */
+export function organizationVisibleToBusinessUnits(rawSettings, businessUnits) {
+  if (!Array.isArray(businessUnits) || businessUnits.length === 0) return false;
+  const allowed = new Set(businessUnits);
+  const enabled = enabledServicesFromOrganizationSettings(rawSettings);
+  return enabled.some((id) => allowed.has(CLIENT_SERVICE_TO_BUSINESS_UNIT[id]));
+}
+
 function normalizeServiceId(value) {
   return String(value || '')
     .trim()

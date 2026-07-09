@@ -6,7 +6,7 @@ import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
-import { Plus, Users } from 'lucide-react';
+import { Plus, Users, Download } from 'lucide-react';
 import PlatformUsersTable from './platformUsers/PlatformUsersTable.jsx';
 import CreateUserModal from './platformUsers/CreateUserModal.jsx';
 import EditUserModal from './platformUsers/EditUserModal.jsx';
@@ -16,6 +16,11 @@ export default function PlatformUsers() {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const ok = usePlatformAccess(user, loading, navigate);
+  const isPlatformOrg = user?.organizationKind === 'platform';
+  // Basic tier loses Users visibility entirely — this page is not for them.
+  const isBasicTier = isPlatformOrg && user?.role === 'basic';
+  // Platform tier gets read-only Users/Settings — can view, cannot mutate.
+  const readOnly = isPlatformOrg && user?.role === 'platform';
   const [staff, setStaff] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,12 +32,14 @@ export default function PlatformUsers() {
   const [formPassword, setFormPassword] = useState('');
   const [formRole, setFormRole] = useState('admin');
   const [formAvatar, setFormAvatar] = useState(null);
+  const [formBusinessUnits, setFormBusinessUnits] = useState([]);
 
   const [editUser, setEditUser] = useState(null);
   const [editFirst, setEditFirst] = useState('');
   const [editLast, setEditLast] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState('admin');
+  const [editBusinessUnits, setEditBusinessUnits] = useState([]);
   const [editAvatarFile, setEditAvatarFile] = useState(null);
   const [editRemoveAvatar, setEditRemoveAvatar] = useState(false);
   const [editAssignmentOptions, setEditAssignmentOptions] = useState([]);
@@ -40,6 +47,7 @@ export default function PlatformUsers() {
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [editFocusScopeSignal, setEditFocusScopeSignal] = useState(0);
   const [removeAccessStep, setRemoveAccessStep] = useState(0);
+  const [exportingAuditLog, setExportingAuditLog] = useState(false);
 
   const loadStaff = useCallback(async () => {
     const { data } = await api.get('/api/platform/staff');
@@ -49,6 +57,10 @@ export default function PlatformUsers() {
 
   useEffect(() => {
     if (!ok) return;
+    if (isBasicTier) {
+      navigate('/platform');
+      return;
+    }
     (async () => {
       try {
         setError('');
@@ -57,7 +69,7 @@ export default function PlatformUsers() {
         setError(e.response?.data?.error || 'Failed to load team.');
       }
     })();
-  }, [ok, loadStaff]);
+  }, [ok, isBasicTier, navigate, loadStaff]);
 
   useEffect(() => {
     if (!modalOpen && !editUser) return;
@@ -71,8 +83,11 @@ export default function PlatformUsers() {
     return () => window.removeEventListener('keydown', onKey);
   }, [modalOpen, editUser]);
 
+  // Platform-org staff are scoped via Business Unit tags now, not the old
+  // per-client assignment list — this fetch only still applies to licensee
+  // orgs, whose "Member" tier keeps the original assigned-clients scope.
   useEffect(() => {
-    if (!editUser) return undefined;
+    if (!editUser || isPlatformOrg) return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -99,7 +114,7 @@ export default function PlatformUsers() {
     return () => {
       cancelled = true;
     };
-  }, [editUser]);
+  }, [editUser, isPlatformOrg]);
 
   function closeCreateModal() {
     setModalOpen(false);
@@ -108,8 +123,17 @@ export default function PlatformUsers() {
     setFormLast('');
     setFormEmail('');
     setFormPassword('');
-    setFormRole('admin');
+    setFormRole(isPlatformOrg ? 'basic' : 'admin');
     setFormAvatar(null);
+    setFormBusinessUnits([]);
+  }
+
+  function toggleFormBusinessUnit(bu) {
+    setFormBusinessUnits((prev) => (prev.includes(bu) ? prev.filter((v) => v !== bu) : [...prev, bu]));
+  }
+
+  function toggleEditBusinessUnit(bu) {
+    setEditBusinessUnits((prev) => (prev.includes(bu) ? prev.filter((v) => v !== bu) : [...prev, bu]));
   }
 
   function openEditModal(u, options = {}) {
@@ -120,7 +144,12 @@ export default function PlatformUsers() {
     setEditFirst(u.firstName ?? '');
     setEditLast(u.lastName ?? '');
     setEditEmail(u.email ?? '');
-    setEditRole(u.role === 'employee' ? 'employee' : 'admin');
+    if (isPlatformOrg) {
+      setEditRole(['admin', 'platform', 'basic'].includes(u.role) ? u.role : 'basic');
+      setEditBusinessUnits(Array.isArray(u.businessUnits) ? u.businessUnits : []);
+    } else {
+      setEditRole(u.role === 'employee' ? 'employee' : 'admin');
+    }
     setEditAvatarFile(null);
     setEditRemoveAvatar(false);
     if (options.focusScope) {
@@ -137,6 +166,7 @@ export default function PlatformUsers() {
     setEditAssignedClientOrgIds([]);
     setAssignmentsLoading(false);
     setRemoveAccessStep(0);
+    setEditBusinessUnits([]);
   }
 
   function toggleAssignedClientOrg(clientOrgId) {
@@ -166,6 +196,9 @@ export default function PlatformUsers() {
       fd.append('email', formEmail.trim());
       fd.append('password', formPassword);
       fd.append('role', formRole);
+      if (isPlatformOrg) {
+        for (const bu of formBusinessUnits) fd.append('businessUnits', bu);
+      }
       if (formAvatar) fd.append('avatar', formAvatar);
       const { data } = await api.post('/api/platform/users', fd);
       await loadStaff();
@@ -200,15 +233,21 @@ export default function PlatformUsers() {
     setBusy(true);
     setError('');
     try {
-      await api.patch(`/api/platform/users/${editUser.id}`, {
+      const patch = {
         firstName: editFirst.trim(),
         lastName: editLast.trim(),
         email: editEmail.trim(),
         role: editRole,
-      });
-      await api.put(`/api/platform/staff/${editUser.id}/client-assignments`, {
-        clientOrganizationIds: editRole === 'employee' ? editAssignedClientOrgIds : [],
-      });
+      };
+      if (isPlatformOrg) {
+        patch.businessUnits = editBusinessUnits;
+      }
+      await api.patch(`/api/platform/users/${editUser.id}`, patch);
+      if (!isPlatformOrg) {
+        await api.put(`/api/platform/staff/${editUser.id}/client-assignments`, {
+          clientOrganizationIds: editRole === 'employee' ? editAssignedClientOrgIds : [],
+        });
+      }
       if (editAvatarFile) {
         const fd = new FormData();
         fd.append('avatar', editAvatarFile);
@@ -260,9 +299,28 @@ export default function PlatformUsers() {
     }
   }
 
-  if (loading || !ok) return null;
+  async function exportAuditLog() {
+    setExportingAuditLog(true);
+    try {
+      const { data } = await api.get('/api/platform/users/audit-log/export', { responseType: 'blob' });
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `user-audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not export audit log.', { variant: 'error' });
+    } finally {
+      setExportingAuditLog(false);
+    }
+  }
 
-  const canRemoveAccess = editUser && String(editUser.id) !== String(user?.id);
+  if (loading || !ok || isBasicTier) return null;
+
+  const canRemoveAccess = !readOnly && editUser && String(editUser.id) !== String(user?.id);
 
   useDocumentTitle(!loading && ok ? `Users | ${DEFAULT_TAB}` : null);
 
@@ -275,18 +333,34 @@ export default function PlatformUsers() {
             Users
           </h1>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary platform-header-cta"
-          onClick={() => {
-            setError('');
-            closeEditModal();
-            setModalOpen(true);
-          }}
-        >
-          <Plus size={20} strokeWidth={2} aria-hidden />
-          Add user
-        </button>
+        {!readOnly && (
+          <div style={{ display: 'flex', gap: '0.6rem' }}>
+            {isPlatformOrg && user?.role === 'admin' && (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={exportAuditLog}
+                disabled={exportingAuditLog}
+              >
+                <Download size={18} strokeWidth={2} aria-hidden />
+                {exportingAuditLog ? 'Exporting…' : 'Export audit log'}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-primary platform-header-cta"
+              onClick={() => {
+                setError('');
+                closeEditModal();
+                setFormRole(isPlatformOrg ? 'basic' : 'admin');
+                setModalOpen(true);
+              }}
+            >
+              <Plus size={20} strokeWidth={2} aria-hidden />
+              Add user
+            </button>
+          </div>
+        )}
       </div>
 
       {error && !modalOpen && !editUser && (
@@ -306,6 +380,7 @@ export default function PlatformUsers() {
         open={modalOpen}
         busy={busy}
         error={modalOpen ? error : ''}
+        isPlatformOrg={isPlatformOrg}
         formFirst={formFirst}
         setFormFirst={setFormFirst}
         formLast={formLast}
@@ -316,6 +391,8 @@ export default function PlatformUsers() {
         setFormPassword={setFormPassword}
         formRole={formRole}
         setFormRole={setFormRole}
+        formBusinessUnits={formBusinessUnits}
+        onToggleFormBusinessUnit={toggleFormBusinessUnit}
         setFormAvatar={setFormAvatar}
         onClose={closeCreateModal}
         onSubmit={createUser}
@@ -325,6 +402,8 @@ export default function PlatformUsers() {
         editUser={editUser}
         error={editUser ? error : ''}
         busy={busy}
+        isPlatformOrg={isPlatformOrg}
+        readOnly={readOnly}
         editFirst={editFirst}
         setEditFirst={setEditFirst}
         editLast={editLast}
@@ -333,6 +412,8 @@ export default function PlatformUsers() {
         setEditEmail={setEditEmail}
         editRole={editRole}
         setEditRole={setEditRole}
+        editBusinessUnits={editBusinessUnits}
+        onToggleEditBusinessUnit={toggleEditBusinessUnit}
         editAssignmentOptions={editAssignmentOptions}
         editAssignedClientOrgIds={editAssignedClientOrgIds}
         assignmentsLoading={assignmentsLoading}
