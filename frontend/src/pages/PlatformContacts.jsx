@@ -7,7 +7,13 @@ import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import { BUSINESS_UNITS } from '../config/crmConstants.js';
+import { BUSINESS_UNITS, businessUnitBadgeClass } from '../config/crmConstants.js';
+import {
+  RELATIONSHIP_STATUS_OPTIONS,
+  normalizeRelationshipStatus,
+  relationshipStatusLabel,
+  relationshipStatusBadgeClass,
+} from './platformClientUtils.js';
 import '../styles/crm.css';
 
 const LINK_TYPE_OPTIONS = [
@@ -22,9 +28,18 @@ const EMPTY_FORM = {
   crm_organisation_id: '', client_organization_id: '',
 };
 
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+// A contact's relationship status belongs to whichever org it's linked to
+// (Client takes priority over Prospect, matching the "linked to" badge
+// order) — there's no separate per-contact status field. Unlinked contacts
+// have no relationship to track.
+function resolvedRelationshipStatus(contact) {
+  if (contact.client_organization_id) {
+    return { status: contact.client_relationship_status, source: 'client' };
+  }
+  if (contact.crm_organisation_id) {
+    return { status: contact.prospect_relationship_status, source: 'prospect' };
+  }
+  return { status: null, source: null };
 }
 
 // Same 3-state sort cycle as the Prospects/Clients tables: default ->
@@ -33,6 +48,10 @@ const SORTABLE_COLUMNS = {
   name: (c) => `${c.contact_firstname || ''} ${c.contact_lastname || ''}`.trim(),
   role: (c) => String(c.contact_role || ''),
   linked: (c) => String(c.client_name || c.prospect_name || ''),
+  status: (c) => {
+    const resolved = resolvedRelationshipStatus(c);
+    return resolved.source ? relationshipStatusLabel(resolved.status) : '';
+  },
   updated: (c) => new Date(c.updated_at || 0).getTime(),
 };
 
@@ -67,7 +86,7 @@ function ariaSortFor(sort, column) {
 function ContactFormFields({ form, setForm, prospects, clients }) {
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.75rem' }}>
         <div className="field">
           <label>First name *</label>
           <input value={form.contact_firstname} onChange={(e) => setForm((p) => ({ ...p, contact_firstname: e.target.value }))} required autoFocus />
@@ -77,7 +96,7 @@ function ContactFormFields({ form, setForm, prospects, clients }) {
           <input value={form.contact_lastname} onChange={(e) => setForm((p) => ({ ...p, contact_lastname: e.target.value }))} />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.75rem' }}>
         <div className="field">
           <label>Email</label>
           <input type="email" value={form.contact_email} onChange={(e) => setForm((p) => ({ ...p, contact_email: e.target.value }))} />
@@ -91,7 +110,7 @@ function ContactFormFields({ form, setForm, prospects, clients }) {
         <label>Role / title</label>
         <input value={form.contact_role} onChange={(e) => setForm((p) => ({ ...p, contact_role: e.target.value }))} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.75rem' }}>
         <div className="field">
           <label>Link to prospect</label>
           <select
@@ -197,6 +216,10 @@ export default function PlatformContacts() {
     });
   }, [contacts, sort]);
 
+  function patchContactLocal(contactId, patch) {
+    setContacts((prev) => prev.map((c) => (c.contact_id === contactId ? { ...c, ...patch } : c)));
+  }
+
   async function createContact(e) {
     e.preventDefault();
     if (!createForm.contact_firstname.trim()) { setCreateError('First name is required.'); return; }
@@ -266,8 +289,8 @@ export default function PlatformContacts() {
         <button
           key="client"
           type="button"
-          className="badge badge-active-proj"
-          style={{ border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
+          className={`badge ${businessUnitBadgeClass(contact.client_business_unit)} badge--link`}
+          title={contact.client_name || 'Client'}
           onClick={(e) => { e.stopPropagation(); navigate(`/platform/clients/${contact.client_organization_id}`); }}
         >
           {contact.client_name || 'Client'} <ArrowUpRight size={11} strokeWidth={2} aria-hidden />
@@ -279,8 +302,8 @@ export default function PlatformContacts() {
         <button
           key="prospect"
           type="button"
-          className="badge badge-open"
-          style={{ border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
+          className={`badge ${businessUnitBadgeClass(contact.prospect_business_unit)} badge--link`}
+          title={contact.prospect_name || 'Prospect'}
           onClick={(e) => { e.stopPropagation(); navigate(`/platform/crm/organisations/${contact.crm_organisation_id}`); }}
         >
           {contact.prospect_name || 'Prospect'} <ArrowUpRight size={11} strokeWidth={2} aria-hidden />
@@ -291,6 +314,63 @@ export default function PlatformContacts() {
       return <span className="badge">Unlinked</span>;
     }
     return <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>{badges}</div>;
+  }
+
+  function RelationshipStatusCell({ contact }) {
+    const [editing, setEditing] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const resolved = resolvedRelationshipStatus(contact);
+
+    if (!resolved.source) {
+      return <span className="muted" style={{ fontSize: '0.82rem' }}>—</span>;
+    }
+
+    async function changeStatus(value) {
+      setBusy(true);
+      try {
+        if (resolved.source === 'client') {
+          await api.patch(`/api/platform/organizations/${contact.client_organization_id}`, { relationshipStatus: value });
+          patchContactLocal(contact.contact_id, { client_relationship_status: value });
+        } else {
+          await api.patch(`/api/platform/crm/organisations/${contact.crm_organisation_id}`, { relationship_status: value });
+          patchContactLocal(contact.contact_id, { prospect_relationship_status: value });
+        }
+        showToast('Relationship status updated.', { variant: 'success' });
+      } catch (err) {
+        showToast(err.response?.data?.error || 'Failed to update relationship status.', { variant: 'error' });
+      } finally {
+        setBusy(false);
+        setEditing(false);
+      }
+    }
+
+    if (editing) {
+      return (
+        <select
+          autoFocus
+          value={normalizeRelationshipStatus(resolved.status)}
+          onChange={(e) => changeStatus(e.target.value)}
+          onBlur={() => setEditing(false)}
+          onClick={(e) => e.stopPropagation()}
+          disabled={busy}
+          style={{ fontSize: '0.78rem', padding: '0.2rem 0.4rem', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' }}
+        >
+          {RELATIONSHIP_STATUS_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        className={`badge ${relationshipStatusBadgeClass(resolved.status)} badge--link`}
+        style={{ maxWidth: 140 }}
+        onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+        disabled={busy}
+      >
+        {relationshipStatusLabel(resolved.status)}
+      </button>
+    );
   }
 
   if (!ok) return null;
@@ -340,9 +420,9 @@ export default function PlatformContacts() {
                 </th>
                 <th>Email</th>
                 <th>Phone</th>
-                <th aria-sort={ariaSortFor(sort, 'updated')}>
-                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('updated')}>
-                    Updated {sortIndicator(sort, 'updated')}
+                <th aria-sort={ariaSortFor(sort, 'status')}>
+                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('status')}>
+                    Relationship status {sortIndicator(sort, 'status')}
                   </button>
                 </th>
               </tr>
@@ -369,7 +449,7 @@ export default function PlatformContacts() {
                   <td><LinkBadges contact={c} /></td>
                   <td>{c.contact_email || '—'}</td>
                   <td>{c.contact_phone || '—'}</td>
-                  <td>{fmtDate(c.updated_at)}</td>
+                  <td><RelationshipStatusCell contact={c} /></td>
                 </tr>
               ))}
             </tbody>

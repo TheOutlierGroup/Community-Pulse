@@ -948,13 +948,15 @@ a:hover {
   max-width: 440px;
   max-height: min(90vh, 720px);
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   margin: 0;
   animation: modal-pop 0.18s ease-out;
+  box-sizing: border-box;
 }
 
 .modal-dialog--wide {
-  max-width: 560px;
+  max-width: min(680px, 94vw);
 }
 
 .modal-dialog--skate-fields {

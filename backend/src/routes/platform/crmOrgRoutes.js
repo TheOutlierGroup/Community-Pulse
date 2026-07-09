@@ -104,7 +104,7 @@ function publicTask(row) {
 
 router.get('/organisations', async (req, res) => {
   try {
-    const { search, businessUnit, leadStatus, limit, offset } = req.query;
+    const { search, businessUnit, leadStatus, limit, offset, includePromoted } = req.query;
     const scope = await resolveBasicTierBusinessUnitScope(req.user);
     if (scope !== null && scope.length === 0) {
       // Basic-tier user with no BU tags assigned yet — nothing to show.
@@ -116,6 +116,7 @@ router.get('/organisations', async (req, res) => {
       leadStatus,
       limit,
       offset,
+      includePromoted: String(includePromoted) === 'true',
       allowedBusinessUnits: scope,
     });
     res.json({ organisations: orgs });
