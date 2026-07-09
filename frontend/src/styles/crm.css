@@ -307,12 +307,21 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-align: center;
-  max-width: 220px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
   border: none;
   cursor: pointer;
+}
+
+/* Wraps up to 2 lines, then ellipsizes — used for the badge's org-name
+   label specifically (not the whole badge, so the trailing icon never
+   gets pulled onto its own line by the clamp). */
+.badge--link__label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 }
 
 /* CRM page header row */

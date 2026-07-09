@@ -293,7 +293,8 @@ export default function PlatformContacts() {
           title={contact.client_name || 'Client'}
           onClick={(e) => { e.stopPropagation(); navigate(`/platform/clients/${contact.client_organization_id}`); }}
         >
-          {contact.client_name || 'Client'} <ArrowUpRight size={11} strokeWidth={2} aria-hidden />
+          <span className="badge--link__label">{contact.client_name || 'Client'}</span>
+          <ArrowUpRight size={11} strokeWidth={2} aria-hidden style={{ flexShrink: 0 }} />
         </button>
       );
     }
@@ -306,7 +307,8 @@ export default function PlatformContacts() {
           title={contact.prospect_name || 'Prospect'}
           onClick={(e) => { e.stopPropagation(); navigate(`/platform/crm/organisations/${contact.crm_organisation_id}`); }}
         >
-          {contact.prospect_name || 'Prospect'} <ArrowUpRight size={11} strokeWidth={2} aria-hidden />
+          <span className="badge--link__label">{contact.prospect_name || 'Prospect'}</span>
+          <ArrowUpRight size={11} strokeWidth={2} aria-hidden style={{ flexShrink: 0 }} />
         </button>
       );
     }
@@ -408,23 +410,23 @@ export default function PlatformContacts() {
                     Name {sortIndicator(sort, 'name')}
                   </button>
                 </th>
-                <th aria-sort={ariaSortFor(sort, 'role')}>
-                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('role')}>
-                    Role {sortIndicator(sort, 'role')}
-                  </button>
-                </th>
-                <th aria-sort={ariaSortFor(sort, 'linked')}>
-                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('linked')}>
-                    Linked to {sortIndicator(sort, 'linked')}
-                  </button>
-                </th>
-                <th>Email</th>
-                <th>Phone</th>
                 <th aria-sort={ariaSortFor(sort, 'status')}>
                   <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('status')}>
                     Relationship status {sortIndicator(sort, 'status')}
                   </button>
                 </th>
+                <th aria-sort={ariaSortFor(sort, 'role')}>
+                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('role')}>
+                    Recent Role {sortIndicator(sort, 'role')}
+                  </button>
+                </th>
+                <th aria-sort={ariaSortFor(sort, 'linked')}>
+                  <button type="button" className="crm-table__sort-btn" onClick={() => toggleSort('linked')}>
+                    Recent Organisation {sortIndicator(sort, 'linked')}
+                  </button>
+                </th>
+                <th>Email</th>
+                <th>Phone</th>
               </tr>
             </thead>
             <tbody>
@@ -445,11 +447,11 @@ export default function PlatformContacts() {
                   <td className="crm-table__primary">
                     {c.contact_firstname} {c.contact_lastname}
                   </td>
+                  <td><RelationshipStatusCell contact={c} /></td>
                   <td>{c.contact_role || '—'}</td>
                   <td><LinkBadges contact={c} /></td>
                   <td>{c.contact_email || '—'}</td>
                   <td>{c.contact_phone || '—'}</td>
-                  <td><RelationshipStatusCell contact={c} /></td>
                 </tr>
               ))}
             </tbody>

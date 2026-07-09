@@ -1,3 +1,5 @@
+import { BUSINESS_UNIT_BADGE_CLASS } from '../config/crmConstants.js';
+
 export const CLIENT_SERVICE_PULSE = 'pulse';
 export const CLIENT_SERVICE_OTHER = 'other';
 export const CLIENT_SERVICE_HUMAN_AI = 'human-ai';
@@ -127,6 +129,31 @@ export function userHasService(user, serviceId) {
   const id = normalizeServiceId(serviceId);
   if (!id) return false;
   return normalizeServices({ services: user?.enabledServices }).includes(id);
+}
+
+// Mirrors the Business Unit colour convention onto Client services, so the
+// two read as one system (e.g. Project Resources uses the same accent as
+// Outlier Core, since it's the CRM-to-Client naming counterpart — see
+// utils/prospectPromotion.js). Purely a display concern: separate from
+// backend services/clientServices.js's CLIENT_SERVICE_TO_BUSINESS_UNIT,
+// which drives Basic-tier visibility scoping and intentionally leaves some
+// services unmapped for that purpose.
+const CLIENT_SERVICE_BADGE_CLASS = {
+  [CLIENT_SERVICE_PULSE]: BUSINESS_UNIT_BADGE_CLASS['Rhythm Engine'],
+  [CLIENT_SERVICE_LICENSEE]: BUSINESS_UNIT_BADGE_CLASS['Rhythm Engine'],
+  [CLIENT_SERVICE_HUMAN_AI]: BUSINESS_UNIT_BADGE_CLASS['AI-Human Workforce Design'],
+  [CLIENT_SERVICE_ADOPTION_ACCELERATOR]: BUSINESS_UNIT_BADGE_CLASS['Adoption Accelerator'],
+  [CLIENT_SERVICE_PROJECT_RESOURCES]: BUSINESS_UNIT_BADGE_CLASS['Outlier Core'],
+  [CLIENT_SERVICE_OG_SKATE_AUDIT]: BUSINESS_UNIT_BADGE_CLASS['Outlier Skate'],
+  [CLIENT_SERVICE_OG_SKATE_STRATEGY]: BUSINESS_UNIT_BADGE_CLASS['Outlier Skate'],
+  [CLIENT_SERVICE_OG_SKATE_COMMUNITY_ENGAGEMENT]: BUSINESS_UNIT_BADGE_CLASS['Outlier Skate'],
+  [CLIENT_SERVICE_OG_SKATE_OTHER]: BUSINESS_UNIT_BADGE_CLASS['Outlier Skate'],
+  [CLIENT_SERVICE_ET_INC]: BUSINESS_UNIT_BADGE_CLASS['ET Inc'],
+};
+
+export function clientServiceBadgeClass(serviceId) {
+  const id = normalizeServiceId(serviceId);
+  return CLIENT_SERVICE_BADGE_CLASS[id] || 'badge';
 }
 
 export function clientServiceNameById(serviceId, serviceCatalog = null) {

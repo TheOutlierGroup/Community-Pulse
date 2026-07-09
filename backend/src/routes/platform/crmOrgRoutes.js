@@ -3,7 +3,7 @@ import fs from 'fs';
 import {
   listOrganisations, getOrganisation, createOrganisation,
   updateOrganisation, deleteOrganisation, organisationBelongsToOrg,
-  setLogoFilename, clearLogoFilename, markPromoted,
+  setLogoFilename, clearLogoFilename, markPromoted, listDistinctIndustries,
   BUSINESS_UNITS, LEAD_STATUSES,
 } from '../../models/CrmOrganisation.js';
 import { listContacts, createContact, updateContact, deleteContact, contactBelongsToOrg } from '../../models/CrmContact.js';
@@ -104,7 +104,7 @@ function publicTask(row) {
 
 router.get('/organisations', async (req, res) => {
   try {
-    const { search, businessUnit, leadStatus, limit, offset, includePromoted } = req.query;
+    const { search, businessUnit, leadStatus, industry, limit, offset, includePromoted } = req.query;
     const scope = await resolveBasicTierBusinessUnitScope(req.user);
     if (scope !== null && scope.length === 0) {
       // Basic-tier user with no BU tags assigned yet — nothing to show.
@@ -114,6 +114,7 @@ router.get('/organisations', async (req, res) => {
       search,
       businessUnit,
       leadStatus,
+      industry,
       limit,
       offset,
       includePromoted: String(includePromoted) === 'true',
@@ -888,8 +889,14 @@ router.delete('/organisations/:id/opportunity/files/:fileId', async (req, res) =
 
 // ── Meta ───────────────────────────────────────────────────────────────────
 
-router.get('/meta', (_req, res) => {
-  res.json({ businessUnits: BUSINESS_UNITS, leadStatuses: LEAD_STATUSES });
+router.get('/meta', async (req, res) => {
+  try {
+    const industries = await listDistinctIndustries(orgId(req));
+    res.json({ businessUnits: BUSINESS_UNITS, leadStatuses: LEAD_STATUSES, industries });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load CRM metadata.' });
+  }
 });
 
 export default router;

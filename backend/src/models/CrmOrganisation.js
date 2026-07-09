@@ -19,7 +19,7 @@ export const LEAD_STATUSES = ['New', 'Contacted', 'Qualified', 'Proposal', 'Nego
  *   rows, not all rows — the caller (route) should special-case that rather
  *   than call in with [].
  */
-export async function listOrganisations(platformOrgId, { search, businessUnit, leadStatus, includePromoted = false, allowedBusinessUnits = null, limit = 100, offset = 0 } = {}) {
+export async function listOrganisations(platformOrgId, { search, businessUnit, leadStatus, industry, includePromoted = false, allowedBusinessUnits = null, limit = 100, offset = 0 } = {}) {
   const conditions = ['o.platform_org_id = $1'];
   const values = [platformOrgId];
   let i = 2;
@@ -43,6 +43,10 @@ export async function listOrganisations(platformOrgId, { search, businessUnit, l
     conditions.push(`o.lead_status = $${i++}`);
     values.push(leadStatus);
   }
+  if (industry) {
+    conditions.push(`o.industry = $${i++}`);
+    values.push(industry);
+  }
 
   const { rows } = await query(
     `SELECT o.*,
@@ -56,6 +60,16 @@ export async function listOrganisations(platformOrgId, { search, businessUnit, l
     [...values, limit, offset],
   );
   return rows;
+}
+
+export async function listDistinctIndustries(platformOrgId) {
+  const { rows } = await query(
+    `SELECT DISTINCT industry FROM crm_organisations
+      WHERE platform_org_id = $1 AND industry IS NOT NULL AND industry <> ''
+      ORDER BY industry ASC`,
+    [platformOrgId],
+  );
+  return rows.map((r) => r.industry);
 }
 
 export async function getOrganisation(platformOrgId, organisationId) {
