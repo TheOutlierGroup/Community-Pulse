@@ -1269,6 +1269,10 @@ a:hover {
   outline-offset: -2px;
 }
 
+.platform-clients-table__row--previous {
+  opacity: 0.6;
+}
+
 .platform-clients-users-table {
   margin-top: 0.5rem;
   min-width: 480px;
