@@ -2314,6 +2314,33 @@ input[type='range'] {
   gap: 0.35rem 0.5rem;
 }
 
+.task-board__composer-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.task-board__composer-select,
+.task-board__composer-input-small {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid rgba(9, 30, 66, 0.15);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: #172b4d;
+  background: #fff;
+}
+
+.task-board__composer-select:disabled,
+.task-board__composer-input-small:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .task-board__composer-submit {
   padding: 0.45rem 0.85rem;
   border: none;
