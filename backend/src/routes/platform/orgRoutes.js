@@ -1249,6 +1249,35 @@ export function registerPlatformOrgRoutes(router) {
     next();
   };
 
+  // Editing a client's own Configurations (name, service catalog, group
+  // levels, status) is a different permission from platform-wide Settings
+  // or Users: Platform tier should be able to make these changes like
+  // Admin, and Basic tier should be able to for clients within their tagged
+  // Business Units. Licensee requesters are completely unaffected — still
+  // admin-only, exactly as before this tier system existed.
+  const requireClientConfigEditAccess = async (req, res, next) => {
+    try {
+      const requesterOrg = req.workspaceOrganization;
+      if (requesterOrg?.kind !== 'platform') {
+        if (req.user?.role !== 'admin') {
+          return res.status(403).json({ error: 'Admin only' });
+        }
+        return next();
+      }
+      if (req.user?.role === 'admin' || req.user?.role === 'platform') return next();
+      if (req.user?.role === 'basic') {
+        const target = await Organization.getOrganization(req.params.id);
+        if (target?.kind === 'client') {
+          const businessUnits = await User.getBusinessUnitsForUser(req.user.id);
+          if (organizationVisibleToBusinessUnits(target.settings, businessUnits)) return next();
+        }
+      }
+      return res.status(403).json({ error: 'Not allowed to edit this organization' });
+    } catch (e) {
+      next(e);
+    }
+  };
+
   router.get('/organizations', async (req, res) => {
     const requesterOrg = req.workspaceOrganization;
     if (requesterOrg?.kind === 'licensee') {
@@ -1717,7 +1746,7 @@ export function registerPlatformOrgRoutes(router) {
     }
   });
 
-  router.patch('/organizations/:id', requirePlatformAdminRole, async (req, res) => {
+  router.patch('/organizations/:id', requireClientConfigEditAccess, async (req, res) => {
     const { name, settings, clientStatus, relationshipStatus } = req.body;
     if (name === undefined && settings === undefined && clientStatus === undefined && relationshipStatus === undefined) {
       return res.status(400).json({ error: 'Nothing to update' });
