@@ -328,7 +328,7 @@ export default function PlatformOrganisations() {
 
       {customFieldsOrg && (
         <div className="modal-backdrop">
-          <div className="modal-dialog card" role="dialog" aria-modal aria-labelledby="skate-fields-title">
+          <div className="modal-dialog modal-dialog--skate-fields card" role="dialog" aria-modal aria-labelledby="skate-fields-title">
             <div className="modal-dialog__head">
               <h2 id="skate-fields-title" style={{ fontSize: '1.15rem', fontWeight: 700 }}>
                 {customFieldsOrg.business_unit} details
@@ -341,7 +341,7 @@ export default function PlatformOrganisations() {
               {customFieldsOrg.organisation_name} was created. Add its {customFieldsOrg.business_unit} details now, or skip and fill them in later from Configurations.
             </p>
             <form onSubmit={saveCustomFieldsAndContinue} style={{ marginTop: '0.75rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.75rem' }}>
                 {(BUSINESS_UNIT_CUSTOM_FIELDS[customFieldsOrg.business_unit] || []).map((field) => (
                   <div className="field" key={field.key}>
                     <label htmlFor={`skate-field-${field.key}`}>{field.label}</label>

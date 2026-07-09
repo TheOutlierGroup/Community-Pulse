@@ -957,6 +957,21 @@ a:hover {
   max-width: 560px;
 }
 
+.modal-dialog--skate-fields {
+  max-width: min(720px, 94vw);
+  overflow-x: hidden;
+}
+
+.modal-dialog--skate-fields .field {
+  min-width: 0;
+}
+
+.modal-dialog--skate-fields .field input,
+.modal-dialog--skate-fields .field select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .modal-dialog--pulse-template {
   max-width: min(980px, 97vw);
   min-height: min(70vh, 760px);
