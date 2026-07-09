@@ -666,6 +666,8 @@ function managerCohortAveragesSignal({
   sponsorshipScore,
   receivedScore,
   capacityScore,
+  receivedThreshold = 14,
+  capacityThreshold = 14,
   threshold = 28,
 }) {
   const adoptionFinite = Number.isFinite(adoptionScore);
@@ -674,7 +676,16 @@ function managerCohortAveragesSignal({
   const capacityFinite = Number.isFinite(capacityScore);
 
   const adoptionStatus = managerCohortAvgThresholdStatus(adoptionScore, threshold);
-  const sponsorshipStatus = managerCohortAvgThresholdStatus(sponsorshipScore, threshold);
+  // Sponsorship must be judged the same way it's judged everywhere else on this
+  // page (badges, chain verdict): both sub-scores need to individually clear
+  // their own threshold, not just the combined 0-40 score clearing 28.
+  const receivedStatus = managerCohortAvgThresholdStatus(receivedScore, receivedThreshold);
+  const capacityStatus = managerCohortAvgThresholdStatus(capacityScore, capacityThreshold);
+  const sponsorshipStatus = !receivedFinite || !capacityFinite
+    ? 'Unknown'
+    : (receivedStatus === 'Above Threshold' && capacityStatus === 'Above Threshold'
+      ? 'Above Threshold'
+      : 'Below Threshold');
   const weakerSubScore = !receivedFinite || !capacityFinite
     ? 'Unknown'
     : (receivedScore <= capacityScore ? 'Received' : 'Capacity');
@@ -890,6 +901,8 @@ export function buildSponsorshipSectionSignals({
     sponsorshipScore: managerSponsorshipScore,
     receivedScore: received,
     capacityScore: capacity,
+    receivedThreshold,
+    capacityThreshold,
     threshold: managerThreshold,
   });
 
