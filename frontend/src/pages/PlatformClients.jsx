@@ -11,12 +11,11 @@ import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { Building2, ChevronDown, ChevronUp, ChevronsUpDown, Plus } from 'lucide-react';
 import {
   CLIENT_SERVICE_LICENSEE,
-  clientCompositeStatusLabel,
   clientServiceLabel,
-  CURRENT_PREVIOUS_OPTIONS,
   normalizeClientStatus,
   normalizeServices,
   relationshipStatusBadgeClass,
+  relationshipStatusLabel,
 } from './platformClientUtils.js';
 import '../styles/crm.css';
 
@@ -82,7 +81,10 @@ export default function PlatformClients() {
   const [modalOpen, setModalOpen] = useState(false);
   const [sort, setSort] = useState({ column: null, direction: null });
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  // Two-state view, not a 3-way filter: "current" shows every client with
+  // previous ones sunk to the bottom and greyed out; "previous" narrows to
+  // just former clients, shown at full opacity since they're now the focus.
+  const [clientView, setClientView] = useState('current');
   const [serviceFilter, setServiceFilter] = useState('');
 
   const isLicensee = isLicenseeUser(user);
@@ -121,7 +123,8 @@ export default function PlatformClients() {
     const term = search.trim().toLowerCase();
     const filtered = orgs.filter((o) => {
       if (term && !String(o.name || '').toLowerCase().includes(term)) return false;
-      if (statusFilter && normalizeClientStatus(o.client_status) !== statusFilter) return false;
+      const isPrevious = normalizeClientStatus(o.client_status) === 'client-previous';
+      if (clientView === 'previous' && !isPrevious) return false;
       if (serviceFilter && !normalizeServices(o.settings).includes(serviceFilter)) return false;
       return true;
     });
@@ -129,12 +132,19 @@ export default function PlatformClients() {
     const dirMultiplier = eff.direction === 'asc' ? 1 : -1;
     const getValue = SORTABLE_COLUMNS[eff.column];
     return [...filtered].sort((a, b) => {
+      // In the "current" view, previous clients always sink to the bottom
+      // regardless of which column is actively sorted.
+      if (clientView === 'current') {
+        const aPrevious = normalizeClientStatus(a.client_status) === 'client-previous';
+        const bPrevious = normalizeClientStatus(b.client_status) === 'client-previous';
+        if (aPrevious !== bPrevious) return aPrevious ? 1 : -1;
+      }
       const av = getValue(a);
       const bv = getValue(b);
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dirMultiplier;
       return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * dirMultiplier;
     });
-  }, [orgs, sort, search, statusFilter, serviceFilter]);
+  }, [orgs, sort, search, clientView, serviceFilter]);
 
   function openClient(orgId) {
     navigate(`/platform/clients/${orgId}`);
@@ -216,10 +226,23 @@ export default function PlatformClients() {
           type="search" placeholder="Search clients…" value={search}
           onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 220 }}
         />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">All statuses</option>
-          {CURRENT_PREVIOUS_OPTIONS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </select>
+        <div className="pulse-template-mode-switch" role="tablist" aria-label="Current or previous clients" style={{ marginBottom: 0 }}>
+          {[
+            { id: 'current', label: 'Current' },
+            { id: 'previous', label: 'Previous' },
+          ].map((view) => (
+            <button
+              key={view.id}
+              type="button"
+              role="tab"
+              aria-selected={clientView === view.id}
+              className={`pulse-template-mode-switch__pill${clientView === view.id ? ' pulse-template-mode-switch__pill--active' : ''}`}
+              onClick={() => setClientView(view.id)}
+            >
+              {view.label}
+            </button>
+          ))}
+        </div>
         <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)}>
           <option value="">All active services</option>
           {serviceCatalog.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -262,10 +285,14 @@ export default function PlatformClients() {
                   </td>
                 </tr>
               )}
-              {sortedOrgs.map((o) => (
+              {sortedOrgs.map((o) => {
+                const isPrevious = normalizeClientStatus(o.client_status) === 'client-previous';
+                return (
                 <tr
                   key={o.id}
-                  className="platform-clients-table__row platform-clients-table__row--clickable"
+                  className={`platform-clients-table__row platform-clients-table__row--clickable${
+                    clientView === 'current' && isPrevious ? ' platform-clients-table__row--previous' : ''
+                  }`}
                   tabIndex={0}
                   role="button"
                   aria-label={`Open ${o.name}`}
@@ -298,7 +325,7 @@ export default function PlatformClients() {
                   </td>
                   <td>
                     <span className={`badge ${relationshipStatusBadgeClass(o.relationship_status)}`}>
-                      {clientCompositeStatusLabel(o.client_status, o.relationship_status)}
+                      {relationshipStatusLabel(o.relationship_status)}
                     </span>
                   </td>
                   <td className="muted" style={{ fontSize: '0.9rem' }}>
@@ -308,7 +335,8 @@ export default function PlatformClients() {
                     {fmtDate(o.updated_at || o.created_at)}
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
