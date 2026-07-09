@@ -329,9 +329,9 @@ export default function PlatformClients() {
                       {relationshipStatusLabel(o.relationship_status)}
                     </span>
                   </td>
-                  <td>
+                  <td style={{ textAlign: 'center' }}>
                     {activeServiceLabels(o.settings, serviceCatalog).length > 0 ? (
-                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'inline-flex', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                         {normalizeServices(o.settings)
                           .filter((id) => id !== CLIENT_SERVICE_LICENSEE)
                           .map((id) => (

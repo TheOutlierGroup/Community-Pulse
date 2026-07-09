@@ -315,7 +315,7 @@ export default function PlatformContacts() {
     if (badges.length === 0) {
       return <span className="badge">Unlinked</span>;
     }
-    return <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>{badges}</div>;
+    return <div style={{ display: 'inline-flex', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>{badges}</div>;
   }
 
   function RelationshipStatusCell({ contact }) {
@@ -449,7 +449,7 @@ export default function PlatformContacts() {
                   </td>
                   <td><RelationshipStatusCell contact={c} /></td>
                   <td>{c.contact_role || '—'}</td>
-                  <td><LinkBadges contact={c} /></td>
+                  <td style={{ textAlign: 'center' }}><LinkBadges contact={c} /></td>
                   <td>{c.contact_email || '—'}</td>
                   <td>{c.contact_phone || '—'}</td>
                 </tr>
