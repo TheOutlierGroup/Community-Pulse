@@ -191,6 +191,20 @@ export function requirePlatformAdminRole(req, res, next) {
   next();
 }
 
+/**
+ * Read-only Users/Settings access for the platform-org 'platform' tier
+ * (Level 1), on top of admin. A licensee-org user can never hold role
+ * 'platform' (only platform-kind orgs assign it — see PLATFORM_ORG_ROLES
+ * in models/User.js), so this naturally leaves licensee gating exactly as
+ * admin-only, matching current behavior for that surface.
+ */
+export function requireAtLeastPlatformTier(req, res, next) {
+  if (req.user?.role === 'admin' || req.user?.role === 'platform') {
+    return next();
+  }
+  return res.status(403).json({ error: 'Admin only' });
+}
+
 // Block routes that should only ever be reachable by Outlier platform staff
 // (e.g. tasks, platform-wide service catalog, super-admin tooling).
 export function requirePlatformOnlyUser(req, res, next) {

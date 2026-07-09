@@ -271,6 +271,16 @@ export default function PlatformSettings() {
   const location = useLocation();
   const ok = usePlatformOnlyAccess(user, loading, navigate);
   const isPlatformAdmin = ok && user?.role === 'admin';
+  // Basic tier loses Settings visibility entirely (same blank-page result
+  // non-admins already got here, just made explicit). Platform tier is
+  // meant to get read-only visibility per spec, but isPlatformAdmin below
+  // still blanks the whole page for non-admins rather than rendering a
+  // read-only mode — untangling that across every tab here is follow-up
+  // work, not done in this pass.
+  const isBasicTier = ok && user?.role === 'basic';
+  useEffect(() => {
+    if (isBasicTier) navigate('/platform');
+  }, [isBasicTier, navigate]);
 
   const initialTab = (() => {
     const fromHash = String(location.hash || '').replace(/^#/, '').trim().toLowerCase();

@@ -2,6 +2,11 @@ import { query } from '../config/database.js';
 
 const NAME_MAX = 120;
 
+// Access tiers for users belonging to a platform-kind organization (Outlier's
+// own internal staff). Licensee/client-org users never use these — they keep
+// the plain 'admin'/'employee' roles this column has always had.
+export const PLATFORM_ORG_ROLES = ['admin', 'platform', 'basic'];
+
 function sanitizeName(v) {
   if (v == null) return null;
   const s = String(v).trim();
@@ -162,6 +167,48 @@ export async function listUsersForOrg(organizationId, { role, limit, offset } = 
   return rows;
 }
 
+// ── Platform-org Business Unit tags ─────────────────────────────────────────
+// Only meaningful for platform-kind org users (see PLATFORM_ORG_ROLES above).
+
+export async function getBusinessUnitsForUser(userId) {
+  const { rows } = await query(
+    `SELECT business_unit FROM user_business_units WHERE user_id = $1 ORDER BY business_unit ASC`,
+    [userId]
+  );
+  return rows.map((row) => row.business_unit);
+}
+
+/** Batch form for list views — returns a Map<userId, string[]>. */
+export async function getBusinessUnitsForUsers(userIds) {
+  const ids = (userIds || []).map((id) => String(id)).filter(Boolean);
+  const map = new Map();
+  if (!ids.length) return map;
+  const { rows } = await query(
+    `SELECT user_id, business_unit FROM user_business_units WHERE user_id = ANY($1::uuid[]) ORDER BY business_unit ASC`,
+    [ids]
+  );
+  for (const row of rows) {
+    const key = String(row.user_id);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row.business_unit);
+  }
+  return map;
+}
+
+/** Replaces the full set of BU tags for a user. Pass [] to clear all tags. */
+export async function setBusinessUnitsForUser(userId, businessUnits) {
+  const unique = [...new Set((businessUnits || []).map((bu) => String(bu || '').trim()).filter(Boolean))];
+  await query(`DELETE FROM user_business_units WHERE user_id = $1`, [userId]);
+  for (const bu of unique) {
+    await query(
+      `INSERT INTO user_business_units (user_id, business_unit) VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [userId, bu]
+    );
+  }
+  return unique;
+}
+
 export async function isUserActive(userId) {
   const { rows } = await query(
     `SELECT 1 FROM users WHERE id = $1 AND deactivated_at IS NULL AND login_enabled = true`,
@@ -213,7 +260,21 @@ export async function getUserOrgKind(userId) {
   return rows[0] || null;
 }
 
-export async function updateStaffUserInOrg(userId, organizationId, body) {
+/**
+ * @param roleOptions.allowedRoles - valid role values for the target user's
+ *   org kind. Defaults to the historical admin/employee pair (licensee +
+ *   client-org staff); pass PLATFORM_ORG_ROLES for a platform-kind org user.
+ * @param roleOptions.invalidRoleFallback - role applied when body.role isn't
+ *   in allowedRoles. Defaults to 'admin' to match this function's original
+ *   behavior for the legacy pair; callers using PLATFORM_ORG_ROLES should
+ *   pass 'basic' so a malformed request can't silently escalate privilege.
+ */
+export async function updateStaffUserInOrg(
+  userId,
+  organizationId,
+  body,
+  { allowedRoles = ['admin', 'employee'], invalidRoleFallback = 'admin' } = {}
+) {
   const target = await findUserById(userId);
   if (!target || target.organization_id !== organizationId || target.deactivated_at) return null;
   const parts = [];
@@ -232,7 +293,7 @@ export async function updateStaffUserInOrg(userId, organizationId, body) {
     vals.push(String(body.email).toLowerCase().trim());
   }
   if ('role' in body) {
-    const r = body.role === 'employee' ? 'employee' : 'admin';
+    const r = allowedRoles.includes(body.role) ? body.role : invalidRoleFallback;
     parts.push(`role = $${n++}`);
     vals.push(r);
   }

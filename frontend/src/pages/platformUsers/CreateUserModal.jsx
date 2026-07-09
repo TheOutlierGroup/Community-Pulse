@@ -1,9 +1,11 @@
 import ModalDialog from '../../components/shared/ModalDialog.jsx';
+import { BUSINESS_UNITS } from '../../config/crmConstants.js';
 
 export default function CreateUserModal({
   open,
   busy,
   error,
+  isPlatformOrg,
   formFirst,
   setFormFirst,
   formLast,
@@ -14,6 +16,8 @@ export default function CreateUserModal({
   setFormPassword,
   formRole,
   setFormRole,
+  formBusinessUnits,
+  onToggleFormBusinessUnit,
   setFormAvatar,
   onClose,
   onSubmit,
@@ -80,21 +84,51 @@ export default function CreateUserModal({
             onChange={(e) => setFormRole(e.target.value)}
           >
             <option value="admin">Admin</option>
-            <option value="employee">Member</option>
+            {isPlatformOrg ? (
+              <>
+                <option value="platform">Platform</option>
+                <option value="basic">Basic</option>
+              </>
+            ) : (
+              <option value="employee">Member</option>
+            )}
           </select>
         </div>
-        <div className="field">
-          <label htmlFor="add-avatar">Profile image (optional)</label>
-          <input
-            id="add-avatar"
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            onChange={(e) => setFormAvatar(e.target.files?.[0] || null)}
-          />
-          <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
-            JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
-          </p>
-        </div>
+        {isPlatformOrg ? (
+          <div className="field">
+            <label>Business units</label>
+            <p className="muted" style={{ fontSize: '0.8rem', marginTop: 0 }}>
+              {formRole === 'basic'
+                ? 'Restricts this user to Clients and Prospects tagged with these units.'
+                : 'Badge only — Admin and Platform users see every Client and Prospect regardless.'}
+            </p>
+            <div className="platform-user-scope-list" role="group" aria-label="Business units">
+              {BUSINESS_UNITS.map((bu) => (
+                <label key={bu} className="platform-user-scope-item">
+                  <input
+                    type="checkbox"
+                    checked={formBusinessUnits.includes(bu)}
+                    onChange={() => onToggleFormBusinessUnit(bu)}
+                  />
+                  <span>{bu}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="field">
+            <label htmlFor="add-avatar">Profile image (optional)</label>
+            <input
+              id="add-avatar"
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              onChange={(e) => setFormAvatar(e.target.files?.[0] || null)}
+            />
+            <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+              JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
+            </p>
+          </div>
+        )}
         <div className="modal-dialog__actions">
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
             Cancel

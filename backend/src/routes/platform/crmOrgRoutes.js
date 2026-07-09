@@ -19,13 +19,36 @@ import { listUsersForOrg } from '../../models/User.js';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { orgLogoFilePath } from '../../config/storage.js';
 import { brandUploadLimiter } from '../../middleware/sensitiveRateLimit.js';
-import { handleOrgLogoPlatformUpload, sendOrgLogoFileOr404, assertClientOrganizationPlatformForUser } from './shared.js';
+import {
+  handleOrgLogoPlatformUpload, sendOrgLogoFileOr404, assertClientOrganizationPlatformForUser,
+  resolveBasicTierBusinessUnitScope,
+} from './shared.js';
 import * as Organization from '../../models/Organization.js';
 import { buildProspectSnapshot } from '../../services/prospectSnapshot.js';
 
 const router = Router();
 
 function orgId(req) { return req.user.organizationId; }
+
+// Every /organisations/:id... route (org detail, logo, tasks, notes,
+// contacts) shares this one hook, so a Basic-tier platform user's BU scope
+// is enforced in exactly one place rather than re-checked per handler.
+// Admin/Platform tier get scope === null (unrestricted) and skip the extra
+// lookup entirely.
+router.param('id', async (req, res, next, id) => {
+  try {
+    const scope = await resolveBasicTierBusinessUnitScope(req.user);
+    if (scope !== null) {
+      const org = await getOrganisation(orgId(req), id);
+      if (!org || !scope.includes(org.business_unit)) {
+        return res.status(404).json({ error: 'Organisation not found.' });
+      }
+    }
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
 
 function noteExcerpt(text) {
   const trimmed = String(text || '').trim();
@@ -58,7 +81,19 @@ function publicTask(row) {
 router.get('/organisations', async (req, res) => {
   try {
     const { search, businessUnit, leadStatus, limit, offset } = req.query;
-    const orgs = await listOrganisations(orgId(req), { search, businessUnit, leadStatus, limit, offset });
+    const scope = await resolveBasicTierBusinessUnitScope(req.user);
+    if (scope !== null && scope.length === 0) {
+      // Basic-tier user with no BU tags assigned yet — nothing to show.
+      return res.json({ organisations: [] });
+    }
+    const orgs = await listOrganisations(orgId(req), {
+      search,
+      businessUnit,
+      leadStatus,
+      limit,
+      offset,
+      allowedBusinessUnits: scope,
+    });
     res.json({ organisations: orgs });
   } catch (e) {
     console.error(e);

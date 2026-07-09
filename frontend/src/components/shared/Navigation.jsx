@@ -374,11 +374,13 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                   Tasks
                 </NavLink>
               )}
-              <NavLink to="/platform/users" className={sidebarLinkClass}>
-                <Users size={20} strokeWidth={1.75} aria-hidden />
-                Users
-              </NavLink>
-              {user.role === 'admin' && !isLicensee && (
+              {(isLicensee || user.role !== 'basic') && (
+                <NavLink to="/platform/users" className={sidebarLinkClass}>
+                  <Users size={20} strokeWidth={1.75} aria-hidden />
+                  Users
+                </NavLink>
+              )}
+              {!isLicensee && (user.role === 'admin' || user.role === 'platform') && (
                 <NavLink to="/platform/settings" className={sidebarLinkClass}>
                   <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
                   Settings

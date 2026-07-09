@@ -11,7 +11,14 @@ export const BUSINESS_UNITS = [
 
 export const LEAD_STATUSES = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost', 'On Hold'];
 
-export async function listOrganisations(platformOrgId, { search, businessUnit, leadStatus, includePromoted = false, limit = 100, offset = 0 } = {}) {
+/**
+ * @param allowedBusinessUnits - when set (a Basic-tier platform user's BU
+ *   tags), restricts results to those units regardless of the businessUnit
+ *   query filter. An empty array means "no tags yet" and must return zero
+ *   rows, not all rows — the caller (route) should special-case that rather
+ *   than call in with [].
+ */
+export async function listOrganisations(platformOrgId, { search, businessUnit, leadStatus, includePromoted = false, allowedBusinessUnits = null, limit = 100, offset = 0 } = {}) {
   const conditions = ['o.platform_org_id = $1'];
   const values = [platformOrgId];
   let i = 2;
@@ -26,6 +33,10 @@ export async function listOrganisations(platformOrgId, { search, businessUnit, l
   if (businessUnit) {
     conditions.push(`o.business_unit = $${i++}`);
     values.push(businessUnit);
+  }
+  if (Array.isArray(allowedBusinessUnits)) {
+    conditions.push(`o.business_unit = ANY($${i++}::text[])`);
+    values.push(allowedBusinessUnits);
   }
   if (leadStatus) {
     conditions.push(`o.lead_status = $${i++}`);

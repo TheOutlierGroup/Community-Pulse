@@ -11,14 +11,15 @@ import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAs
 import * as Invite from '../../models/Invite.js';
 import * as LicenseConfig from '../../models/LicenseConfig.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
+import { BUSINESS_UNITS } from '../../models/CrmOrganisation.js';
 import {
   handlePlatformUserCreateUpload,
   publicStaffUser,
   sendAvatarFileOr404,
 } from './shared.js';
 import { isResendConfigured, sendPlatformWelcomeEmail } from '../../services/email.js';
-import { requirePlatformOnlyUser } from '../../middleware/auth.js';
-import { auditFromRequest, AUDIT_ACTIONS } from '../../services/auditLog.js';
+import { requirePlatformOnlyUser, requireAtLeastPlatformTier } from '../../middleware/auth.js';
+import { auditFromRequest, AUDIT_ACTIONS, listRecentAuditEvents, publicAuditEvent } from '../../services/auditLog.js';
 import {
   inviteSendLimiter,
   passwordResetByAdminLimiter,
@@ -32,6 +33,26 @@ function resolvePublicAppBaseUrl() {
     || process.env.APP_URL
     || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
   return raw ? raw.replace(/\/$/, '') : '';
+}
+
+// Only platform-kind orgs (Outlier's own staff) use the 3-tier role model
+// and BU tags; licensee orgs keep the historical admin/employee pair with
+// 'admin' as the safe fallback, exactly as before this feature existed.
+function roleOptionsForWorkspace(workspaceOrganization) {
+  return workspaceOrganization?.kind === 'platform'
+    ? { allowedRoles: User.PLATFORM_ORG_ROLES, invalidRoleFallback: 'basic' }
+    : { allowedRoles: ['admin', 'employee'], invalidRoleFallback: 'admin' };
+}
+
+function parseBusinessUnits(rawBusinessUnits) {
+  const list = Array.isArray(rawBusinessUnits)
+    ? rawBusinessUnits
+    : rawBusinessUnits != null && rawBusinessUnits !== ''
+      ? [rawBusinessUnits]
+      : [];
+  return list
+    .map((bu) => String(bu || '').trim())
+    .filter((bu) => BUSINESS_UNITS.includes(bu));
 }
 
 function parsePagination(query) {
@@ -88,21 +109,41 @@ export function registerPlatformStaffRoutes(router) {
     next();
   };
 
-  router.use('/staff', requirePlatformAdminRole);
-  router.use('/users', requirePlatformAdminRole);
-
-  router.get('/staff', async (req, res) => {
+  // Mutating routes stay admin-only (Level 1 Platform loses edit rights,
+  // same as it always has for licensee orgs). Read routes are split out
+  // below with requireAtLeastPlatformTier so Platform-tier platform-org
+  // staff get read-only Users visibility; licensee users can never hold
+  // role 'platform' so this is a pure addition for platform-kind orgs.
+  router.get('/staff', requireAtLeastPlatformTier, async (req, res) => {
+    const isPlatformOrg = req.workspaceOrganization?.kind === 'platform';
     const users = await User.listUsersForOrg(req.user.organizationId, parsePagination(req.query));
     const assignmentCounts = await PlatformUserClientAssignment.listAssignmentCountsForUsers(
       users.map((row) => row.id)
     );
+    const businessUnitsByUser = isPlatformOrg
+      ? await User.getBusinessUnitsForUsers(users.map((row) => row.id))
+      : new Map();
     const outUsers = users.map((row) => ({
       ...publicStaffUser(row),
       assignmentCount:
         row.role === 'employee' ? assignmentCounts.get(String(row.id)) || 0 : null,
+      businessUnits: isPlatformOrg ? businessUnitsByUser.get(String(row.id)) || [] : undefined,
     }));
     res.json({ users: outUsers });
   });
+
+  router.get('/users/:userId/avatar', requireAtLeastPlatformTier, async (req, res) => {
+    const target = await User.findUserById(req.params.userId);
+    if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
+      return res.status(404).end();
+    }
+    const name = await User.getProfileAvatarFilename(req.params.userId);
+    if (!name) return res.status(404).end();
+    sendAvatarFileOr404(res, name);
+  });
+
+  router.use('/staff', requirePlatformAdminRole);
+  router.use('/users', requirePlatformAdminRole);
 
   router.get('/staff/:userId/client-assignments', requirePlatformOnlyUser, async (req, res) => {
     const target = await User.findUserById(req.params.userId);
@@ -162,22 +203,15 @@ export function registerPlatformStaffRoutes(router) {
     });
   });
 
-  router.get('/users/:userId/avatar', async (req, res) => {
-    const target = await User.findUserById(req.params.userId);
-    if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
-      return res.status(404).end();
-    }
-    const name = await User.getProfileAvatarFilename(req.params.userId);
-    if (!name) return res.status(404).end();
-    sendAvatarFileOr404(res, name);
-  });
-
   router.post('/users', inviteSendLimiter, handlePlatformUserCreateUpload, async (req, res) => {
     const firstName = req.body.firstName ?? '';
     const lastName = req.body.lastName ?? '';
     const email = req.body.email;
     const password = req.body.password;
-    const role = req.body.role === 'employee' ? 'employee' : 'admin';
+    const isPlatformOrg = req.workspaceOrganization?.kind === 'platform';
+    const { allowedRoles, invalidRoleFallback } = roleOptionsForWorkspace(req.workspaceOrganization);
+    const role = allowedRoles.includes(req.body.role) ? req.body.role : invalidRoleFallback;
+    const businessUnits = isPlatformOrg ? parseBusinessUnits(req.body.businessUnits) : [];
     if (!email || String(email).trim() === '') {
       return res.status(400).json({ error: 'Email is required' });
     }
@@ -226,12 +260,13 @@ export function registerPlatformStaffRoutes(router) {
           ? await bcrypt.hash(trimmedPassword, 12)
           : await bcrypt.hash(randomBytes(32).toString('base64url'), 12);
       await User.updateUserPassword(rowId, hash);
-      await User.updateStaffUserInOrg(rowId, req.user.organizationId, {
-        firstName,
-        lastName,
-        role,
-        loginEnabled: true,
-      });
+      await User.updateStaffUserInOrg(
+        rowId,
+        req.user.organizationId,
+        { firstName, lastName, role, loginEnabled: true },
+        { allowedRoles, invalidRoleFallback }
+      );
+      if (isPlatformOrg) await User.setBusinessUnitsForUser(rowId, businessUnits);
     } else {
       if (role === 'admin') {
         const limitError = await assertAdminUserLimitOrError(req.user.organizationId);
@@ -250,6 +285,7 @@ export function registerPlatformStaffRoutes(router) {
         lastName,
       });
       rowId = row.id;
+      if (isPlatformOrg) await User.setBusinessUnitsForUser(rowId, businessUnits);
     }
 
     let outRow = await User.findUserById(rowId);
@@ -298,14 +334,17 @@ export function registerPlatformStaffRoutes(router) {
       targetOrganizationId: req.user.organizationId,
       metadata: {
         role,
+        businessUnits: isPlatformOrg ? businessUnits : undefined,
         welcomeEmailSent,
         hasInitialPassword: trimmedPassword.length > 0,
         reactivated,
       },
     });
-    res
-      .status(reactivated ? 200 : 201)
-      .json({ user: publicStaffUser(outRow), welcomeEmailSent, reactivated });
+    res.status(reactivated ? 200 : 201).json({
+      user: { ...publicStaffUser(outRow), businessUnits: isPlatformOrg ? businessUnits : undefined },
+      welcomeEmailSent,
+      reactivated,
+    });
   });
 
   router.post(
@@ -373,13 +412,16 @@ export function registerPlatformStaffRoutes(router) {
     if (!target || target.deactivated_at || target.organization_id !== req.user.organizationId) {
       return res.status(404).json({ error: 'User not found' });
     }
+    const isPlatformOrg = req.workspaceOrganization?.kind === 'platform';
+    const { allowedRoles, invalidRoleFallback } = roleOptionsForWorkspace(req.workspaceOrganization);
     const body = req.body || {};
     const patch = {};
     if ('firstName' in body) patch.firstName = body.firstName;
     if ('lastName' in body) patch.lastName = body.lastName;
     if ('email' in body) patch.email = body.email;
     if ('role' in body) patch.role = body.role;
-    if (!Object.keys(patch).length) {
+    const businessUnitsProvided = isPlatformOrg && 'businessUnits' in body;
+    if (!Object.keys(patch).length && !businessUnitsProvided) {
       return res.status(400).json({ error: 'Nothing to update' });
     }
     if ('email' in patch) {
@@ -395,8 +437,18 @@ export function registerPlatformStaffRoutes(router) {
       const limitError = await assertAdminUserLimitOrError(req.user.organizationId);
       if (limitError) return res.status(limitError.status).json({ error: limitError.error });
     }
-    const row = await User.updateStaffUserInOrg(userId, req.user.organizationId, patch);
-    if (!row) return res.status(404).json({ error: 'User not found' });
+    let row = target;
+    if (Object.keys(patch).length) {
+      row = await User.updateStaffUserInOrg(userId, req.user.organizationId, patch, {
+        allowedRoles,
+        invalidRoleFallback,
+      });
+      if (!row) return res.status(404).json({ error: 'User not found' });
+    }
+    let businessUnits;
+    if (businessUnitsProvided) {
+      businessUnits = await User.setBusinessUnitsForUser(userId, parseBusinessUnits(body.businessUnits));
+    }
     auditFromRequest(req)({
       action: AUDIT_ACTIONS.USER_UPDATE,
       targetType: 'user',
@@ -405,9 +457,10 @@ export function registerPlatformStaffRoutes(router) {
       metadata: {
         patchedFields: Object.keys(patch),
         promotedToAdmin: patch.role === 'admin' && target.role !== 'admin',
+        businessUnits,
       },
     });
-    res.json({ user: publicStaffUser(row) });
+    res.json({ user: { ...publicStaffUser(row), businessUnits } });
   });
 
   router.delete('/users/:userId', async (req, res) => {
@@ -525,6 +578,56 @@ export function registerPlatformStaffRoutes(router) {
       },
       inviteUrl: `/invite/${token}`,
     });
+  });
+
+  // Admin-only export of user-management audit events (create/edit/role
+  // change/BU-tag change/deactivate) — every USER_* action in AUDIT_ACTIONS
+  // uses targetType 'user', so filtering on that alone gets exactly this set
+  // without a separate action allowlist to keep in sync.
+  router.get('/users/audit-log/export', async (req, res, next) => {
+    try {
+      const rows = [];
+      const pageSize = 500;
+      let offset = 0;
+      for (;;) {
+        const page = await listRecentAuditEvents({
+          organizationId: req.user.organizationId,
+          targetType: 'user',
+          limit: pageSize,
+          offset,
+        });
+        rows.push(...page);
+        if (page.length < pageSize || rows.length >= 10000) break;
+        offset += pageSize;
+      }
+      const header = ['Occurred At', 'Actor Email', 'Actor Role', 'Action', 'Target User ID', 'Result', 'Metadata'];
+      const csvEscape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+      const actorIds = [...new Set(rows.map((row) => row.actor_user_id).filter(Boolean))];
+      const actors = await Promise.all(actorIds.map((id) => User.findUserById(id)));
+      const actorEmailById = new Map(actors.filter(Boolean).map((u) => [String(u.id), u.email]));
+      const lines = [header.map(csvEscape).join(',')];
+      for (const row of rows) {
+        const event = publicAuditEvent(row);
+        lines.push(
+          [
+            event.occurredAt,
+            actorEmailById.get(String(event.actorUserId)) || event.actorUserId || '',
+            event.actorRole || '',
+            event.action,
+            event.targetId || '',
+            event.result,
+            JSON.stringify(event.metadata || {}),
+          ]
+            .map(csvEscape)
+            .join(',')
+        );
+      }
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="user-audit-log-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(lines.join('\n'));
+    } catch (e) {
+      next(e);
+    }
   });
 
   router.patch('/users/:userId/password', passwordResetByAdminLimiter, requireBodyFields(['password']), async (req, res) => {
