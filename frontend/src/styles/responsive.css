@@ -5647,6 +5647,14 @@ input[type='range'] {
   color: #e52235;
 }
 
+.pulse-sa-chain-verdict__statement--resilient-under-supported {
+  color: var(--pulse-orange);
+}
+
+.pulse-sa-chain-verdict__statement--at-risk-leadership {
+  color: var(--pulse-amber);
+}
+
 .pulse-sa-chain-verdict__sub-label {
   margin: 0.28rem 0 0;
   color: #8a95a8;

@@ -287,12 +287,12 @@ test('sponsorship section signals are derived from computed metrics', () => {
   assert.equal(signals.teams.promptContext.highestUrgencyTeam, 'Sales & Revenue');
 });
 
-test('sponsorship sub-score insight flags below-threshold even when the combined score clears 28', () => {
+test('sponsorship sub-score insight compares Received vs Capacity, not the combined score', () => {
   // Regression: received (13.7) fails its own 14-point threshold while capacity
-  // (14.6) clears it. Combined they sum above 28, but the insight must not
-  // report sponsorship as "above threshold" — that would contradict the
-  // per-card badges and the sponsorship-chain verdict, which both judge each
-  // sub-score independently.
+  // (14.6) clears it. The combined 0-40 score (28.3) clears 28, but the insight
+  // sits directly under the Received/Capacity cards and above the chain
+  // verdict, both of which judge each sub-score independently — so it must
+  // not report "both above threshold" just because the aggregate does.
   const signals = buildSponsorshipSectionSignals({
     header: {
       clientName: 'Roseland Enterprise',
@@ -311,10 +311,39 @@ test('sponsorship sub-score insight flags below-threshold even when the combined
     crossMatrix: { rows: [] },
     teams: { rows: [], shownRows: [] },
   });
-  assert.equal(signals.subScores.promptContext.sponsorshipThresholdStatus, 'Below Threshold');
-  assert.ok(signals.subScores.text.includes('below threshold'));
-  assert.ok(!signals.subScores.text.includes('above threshold'));
+  assert.equal(
+    signals.subScores.text,
+    '<strong>Sponsorship Capacity is the stronger signal, but Sponsorship Received sits below threshold.</strong> Managers have the resilience and skill to sponsor their own teams effectively. What they\'re missing is credible, visible sponsorship from senior leadership above them. Only one of the two scores is above threshold, so the management layer is currently compensating for a gap above them rather than being properly supported.'
+  );
   assert.equal(signals.subScores.promptContext.weakerSubScore, 'Received');
+});
+
+test('sponsorship sub-score insight covers both-above and both-below states', () => {
+  const bothAbove = buildSponsorshipSectionSignals({
+    header: { clientName: 'Acme', stage: 'pre', threshold: 28, managerCount: 12 },
+    subScores: {
+      received: { avg: 15, threshold: 14 },
+      capacity: { avg: 16, threshold: 14 },
+    },
+    load: { bands: [] },
+    chain: { states: [] },
+    crossMatrix: { rows: [] },
+    teams: { rows: [], shownRows: [] },
+  });
+  assert.ok(bothAbove.subScores.text.startsWith('<strong>Both Sponsorship Received and Sponsorship Capacity are above threshold.</strong>'));
+
+  const bothBelow = buildSponsorshipSectionSignals({
+    header: { clientName: 'Acme', stage: 'pre', threshold: 28, managerCount: 12 },
+    subScores: {
+      received: { avg: 10, threshold: 14 },
+      capacity: { avg: 11, threshold: 14 },
+    },
+    load: { bands: [] },
+    chain: { states: [] },
+    crossMatrix: { rows: [] },
+    teams: { rows: [], shownRows: [] },
+  });
+  assert.ok(bothBelow.subScores.text.startsWith('<strong>Both Sponsorship Received and Sponsorship Capacity sit below threshold.</strong>'));
 });
 
 test('adoption score card signal highlights absorption implication', () => {
