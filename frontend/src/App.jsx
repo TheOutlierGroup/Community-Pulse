@@ -24,6 +24,7 @@ const PlatformClientUsers = lazyWithReload(
   'platform-client-users'
 );
 const PlatformClientTasks = lazy(() => import('./pages/PlatformClientTasks.jsx'));
+const PlatformClientProjects = lazy(() => import('./pages/PlatformClientProjects.jsx'));
 const PlatformClientRhythmEngineShell = lazy(() => import('./pages/PlatformClientRhythmEngineShell.jsx'));
 const PlatformClientRhythmEngine = lazy(() => import('./pages/PlatformClientRhythmEngine.jsx'));
 const PlatformRhythmEngineInviteUsers = lazy(() => import('./pages/PlatformRhythmEngineInviteUsers.jsx'));
@@ -38,6 +39,7 @@ const PlatformProspectDashboard = lazy(() => import('./pages/PlatformProspectDas
 const PlatformProspectTasks = lazy(() => import('./pages/PlatformProspectTasks.jsx'));
 const PlatformProspectConfigurations = lazy(() => import('./pages/PlatformProspectConfigurations.jsx'));
 const PlatformProspectActivity = lazy(() => import('./pages/PlatformProspectActivity.jsx'));
+const PlatformProspectOpportunity = lazy(() => import('./pages/PlatformProspectOpportunity.jsx'));
 const PublicStatus = lazy(() => import('./pages/PublicStatus.jsx'));
 const ClientHome = lazy(() => import('./pages/ClientHome.jsx'));
 const AccountPage = lazyWithReload(
@@ -73,6 +75,7 @@ export default function App() {
               {!IS_RHYTHM_ENGINE_SURFACE && <Route index element={<PlatformClientOverview />} />}
               {!IS_RHYTHM_ENGINE_SURFACE && <Route path="users" element={<PlatformClientUsers />} />}
               {!IS_RHYTHM_ENGINE_SURFACE && <Route path="tasks" element={<PlatformClientTasks />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="projects" element={<PlatformClientProjects />} />}
               <Route path="rhythm-engine" element={<PlatformClientRhythmEngineShell />}>
                 <Route index element={<PlatformClientRhythmEngine />} />
                 <Route path="users" element={<PlatformRhythmEngineInviteUsers />} />
@@ -91,6 +94,7 @@ export default function App() {
               <Route path="/platform/crm/organisations/:id" element={<PlatformProspectLayout />}>
                 <Route index element={<PlatformProspectDashboard />} />
                 <Route path="tasks" element={<PlatformProspectTasks />} />
+                <Route path="opportunity" element={<PlatformProspectOpportunity />} />
                 <Route path="configurations" element={<PlatformProspectConfigurations />} />
                 <Route path="activity" element={<PlatformProspectActivity />} />
               </Route>

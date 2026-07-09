@@ -38,6 +38,16 @@ const ACTION_LABELS = {
   'crm.organisation.logo.delete': 'Logo removed',
   'crm.organisation.promote': 'Promoted to Client',
   'org.promoted_from_prospect': 'Promoted from Prospect',
+  'client_project.update': 'Project updated',
+  'client_project.milestone.create': 'Milestone added',
+  'client_project.milestone.update': 'Milestone updated',
+  'client_project.milestone.delete': 'Milestone removed',
+  'client_project.file.upload': 'File uploaded',
+  'client_project.file.delete': 'File removed',
+  'crm.opportunity.update': 'Opportunity updated',
+  'crm.opportunity.checkpoint.update': 'Opportunity checkpoint updated',
+  'crm.opportunity.file.upload': 'File uploaded',
+  'crm.opportunity.file.delete': 'File removed',
 };
 
 function describeAction(action) {

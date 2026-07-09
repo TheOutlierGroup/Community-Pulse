@@ -69,6 +69,18 @@ export const AUDIT_ACTIONS = Object.freeze({
   CRM_ORGANISATION_LOGO_DELETE: 'crm.organisation.logo.delete',
   CRM_ORGANISATION_PROMOTE: 'crm.organisation.promote',
   ORG_PROMOTED_FROM_PROSPECT: 'org.promoted_from_prospect',
+
+  CLIENT_PROJECT_UPDATE: 'client_project.update',
+  CLIENT_PROJECT_MILESTONE_CREATE: 'client_project.milestone.create',
+  CLIENT_PROJECT_MILESTONE_UPDATE: 'client_project.milestone.update',
+  CLIENT_PROJECT_MILESTONE_DELETE: 'client_project.milestone.delete',
+  CLIENT_PROJECT_FILE_UPLOAD: 'client_project.file.upload',
+  CLIENT_PROJECT_FILE_DELETE: 'client_project.file.delete',
+
+  CRM_OPPORTUNITY_UPDATE: 'crm.opportunity.update',
+  CRM_OPPORTUNITY_CHECKPOINT_UPDATE: 'crm.opportunity.checkpoint.update',
+  CRM_OPPORTUNITY_FILE_UPLOAD: 'crm.opportunity.file.upload',
+  CRM_OPPORTUNITY_FILE_DELETE: 'crm.opportunity.file.delete',
 });
 
 function normalizeText(value, fallback = null) {
