@@ -662,72 +662,51 @@ function managerCohortAvgThresholdStatus(score, threshold) {
 }
 
 function managerCohortAveragesSignal({
-  adoptionScore,
-  sponsorshipScore,
   receivedScore,
   capacityScore,
   receivedThreshold = 14,
   capacityThreshold = 14,
-  threshold = 28,
 }) {
-  const adoptionFinite = Number.isFinite(adoptionScore);
-  const sponsorshipFinite = Number.isFinite(sponsorshipScore);
   const receivedFinite = Number.isFinite(receivedScore);
   const capacityFinite = Number.isFinite(capacityScore);
-
-  const adoptionStatus = managerCohortAvgThresholdStatus(adoptionScore, threshold);
-  // Sponsorship must be judged the same way it's judged everywhere else on this
-  // page (badges, chain verdict): both sub-scores need to individually clear
-  // their own threshold, not just the combined 0-40 score clearing 28.
-  const receivedStatus = managerCohortAvgThresholdStatus(receivedScore, receivedThreshold);
-  const capacityStatus = managerCohortAvgThresholdStatus(capacityScore, capacityThreshold);
-  const sponsorshipStatus = !receivedFinite || !capacityFinite
-    ? 'Unknown'
-    : (receivedStatus === 'Above Threshold' && capacityStatus === 'Above Threshold'
-      ? 'Above Threshold'
-      : 'Below Threshold');
-  const weakerSubScore = !receivedFinite || !capacityFinite
-    ? 'Unknown'
-    : (receivedScore <= capacityScore ? 'Received' : 'Capacity');
   const fallback = SCORE_CARD_SIGNAL_PROMPTS.managerCohortAverages.fallback;
 
-  let text = fallback;
-  if (adoptionFinite || sponsorshipFinite) {
-    const adoptionGap = adoptionFinite ? Math.abs(adoptionScore - threshold) : Number.POSITIVE_INFINITY;
-    const sponsorshipGap = sponsorshipFinite ? Math.abs(sponsorshipScore - threshold) : Number.POSITIVE_INFINITY;
-    const sponsorshipIsMoreSignificant = sponsorshipGap <= adoptionGap;
+  if (!receivedFinite || !capacityFinite) {
+    return {
+      text: fallback,
+      fallback,
+      receivedStatus: 'Unknown',
+      capacityStatus: 'Unknown',
+      weakerSubScore: 'Unknown',
+    };
+  }
 
-    const sentence1 = sponsorshipIsMoreSignificant
-      ? sponsorshipStatus === 'Above Threshold'
-        ? '<strong>Manager Sponsorship is the stronger signal and is currently above threshold</strong>, which indicates leadership backing and local sponsorship capacity are sufficient to carry change through the management layer.'
-        : '<strong>Manager Sponsorship is the stronger signal and is currently below threshold</strong>, which means the management layer cannot credibly carry change through teams at the required pace.'
-      : adoptionStatus === 'Above Threshold'
-        ? '<strong>Manager Adoption is the stronger signal and is currently above threshold</strong>, which indicates managers have the baseline conditions to absorb and lead this change.'
-        : '<strong>Manager Adoption is the stronger signal and is currently below threshold</strong>, which means the management layer lacks the conditions needed to absorb and lead this change reliably.';
+  // Sponsorship Received and Sponsorship Capacity are the two scores shown
+  // directly above this insight, and the chain verdict below it requires both
+  // to individually clear their own threshold — so this insight must compare
+  // the same pair the same way, rather than a combined 0-40 aggregate score.
+  const receivedStatus = managerCohortAvgThresholdStatus(receivedScore, receivedThreshold);
+  const capacityStatus = managerCohortAvgThresholdStatus(capacityScore, capacityThreshold);
+  const receivedAbove = receivedStatus === 'Above Threshold';
+  const capacityAbove = capacityStatus === 'Above Threshold';
+  const weakerSubScore = receivedScore <= capacityScore ? 'Received' : 'Capacity';
 
-    let sentence2;
-    if (sponsorshipStatus === 'Below Threshold') {
-      if (weakerSubScore === 'Received') {
-        sentence2 = 'The sponsorship deficit is anchored in Received, so intervention must start with more visible and consistent senior-leadership sponsorship before expecting managers to drive downstream adoption.';
-      } else if (weakerSubScore === 'Capacity') {
-        sentence2 = 'The sponsorship deficit is anchored in Capacity, so intervention must prioritise manager support structures, workload relief, and practical enablement before rollout pressure increases.';
-      } else {
-        sentence2 = 'Sponsorship is below threshold, so intervention must isolate whether the primary deficit is Received or Capacity before sequencing corrective action.';
-      }
-    } else if (adoptionStatus === 'Below Threshold') {
-      sentence2 = 'Sponsorship remains above threshold, but adoption conditions are below threshold, so intervention should focus on manager capability, capacity, change track record, and upward enablement.';
-    } else {
-      sentence2 = 'Both average scores are above threshold, so the management layer is positioned to lead change while maintaining sponsorship visibility and execution discipline.';
-    }
-
-    text = `${sentence1} ${sentence2}`;
+  let text;
+  if (receivedAbove && capacityAbove) {
+    text = '<strong>Both Sponsorship Received and Sponsorship Capacity are above threshold.</strong> Managers are being credibly sponsored by senior leadership above them and are equipped to pass that support down to their own teams, so the management layer is positioned to lead change while maintaining sponsorship visibility and execution discipline.';
+  } else if (!receivedAbove && !capacityAbove) {
+    text = '<strong>Both Sponsorship Received and Sponsorship Capacity sit below threshold.</strong> Managers are neither receiving credible sponsorship from senior leadership above them nor equipped to sponsor their own teams effectively, so intervention is needed on both fronts before this programme can proceed at pace.';
+  } else if (!receivedAbove && capacityAbove) {
+    text = '<strong>Sponsorship Capacity is the stronger signal, but Sponsorship Received sits below threshold.</strong> Managers have the resilience and skill to sponsor their own teams effectively. What they\'re missing is credible, visible sponsorship from senior leadership above them. Only one of the two scores is above threshold, so the management layer is currently compensating for a gap above them rather than being properly supported.';
+  } else {
+    text = '<strong>Sponsorship Received is the stronger signal, but Sponsorship Capacity sits below threshold.</strong> Managers are receiving credible, visible sponsorship from senior leadership above them. What they\'re missing is the resilience and skill to sponsor their own teams effectively. Only one of the two scores is above threshold, so the management layer is currently passing support down without managers being fully equipped to carry it.';
   }
 
   return {
     text,
     fallback,
-    adoptionStatus,
-    sponsorshipStatus,
+    receivedStatus,
+    capacityStatus,
     weakerSubScore,
   };
 }
@@ -897,14 +876,13 @@ export function buildSponsorshipSectionSignals({
   const managerSponsorshipScore = Number(header?.managerSponsorshipScore);
   const managerThreshold = Number.isFinite(Number(header?.threshold)) ? Number(header.threshold) : 28;
   const managerCohortSignal = managerCohortAveragesSignal({
-    adoptionScore: managerAdoptionScore,
-    sponsorshipScore: managerSponsorshipScore,
     receivedScore: received,
     capacityScore: capacity,
     receivedThreshold,
     capacityThreshold,
-    threshold: managerThreshold,
   });
+  const managerAdoptionThresholdStatus = managerCohortAvgThresholdStatus(managerAdoptionScore, managerThreshold);
+  const managerSponsorshipThresholdStatus = managerCohortAvgThresholdStatus(managerSponsorshipScore, managerThreshold);
 
   return {
     headerAdoption: {
@@ -931,9 +909,9 @@ export function buildSponsorshipSectionSignals({
         assessmentStage: normalizeAssessmentStageLabel(header?.stage),
         managerCount: Number.isFinite(Number(header?.managerCount)) ? Number(header.managerCount) : null,
         adoptionScore: formatScoreOutOf40(managerAdoptionScore),
-        adoptionThresholdStatus: managerCohortSignal.adoptionStatus,
+        adoptionThresholdStatus: managerAdoptionThresholdStatus,
         sponsorshipScore: formatScoreOutOf40(managerSponsorshipScore),
-        sponsorshipThresholdStatus: managerCohortSignal.sponsorshipStatus,
+        sponsorshipThresholdStatus: managerSponsorshipThresholdStatus,
         receivedScore: formatScoreOutOf20(received),
         capacityScore: formatScoreOutOf20(capacity),
         weakerSubScore: managerCohortSignal.weakerSubScore,

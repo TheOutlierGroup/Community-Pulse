@@ -3404,18 +3404,35 @@ export function registerPlatformOrgRoutes(router) {
             * 100
           )
         : 0;
-    const interventionRequired =
-      receivedAvg == null
-      || capacityAvg == null
-      || receivedAvg < sponsorshipConfig.receivedThreshold
-      || capacityAvg < sponsorshipConfig.capacityThreshold;
+    const receivedBelowThreshold = receivedAvg == null || receivedAvg < sponsorshipConfig.receivedThreshold;
+    const capacityBelowThreshold = capacityAvg == null || capacityAvg < sponsorshipConfig.capacityThreshold;
+    const interventionRequired = receivedBelowThreshold || capacityBelowThreshold;
 
-    const verdictHeadline = interventionRequired
-      ? 'The sponsorship chain is not functioning.'
-      : 'The sponsorship chain is functioning.';
-    const verdictBody = interventionRequired
-      ? 'Managers are absorbing pressure from both directions — and the window to act is now.'
-      : 'Leaders are receiving support and have capacity to sponsor change through their teams.';
+    // The sponsorship chain has four possible states, matching the same
+    // Received × Capacity split used everywhere else on this page (badges,
+    // per-manager chain states): both clear threshold, both fail it, or only
+    // one fails — and the two single-failure states are not equivalent, so
+    // each needs its own headline rather than collapsing into one verdict.
+    let verdictState;
+    let verdictHeadline;
+    let verdictBody;
+    if (!receivedBelowThreshold && !capacityBelowThreshold) {
+      verdictState = 'functioning';
+      verdictHeadline = 'The sponsorship chain is functioning.';
+      verdictBody = 'Leaders are receiving support and have capacity to sponsor change through their teams.';
+    } else if (receivedBelowThreshold && capacityBelowThreshold) {
+      verdictState = 'failed';
+      verdictHeadline = 'The sponsorship chain is not functioning.';
+      verdictBody = 'Managers are absorbing pressure from both directions — and the window to act is now.';
+    } else if (receivedBelowThreshold) {
+      verdictState = 'resilient-under-supported';
+      verdictHeadline = 'Managers are resilient, but under-supported.';
+      verdictBody = "Your management layer has what it takes to sponsor their own teams — but they're doing it without adequate backing from senior leadership. That's not sustainable without support from above.";
+    } else {
+      verdictState = 'at-risk-leadership';
+      verdictHeadline = 'Managers are supported, but not resilient enough.';
+      verdictBody = "Your management layer is receiving credible backing from senior leadership — but they don't yet have the capacity to carry that support down to their teams. That's not sustainable without more resilience at the manager level.";
+    }
 
     const sponsorshipSignals = buildSponsorshipSectionSignals({
       header: {
@@ -3437,7 +3454,7 @@ export function registerPlatformOrgRoutes(router) {
     });
     const sponsorshipAnalysis = {
       verdict: {
-        state: interventionRequired ? 'failed' : 'functioning',
+        state: verdictState,
         headline: verdictHeadline,
         body: verdictBody,
         badge: interventionRequired ? 'Intervention Required' : 'Monitoring',

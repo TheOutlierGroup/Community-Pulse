@@ -472,11 +472,19 @@ function sponsorshipSignalVariantClass(variant) {
 
 function sponsorshipChainVerdictState(verdict, interventionRequired) {
   const fromBackend = String(verdict?.state || '').trim().toLowerCase();
-  if (fromBackend === 'functioning' || fromBackend === 'monitoring' || fromBackend === 'failed') {
+  if (
+    fromBackend === 'functioning'
+    || fromBackend === 'monitoring'
+    || fromBackend === 'failed'
+    || fromBackend === 'resilient-under-supported'
+    || fromBackend === 'at-risk-leadership'
+  ) {
     return fromBackend;
   }
 
   const headline = String(verdict?.headline || '').trim().toLowerCase();
+  if (headline.includes('resilient') && headline.includes('under-supported')) return 'resilient-under-supported';
+  if (headline.includes('supported') && headline.includes('not resilient')) return 'at-risk-leadership';
   if (headline.includes('not functioning') || headline.includes('failed')) return 'failed';
   if (headline.includes('monitor')) return 'monitoring';
   if (headline.includes('functioning')) return 'functioning';
@@ -490,6 +498,22 @@ function sponsorshipChainVerdictPresentation(state) {
       statement: 'The sponsorship chain is not functioning.',
       subLabel: 'Managers are absorbing pressure from both directions and need immediate intervention to restore sponsorship flow.',
       className: 'pulse-sa-chain-verdict__statement--failed',
+    };
+  }
+
+  if (state === 'resilient-under-supported') {
+    return {
+      statement: 'Managers are resilient, but under-supported.',
+      subLabel: "Your management layer has what it takes to sponsor their own teams — but they're doing it without adequate backing from senior leadership. That's not sustainable without support from above.",
+      className: 'pulse-sa-chain-verdict__statement--resilient-under-supported',
+    };
+  }
+
+  if (state === 'at-risk-leadership') {
+    return {
+      statement: 'Managers are supported, but not resilient enough.',
+      subLabel: "Your management layer is receiving credible backing from senior leadership — but they don't yet have the capacity to carry that support down to their teams. That's not sustainable without more resilience at the manager level.",
+      className: 'pulse-sa-chain-verdict__statement--at-risk-leadership',
     };
   }
 
