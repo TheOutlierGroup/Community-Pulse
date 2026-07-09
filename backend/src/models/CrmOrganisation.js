@@ -48,7 +48,7 @@ export async function listOrganisations(platformOrgId, { search, businessUnit, l
     `SELECT o.*,
             COUNT(c.contact_id) AS contact_count
        FROM crm_organisations o
-       LEFT JOIN crm_contacts c ON c.organisation_id = o.organisation_id
+       LEFT JOIN crm_contacts c ON c.crm_organisation_id = o.organisation_id
       WHERE ${conditions.join(' AND ')}
       GROUP BY o.organisation_id
       ORDER BY o.updated_at DESC

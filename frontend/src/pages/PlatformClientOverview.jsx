@@ -3,6 +3,7 @@ import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
+import ClientContactsPanel from '../components/platform/ClientContactsPanel.jsx';
 import { CheckCircle2, ClipboardList, Eye, Hammer, ListTodo, Users } from 'lucide-react';
 import {
   CLIENT_SERVICE_LICENSEE,
@@ -252,6 +253,8 @@ export default function PlatformClientOverview() {
             )}
           </div>
         ) : null}
+
+        {!isLicensee ? <ClientContactsPanel orgId={orgId} /> : null}
       </div>
     </>
   );

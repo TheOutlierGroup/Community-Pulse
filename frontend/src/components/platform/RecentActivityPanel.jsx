@@ -48,6 +48,12 @@ const ACTION_LABELS = {
   'crm.opportunity.checkpoint.update': 'Opportunity checkpoint updated',
   'crm.opportunity.file.upload': 'File uploaded',
   'crm.opportunity.file.delete': 'File removed',
+  'contact.create': 'Contact added',
+  'contact.update': 'Contact updated',
+  'contact.delete': 'Contact removed',
+  'client_contact.create': 'Contact added',
+  'client_contact.update': 'Contact updated',
+  'client_contact.delete': 'Contact removed',
 };
 
 function describeAction(action) {

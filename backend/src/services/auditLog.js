@@ -81,6 +81,13 @@ export const AUDIT_ACTIONS = Object.freeze({
   CRM_OPPORTUNITY_CHECKPOINT_UPDATE: 'crm.opportunity.checkpoint.update',
   CRM_OPPORTUNITY_FILE_UPLOAD: 'crm.opportunity.file.upload',
   CRM_OPPORTUNITY_FILE_DELETE: 'crm.opportunity.file.delete',
+
+  CONTACT_CREATE: 'contact.create',
+  CONTACT_UPDATE: 'contact.update',
+  CONTACT_DELETE: 'contact.delete',
+  CLIENT_CONTACT_CREATE: 'client_contact.create',
+  CLIENT_CONTACT_UPDATE: 'client_contact.update',
+  CLIENT_CONTACT_DELETE: 'client_contact.delete',
 });
 
 function normalizeText(value, fallback = null) {

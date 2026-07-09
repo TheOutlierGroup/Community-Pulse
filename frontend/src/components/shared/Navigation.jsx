@@ -18,6 +18,7 @@ import {
   Briefcase,
   Target,
   Handshake,
+  BookUser,
 } from 'lucide-react';
 import {
   CLIENT_SERVICE_PULSE,
@@ -382,6 +383,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 <Handshake size={20} strokeWidth={1.75} aria-hidden />
                 Prospects
               </NavLink>
+              {!isLicensee && (
+                <NavLink to="/platform/contacts" className={sidebarLinkClass}>
+                  <BookUser size={20} strokeWidth={1.75} aria-hidden />
+                  Contacts
+                </NavLink>
+              )}
               {!isLicensee && (
                 <NavLink to="/platform/tasks" className={sidebarLinkClass}>
                   <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
