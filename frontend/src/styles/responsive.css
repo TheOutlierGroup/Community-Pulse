@@ -1225,6 +1225,13 @@ a:hover {
   min-width: 560px;
 }
 
+/* Client (1st column) stays left-aligned as the row's primary identifier;
+   Status, Active services, and Last Updated read better centered. */
+.platform-clients-table th:nth-child(n + 2),
+.platform-clients-table td:nth-child(n + 2) {
+  text-align: center;
+}
+
 .platform-clients-table__address {
   word-break: break-word;
   vertical-align: top;
