@@ -1,4 +1,5 @@
 import { query } from '../config/database.js';
+import { businessUnitsForEnabledServices, enabledServicesFromOrganizationSettings } from '../services/clientServices.js';
 
 // ── Prospect-scoped (existing behaviour, column renamed under the hood) ────
 
@@ -183,7 +184,10 @@ export async function listAllContacts(platformOrgId, { search, linkType, busines
     `SELECT c.*,
             po.organisation_name AS prospect_name,
             po.business_unit AS prospect_business_unit,
-            co.name AS client_name
+            po.relationship_status AS prospect_relationship_status,
+            co.name AS client_name,
+            co.relationship_status AS client_relationship_status,
+            co.settings AS client_settings
        FROM crm_contacts c
        LEFT JOIN crm_organisations po ON po.organisation_id = c.crm_organisation_id
        LEFT JOIN organizations co ON co.id = c.client_organization_id
@@ -192,7 +196,17 @@ export async function listAllContacts(platformOrgId, { search, linkType, busines
       LIMIT 1000`,
     values,
   );
-  return rows;
+  // Clients don't have a first-class business_unit column like Prospects —
+  // derive a display-only one from their enabled service catalog (same
+  // mapping used to scope Basic-tier platform users to Business Units), so
+  // the "linked to" badge can still carry a BU accent colour. Not used for
+  // filtering; the businessUnit query param only matches Prospects.
+  return rows.map(({ client_settings, ...row }) => ({
+    ...row,
+    client_business_unit: client_settings
+      ? businessUnitsForEnabledServices(enabledServicesFromOrganizationSettings(client_settings))[0] || null
+      : null,
+  }));
 }
 
 export async function getContactGlobal(platformOrgId, contactId) {

@@ -8,7 +8,7 @@ import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
-import { BUSINESS_UNITS, LEAD_STATUSES, LEAD_STATUS_BADGE, BUSINESS_UNIT_CUSTOM_FIELDS } from '../config/crmConstants.js';
+import { BUSINESS_UNITS, LEAD_STATUSES, LEAD_STATUS_BADGE, BUSINESS_UNIT_CUSTOM_FIELDS, businessUnitBadgeClass } from '../config/crmConstants.js';
 import '../styles/crm.css';
 
 function fmtDate(d) {
@@ -253,7 +253,7 @@ export default function PlatformOrganisations() {
                     </div>
                   </td>
                   <td><span className={LEAD_STATUS_BADGE[o.lead_status] || 'badge'}>{o.lead_status}</span></td>
-                  <td>{o.business_unit}</td>
+                  <td><span className={`badge ${businessUnitBadgeClass(o.business_unit)}`}>{o.business_unit}</span></td>
                   <td>{o.industry || '—'}</td>
                   <td>{fmtDate(o.updated_at)}</td>
                   <td><ChevronRight size={16} strokeWidth={2} color="var(--muted)" aria-hidden /></td>

@@ -7,7 +7,7 @@ import Layout from '../components/shared/Layout.jsx';
 import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
-import { LEAD_STATUS_BADGE } from '../config/crmConstants.js';
+import { LEAD_STATUS_BADGE, businessUnitBadgeClass } from '../config/crmConstants.js';
 import '../styles/crm.css';
 
 export default function PlatformProspectLayout() {
@@ -143,18 +143,7 @@ export default function PlatformProspectLayout() {
         )}
         <h1 style={{ margin: 0, flex: 1 }}>{org.organisation_name}</h1>
         <span className={LEAD_STATUS_BADGE[org.lead_status] || 'badge'}>{org.lead_status}</span>
-        <span
-          style={{
-            fontSize: '0.82rem',
-            color: 'var(--muted)',
-            background: 'var(--surface2)',
-            padding: '0.25rem 0.65rem',
-            borderRadius: 999,
-            border: '1px solid var(--border)',
-          }}
-        >
-          {org.business_unit}
-        </span>
+        <span className={`badge ${businessUnitBadgeClass(org.business_unit)}`}>{org.business_unit}</span>
       </div>
 
       {org.promoted_to_org_id && (

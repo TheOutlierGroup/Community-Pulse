@@ -7,7 +7,7 @@ const EMPTY_FORM = { contact_firstname: '', contact_lastname: '', contact_email:
 
 function ContactFields({ form, setForm, disabled }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.6rem' }}>
       {[
         { key: 'contact_firstname', label: 'First name *', required: true },
         { key: 'contact_lastname', label: 'Last name' },
