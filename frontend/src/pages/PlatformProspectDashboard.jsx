@@ -14,18 +14,69 @@ function fmtDateTime(d) {
   return new Date(d).toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function NoteItem({ note, onDelete }) {
+function CommentItem({ comment, onDelete }) {
   return (
-    <div style={{ display: 'flex', gap: '0.6rem', padding: '0.65rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.875rem' }}>
+    <div style={{ display: 'flex', gap: '0.5rem', padding: '0.3rem 0', fontSize: '0.82rem' }}>
       <div style={{ flex: 1 }}>
-        <p style={{ margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.note_text}</p>
-        <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.3rem' }}>
-          {fmtDateTime(note.created_at)}{note.author_name?.trim() ? ` · ${note.author_name.trim()}` : ''}
+        <p style={{ margin: 0, lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{comment.commentText}</p>
+        <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.15rem' }}>
+          {fmtDateTime(comment.createdAt)}{comment.authorName?.trim() ? ` · ${comment.authorName.trim()}` : ''}
         </div>
       </div>
-      <button className="btn btn-ghost" style={{ padding: '0.25rem', alignSelf: 'flex-start', flexShrink: 0 }} onClick={() => onDelete(note.note_id)} aria-label="Delete note">
-        <X size={13} strokeWidth={2} />
+      <button className="btn btn-ghost" style={{ padding: '0.2rem', flexShrink: 0 }} onClick={() => onDelete(comment.id)} aria-label="Delete comment">
+        <X size={11} strokeWidth={2} />
       </button>
+    </div>
+  );
+}
+
+function NoteItem({ note, onDelete, onAddComment, onDeleteComment }) {
+  const [replyText, setReplyText] = useState('');
+  const [replyBusy, setReplyBusy] = useState(false);
+  const comments = note.comments || [];
+
+  async function submitReply(e) {
+    e.preventDefault();
+    const text = replyText.trim();
+    if (!text) return;
+    setReplyBusy(true);
+    try {
+      await onAddComment(note.note_id, text);
+      setReplyText('');
+    } finally {
+      setReplyBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ padding: '0.65rem 0', borderBottom: '1px solid var(--border)', fontSize: '0.875rem' }}>
+      <div style={{ display: 'flex', gap: '0.6rem' }}>
+        <div style={{ flex: 1 }}>
+          <p style={{ margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.note_text}</p>
+          <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.3rem' }}>
+            {fmtDateTime(note.created_at)}{note.author_name?.trim() ? ` · ${note.author_name.trim()}` : ''}
+          </div>
+        </div>
+        <button className="btn btn-ghost" style={{ padding: '0.25rem', alignSelf: 'flex-start', flexShrink: 0 }} onClick={() => onDelete(note.note_id)} aria-label="Delete note">
+          <X size={13} strokeWidth={2} />
+        </button>
+      </div>
+      <div style={{ marginLeft: '0.75rem', marginTop: '0.4rem', paddingLeft: '0.75rem', borderLeft: '2px solid var(--border)' }}>
+        {comments.map((c) => (
+          <CommentItem key={c.id} comment={c} onDelete={(commentId) => onDeleteComment(note.note_id, commentId)} />
+        ))}
+        <form onSubmit={submitReply} style={{ display: 'flex', gap: '0.4rem', marginTop: comments.length > 0 ? '0.4rem' : 0 }}>
+          <input
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            placeholder="Reply…"
+            style={{ flex: 1, fontSize: '0.8rem', padding: '0.35rem 0.6rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--text)', boxSizing: 'border-box' }}
+          />
+          <button className="btn btn-ghost" type="submit" disabled={replyBusy || !replyText.trim()} style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}>
+            Reply
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -122,6 +173,25 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
     } catch { showToast('Failed to delete note.', { variant: 'error' }); }
   }
 
+  async function addNoteComment(noteId, text) {
+    try {
+      const { data } = await api.post(
+        `/api/platform/crm/organisations/${orgId}/contacts/${contact.contact_id}/notes/${noteId}/comments`,
+        { comment_text: text }
+      );
+      setNotes((p) => (p || []).map((n) => (n.note_id === noteId ? { ...n, comments: [...(n.comments || []), data.comment] } : n)));
+    } catch { showToast('Failed to add comment.', { variant: 'error' }); }
+  }
+
+  async function deleteNoteComment(noteId, commentId) {
+    try {
+      await api.delete(
+        `/api/platform/crm/organisations/${orgId}/contacts/${contact.contact_id}/notes/${noteId}/comments/${commentId}`
+      );
+      setNotes((p) => (p || []).map((n) => (n.note_id === noteId ? { ...n, comments: (n.comments || []).filter((c) => c.id !== commentId) } : n)));
+    } catch { showToast('Failed to delete comment.', { variant: 'error' }); }
+  }
+
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: '0.6rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', cursor: 'pointer', background: 'var(--surface)' }} onClick={toggleExpand}>
@@ -174,7 +244,15 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
           <AddNoteForm onAdd={addNote} busy={noteBusy} />
           {notes === null && <p style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>Loading…</p>}
           {notes?.length === 0 && <p style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>No notes yet.</p>}
-          {notes?.map((n) => <NoteItem key={n.note_id} note={n} onDelete={deleteNote} />)}
+          {notes?.map((n) => (
+            <NoteItem
+              key={n.note_id}
+              note={n}
+              onDelete={deleteNote}
+              onAddComment={addNoteComment}
+              onDeleteComment={deleteNoteComment}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -223,6 +301,20 @@ export default function PlatformProspectDashboard() {
     } catch { showToast('Failed to delete note.', { variant: 'error' }); }
   }
 
+  async function addOrgNoteComment(noteId, text) {
+    try {
+      const { data } = await api.post(`/api/platform/crm/organisations/${orgId}/notes/${noteId}/comments`, { comment_text: text });
+      setNotes((p) => p.map((n) => (n.note_id === noteId ? { ...n, comments: [...(n.comments || []), data.comment] } : n)));
+    } catch { showToast('Failed to add comment.', { variant: 'error' }); }
+  }
+
+  async function deleteOrgNoteComment(noteId, commentId) {
+    try {
+      await api.delete(`/api/platform/crm/organisations/${orgId}/notes/${noteId}/comments/${commentId}`);
+      setNotes((p) => p.map((n) => (n.note_id === noteId ? { ...n, comments: (n.comments || []).filter((c) => c.id !== commentId) } : n)));
+    } catch { showToast('Failed to delete comment.', { variant: 'error' }); }
+  }
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1.5rem', alignItems: 'start' }}>
       {/* Left: details + contacts */}
@@ -236,7 +328,7 @@ export default function PlatformProspectDashboard() {
               { label: 'Industry', value: org.industry },
               { label: 'Website', value: org.website, link: true },
               { label: 'Phone', value: org.phone },
-              { label: 'Lead source', value: org.lead_source },
+              { label: 'Lead Origin', value: org.lead_source },
               { label: 'Created', value: fmtDate(org.created_date) },
               { label: 'Expected close', value: fmtDate(org.expected_close_date) },
             ].map(({ label, value, link }) => (
@@ -307,7 +399,15 @@ export default function PlatformProspectDashboard() {
         </div>
         <AddNoteForm onAdd={addOrgNote} busy={noteBusy} />
         {notes.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>No notes yet.</p>}
-        {notes.map((n) => <NoteItem key={n.note_id} note={n} onDelete={deleteOrgNote} />)}
+        {notes.map((n) => (
+          <NoteItem
+            key={n.note_id}
+            note={n}
+            onDelete={deleteOrgNote}
+            onAddComment={addOrgNoteComment}
+            onDeleteComment={deleteOrgNoteComment}
+          />
+        ))}
       </div>
     </div>
   );

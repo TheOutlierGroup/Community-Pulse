@@ -1,4 +1,5 @@
 import { query } from '../config/database.js';
+import { sanitizeCustomFields } from '../services/prospectCustomFields.js';
 
 export const BUSINESS_UNITS = [
   'Outlier Core',
@@ -90,7 +91,10 @@ export async function createOrganisation(platformOrgId, data) {
 const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new', 'active-campaign']);
 
 export async function updateOrganisation(platformOrgId, organisationId, data) {
-  const allowed = ['organisation_name', 'industry', 'website', 'phone', 'business_unit', 'lead_status', 'lead_source', 'expected_close_date', 'do_not_contact', 'relationship_status'];
+  const allowed = [
+    'organisation_name', 'industry', 'website', 'phone', 'business_unit', 'lead_status', 'lead_source',
+    'expected_close_date', 'do_not_contact', 'relationship_status', 'owner_user_id', 'last_contact_at',
+  ];
   const sets = [];
   const values = [];
   let i = 1;
@@ -98,15 +102,28 @@ export async function updateOrganisation(platformOrgId, organisationId, data) {
   for (const key of allowed) {
     if (key in data) {
       sets.push(`${key} = $${i++}`);
-      // expected_close_date is a DATE column; Postgres rejects '' (only
-      // accepts a valid date or NULL), so an empty string must map to null.
-      const value = key === 'expected_close_date' && data[key] === '' ? null
+      // expected_close_date/last_contact_at are DATE/TIMESTAMPTZ columns;
+      // Postgres rejects '' for those (only a valid value or NULL), so an
+      // empty string must map to null. Same for owner_user_id (a UUID FK).
+      const value = (key === 'expected_close_date' || key === 'last_contact_at' || key === 'owner_user_id') && data[key] === '' ? null
         : key === 'do_not_contact' ? Boolean(data[key])
         : key === 'relationship_status' && !RELATIONSHIP_STATUSES.has(data[key]) ? 'new'
         : data[key];
       values.push(value ?? null);
     }
   }
+
+  if ('custom_fields' in data) {
+    // Sanitize against the *effective* business unit — the one being set
+    // in this same patch if present, otherwise whatever the org already
+    // has — so custom_fields is always validated against the right field
+    // set even when both change together.
+    const effectiveBusinessUnit = data.business_unit ?? (await getOrganisation(platformOrgId, organisationId))?.business_unit;
+    const sanitized = sanitizeCustomFields(effectiveBusinessUnit, data.custom_fields);
+    sets.push(`custom_fields = $${i++}::jsonb`);
+    values.push(JSON.stringify(sanitized));
+  }
+
   if (sets.length === 0) return getOrganisation(platformOrgId, organisationId);
 
   sets.push(`updated_at = NOW()`);

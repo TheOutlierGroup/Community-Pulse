@@ -11,6 +11,9 @@ import {
   listNotesForOrg, listNotesForContact,
   createNoteForOrg, createNoteForContact, deleteNote,
 } from '../../models/CrmNote.js';
+import {
+  listCommentsForNoteIds, createComment, deleteComment,
+} from '../../models/CrmNoteComment.js';
 import { auditFromRequest, AUDIT_ACTIONS, listRecentAuditEvents, publicAuditEvent } from '../../services/auditLog.js';
 import {
   listTasksForOrg, getTaskForOrg, createTask, updateTask, deleteTask, reorderTasks,
@@ -55,12 +58,30 @@ function noteExcerpt(text) {
   return trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
 }
 
+function publicComment(row) {
+  return {
+    id: row.comment_id,
+    noteId: row.note_id,
+    commentText: row.comment_text,
+    authorName: row.author_name,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  };
+}
+
+/** Batch-attaches a `comments` array to each note, one extra query total. */
+async function attachComments(notes) {
+  const byNote = await listCommentsForNoteIds(notes.map((n) => n.note_id));
+  return notes.map((n) => ({ ...n, comments: (byNote.get(n.note_id) || []).map(publicComment) }));
+}
+
 function publicTask(row) {
   return {
     id: row.id,
     title: row.title,
     status: row.status,
     position: row.position,
+    tag: row.tag,
     dueDate: row.due_date,
     assignedTo: row.assigned_to,
     assignee: row.assigned_to
@@ -379,6 +400,7 @@ router.post('/organisations/:id/tasks', async (req, res) => {
         status: req.body.status,
         assignedTo: req.body.assignedTo || null,
         dueDate: req.body.dueDate || null,
+        tag: req.body.tag || null,
       },
       req.user.id
     );
@@ -421,6 +443,7 @@ router.patch('/organisations/:id/tasks/:taskId', async (req, res) => {
     if ('status' in req.body) patch.status = req.body.status;
     if ('assignedTo' in req.body) patch.assignedTo = req.body.assignedTo || null;
     if ('dueDate' in req.body) patch.dueDate = req.body.dueDate || null;
+    if ('tag' in req.body) patch.tag = req.body.tag || null;
     const task = await updateTask(req.params.taskId, req.params.id, patch);
     if (!task) return res.status(404).json({ error: 'Task not found.' });
     auditFromRequest(req)({
@@ -464,7 +487,7 @@ router.get('/organisations/:id/notes', async (req, res) => {
   try {
     if (!await organisationBelongsToOrg(orgId(req), req.params.id))
       return res.status(404).json({ error: 'Organisation not found.' });
-    const notes = await listNotesForOrg(req.params.id);
+    const notes = await attachComments(await listNotesForOrg(req.params.id));
     res.json({ notes });
   } catch (e) {
     res.status(500).json({ error: 'Failed to load notes.' });
@@ -505,6 +528,50 @@ router.delete('/organisations/:id/notes/:noteId', async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete note.' });
+  }
+});
+
+router.post('/organisations/:id/notes/:noteId/comments', async (req, res) => {
+  try {
+    if (!req.body.comment_text?.trim()) return res.status(400).json({ error: 'comment_text is required.' });
+    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
+      return res.status(404).json({ error: 'Organisation not found.' });
+    const comment = await createComment(
+      req.params.noteId,
+      { organisationId: req.params.id },
+      req.body.comment_text,
+      req.user.id
+    );
+    if (!comment) return res.status(404).json({ error: 'Note not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_NOTE_COMMENT_CREATE,
+      targetType: 'crm_note',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { noteId: req.params.noteId, excerpt: noteExcerpt(req.body.comment_text) },
+    });
+    res.status(201).json({ comment: publicComment(comment) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to add comment.' });
+  }
+});
+
+router.delete('/organisations/:id/notes/:noteId/comments/:commentId', async (req, res) => {
+  try {
+    if (!await organisationBelongsToOrg(orgId(req), req.params.id))
+      return res.status(404).json({ error: 'Organisation not found.' });
+    const ok = await deleteComment(req.params.commentId, { organisationId: req.params.id });
+    if (!ok) return res.status(404).json({ error: 'Comment not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_NOTE_COMMENT_DELETE,
+      targetType: 'crm_note',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { noteId: req.params.noteId },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete comment.' });
   }
 });
 
@@ -577,7 +644,7 @@ router.get('/organisations/:id/contacts/:contactId/notes', async (req, res) => {
   try {
     if (!await contactBelongsToOrg(req.params.id, req.params.contactId))
       return res.status(404).json({ error: 'Contact not found.' });
-    const notes = await listNotesForContact(req.params.contactId);
+    const notes = await attachComments(await listNotesForContact(req.params.contactId));
     res.json({ notes });
   } catch (e) {
     res.status(500).json({ error: 'Failed to load notes.' });
@@ -620,6 +687,50 @@ router.delete('/organisations/:id/contacts/:contactId/notes/:noteId', async (req
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete note.' });
+  }
+});
+
+router.post('/organisations/:id/contacts/:contactId/notes/:noteId/comments', async (req, res) => {
+  try {
+    if (!req.body.comment_text?.trim()) return res.status(400).json({ error: 'comment_text is required.' });
+    if (!await contactBelongsToOrg(req.params.id, req.params.contactId))
+      return res.status(404).json({ error: 'Contact not found.' });
+    const comment = await createComment(
+      req.params.noteId,
+      { contactId: req.params.contactId },
+      req.body.comment_text,
+      req.user.id
+    );
+    if (!comment) return res.status(404).json({ error: 'Note not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_NOTE_COMMENT_CREATE,
+      targetType: 'crm_note',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { noteId: req.params.noteId, excerpt: noteExcerpt(req.body.comment_text) },
+    });
+    res.status(201).json({ comment: publicComment(comment) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to add comment.' });
+  }
+});
+
+router.delete('/organisations/:id/contacts/:contactId/notes/:noteId/comments/:commentId', async (req, res) => {
+  try {
+    if (!await contactBelongsToOrg(req.params.id, req.params.contactId))
+      return res.status(404).json({ error: 'Contact not found.' });
+    const ok = await deleteComment(req.params.commentId, { contactId: req.params.contactId });
+    if (!ok) return res.status(404).json({ error: 'Comment not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_NOTE_COMMENT_DELETE,
+      targetType: 'crm_note',
+      targetId: req.params.id,
+      targetOrganizationId: orgId(req),
+      metadata: { noteId: req.params.noteId },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete comment.' });
   }
 });
 

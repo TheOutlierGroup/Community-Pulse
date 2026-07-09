@@ -262,7 +262,7 @@ export default function PlatformOrganisations() {
                   <input id="org-industry" value={form.industry} onChange={(e) => setForm((p) => ({ ...p, industry: e.target.value }))} />
                 </div>
                 <div className="field">
-                  <label htmlFor="org-source">Lead source</label>
+                  <label htmlFor="org-source">Lead Origin</label>
                   <input id="org-source" value={form.lead_source} onChange={(e) => setForm((p) => ({ ...p, lead_source: e.target.value }))} />
                 </div>
               </div>

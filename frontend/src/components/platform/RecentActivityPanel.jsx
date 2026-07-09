@@ -82,7 +82,7 @@ function describeProspectCarryover(m) {
   if (m.relationshipStatus) bits.push(`relationship status: ${titleCaseFromSlug(m.relationshipStatus)}`);
   if (m.website) bits.push(`website: ${m.website}`);
   if (m.phone) bits.push(`phone: ${m.phone}`);
-  if (m.leadSource) bits.push(`lead source: ${m.leadSource}`);
+  if (m.leadSource) bits.push(`lead origin: ${m.leadSource}`);
   if (m.prospectCreatedDate) bits.push(`prospect created: ${m.prospectCreatedDate}`);
   if (m.expectedCloseDate) bits.push(`expected close: ${m.expectedCloseDate}`);
   return bits.length === 0 ? null : `From prospect "${m.prospectName || 'unknown'}" — ${bits.join(' · ')}`;

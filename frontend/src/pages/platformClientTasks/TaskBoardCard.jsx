@@ -41,7 +41,14 @@ export default function TaskBoardCard({
   const checklistItemCount = task.checklistItemCount ?? 0;
   const isCompleted = normalizeStatus(task.status) === 'completed';
   const tagged = Array.isArray(task.taggedUsers) ? task.taggedUsers : [];
-  const cardLabels = Array.isArray(task.labels) ? task.labels : [];
+  // ClientWorkTask cards carry a full labels array; CrmOrganisationTask
+  // cards (CRM prospect tasks) only have a single freeform `tag` string —
+  // render it the same way rather than building a second label system.
+  const cardLabels = Array.isArray(task.labels)
+    ? task.labels
+    : task.tag
+      ? [{ id: 'tag', name: task.tag }]
+      : [];
   const showWatching =
     currentUserId != null && tagged.some((u) => String(u.id) === String(currentUserId));
 

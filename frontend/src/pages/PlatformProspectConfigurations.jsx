@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Building2, Sparkles, TrendingUp, Trash2 } from 'lucide-react';
 import api from '../services/api.js';
@@ -9,7 +9,25 @@ import NewClientModal from '../components/platform/NewClientModal.jsx';
 import { isLicenseeUser } from '../hooks/usePlatformAccess.js';
 import { RELATIONSHIP_STATUS_OPTIONS, normalizeRelationshipStatus } from './platformClientUtils.js';
 import { serviceIdForBusinessUnit } from '../utils/prospectPromotion.js';
-import { BUSINESS_UNITS, LEAD_STATUSES } from '../config/crmConstants.js';
+import { BUSINESS_UNITS, LEAD_STATUSES, BUSINESS_UNIT_CUSTOM_FIELDS } from '../config/crmConstants.js';
+
+function ownerLabel(u) {
+  if (!u) return '';
+  const name = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
+  return name || u.email || '';
+}
+
+// datetime-local inputs want "YYYY-MM-DDTHH:mm" in local time, with no
+// timezone suffix — slicing an ISO string to 16 chars gives UTC wall-clock
+// digits, which is wrong once the user is outside UTC, so build it from
+// the Date object's local getters instead.
+function toDatetimeLocalValue(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export default function PlatformProspectConfigurations() {
   const { org, orgId, contacts, refreshOrg, bumpLogoRev } = useOutletContext();
@@ -21,6 +39,20 @@ export default function PlatformProspectConfigurations() {
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoRev, setLogoRev] = useState(0);
   const [promoteModalOpen, setPromoteModalOpen] = useState(false);
+  const [owners, setOwners] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/platform/crm/organisations/${orgId}/tasks/assignable-users`);
+        if (!cancelled) setOwners(data.users || []);
+      } catch {
+        if (!cancelled) setOwners([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [orgId]);
 
   const [editForm, setEditForm] = useState({
     organisation_name: org.organisation_name,
@@ -33,14 +65,27 @@ export default function PlatformProspectConfigurations() {
     lead_source: org.lead_source || '',
     expected_close_date: org.expected_close_date?.slice(0, 10) || '',
     do_not_contact: Boolean(org.do_not_contact),
+    owner_user_id: org.owner_user_id || '',
+    last_contact_at: toDatetimeLocalValue(org.last_contact_at),
+    custom_fields: org.custom_fields || {},
   });
   const [saveBusy, setSaveBusy] = useState(false);
+
+  function setCustomField(key, value) {
+    setEditForm((p) => ({ ...p, custom_fields: { ...p.custom_fields, [key]: value } }));
+  }
+
+  const skateFields = BUSINESS_UNIT_CUSTOM_FIELDS[editForm.business_unit] || [];
 
   async function saveOrg(e) {
     e.preventDefault();
     setSaveBusy(true);
     try {
-      await api.patch(`/api/platform/crm/organisations/${orgId}`, editForm);
+      const payload = {
+        ...editForm,
+        last_contact_at: editForm.last_contact_at ? new Date(editForm.last_contact_at).toISOString() : '',
+      };
+      await api.patch(`/api/platform/crm/organisations/${orgId}`, payload);
       await refreshOrg();
       showToast('Organisation updated.', { variant: 'success' });
     } catch (err) {
@@ -183,14 +228,60 @@ export default function PlatformProspectConfigurations() {
               <input type="tel" value={editForm.phone} onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))} />
             </div>
             <div className="field">
-              <label>Lead source</label>
+              <label>Lead Origin</label>
               <input value={editForm.lead_source} onChange={(e) => setEditForm((p) => ({ ...p, lead_source: e.target.value }))} />
             </div>
             <div className="field">
               <label>Expected close date</label>
               <input type="date" value={editForm.expected_close_date} onChange={(e) => setEditForm((p) => ({ ...p, expected_close_date: e.target.value }))} />
             </div>
+            <div className="field">
+              <label>Owner</label>
+              <select value={editForm.owner_user_id} onChange={(e) => setEditForm((p) => ({ ...p, owner_user_id: e.target.value }))}>
+                <option value="">Unassigned</option>
+                {owners.map((o) => <option key={o.id} value={o.id}>{ownerLabel(o)}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Last contact</label>
+              <input
+                type="datetime-local"
+                value={editForm.last_contact_at}
+                onChange={(e) => setEditForm((p) => ({ ...p, last_contact_at: e.target.value }))}
+              />
+            </div>
           </div>
+
+          {skateFields.length > 0 && (
+            <div style={{ marginTop: '1.25rem' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: '0.75rem' }}>
+                Outlier Skate details
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                {skateFields.map((field) => (
+                  <div className="field" key={field.key}>
+                    <label>{field.label}</label>
+                    {field.type === 'select' ? (
+                      <select
+                        value={editForm.custom_fields[field.key] || ''}
+                        onChange={(e) => setCustomField(field.key, e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {field.options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                        value={editForm.custom_fields[field.key] ?? ''}
+                        onChange={(e) => setCustomField(field.key, e.target.value)}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', marginTop: '0.75rem' }}>
             <input
               type="checkbox"
@@ -297,7 +388,7 @@ export default function PlatformProspectConfigurations() {
         canCreateLicensees={!isLicensee}
         title="Promote to Client"
         submitLabel="Create client"
-        helperText={`Promoting "${org.organisation_name}" from Prospects. Review the prefilled details before creating the client — lead status, relationship status, website, phone, lead source, and expected close date will be preserved in the new client's Recent Activity log.`}
+        helperText={`Promoting "${org.organisation_name}" from Prospects. Review the prefilled details before creating the client — lead status, relationship status, website, phone, lead origin, and expected close date will be preserved in the new client's Recent Activity log.`}
         initialValues={promoteInitialValues}
       />
     </div>

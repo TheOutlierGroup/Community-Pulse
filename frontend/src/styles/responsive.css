@@ -1225,6 +1225,13 @@ a:hover {
   min-width: 560px;
 }
 
+/* Client (1st column) stays left-aligned as the row's primary identifier;
+   Status, Active services, and Last Updated read better centered. */
+.platform-clients-table th:nth-child(n + 2),
+.platform-clients-table td:nth-child(n + 2) {
+  text-align: center;
+}
+
 .platform-clients-table__address {
   word-break: break-word;
   vertical-align: top;
@@ -2305,6 +2312,33 @@ input[type='range'] {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem 0.5rem;
+}
+
+.task-board__composer-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.task-board__composer-select,
+.task-board__composer-input-small {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid rgba(9, 30, 66, 0.15);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: #172b4d;
+  background: #fff;
+}
+
+.task-board__composer-select:disabled,
+.task-board__composer-input-small:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .task-board__composer-submit {

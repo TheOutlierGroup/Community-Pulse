@@ -3,7 +3,7 @@ import { pool, query } from '../config/database.js';
 export const TASK_BOARD_STATUSES = ['todo', 'working', 'review', 'completed'];
 
 function taskRowSelect() {
-  return `SELECT t.id, t.organisation_id, t.title, t.status, t.position,
+  return `SELECT t.id, t.organisation_id, t.title, t.status, t.position, t.tag,
                  t.assigned_to, t.due_date, t.created_by, t.created_at, t.updated_at,
                  u.email AS assignee_email, u.first_name AS assignee_first_name,
                  u.last_name AS assignee_last_name
@@ -39,7 +39,7 @@ export async function countTasksByStatusForOrg(organisationId) {
   return counts;
 }
 
-export async function createTask(organisationId, { title, status, assignedTo, dueDate }, createdByUserId) {
+export async function createTask(organisationId, { title, status, assignedTo, dueDate, tag }, createdByUserId) {
   const normalizedStatus = TASK_BOARD_STATUSES.includes(status) ? status : 'todo';
   const { rows: positionRows } = await query(
     `SELECT COALESCE(MAX(position), -1) + 1 AS next_position
@@ -49,16 +49,16 @@ export async function createTask(organisationId, { title, status, assignedTo, du
   const position = positionRows[0]?.next_position ?? 0;
   const { rows } = await query(
     `INSERT INTO crm_organisation_tasks
-       (organisation_id, title, status, position, assigned_to, due_date, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+       (organisation_id, title, status, position, assigned_to, due_date, tag, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id`,
-    [organisationId, title, normalizedStatus, position, assignedTo || null, dueDate || null, createdByUserId || null]
+    [organisationId, title, normalizedStatus, position, assignedTo || null, dueDate || null, tag?.trim() || null, createdByUserId || null]
   );
   return getTaskForOrg(rows[0].id, organisationId);
 }
 
 export async function updateTask(taskId, organisationId, patch) {
-  const allowed = { title: 'title', status: 'status', assignedTo: 'assigned_to', dueDate: 'due_date' };
+  const allowed = { title: 'title', status: 'status', assignedTo: 'assigned_to', dueDate: 'due_date', tag: 'tag' };
   const sets = [];
   const values = [];
   let i = 1;

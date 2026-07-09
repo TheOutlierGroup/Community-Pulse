@@ -42,6 +42,9 @@ export default function PlatformProspectTasks() {
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [composingColumnId, setComposingColumnId] = useState(null);
   const [composerTitle, setComposerTitle] = useState('');
+  const [composerAssignedTo, setComposerAssignedTo] = useState('');
+  const [composerDueDate, setComposerDueDate] = useState('');
+  const [composerTag, setComposerTag] = useState('');
 
   const [detailTaskId, setDetailTaskId] = useState(null);
   const [detailForm, setDetailForm] = useState(null);
@@ -138,11 +141,17 @@ export default function PlatformProspectTasks() {
   function openComposer(columnId) {
     setComposingColumnId(columnId);
     setComposerTitle('');
+    setComposerAssignedTo('');
+    setComposerDueDate('');
+    setComposerTag('');
   }
 
   function closeComposer() {
     setComposingColumnId(null);
     setComposerTitle('');
+    setComposerAssignedTo('');
+    setComposerDueDate('');
+    setComposerTag('');
   }
 
   const submitComposer = useCallback(
@@ -155,8 +164,14 @@ export default function PlatformProspectTasks() {
         await api.post(`/api/platform/crm/organisations/${orgId}/tasks`, {
           title,
           status: columnId,
+          assignedTo: composerAssignedTo || null,
+          dueDate: composerDueDate || null,
+          tag: composerTag.trim() || null,
         });
         setComposerTitle('');
+        setComposerAssignedTo('');
+        setComposerDueDate('');
+        setComposerTag('');
         await loadTasks();
         showToast('Card added.', { variant: 'success' });
       } catch (err) {
@@ -165,7 +180,7 @@ export default function PlatformProspectTasks() {
         setBusy(false);
       }
     },
-    [composerTitle, orgId, loadTasks, showToast]
+    [composerTitle, composerAssignedTo, composerDueDate, composerTag, orgId, loadTasks, showToast]
   );
 
   const upsertTaskInBoard = useCallback((nextTask) => {
@@ -216,6 +231,7 @@ export default function PlatformProspectTasks() {
       status: task.status,
       assignedTo: task.assignedTo || '',
       dueDate: task.dueDate ? String(task.dueDate).slice(0, 10) : '',
+      tag: task.tag || '',
     });
   }
 
@@ -393,6 +409,47 @@ export default function PlatformProspectTasks() {
                         autoComplete="off"
                         disabled={busy}
                       />
+                      <div className="task-board__composer-fields">
+                        <label htmlFor={`prospect-task-composer-assignee-${colId}`} className="visually-hidden">
+                          Assignee
+                        </label>
+                        <select
+                          id={`prospect-task-composer-assignee-${colId}`}
+                          className="task-board__composer-select"
+                          value={composerAssignedTo}
+                          onChange={(e) => setComposerAssignedTo(e.target.value)}
+                          disabled={busy}
+                        >
+                          <option value="">Unassigned</option>
+                          {assignableUsers.map((u) => (
+                            <option key={u.id} value={u.id}>{assigneeLabel(u)}</option>
+                          ))}
+                        </select>
+                        <label htmlFor={`prospect-task-composer-due-${colId}`} className="visually-hidden">
+                          Due date
+                        </label>
+                        <input
+                          id={`prospect-task-composer-due-${colId}`}
+                          type="date"
+                          className="task-board__composer-input-small"
+                          value={composerDueDate}
+                          onChange={(e) => setComposerDueDate(e.target.value)}
+                          disabled={busy}
+                        />
+                        <label htmlFor={`prospect-task-composer-tag-${colId}`} className="visually-hidden">
+                          Tag
+                        </label>
+                        <input
+                          id={`prospect-task-composer-tag-${colId}`}
+                          type="text"
+                          className="task-board__composer-input-small"
+                          value={composerTag}
+                          onChange={(e) => setComposerTag(e.target.value)}
+                          placeholder="Tag"
+                          autoComplete="off"
+                          disabled={busy}
+                        />
+                      </div>
                       <div className="task-board__composer-actions">
                         <button
                           type="submit"
@@ -516,6 +573,16 @@ export default function PlatformProspectTasks() {
                 type="date"
                 value={detailForm.dueDate}
                 onChange={(e) => setDetailForm((p) => ({ ...p, dueDate: e.target.value }))}
+                disabled={detailBusy}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="prospect-task-tag">Tag</label>
+              <input
+                id="prospect-task-tag"
+                type="text"
+                value={detailForm.tag}
+                onChange={(e) => setDetailForm((p) => ({ ...p, tag: e.target.value }))}
                 disabled={detailBusy}
               />
             </div>

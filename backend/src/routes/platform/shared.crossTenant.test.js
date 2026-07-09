@@ -71,13 +71,17 @@ test('platform non-admin needs assignment OR task stake for a client', () => {
   );
 });
 
-test('Platform-tier user gets unrestricted client access, like admin, but not licensee orgs', () => {
+test('Platform-tier user gets unrestricted client access, like admin — including licensee orgs', () => {
   // Regression: a real rollout hit "Client not found" for a Platform-tier
   // user because this function used to only special-case role === 'admin'
   // and fell through to the assignment/task-stake check for everyone else
   // — including the new Platform tier, which per spec should see every
-  // client without needing an explicit assignment.
-  for (const target of [clientOfA, clientOfB, platformDirectClient]) {
+  // client without needing an explicit assignment. Licensee orgs are
+  // included too, matching GET /organizations (orgRoutes.js), which already
+  // returns clients AND licensees to both admin and platform tier via
+  // listClientAndLicenseeOrganizations — refusing licensees here would
+  // recreate the same "visible in the list, 404 on open" bug.
+  for (const target of [clientOfA, clientOfB, platformDirectClient, licenseeOrgA]) {
     assert.equal(
       canPlatformUserAccessClientOrgPure({
         user: platformTierUser,
@@ -88,14 +92,6 @@ test('Platform-tier user gets unrestricted client access, like admin, but not li
       `platform tier should access ${target.id}`
     );
   }
-  assert.equal(
-    canPlatformUserAccessClientOrgPure({
-      user: platformTierUser,
-      requesterOrg: platformOrg,
-      targetOrg: licenseeOrgA,
-    }),
-    false
-  );
 });
 
 test('Basic-tier user needs assignment, task stake, OR Business Unit visibility for a client', () => {
