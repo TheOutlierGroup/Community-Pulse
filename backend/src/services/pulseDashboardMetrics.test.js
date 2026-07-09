@@ -287,6 +287,36 @@ test('sponsorship section signals are derived from computed metrics', () => {
   assert.equal(signals.teams.promptContext.highestUrgencyTeam, 'Sales & Revenue');
 });
 
+test('sponsorship sub-score insight flags below-threshold even when the combined score clears 28', () => {
+  // Regression: received (13.7) fails its own 14-point threshold while capacity
+  // (14.6) clears it. Combined they sum above 28, but the insight must not
+  // report sponsorship as "above threshold" — that would contradict the
+  // per-card badges and the sponsorship-chain verdict, which both judge each
+  // sub-score independently.
+  const signals = buildSponsorshipSectionSignals({
+    header: {
+      clientName: 'Roseland Enterprise',
+      stage: 'pre',
+      threshold: 28,
+      managerCount: 12,
+      managerAdoptionScore: 30,
+      managerSponsorshipScore: 28.3,
+    },
+    subScores: {
+      received: { avg: 13.7, threshold: 14 },
+      capacity: { avg: 14.6, threshold: 14 },
+    },
+    load: { bands: [] },
+    chain: { states: [] },
+    crossMatrix: { rows: [] },
+    teams: { rows: [], shownRows: [] },
+  });
+  assert.equal(signals.subScores.promptContext.sponsorshipThresholdStatus, 'Below Threshold');
+  assert.ok(signals.subScores.text.includes('below threshold'));
+  assert.ok(!signals.subScores.text.includes('above threshold'));
+  assert.equal(signals.subScores.promptContext.weakerSubScore, 'Received');
+});
+
 test('adoption score card signal highlights absorption implication', () => {
   const signal = buildAdoptionScoreCardSignal({
     clientName: 'Acme',

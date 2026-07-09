@@ -1790,7 +1790,7 @@ export default function PlatformClientPulse() {
             </p>
             <p className="pulse-sa-card__explainer">
               {dashboard?.sponsorshipAnalysis?.section1?.explainer
-                || 'The two average scores shown here reflect the manager cohort only and will differ from organisation-wide figures. Avg Adoption Score (0-40) measures whether the management layer has the capability, capacity, change track record, and upward enablement to absorb and drive the change across their teams. Avg Sponsorship Score (0-40) measures whether managers are both receiving credible sponsorship from senior leadership above them and have the capacity to sponsor their own teams below. A score of 28 or above in either dimension indicates HIGH classification. Both scores must be HIGH for the management layer to be considered ready.'}
+                || "The two average scores shown here reflect the manager cohort only and will differ from organisation-wide figures. Together, they show whether sponsorship is flowing properly through your management layer: not just whether managers are supported from above, but whether they're equipped to pass that support down to their own teams. Both must be HIGH for the sponsorship chain to be considered functioning."}
             </p>
             <div className="pulse-sa-subscores">
               <article className="pulse-sa-subscore">
