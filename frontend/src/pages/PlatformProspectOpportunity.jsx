@@ -3,7 +3,6 @@ import { useOutletContext } from 'react-router-dom';
 import { Check, Target } from 'lucide-react';
 import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
-import RecentActivityPanel from '../components/platform/RecentActivityPanel.jsx';
 import RepositoryFiles from '../components/platform/RepositoryFiles.jsx';
 import '../styles/crm.css';
 
@@ -135,7 +134,7 @@ export default function PlatformProspectOpportunity() {
   const currentStageIndex = STAGES.indexOf(opportunity?.current_stage || 'New');
 
   return (
-    <div className="app-main">
+    <>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <Target size={26} strokeWidth={1.75} aria-hidden />
         <h1 style={{ margin: 0, flex: 1 }}>Opportunity</h1>
@@ -183,7 +182,7 @@ export default function PlatformProspectOpportunity() {
             <div>
               <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 700 }}>Checkpoints</h2>
               <div className="table-wrap">
-                <table className="platform-users-table">
+                <table className="platform-users-table" style={{ minWidth: 620 }}>
                   <thead>
                     <tr>
                       <th>Stage</th>
@@ -269,19 +268,19 @@ export default function PlatformProspectOpportunity() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div className="budget-panel">
                 <div className="budget-panel__title">Progress</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem' }}>
+                <div className="progress-meter">
+                  <div className="progress-meter__value">{progressDraft}%</div>
+                  <div className="budget-bar" style={{ marginBottom: '0.85rem' }}>
+                    <div className="budget-bar__fill" style={{ width: `${progressDraft}%` }} />
+                  </div>
                   <input
                     type="range"
                     min="0"
                     max="100"
                     value={progressDraft}
                     onChange={(e) => setProgressDraft(Number(e.target.value))}
-                    style={{ flex: 1 }}
+                    className="progress-meter__slider"
                   />
-                  <span style={{ fontWeight: 700, minWidth: '3ch', textAlign: 'right' }}>{progressDraft}%</span>
-                </div>
-                <div className="budget-bar" style={{ marginBottom: '0.85rem' }}>
-                  <div className="budget-bar__fill" style={{ width: `${progressDraft}%` }} />
                 </div>
                 <div className="field" style={{ marginBottom: '0.75rem' }}>
                   <label style={{ fontSize: '0.8rem' }}>Summary</label>
@@ -298,12 +297,10 @@ export default function PlatformProspectOpportunity() {
               </div>
 
               <RepositoryFiles resourcePath={resourcePath} files={files} onChange={loadAll} />
-
-              <RecentActivityPanel orgId={orgId} resourcePath="/api/platform/crm/organisations" style={{ marginBottom: 0 }} />
             </div>
           </div>
         </>
       )}
-    </div>
+    </>
   );
 }

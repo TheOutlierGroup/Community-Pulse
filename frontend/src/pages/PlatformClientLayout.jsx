@@ -374,6 +374,8 @@ export default function PlatformClientLayout() {
       section = 'Tasks';
     } else if (tail === 'projects') {
       section = 'Projects';
+    } else if (tail === 'activity') {
+      section = 'Recent activity';
     } else if (tail === 'account') {
       section = 'Configurations';
     } else if (tail === 'my-account') {

@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   Briefcase,
   Target,
+  Handshake,
 } from 'lucide-react';
 import {
   CLIENT_SERVICE_PULSE,
@@ -357,6 +358,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     <Cog size={20} strokeWidth={1.75} aria-hidden />
                     Configurations
                   </NavLink>
+                  {!isLicensee && (
+                    <NavLink to={`/platform/clients/${platformClientOrgId}/activity`} className={sidebarLinkClass}>
+                      <FileText size={20} strokeWidth={1.75} aria-hidden />
+                      Recent activity
+                    </NavLink>
+                  )}
                 </>
               )}
             </>
@@ -372,7 +379,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 Clients
               </NavLink>
               <NavLink to="/platform/crm/organisations" className={sidebarLinkClass}>
-                <Briefcase size={20} strokeWidth={1.75} aria-hidden />
+                <Handshake size={20} strokeWidth={1.75} aria-hidden />
                 Prospects
               </NavLink>
               {!isLicensee && (
