@@ -3,7 +3,6 @@ import { useOutletContext } from 'react-router-dom';
 import { Briefcase, Check, Plus, Trash2, X } from 'lucide-react';
 import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
-import RecentActivityPanel from '../components/platform/RecentActivityPanel.jsx';
 import RepositoryFiles from '../components/platform/RepositoryFiles.jsx';
 import '../styles/crm.css';
 
@@ -117,7 +116,7 @@ export default function PlatformClientProjects() {
   }
 
   return (
-    <div className="app-main">
+    <>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <Briefcase size={26} strokeWidth={1.75} aria-hidden />
         <h1 style={{ margin: 0, flex: 1 }}>Projects</h1>
@@ -208,19 +207,19 @@ export default function PlatformClientProjects() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div className="budget-panel">
               <div className="budget-panel__title">Progress</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem' }}>
+              <div className="progress-meter">
+                <div className="progress-meter__value">{progressDraft}%</div>
+                <div className="budget-bar" style={{ marginBottom: '0.85rem' }}>
+                  <div className="budget-bar__fill" style={{ width: `${progressDraft}%` }} />
+                </div>
                 <input
                   type="range"
                   min="0"
                   max="100"
                   value={progressDraft}
                   onChange={(e) => setProgressDraft(Number(e.target.value))}
-                  style={{ flex: 1 }}
+                  className="progress-meter__slider"
                 />
-                <span style={{ fontWeight: 700, minWidth: '3ch', textAlign: 'right' }}>{progressDraft}%</span>
-              </div>
-              <div className="budget-bar" style={{ marginBottom: '0.85rem' }}>
-                <div className="budget-bar__fill" style={{ width: `${progressDraft}%` }} />
               </div>
               <div className="field" style={{ marginBottom: '0.75rem' }}>
                 <label style={{ fontSize: '0.8rem' }}>Summary</label>
@@ -242,11 +241,9 @@ export default function PlatformClientProjects() {
             </div>
 
             <RepositoryFiles resourcePath={resourcePath} files={files} onChange={loadAll} />
-
-            <RecentActivityPanel orgId={orgId} resourcePath="/api/platform/organizations" style={{ marginBottom: 0 }} />
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -255,6 +255,23 @@
 
 .budget-bar__fill--over { background: var(--danger); }
 
+/* Progress meter — centered slider + big percentage (Client Projects / Prospect Opportunity) */
+.progress-meter {
+  text-align: center;
+}
+
+.progress-meter__value {
+  font-size: 2rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+}
+
+.progress-meter__slider {
+  display: block;
+  width: 85%;
+  margin: 0 auto 1rem;
+}
+
 /* CRM status badges */
 .badge-won   { background: rgba(30,133,93,0.14); color: #1e855d; }
 .badge-lost  { background: rgba(220,38,38,0.12); color: var(--danger); }
@@ -334,7 +351,7 @@
 /* Project task board — reuses pipeline-board layout inside project detail */
 .project-layout {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr) 380px;
   gap: 1.25rem;
   align-items: start;
 }

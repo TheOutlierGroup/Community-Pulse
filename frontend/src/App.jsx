@@ -25,6 +25,7 @@ const PlatformClientUsers = lazyWithReload(
 );
 const PlatformClientTasks = lazy(() => import('./pages/PlatformClientTasks.jsx'));
 const PlatformClientProjects = lazy(() => import('./pages/PlatformClientProjects.jsx'));
+const PlatformClientActivity = lazy(() => import('./pages/PlatformClientActivity.jsx'));
 const PlatformClientRhythmEngineShell = lazy(() => import('./pages/PlatformClientRhythmEngineShell.jsx'));
 const PlatformClientRhythmEngine = lazy(() => import('./pages/PlatformClientRhythmEngine.jsx'));
 const PlatformRhythmEngineInviteUsers = lazy(() => import('./pages/PlatformRhythmEngineInviteUsers.jsx'));
@@ -76,6 +77,7 @@ export default function App() {
               {!IS_RHYTHM_ENGINE_SURFACE && <Route path="users" element={<PlatformClientUsers />} />}
               {!IS_RHYTHM_ENGINE_SURFACE && <Route path="tasks" element={<PlatformClientTasks />} />}
               {!IS_RHYTHM_ENGINE_SURFACE && <Route path="projects" element={<PlatformClientProjects />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="activity" element={<PlatformClientActivity />} />}
               <Route path="rhythm-engine" element={<PlatformClientRhythmEngineShell />}>
                 <Route index element={<PlatformClientRhythmEngine />} />
                 <Route path="users" element={<PlatformRhythmEngineInviteUsers />} />
