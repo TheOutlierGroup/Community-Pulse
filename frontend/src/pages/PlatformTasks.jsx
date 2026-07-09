@@ -30,6 +30,12 @@ import TaskBoardCard from './platformClientTasks/TaskBoardCard.jsx';
 
 const ClientTaskDetailPanel = lazy(() => import('../components/platform/ClientTaskDetailPanel.jsx'));
 
+function assigneeLabel(user) {
+  if (!user) return '';
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  return name || user.email || '';
+}
+
 export default function PlatformTasks() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
@@ -49,8 +55,15 @@ export default function PlatformTasks() {
   const [staffUsers, setStaffUsers] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [assignableUsers, setAssignableUsers] = useState([]);
+  // Separate from `assignableUsers` above, which is only fetched for the
+  // org of whichever task's *detail* is open — the composer creates cards
+  // against the fixed `orgId` (this board's own org), not a per-task org.
+  const [composerAssignableUsers, setComposerAssignableUsers] = useState([]);
   const [composingColumnId, setComposingColumnId] = useState(null);
   const [composerTitle, setComposerTitle] = useState('');
+  const [composerAssignedTo, setComposerAssignedTo] = useState('');
+  const [composerDueDate, setComposerDueDate] = useState('');
+  const [composerTag, setComposerTag] = useState('');
 
   const tasksRef = useRef(tasks);
   const columnItemsRef = useRef(columnItems);
@@ -130,6 +143,22 @@ export default function PlatformTasks() {
     loadTasks();
   }, [ok, orgId, loadTasks]);
 
+  useEffect(() => {
+    if (!ok || !orgId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/platform/organizations/${orgId}/tasks/assignable-users`);
+        if (!cancelled) setComposerAssignableUsers(data.users || []);
+      } catch {
+        if (!cancelled) setComposerAssignableUsers([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ok, orgId]);
+
   const openTaskDetail = useCallback((taskId) => {
     const id = String(taskId);
     setSearchParams(
@@ -173,6 +202,9 @@ export default function PlatformTasks() {
       if (e.key === 'Escape') {
         setComposingColumnId(null);
         setComposerTitle('');
+        setComposerAssignedTo('');
+        setComposerDueDate('');
+        setComposerTag('');
       }
     };
     window.addEventListener('keydown', onKey);
@@ -241,11 +273,17 @@ export default function PlatformTasks() {
     closeTaskDetail();
     setComposingColumnId(columnId);
     setComposerTitle('');
+    setComposerAssignedTo('');
+    setComposerDueDate('');
+    setComposerTag('');
   }
 
   function closeComposer() {
     setComposingColumnId(null);
     setComposerTitle('');
+    setComposerAssignedTo('');
+    setComposerDueDate('');
+    setComposerTag('');
   }
 
   const submitComposer = useCallback(
@@ -256,11 +294,20 @@ export default function PlatformTasks() {
       if (!title) return;
       setBusy(true);
       try {
-        await api.post(`/api/platform/organizations/${orgId}/tasks`, {
+        const { data } = await api.post(`/api/platform/organizations/${orgId}/tasks`, {
           title,
           status: columnId,
+          assignedTo: composerAssignedTo || null,
+          dueDate: composerDueDate || null,
         });
+        const tag = composerTag.trim();
+        if (tag && data?.task?.id) {
+          await api.patch(`/api/platform/organizations/${orgId}/tasks/${data.task.id}`, { labels: [tag] });
+        }
         setComposerTitle('');
+        setComposerAssignedTo('');
+        setComposerDueDate('');
+        setComposerTag('');
         await loadTasks();
         showToast('Card added.', { variant: 'success' });
       } catch (err) {
@@ -269,7 +316,7 @@ export default function PlatformTasks() {
         setBusy(false);
       }
     },
-    [composerTitle, orgId, loadTasks, showToast, isCrossClientMode]
+    [composerTitle, composerAssignedTo, composerDueDate, composerTag, orgId, loadTasks, showToast, isCrossClientMode]
   );
 
   const upsertTaskInBoard = useCallback((nextTask) => {
@@ -516,6 +563,47 @@ export default function PlatformTasks() {
                         autoComplete="off"
                         disabled={busy}
                       />
+                      <div className="task-board__composer-fields">
+                        <label htmlFor={`task-board-composer-assignee-${colId}`} className="visually-hidden">
+                          Assignee
+                        </label>
+                        <select
+                          id={`task-board-composer-assignee-${colId}`}
+                          className="task-board__composer-select"
+                          value={composerAssignedTo}
+                          onChange={(e) => setComposerAssignedTo(e.target.value)}
+                          disabled={busy}
+                        >
+                          <option value="">Unassigned</option>
+                          {composerAssignableUsers.map((u) => (
+                            <option key={u.id} value={u.id}>{assigneeLabel(u)}</option>
+                          ))}
+                        </select>
+                        <label htmlFor={`task-board-composer-due-${colId}`} className="visually-hidden">
+                          Due date
+                        </label>
+                        <input
+                          id={`task-board-composer-due-${colId}`}
+                          type="date"
+                          className="task-board__composer-input-small"
+                          value={composerDueDate}
+                          onChange={(e) => setComposerDueDate(e.target.value)}
+                          disabled={busy}
+                        />
+                        <label htmlFor={`task-board-composer-tag-${colId}`} className="visually-hidden">
+                          Tag
+                        </label>
+                        <input
+                          id={`task-board-composer-tag-${colId}`}
+                          type="text"
+                          className="task-board__composer-input-small"
+                          value={composerTag}
+                          onChange={(e) => setComposerTag(e.target.value)}
+                          placeholder="Tag"
+                          autoComplete="off"
+                          disabled={busy}
+                        />
+                      </div>
                       <div className="task-board__composer-actions">
                         <button
                           type="submit"
