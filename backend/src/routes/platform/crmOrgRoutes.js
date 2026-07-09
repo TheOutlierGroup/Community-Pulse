@@ -585,7 +585,7 @@ router.post('/organisations/:id/contacts', async (req, res) => {
     if (!req.body.contact_firstname?.trim()) return res.status(400).json({ error: 'contact_firstname is required.' });
     if (!await organisationBelongsToOrg(orgId(req), req.params.id))
       return res.status(404).json({ error: 'Organisation not found.' });
-    const contact = await createContact(req.params.id, req.body);
+    const contact = await createContact(req.params.id, req.body, orgId(req), req.user.id);
     auditFromRequest(req)({
       action: AUDIT_ACTIONS.CRM_CONTACT_CREATE,
       targetType: 'crm_contact',
