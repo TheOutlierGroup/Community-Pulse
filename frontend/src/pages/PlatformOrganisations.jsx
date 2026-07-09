@@ -8,7 +8,7 @@ import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
-import { BUSINESS_UNITS, LEAD_STATUSES, LEAD_STATUS_BADGE } from '../config/crmConstants.js';
+import { BUSINESS_UNITS, LEAD_STATUSES, LEAD_STATUS_BADGE, BUSINESS_UNIT_CUSTOM_FIELDS } from '../config/crmConstants.js';
 import '../styles/crm.css';
 
 function fmtDate(d) {
@@ -77,6 +77,13 @@ export default function PlatformOrganisations() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
 
+  // After creating a prospect whose Business Unit has its own custom-field
+  // set (currently just Outlier Skate), collect those fields in a follow-up
+  // modal instead of sending the user straight to Configurations for them.
+  const [customFieldsOrg, setCustomFieldsOrg] = useState(null);
+  const [customFieldsForm, setCustomFieldsForm] = useState({});
+  const [customFieldsBusy, setCustomFieldsBusy] = useState(false);
+
   useDocumentTitle(!loading && ok ? `Prospects | ${DEFAULT_TAB}` : null);
 
   const load = useCallback(async () => {
@@ -120,14 +127,43 @@ export default function PlatformOrganisations() {
     setBusy(true); setFormError('');
     try {
       const { data } = await api.post('/api/platform/crm/organisations', form);
+      const created = data.organisation;
       showToast('Organisation created.', { variant: 'success' });
       setCreateOpen(false);
       setForm({ organisation_name: '', industry: '', website: '', phone: '', business_unit: BUSINESS_UNITS[0], lead_status: 'New', lead_source: '', expected_close_date: '' });
-      navigate(`/platform/crm/organisations/${data.organisation.organisation_id}`);
+      const customFieldDefs = BUSINESS_UNIT_CUSTOM_FIELDS[created.business_unit];
+      if (customFieldDefs?.length) {
+        setCustomFieldsForm({});
+        setCustomFieldsOrg(created);
+      } else {
+        navigate(`/platform/crm/organisations/${created.organisation_id}`);
+      }
     } catch (e) {
       setFormError(e.response?.data?.error || 'Failed to create organisation.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  function goToCreatedOrg() {
+    const orgId = customFieldsOrg.organisation_id;
+    setCustomFieldsOrg(null);
+    navigate(`/platform/crm/organisations/${orgId}`);
+  }
+
+  async function saveCustomFieldsAndContinue(e) {
+    e.preventDefault();
+    setCustomFieldsBusy(true);
+    try {
+      await api.patch(`/api/platform/crm/organisations/${customFieldsOrg.organisation_id}`, {
+        custom_fields: customFieldsForm,
+      });
+      showToast('Details saved.', { variant: 'success' });
+      goToCreatedOrg();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to save details.', { variant: 'error' });
+    } finally {
+      setCustomFieldsBusy(false);
     }
   }
 
@@ -284,6 +320,58 @@ export default function PlatformOrganisations() {
               <div className="modal-dialog__actions">
                 <button className="btn btn-ghost" type="button" onClick={() => setCreateOpen(false)}>Cancel</button>
                 <button className="btn btn-primary" type="submit" disabled={busy}>Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {customFieldsOrg && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog card" role="dialog" aria-modal aria-labelledby="skate-fields-title">
+            <div className="modal-dialog__head">
+              <h2 id="skate-fields-title" style={{ fontSize: '1.15rem', fontWeight: 700 }}>
+                {customFieldsOrg.business_unit} details
+              </h2>
+              <button type="button" className="btn btn-ghost modal-dialog__close" onClick={goToCreatedOrg} aria-label="Close">
+                <X size={22} aria-hidden />
+              </button>
+            </div>
+            <p className="muted" style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>
+              {customFieldsOrg.organisation_name} was created. Add its {customFieldsOrg.business_unit} details now, or skip and fill them in later from Configurations.
+            </p>
+            <form onSubmit={saveCustomFieldsAndContinue} style={{ marginTop: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                {(BUSINESS_UNIT_CUSTOM_FIELDS[customFieldsOrg.business_unit] || []).map((field) => (
+                  <div className="field" key={field.key}>
+                    <label htmlFor={`skate-field-${field.key}`}>{field.label}</label>
+                    {field.type === 'select' ? (
+                      <select
+                        id={`skate-field-${field.key}`}
+                        value={customFieldsForm[field.key] || ''}
+                        onChange={(e) => setCustomFieldsForm((p) => ({ ...p, [field.key]: e.target.value }))}
+                      >
+                        <option value="">—</option>
+                        {field.options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        id={`skate-field-${field.key}`}
+                        type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                        value={customFieldsForm[field.key] ?? ''}
+                        onChange={(e) => setCustomFieldsForm((p) => ({ ...p, [field.key]: e.target.value }))}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="modal-dialog__actions">
+                <button className="btn btn-ghost" type="button" onClick={goToCreatedOrg} disabled={customFieldsBusy}>
+                  Skip for now
+                </button>
+                <button className="btn btn-primary" type="submit" disabled={customFieldsBusy}>
+                  {customFieldsBusy ? 'Saving…' : 'Save details'}
+                </button>
               </div>
             </form>
           </div>

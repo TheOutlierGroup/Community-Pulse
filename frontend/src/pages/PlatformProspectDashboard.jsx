@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Plus, X, ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
+import { BUSINESS_UNIT_CUSTOM_FIELDS } from '../config/crmConstants.js';
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -331,6 +332,11 @@ export default function PlatformProspectDashboard() {
               { label: 'Lead Origin', value: org.lead_source },
               { label: 'Created', value: fmtDate(org.created_date) },
               { label: 'Expected close', value: fmtDate(org.expected_close_date) },
+              ...(BUSINESS_UNIT_CUSTOM_FIELDS[org.business_unit] || []).map((field) => {
+                const raw = org.custom_fields?.[field.key];
+                const value = raw == null || raw === '' ? undefined : field.type === 'date' ? fmtDate(raw) : raw;
+                return { label: field.label, value };
+              }),
             ].map(({ label, value, link }) => (
               <div key={label}>
                 <div style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, marginBottom: '0.15rem' }}>{label}</div>

@@ -2,9 +2,11 @@
 // generic crm_organisations.custom_fields JSONB column so future BUs can
 // get their own field sets without a migration each time. Mirrored on the
 // frontend in frontend/src/config/crmConstants.js — keep both in sync.
+export const AUSTRALIAN_STATES = ['NSW', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'ACT', 'NT'];
+
 export const BUSINESS_UNIT_CUSTOM_FIELDS = {
   'Outlier Skate': [
-    { key: 'state', label: 'State', type: 'text' },
+    { key: 'state', label: 'State', type: 'select', options: AUSTRALIAN_STATES },
     { key: 'town', label: 'Town', type: 'text' },
     { key: 'amountWon', label: 'Amount Won so far', type: 'number' },
     { key: 'nextAuditDate', label: 'Date of Next Audit', type: 'date' },
