@@ -1,6 +1,7 @@
 import { listContacts } from '../models/CrmContact.js';
 import { listNotesForOrg, listNotesForContact } from '../models/CrmNote.js';
 import { listRecentAuditEvents } from './auditLog.js';
+import { getOpportunityForOrganisation, listCheckpoints } from '../models/CrmOpportunity.js';
 
 const ACTIVITY_ACTION_LABELS = {
   'crm.organisation.create': 'Prospect created',
@@ -51,6 +52,22 @@ export async function buildProspectSnapshot({ prospect, platformOrgId }) {
     limit: 500,
   });
 
+  const opportunityRow = await getOpportunityForOrganisation(prospect.organisation_id);
+  const opportunity = opportunityRow
+    ? {
+        currentStage: opportunityRow.current_stage,
+        progressPct: opportunityRow.progress_pct,
+        summary: opportunityRow.summary,
+        checkpoints: (await listCheckpoints(opportunityRow.opportunity_id)).map((c) => ({
+          stage: c.stage,
+          expectedValue: c.expected_value,
+          financialGain: c.financial_gain,
+          targetDate: c.target_date,
+          notes: c.notes,
+        })),
+      }
+    : null;
+
   return {
     capturedAt: new Date().toISOString(),
     organisationName: prospect.organisation_name,
@@ -64,6 +81,7 @@ export async function buildProspectSnapshot({ prospect, platformOrgId }) {
     doNotContact: Boolean(prospect.do_not_contact),
     createdDate: prospect.created_date,
     expectedCloseDate: prospect.expected_close_date,
+    opportunity,
     contacts: contacts.map((c) => ({
       firstName: c.contact_firstname,
       lastName: c.contact_lastname,
@@ -134,6 +152,27 @@ export function prospectSnapshotToCsv(snapshot) {
   lines.push(csvRow(['Expected close', fmtDate(snapshot.expectedCloseDate)]));
   lines.push(csvRow(['Snapshot captured', fmtDate(snapshot.capturedAt)]));
   lines.push('');
+
+  if (snapshot.opportunity) {
+    lines.push(csvRow(['Opportunity']));
+    lines.push(csvRow(['Current stage', snapshot.opportunity.currentStage || '']));
+    lines.push(csvRow(['Progress', `${snapshot.opportunity.progressPct ?? 0}%`]));
+    if (snapshot.opportunity.summary) lines.push(csvRow(['Summary', snapshot.opportunity.summary]));
+    lines.push('');
+
+    lines.push(csvRow(['Sales timeline checkpoints']));
+    lines.push(csvRow(['Stage', 'Expected value', 'Financial gain', 'Target date', 'Notes']));
+    for (const c of snapshot.opportunity.checkpoints || []) {
+      lines.push(csvRow([
+        c.stage || '',
+        c.expectedValue ?? '',
+        c.financialGain ?? '',
+        fmtDate(c.targetDate) || '',
+        c.notes || '',
+      ]));
+    }
+    lines.push('');
+  }
 
   lines.push(csvRow(['Contacts']));
   lines.push(csvRow(['First name', 'Last name', 'Email', 'Phone', 'Role']));

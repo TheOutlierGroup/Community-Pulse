@@ -16,6 +16,7 @@ import {
   UserPlus,
   SlidersHorizontal,
   Briefcase,
+  Target,
 } from 'lucide-react';
 import {
   CLIENT_SERVICE_PULSE,
@@ -334,6 +335,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       Tasks
                     </NavLink>
                   )}
+                  {!isLicensee && (
+                    <NavLink to={`/platform/clients/${platformClientOrgId}/projects`} className={sidebarLinkClass}>
+                      <Briefcase size={20} strokeWidth={1.75} aria-hidden />
+                      Projects
+                    </NavLink>
+                  )}
                   {platformViewedClientPulseEnabled && (
                     <button
                       type="button"
@@ -402,6 +409,10 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
               <NavLink to={`/platform/crm/organisations/${platformProspectId}/tasks`} className={sidebarLinkClass}>
                 <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
                 Tasks
+              </NavLink>
+              <NavLink to={`/platform/crm/organisations/${platformProspectId}/opportunity`} className={sidebarLinkClass}>
+                <Target size={20} strokeWidth={1.75} aria-hidden />
+                Opportunity
               </NavLink>
               <NavLink to={`/platform/crm/organisations/${platformProspectId}/configurations`} className={sidebarLinkClass}>
                 <Cog size={20} strokeWidth={1.75} aria-hidden />

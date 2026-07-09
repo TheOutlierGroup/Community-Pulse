@@ -98,6 +98,7 @@ export default function PlatformProspectLayout() {
     const tail = path.startsWith(base) ? path.slice(base.length).replace(/^\/+/, '') : '';
     let section = 'Dashboard';
     if (tail === 'tasks') section = 'Tasks';
+    else if (tail === 'opportunity') section = 'Opportunity';
     else if (tail === 'configurations') section = 'Configurations';
     else if (tail === 'activity') section = 'Recent activity';
     document.title = `${section} | ${org.organisation_name}`;

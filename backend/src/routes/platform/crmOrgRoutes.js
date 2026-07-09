@@ -28,6 +28,9 @@ import {
 } from './shared.js';
 import * as Organization from '../../models/Organization.js';
 import { buildProspectSnapshot } from '../../services/prospectSnapshot.js';
+import * as CrmOpportunity from '../../models/CrmOpportunity.js';
+import { handleRepositoryFileUpload } from '../../middleware/repositoryFileUpload.js';
+import { opportunityFilePath } from '../../config/storage.js';
 
 const router = Router();
 
@@ -731,6 +734,154 @@ router.delete('/organisations/:id/contacts/:contactId/notes/:noteId/comments/:co
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete comment.' });
+  }
+});
+
+// ── Opportunity ──────────────────────────────────────────────────────────────
+// Per-prospect sales-timeline overview: mirrors the Client "Projects" page
+// (progress + file repository) plus a checkpoint table mapping expected
+// value/financial gain across the four pipeline stages. Carried into
+// buildProspectSnapshot() at promotion time — see services/prospectSnapshot.js.
+
+async function loadOpportunityOr404(req, res) {
+  const org = await getOrganisation(orgId(req), req.params.id);
+  if (!org) {
+    res.status(404).json({ error: 'Organisation not found.' });
+    return null;
+  }
+  const opportunity = await CrmOpportunity.getOrCreateOpportunityForOrganisation(org.organisation_id);
+  return { org, opportunity };
+}
+
+router.get('/organisations/:id/opportunity', async (req, res) => {
+  try {
+    const loaded = await loadOpportunityOr404(req, res);
+    if (!loaded) return;
+    const [checkpoints, files] = await Promise.all([
+      CrmOpportunity.listCheckpoints(loaded.opportunity.opportunity_id),
+      CrmOpportunity.listFiles(loaded.opportunity.opportunity_id),
+    ]);
+    res.json({ opportunity: loaded.opportunity, checkpoints, files });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load opportunity.' });
+  }
+});
+
+router.patch('/organisations/:id/opportunity', async (req, res) => {
+  try {
+    const loaded = await loadOpportunityOr404(req, res);
+    if (!loaded) return;
+    const updated = await CrmOpportunity.updateOpportunity(loaded.opportunity.opportunity_id, req.body || {});
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_OPPORTUNITY_UPDATE,
+      targetType: 'crm_organisation',
+      targetId: String(loaded.org.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: { currentStage: updated?.current_stage, progressPct: updated?.progress_pct },
+    });
+    res.json({ opportunity: updated });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to update opportunity.' });
+  }
+});
+
+router.patch('/organisations/:id/opportunity/checkpoints/:stage', async (req, res) => {
+  try {
+    const loaded = await loadOpportunityOr404(req, res);
+    if (!loaded) return;
+    if (!CrmOpportunity.OPPORTUNITY_STAGES.includes(req.params.stage)) {
+      return res.status(400).json({ error: 'Invalid stage.' });
+    }
+    const checkpoint = await CrmOpportunity.upsertCheckpoint(
+      loaded.opportunity.opportunity_id,
+      req.params.stage,
+      req.body || {},
+    );
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_OPPORTUNITY_CHECKPOINT_UPDATE,
+      targetType: 'crm_organisation',
+      targetId: String(loaded.org.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: {
+        stage: req.params.stage,
+        expectedValue: checkpoint?.expected_value,
+        financialGain: checkpoint?.financial_gain,
+      },
+    });
+    res.json({ checkpoint });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to update checkpoint.' });
+  }
+});
+
+router.post('/organisations/:id/opportunity/files', handleRepositoryFileUpload, async (req, res) => {
+  try {
+    const loaded = await loadOpportunityOr404(req, res);
+    if (!loaded) return;
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+    const ext = String(req.file.originalname || '').match(/\.[a-z0-9]+$/i)?.[0] || '';
+    const filename = `${loaded.opportunity.opportunity_id}-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    await fs.promises.writeFile(opportunityFilePath(filename), req.file.buffer);
+    const file = await CrmOpportunity.createFileRecord(loaded.opportunity.opportunity_id, {
+      filename,
+      originalName: req.file.originalname,
+      sizeBytes: req.file.size,
+      contentType: req.file.mimetype,
+      uploadedBy: req.user.id,
+    });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_OPPORTUNITY_FILE_UPLOAD,
+      targetType: 'crm_organisation',
+      targetId: String(loaded.org.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: { name: req.file.originalname },
+    });
+    res.status(201).json({ file });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to upload file.' });
+  }
+});
+
+router.get('/organisations/:id/opportunity/files/:fileId/download', async (req, res) => {
+  try {
+    const loaded = await loadOpportunityOr404(req, res);
+    if (!loaded) return;
+    const file = await CrmOpportunity.getFile(loaded.opportunity.opportunity_id, req.params.fileId);
+    if (!file) return res.status(404).json({ error: 'File not found.' });
+    res.download(opportunityFilePath(file.filename), file.original_name);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to download file.' });
+  }
+});
+
+router.delete('/organisations/:id/opportunity/files/:fileId', async (req, res) => {
+  try {
+    const loaded = await loadOpportunityOr404(req, res);
+    if (!loaded) return;
+    const file = await CrmOpportunity.getFile(loaded.opportunity.opportunity_id, req.params.fileId);
+    if (!file) return res.status(404).json({ error: 'File not found.' });
+    await CrmOpportunity.deleteFileRecord(loaded.opportunity.opportunity_id, req.params.fileId);
+    try {
+      await fs.promises.unlink(opportunityFilePath(file.filename));
+    } catch {
+      /* ignore */
+    }
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CRM_OPPORTUNITY_FILE_DELETE,
+      targetType: 'crm_organisation',
+      targetId: String(loaded.org.organisation_id),
+      targetOrganizationId: orgId(req),
+      metadata: { name: file.original_name },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to delete file.' });
   }
 });
 
