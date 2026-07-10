@@ -1,6 +1,15 @@
 import { query } from '../config/database.js';
 import { businessUnitsForEnabledServices, enabledServicesFromOrganizationSettings } from '../services/clientServices.js';
 
+// A contact's relationship status is its own field, independent of whatever
+// Prospect/Client it's linked to (see migration 074) — same vocabulary as
+// crm_organisations/organizations for a consistent badge set.
+const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new', 'active-campaign']);
+
+function normalizeContactRelationshipStatus(value) {
+  return RELATIONSHIP_STATUSES.has(value) ? value : 'new';
+}
+
 // ── Prospect-scoped (existing behaviour, column renamed under the hood) ────
 
 export async function listContacts(organisationId) {
@@ -20,13 +29,14 @@ export async function getContact(contactId, organisationId) {
 }
 
 export async function createContact(organisationId, data, platformOrgId, createdBy = null) {
-  const { contact_firstname, contact_lastname, contact_email, contact_phone, contact_role } = data;
+  const { contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status } = data;
   const { rows } = await query(
     `INSERT INTO crm_contacts
-       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, crm_organisation_id, platform_org_id, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, crm_organisation_id, platform_org_id, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
     [
       contact_firstname, contact_lastname || null, contact_email || null, contact_phone || null, contact_role || null,
+      normalizeContactRelationshipStatus(relationship_status),
       organisationId, platformOrgId, createdBy,
     ],
   );
@@ -36,7 +46,7 @@ export async function createContact(organisationId, data, platformOrgId, created
 }
 
 export async function updateContact(contactId, organisationId, data) {
-  const allowed = ['contact_firstname', 'contact_lastname', 'contact_email', 'contact_phone', 'contact_role'];
+  const allowed = ['contact_firstname', 'contact_lastname', 'contact_email', 'contact_phone', 'contact_role', 'relationship_status'];
   const sets = [];
   const values = [];
   let i = 1;
@@ -44,7 +54,7 @@ export async function updateContact(contactId, organisationId, data) {
   for (const key of allowed) {
     if (key in data) {
       sets.push(`${key} = $${i++}`);
-      values.push(data[key] ?? null);
+      values.push(key === 'relationship_status' ? normalizeContactRelationshipStatus(data[key]) : data[key] ?? null);
     }
   }
   if (sets.length === 0) return getContact(contactId, organisationId);
@@ -97,13 +107,14 @@ export async function getContactForClient(contactId, clientOrganizationId) {
 }
 
 export async function createContactForClient(clientOrganizationId, data, platformOrgId, createdBy = null) {
-  const { contact_firstname, contact_lastname, contact_email, contact_phone, contact_role } = data;
+  const { contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status } = data;
   const { rows } = await query(
     `INSERT INTO crm_contacts
-       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, client_organization_id, platform_org_id, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, client_organization_id, platform_org_id, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
     [
       contact_firstname, contact_lastname || null, contact_email || null, contact_phone || null, contact_role || null,
+      normalizeContactRelationshipStatus(relationship_status),
       clientOrganizationId, platformOrgId, createdBy,
     ],
   );
@@ -111,7 +122,7 @@ export async function createContactForClient(clientOrganizationId, data, platfor
 }
 
 export async function updateContactForClient(contactId, clientOrganizationId, data) {
-  const allowed = ['contact_firstname', 'contact_lastname', 'contact_email', 'contact_phone', 'contact_role'];
+  const allowed = ['contact_firstname', 'contact_lastname', 'contact_email', 'contact_phone', 'contact_role', 'relationship_status'];
   const sets = [];
   const values = [];
   let i = 1;
@@ -119,7 +130,7 @@ export async function updateContactForClient(contactId, clientOrganizationId, da
   for (const key of allowed) {
     if (key in data) {
       sets.push(`${key} = $${i++}`);
-      values.push(data[key] ?? null);
+      values.push(key === 'relationship_status' ? normalizeContactRelationshipStatus(data[key]) : data[key] ?? null);
     }
   }
   if (sets.length === 0) return getContactForClient(contactId, clientOrganizationId);
@@ -218,13 +229,14 @@ export async function getContactGlobal(platformOrgId, contactId) {
 }
 
 export async function createContactGlobal(platformOrgId, data, createdBy = null) {
-  const { contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, crm_organisation_id, client_organization_id } = data;
+  const { contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, crm_organisation_id, client_organization_id } = data;
   const { rows } = await query(
     `INSERT INTO crm_contacts
-       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, crm_organisation_id, client_organization_id, platform_org_id, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, crm_organisation_id, client_organization_id, platform_org_id, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [
       contact_firstname, contact_lastname || null, contact_email || null, contact_phone || null, contact_role || null,
+      normalizeContactRelationshipStatus(relationship_status),
       crm_organisation_id || null, client_organization_id || null, platformOrgId, createdBy,
     ],
   );
@@ -232,7 +244,7 @@ export async function createContactGlobal(platformOrgId, data, createdBy = null)
 }
 
 export async function updateContactGlobal(platformOrgId, contactId, data) {
-  const allowed = ['contact_firstname', 'contact_lastname', 'contact_email', 'contact_phone', 'contact_role'];
+  const allowed = ['contact_firstname', 'contact_lastname', 'contact_email', 'contact_phone', 'contact_role', 'relationship_status'];
   const sets = [];
   const values = [];
   let i = 1;
@@ -240,7 +252,7 @@ export async function updateContactGlobal(platformOrgId, contactId, data) {
   for (const key of allowed) {
     if (key in data) {
       sets.push(`${key} = $${i++}`);
-      values.push(data[key] ?? null);
+      values.push(key === 'relationship_status' ? normalizeContactRelationshipStatus(data[key]) : data[key] ?? null);
     }
   }
   // Links are nullable and explicitly settable to null to "unlink" a

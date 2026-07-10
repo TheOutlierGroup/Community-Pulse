@@ -4,6 +4,12 @@ import { Plus, X, ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import { BUSINESS_UNIT_CUSTOM_FIELDS } from '../config/crmConstants.js';
+import {
+  RELATIONSHIP_STATUS_OPTIONS,
+  normalizeRelationshipStatus,
+  relationshipStatusLabel,
+  relationshipStatusBadgeClass,
+} from './platformClientUtils.js';
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -116,6 +122,7 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
     contact_email: contact.contact_email || '',
     contact_phone: contact.contact_phone || '',
     contact_role: contact.contact_role || '',
+    relationship_status: normalizeRelationshipStatus(contact.relationship_status),
   });
   const [notes, setNotes] = useState(null);
   const [noteBusy, setNoteBusy] = useState(false);
@@ -198,8 +205,13 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', cursor: 'pointer', background: 'var(--surface)' }} onClick={toggleExpand}>
         {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-            {contact.contact_firstname} {contact.contact_lastname}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+              {contact.contact_firstname} {contact.contact_lastname}
+            </span>
+            <span className={`badge ${relationshipStatusBadgeClass(contact.relationship_status)}`}>
+              {relationshipStatusLabel(contact.relationship_status)}
+            </span>
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
             {[contact.contact_role, contact.contact_email].filter(Boolean).join(' · ') || 'No details'}
@@ -215,7 +227,7 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
 
       {editing && (
         <form onSubmit={saveContact} style={{ padding: '0.85rem 1rem', background: 'var(--surface2)', borderTop: '1px solid var(--border)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.6rem' }}>
             {[
               { key: 'contact_firstname', label: 'First name *', required: true },
               { key: 'contact_lastname', label: 'Last name' },
@@ -228,9 +240,17 @@ function ContactRow({ contact, orgId, onUpdated, onDeleted }) {
               </div>
             ))}
           </div>
-          <div className="field" style={{ marginTop: '0.6rem', marginBottom: '0.6rem' }}>
-            <label style={{ fontSize: '0.8rem' }}>Role / title</label>
-            <input value={form.contact_role} onChange={(e) => setForm((p) => ({ ...p, contact_role: e.target.value }))} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.6rem', marginTop: '0.6rem', marginBottom: '0.6rem' }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label style={{ fontSize: '0.8rem' }}>Role / title</label>
+              <input value={form.contact_role} onChange={(e) => setForm((p) => ({ ...p, contact_role: e.target.value }))} />
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label style={{ fontSize: '0.8rem' }}>Relationship status</label>
+              <select value={form.relationship_status} onChange={(e) => setForm((p) => ({ ...p, relationship_status: e.target.value }))}>
+                {RELATIONSHIP_STATUS_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="btn btn-primary" type="submit" disabled={saveBusy} style={{ fontSize: '0.85rem' }}>Save</button>
@@ -265,7 +285,9 @@ export default function PlatformProspectDashboard() {
   const { showToast } = useToast();
 
   const [addingContact, setAddingContact] = useState(false);
-  const [contactForm, setContactForm] = useState({ contact_firstname: '', contact_lastname: '', contact_email: '', contact_phone: '', contact_role: '' });
+  const [contactForm, setContactForm] = useState({
+    contact_firstname: '', contact_lastname: '', contact_email: '', contact_phone: '', contact_role: '', relationship_status: 'new',
+  });
   const [contactBusy, setContactBusy] = useState(false);
   const [noteBusy, setNoteBusy] = useState(false);
 
@@ -276,7 +298,7 @@ export default function PlatformProspectDashboard() {
     try {
       const { data } = await api.post(`/api/platform/crm/organisations/${orgId}/contacts`, contactForm);
       setContacts((p) => [...p, data.contact]);
-      setContactForm({ contact_firstname: '', contact_lastname: '', contact_email: '', contact_phone: '', contact_role: '' });
+      setContactForm({ contact_firstname: '', contact_lastname: '', contact_email: '', contact_phone: '', contact_role: '', relationship_status: 'new' });
       setAddingContact(false);
       showToast('Contact added.', { variant: 'success' });
     } catch (err) {
@@ -364,7 +386,7 @@ export default function PlatformProspectDashboard() {
 
           {addingContact && (
             <form onSubmit={addContact} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '1rem', marginBottom: '1rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.6rem' }}>
                 {[
                   { key: 'contact_firstname', label: 'First name *', required: true },
                   { key: 'contact_lastname', label: 'Last name' },
@@ -377,9 +399,17 @@ export default function PlatformProspectDashboard() {
                   </div>
                 ))}
               </div>
-              <div className="field" style={{ marginTop: '0.6rem' }}>
-                <label style={{ fontSize: '0.8rem' }}>Role / title</label>
-                <input value={contactForm.contact_role} onChange={(e) => setContactForm((p) => ({ ...p, contact_role: e.target.value }))} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.6rem', marginTop: '0.6rem' }}>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '0.8rem' }}>Role / title</label>
+                  <input value={contactForm.contact_role} onChange={(e) => setContactForm((p) => ({ ...p, contact_role: e.target.value }))} />
+                </div>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '0.8rem' }}>Relationship status</label>
+                  <select value={contactForm.relationship_status} onChange={(e) => setContactForm((p) => ({ ...p, relationship_status: e.target.value }))}>
+                    {RELATIONSHIP_STATUS_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select>
+                </div>
               </div>
               <button className="btn btn-primary" type="submit" disabled={contactBusy} style={{ marginTop: '0.5rem', width: '100%' }}>Add contact</button>
             </form>
