@@ -44,6 +44,9 @@ export const authLimiter = rateLimit({
   max: 50,
   standardHeaders: true,
   legacyHeaders: false,
+  // Object message -> real JSON body (see platformRouter.js's platformLimiter
+  // for why the default string message breaks every caller's `.error` read).
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
 function publicUser(u) {

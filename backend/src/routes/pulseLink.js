@@ -35,6 +35,7 @@ export function createPulseLinkRoutes({
     max: 200,
     standardHeaders: true,
     legacyHeaders: false,
+    message: { error: 'Too many requests. Please wait a few minutes and try again.' },
   });
 
   router.use(pulseLinkLimiter);
