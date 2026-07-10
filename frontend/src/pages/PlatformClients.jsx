@@ -126,6 +126,7 @@ export default function PlatformClients() {
       if (term && !String(o.name || '').toLowerCase().includes(term)) return false;
       const isPrevious = normalizeClientStatus(o.client_status) === 'client-previous';
       if (clientView === 'previous' && !isPrevious) return false;
+      if (clientView === 'current' && isPrevious) return false;
       if (serviceFilter && !normalizeServices(o.settings).includes(serviceFilter)) return false;
       return true;
     });
@@ -133,13 +134,6 @@ export default function PlatformClients() {
     const dirMultiplier = eff.direction === 'asc' ? 1 : -1;
     const getValue = SORTABLE_COLUMNS[eff.column];
     return [...filtered].sort((a, b) => {
-      // In the "current" view, previous clients always sink to the bottom
-      // regardless of which column is actively sorted.
-      if (clientView === 'current') {
-        const aPrevious = normalizeClientStatus(a.client_status) === 'client-previous';
-        const bPrevious = normalizeClientStatus(b.client_status) === 'client-previous';
-        if (aPrevious !== bPrevious) return aPrevious ? 1 : -1;
-      }
       const av = getValue(a);
       const bv = getValue(b);
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dirMultiplier;
@@ -287,13 +281,10 @@ export default function PlatformClients() {
                 </tr>
               )}
               {sortedOrgs.map((o) => {
-                const isPrevious = normalizeClientStatus(o.client_status) === 'client-previous';
                 return (
                 <tr
                   key={o.id}
-                  className={`platform-clients-table__row platform-clients-table__row--clickable${
-                    clientView === 'current' && isPrevious ? ' platform-clients-table__row--previous' : ''
-                  }`}
+                  className="platform-clients-table__row platform-clients-table__row--clickable"
                   tabIndex={0}
                   role="button"
                   aria-label={`Open ${o.name}`}

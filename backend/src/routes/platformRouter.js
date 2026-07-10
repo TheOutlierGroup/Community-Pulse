@@ -32,6 +32,13 @@ const platformLimiter = rateLimit({
   max: Number.isFinite(platformRateLimitMax) && platformRateLimitMax > 0 ? platformRateLimitMax : 300,
   standardHeaders: true,
   legacyHeaders: false,
+  // express-rate-limit's default `message` is a plain string, which Express
+  // sends as text/html — every page's error handling does
+  // `e.response?.data?.error || '<generic fallback>'`, so a plain-text body
+  // makes `.error` undefined and every widget silently shows its own vague
+  // fallback instead of explaining the real problem (looks like the whole
+  // app broke). An object message makes res.send() emit real JSON instead.
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' },
   keyGenerator: (req) => {
     const userId = req.user?.id;
     if (userId) return `user:${userId}`;
