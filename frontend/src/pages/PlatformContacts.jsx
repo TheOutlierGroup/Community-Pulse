@@ -25,22 +25,8 @@ const LINK_TYPE_OPTIONS = [
 
 const EMPTY_FORM = {
   contact_firstname: '', contact_lastname: '', contact_email: '', contact_phone: '', contact_role: '',
-  crm_organisation_id: '', client_organization_id: '',
+  relationship_status: 'new', crm_organisation_id: '', client_organization_id: '',
 };
-
-// A contact's relationship status belongs to whichever org it's linked to
-// (Client takes priority over Prospect, matching the "linked to" badge
-// order) — there's no separate per-contact status field. Unlinked contacts
-// have no relationship to track.
-function resolvedRelationshipStatus(contact) {
-  if (contact.client_organization_id) {
-    return { status: contact.client_relationship_status, source: 'client' };
-  }
-  if (contact.crm_organisation_id) {
-    return { status: contact.prospect_relationship_status, source: 'prospect' };
-  }
-  return { status: null, source: null };
-}
 
 // Same 3-state sort cycle as the Prospects/Clients tables: default ->
 // ascending -> descending -> default (most-recently-updated-first).
@@ -48,10 +34,7 @@ const SORTABLE_COLUMNS = {
   name: (c) => `${c.contact_firstname || ''} ${c.contact_lastname || ''}`.trim(),
   role: (c) => String(c.contact_role || ''),
   linked: (c) => String(c.client_name || c.prospect_name || ''),
-  status: (c) => {
-    const resolved = resolvedRelationshipStatus(c);
-    return resolved.source ? relationshipStatusLabel(resolved.status) : '';
-  },
+  status: (c) => relationshipStatusLabel(c.relationship_status),
   updated: (c) => new Date(c.updated_at || 0).getTime(),
 };
 
@@ -106,9 +89,20 @@ function ContactFormFields({ form, setForm, prospects, clients }) {
           <input type="tel" value={form.contact_phone} onChange={(e) => setForm((p) => ({ ...p, contact_phone: e.target.value }))} />
         </div>
       </div>
-      <div className="field">
-        <label>Role / title</label>
-        <input value={form.contact_role} onChange={(e) => setForm((p) => ({ ...p, contact_role: e.target.value }))} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.75rem' }}>
+        <div className="field">
+          <label>Role / title</label>
+          <input value={form.contact_role} onChange={(e) => setForm((p) => ({ ...p, contact_role: e.target.value }))} />
+        </div>
+        <div className="field">
+          <label>Relationship status</label>
+          <select
+            value={form.relationship_status}
+            onChange={(e) => setForm((p) => ({ ...p, relationship_status: e.target.value }))}
+          >
+            {RELATIONSHIP_STATUS_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '0.75rem' }}>
         <div className="field">
@@ -245,6 +239,7 @@ export default function PlatformContacts() {
       contact_email: contact.contact_email || '',
       contact_phone: contact.contact_phone || '',
       contact_role: contact.contact_role || '',
+      relationship_status: normalizeRelationshipStatus(contact.relationship_status),
       crm_organisation_id: contact.crm_organisation_id ? String(contact.crm_organisation_id) : '',
       client_organization_id: contact.client_organization_id || '',
     });
@@ -321,22 +316,12 @@ export default function PlatformContacts() {
   function RelationshipStatusCell({ contact }) {
     const [editing, setEditing] = useState(false);
     const [busy, setBusy] = useState(false);
-    const resolved = resolvedRelationshipStatus(contact);
-
-    if (!resolved.source) {
-      return <span className="muted" style={{ fontSize: '0.82rem' }}>—</span>;
-    }
 
     async function changeStatus(value) {
       setBusy(true);
       try {
-        if (resolved.source === 'client') {
-          await api.patch(`/api/platform/organizations/${contact.client_organization_id}`, { relationshipStatus: value });
-          patchContactLocal(contact.contact_id, { client_relationship_status: value });
-        } else {
-          await api.patch(`/api/platform/crm/organisations/${contact.crm_organisation_id}`, { relationship_status: value });
-          patchContactLocal(contact.contact_id, { prospect_relationship_status: value });
-        }
+        await api.patch(`/api/platform/contacts/${contact.contact_id}`, { relationship_status: value });
+        patchContactLocal(contact.contact_id, { relationship_status: value });
         showToast('Relationship status updated.', { variant: 'success' });
       } catch (err) {
         showToast(err.response?.data?.error || 'Failed to update relationship status.', { variant: 'error' });
@@ -350,7 +335,7 @@ export default function PlatformContacts() {
       return (
         <select
           autoFocus
-          value={normalizeRelationshipStatus(resolved.status)}
+          value={normalizeRelationshipStatus(contact.relationship_status)}
           onChange={(e) => changeStatus(e.target.value)}
           onBlur={() => setEditing(false)}
           onClick={(e) => e.stopPropagation()}
@@ -365,12 +350,12 @@ export default function PlatformContacts() {
     return (
       <button
         type="button"
-        className={`badge ${relationshipStatusBadgeClass(resolved.status)} badge--link`}
+        className={`badge ${relationshipStatusBadgeClass(contact.relationship_status)} badge--link`}
         style={{ maxWidth: 140 }}
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         disabled={busy}
       >
-        {relationshipStatusLabel(resolved.status)}
+        {relationshipStatusLabel(contact.relationship_status)}
       </button>
     );
   }

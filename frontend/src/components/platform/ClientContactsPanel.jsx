@@ -2,8 +2,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import api from '../../services/api.js';
 import { useToast } from '../shared/ToastProvider.jsx';
+import {
+  RELATIONSHIP_STATUS_OPTIONS,
+  normalizeRelationshipStatus,
+  relationshipStatusLabel,
+  relationshipStatusBadgeClass,
+} from '../../pages/platformClientUtils.js';
 
-const EMPTY_FORM = { contact_firstname: '', contact_lastname: '', contact_email: '', contact_phone: '', contact_role: '' };
+const EMPTY_FORM = {
+  contact_firstname: '', contact_lastname: '', contact_email: '', contact_phone: '', contact_role: '', relationship_status: 'new',
+};
 
 function ContactFields({ form, setForm, disabled }) {
   return (
@@ -26,6 +34,16 @@ function ContactFields({ form, setForm, disabled }) {
           />
         </div>
       ))}
+      <div className="field" style={{ marginBottom: 0 }}>
+        <label style={{ fontSize: '0.8rem' }}>Relationship status</label>
+        <select
+          value={form.relationship_status}
+          onChange={(e) => setForm((p) => ({ ...p, relationship_status: e.target.value }))}
+          disabled={disabled}
+        >
+          {RELATIONSHIP_STATUS_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+      </div>
     </div>
   );
 }
@@ -88,6 +106,7 @@ export default function ClientContactsPanel({ orgId }) {
       contact_email: contact.contact_email || '',
       contact_phone: contact.contact_phone || '',
       contact_role: contact.contact_role || '',
+      relationship_status: normalizeRelationshipStatus(contact.relationship_status),
     });
   }
 
@@ -144,7 +163,12 @@ export default function ClientContactsPanel({ orgId }) {
         <div key={c.contact_id} style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: '0.6rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'var(--surface)' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{c.contact_firstname} {c.contact_lastname}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{c.contact_firstname} {c.contact_lastname}</span>
+                <span className={`badge ${relationshipStatusBadgeClass(c.relationship_status)}`}>
+                  {relationshipStatusLabel(c.relationship_status)}
+                </span>
+              </div>
               <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
                 {[c.contact_role, c.contact_email].filter(Boolean).join(' · ') || 'No details'}
               </div>
