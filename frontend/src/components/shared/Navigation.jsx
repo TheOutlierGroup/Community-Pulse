@@ -234,12 +234,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       <option value="pre">Pre{preOption ? ` · ${preOption.label}` : ''}</option>
                       {primaryDuringOption ? (
                         <option key={primaryDuringOption.id} value={`during:${primaryDuringOption.id}`}>
-                          During
+                          {`During · ${formatDateKeyDdMmYy(primaryDuringOption.dateKey)}`}
                         </option>
                       ) : null}
                       {additionalDuringOptions.map((option) => (
                         <option key={option.id} value={`during:${option.id}`}>
-                          {`During ${formatDateKeyDdMmYy(option.dateKey)}${
+                          {`During · ${formatDateKeyDdMmYy(option.dateKey)}${
                             (additionalDuringDateCounts.get(String(option.dateKey || '').trim()) || 0) > 1
                               ? ` ${formatTimeHm(option.createdAt)}`
                               : ''

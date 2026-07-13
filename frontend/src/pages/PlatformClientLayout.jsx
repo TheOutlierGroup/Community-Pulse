@@ -249,6 +249,25 @@ export default function PlatformClientLayout() {
     }
   }, [orgId, loadPulseTimepoints]);
 
+  const toggleDuringCheckpointStatus = useCallback(async (sessionId, active) => {
+    if (!orgId || !sessionId) return { ok: false, error: 'Missing checkpoint.' };
+    setPulseTimepointBusy(true);
+    setPulseTimepointError('');
+    try {
+      await api.patch(`/api/platform/organizations/${orgId}/rhythm-engine-timepoints/during/${sessionId}/status`, {
+        active,
+      });
+      await loadPulseTimepoints();
+      return { ok: true };
+    } catch (e) {
+      const message = e?.response?.data?.error || 'Could not update the checkpoint status.';
+      setPulseTimepointError(message);
+      return { ok: false, error: message };
+    } finally {
+      setPulseTimepointBusy(false);
+    }
+  }, [orgId, loadPulseTimepoints]);
+
   const updatePulseSessionLabelDate = useCallback(async (sessionId, labelDate) => {
     if (!orgId || !sessionId) return { ok: false, error: 'Missing checkpoint.' };
     setPulseTimepointBusy(true);
@@ -488,6 +507,7 @@ export default function PlatformClientLayout() {
           pulseTimepointError,
           createPulseDuringTimepoint,
           deletePulseDuringTimepoint,
+          toggleDuringCheckpointStatus,
           updatePulseSessionLabelDate,
           trendAnalysisVisible,
         }}

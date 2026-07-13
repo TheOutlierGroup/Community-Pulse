@@ -725,6 +725,71 @@ async function upsertPulseInviteRecipients({
   };
 }
 
+/**
+ * Carries Pre's current recipient roster forward automatically, so admins
+ * don't have to re-enter the same people at every checkpoint. Runs the same
+ * upsert path the manual "Copy from Pre" button already uses. Opt-out via
+ * organizations.settings.pulseCarryForwardRecipients === false (Settings
+ * toggle). Best-effort — a copy failure never blocks checkpoint creation.
+ */
+async function autoCarryForwardRecipientsForDuringCheckpoint(org, duringSessionId) {
+  if (org?.settings?.pulseCarryForwardRecipients === false) return;
+  const expectedGroupLevelLabels = normalizedGroupLevelLabelsFromSettings(org.settings);
+
+  async function copyFrom(sourcePhase, sourceDuringSessionId, targetPhase, targetDuringSessionId) {
+    const sourceInvites = await PulseLinkInvite.listInviteRowsForOrg(org.id, {
+      timepointPhase: sourcePhase,
+      duringSessionId: sourceDuringSessionId,
+    });
+    if (sourceInvites.length === 0) return;
+    const recipients = sourceInvites.map((row) => {
+      const fallbackName = String(row?.email || '').split('@')[0].trim();
+      const recipient = {
+        name: String(row?.display_name || '').trim() || fallbackName || 'Recipient',
+        email: String(row?.email || '').trim().toLowerCase(),
+        role: row?.survey_role === 'manager' ? 'manager' : 'staff',
+      };
+      if (recipient.role === 'manager') {
+        recipient.managerId = recipient.email;
+      } else if (row?.manager_email) {
+        recipient.managerId = String(row.manager_email).trim().toLowerCase();
+      }
+      if (
+        expectedGroupLevelLabels.length > 0
+        && Array.isArray(row?.group_level_values)
+        && row.group_level_values.length > 0
+      ) {
+        recipient.groupValues = row.group_level_values;
+      }
+      return recipient;
+    });
+    await upsertPulseInviteRecipients({
+      organizationId: org.id,
+      timepointPhase: targetPhase,
+      duringSessionId: targetDuringSessionId,
+      recipients,
+      allowUnassignedStaff: true,
+      expectedGroupLevelLabels,
+    });
+  }
+
+  try {
+    // Seed the new During checkpoint from Pre's current roster.
+    await copyFrom('pre', null, 'mid', duringSessionId);
+
+    // Post has no creation event of its own to hook (it's a bootstrap
+    // singleton created before Pre has any recipients), so opportunistically
+    // prime it here too, but only if nobody's been added there yet — this
+    // shouldn't clobber a roster an admin already built up manually.
+    const postInvites = await PulseLinkInvite.listInviteRowsForOrg(org.id, { timepointPhase: 'post' });
+    if (postInvites.length === 0) {
+      await copyFrom('pre', null, 'post', null);
+    }
+  } catch (error) {
+    console.error('Auto carry-forward of pulse recipients failed:', error);
+  }
+}
+
 const DEFAULT_PULSE_SESSION_PURPOSES = ['pre_project', 'during_project', 'completed_project'];
 const DEFAULT_PULSE_SESSION_AUDIENCES = ['staff', 'manager'];
 
@@ -2853,6 +2918,8 @@ export function registerPlatformOrgRoutes(router) {
         throw error;
       }
 
+      await autoCarryForwardRecipientsForDuringCheckpoint(org, staffSession.id);
+
       auditFromRequest(req)({
         action: AUDIT_ACTIONS.PULSE_DURING_CHECKPOINT_OPEN,
         targetType: 'pulse_session',
@@ -2879,6 +2946,25 @@ export function registerPlatformOrgRoutes(router) {
       return next(error);
     }
   });
+
+  // Toggle for autoCarryForwardRecipientsForDuringCheckpoint — lets admins
+  // turn off the default "carry Pre's roster forward automatically"
+  // behaviour for this client if they'd rather build each checkpoint's
+  // recipient list from scratch.
+  router.patch(
+    '/organizations/:id/pulse-timepoints/carry-forward-setting',
+    requirePlatformAdminRole,
+    async (req, res) => {
+      const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+      const enabled = Boolean(req.body?.enabled);
+      const updated = await Organization.updateOrganizationSettings(org.id, {
+        pulseCarryForwardRecipients: enabled,
+      });
+      if (!updated) return res.status(500).json({ error: 'Could not update setting' });
+      res.json({ pulseCarryForwardRecipients: updated.settings?.pulseCarryForwardRecipients !== false });
+    }
+  );
 
   // Rhythm Engine settings: platform admins only, matching the settings
   // panel that owns During checkpoint creation/deletion. Soft-deletes the
@@ -2924,6 +3010,61 @@ export function registerPlatformOrgRoutes(router) {
         },
       });
       return res.json({ deletedSessionIds: deleted.map((s) => s.id) });
+    }
+  );
+
+  // Lets admins explicitly flip a During checkpoint active/inactive from
+  // Settings, independent of creating a new one. Activating still closes
+  // whichever other session is currently active for that audience (see
+  // PulseSession.updateSessionStatus) — only one checkpoint can be "live"
+  // for staff/managers to submit to at a time. Deactivating uses 'paused'
+  // rather than 'closed' so it stays distinct from a permanently-retired
+  // checkpoint and can be flipped back on freely. This never touches
+  // licence metering — assessments are only ever consumed at checkpoint
+  // creation (POST .../pulse-timepoints/during).
+  router.patch(
+    '/organizations/:id/pulse-timepoints/during/:sessionId/status',
+    requirePlatformAdminRole,
+    async (req, res) => {
+      const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+      if (!org) return res.status(404).json({ error: 'Organization not found' });
+      if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
+        return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
+      }
+
+      const active = Boolean(req.body?.active);
+      const nextStatus = active ? 'active' : 'paused';
+
+      const sessions = await PulseSession.listSessionsForOrg(org.id);
+      const pair = pairedDuringSessionsForSelection(sessions, req.params.sessionId);
+      if (pair.length === 0) {
+        return res.status(404).json({ error: 'During checkpoint not found' });
+      }
+
+      const updated = [];
+      for (const session of pair) {
+        const result = await PulseSession.updateSessionStatus(session.id, org.id, nextStatus, {
+          actorUserId: req.user?.id || null,
+          metadata: { route: 'platform.during_checkpoint.status', active },
+        });
+        if (result) updated.push(result);
+      }
+      if (updated.length === 0) {
+        return res.status(404).json({ error: 'During checkpoint not found' });
+      }
+
+      auditFromRequest(req)({
+        action: AUDIT_ACTIONS.PULSE_DURING_CHECKPOINT_STATUS_UPDATE,
+        targetType: 'pulse_session',
+        targetId: req.params.sessionId,
+        targetOrganizationId: org.id,
+        metadata: {
+          active,
+          checkpointDate: pulseSessionDateKey(updated[0]),
+          updatedSessionIds: updated.map((s) => s.id),
+        },
+      });
+      return res.json({ sessions: updated.map(publicPulseSessionRow) });
     }
   );
 
@@ -2993,10 +3134,20 @@ export function registerPlatformOrgRoutes(router) {
       candidateSessions[0] ||
       null;
 
+    // A specific During checkpoint (picked explicitly via duringSessionId, e.g.
+    // from the Trend Analysis checkpoint picker) must pull both its staff and
+    // manager sessions regardless of active/paused status — otherwise a
+    // deactivated checkpoint silently drops one audience's responses by
+    // falling through to the activeSessions/currentSession fallback below,
+    // which only ever resolves to a single session.
+    const explicitDuringSelection =
+      requestedTimepoint === 'during' && Boolean(requestedDuringSessionId) && sessionFiltered.length > 0;
     const sessionsForCurrentRows =
       requestedTimepoint === 'pre' || requestedTimepoint === 'completed'
         ? sessions
-        : (activeSessions.length > 0 ? activeSessions : currentSession ? [currentSession] : []);
+        : explicitDuringSelection
+          ? sessionFiltered
+          : (activeSessions.length > 0 ? activeSessions : currentSession ? [currentSession] : []);
     const currentRows =
       sessionsForCurrentRows.length > 0
         ? (

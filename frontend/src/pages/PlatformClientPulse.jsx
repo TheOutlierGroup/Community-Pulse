@@ -583,11 +583,20 @@ function chainStatePillClass(state) {
   return '';
 }
 
-const TREND_STAGE_ORDER = [
-  { key: 'pre', timepoint: 'pre', label: 'Pre-Change' },
-  { key: 'mid', timepoint: 'during', label: 'During-Change' },
-  { key: 'post', timepoint: 'completed', label: 'Post-Change' },
-];
+const TREND_PRE_KEY = 'pre';
+const TREND_POST_KEY = 'post';
+
+function trendDuringKey(sessionId) {
+  return `during:${sessionId}`;
+}
+
+function formatTrendCheckpointDate(dateKey) {
+  const raw = String(dateKey || '').trim();
+  if (!raw) return 'Unknown date';
+  const dt = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(dt.getTime())) return raw;
+  return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 function average(values) {
   const filtered = values.filter((value) => Number.isFinite(value));
@@ -744,6 +753,10 @@ export default function PlatformClientPulse() {
   const [trendSignals, setTrendSignals] = useState({});
   const [trendLoading, setTrendLoading] = useState(true);
   const [trendError, setTrendError] = useState('');
+  // null = not yet defaulted. Once set, holds the During checkpoint ids the
+  // admin wants plotted alongside Pre/Post — lets a long engagement with
+  // several During checkpoints show more than the old fixed 3 time points.
+  const [selectedTrendDuringIds, setSelectedTrendDuringIds] = useState(null);
   const loadRequestIdRef = useRef(0);
 
   const enabledServices = normalizeServices(org.settings);
@@ -1089,6 +1102,25 @@ export default function PlatformClientPulse() {
       : []),
     [pulseTimepointOptions]
   );
+
+  useEffect(() => {
+    if (selectedTrendDuringIds !== null) return;
+    if (orderedDuringOptions.length === 0) return;
+    // Default to just the most recent During checkpoint, matching the
+    // single "During-Change" point Trend Analysis has always shown —
+    // admins can tick additional checkpoints in the picker below.
+    setSelectedTrendDuringIds([orderedDuringOptions[0].id]);
+  }, [orderedDuringOptions, selectedTrendDuringIds]);
+
+  function toggleTrendDuringId(sessionId) {
+    setSelectedTrendDuringIds((prev) => {
+      const current = prev || [];
+      return current.includes(sessionId)
+        ? current.filter((id) => id !== sessionId)
+        : [...current, sessionId];
+    });
+  }
+
   const selectedDuringIndex = useMemo(() => {
     if (pulseTimepoint !== 'during') return -1;
     if (!orderedDuringOptions.length) return -1;
@@ -1113,41 +1145,60 @@ export default function PlatformClientPulse() {
     year: 'numeric',
   });
   const orderedTrendStages = useMemo(() => {
-    const fullOrder = TREND_STAGE_ORDER.map((stage) => {
-      const snapshot = trendSnapshots[stage.key];
-      return snapshot || {
-        key: stage.key,
-        label: stage.label,
-        available: false,
-        adoptionScore: null,
-        sponsorshipScore: null,
-        quadrant: '--',
-        receivedAvg: null,
-        capacityAvg: null,
-        loadBands: {
-          Sustainable: 0,
-          Stretched: 0,
-          'At Capacity': 0,
-          Overloaded: 0,
-        },
-        chainStates: {
-          'Chain Functioning': 0,
-          'Breaking at Manager Level': 0,
-          'Managers Resilient, Under-Supported': 0,
-          'Sponsorship Failed at Both Levels': 0,
-        },
-        dimensions: {
-          employee: Object.fromEntries(DIMENSION_ORDER.map((id) => [id, null])),
-          manager: Object.fromEntries(DIMENSION_ORDER.map((id) => [id, null])),
-        },
-        employeeSponsorshipAvg: null,
-        managerSponsorshipAvg: null,
-        perceptionGap: null,
-      };
+    const emptyStage = (key, label) => ({
+      key,
+      label,
+      available: false,
+      adoptionScore: null,
+      sponsorshipScore: null,
+      quadrant: '--',
+      receivedAvg: null,
+      capacityAvg: null,
+      loadBands: {
+        Sustainable: 0,
+        Stretched: 0,
+        'At Capacity': 0,
+        Overloaded: 0,
+      },
+      chainStates: {
+        'Chain Functioning': 0,
+        'Breaking at Manager Level': 0,
+        'Managers Resilient, Under-Supported': 0,
+        'Sponsorship Failed at Both Levels': 0,
+      },
+      dimensions: {
+        employee: Object.fromEntries(DIMENSION_ORDER.map((id) => [id, null])),
+        manager: Object.fromEntries(DIMENSION_ORDER.map((id) => [id, null])),
+      },
+      employeeSponsorshipAvg: null,
+      managerSponsorshipAvg: null,
+      perceptionGap: null,
     });
+
+    const selectedDuringSorted = (selectedTrendDuringIds || [])
+      .map((id) => orderedDuringOptions.find((option) => option.id === id))
+      .filter(Boolean)
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    const multipleDuring = selectedDuringSorted.length > 1;
+
+    const preSnapshot = trendSnapshots[TREND_PRE_KEY];
+    const postSnapshot = trendSnapshots[TREND_POST_KEY];
+
+    const fullOrder = [
+      preSnapshot || emptyStage(TREND_PRE_KEY, 'Pre-Change'),
+      ...selectedDuringSorted.map((option) => {
+        const key = trendDuringKey(option.id);
+        const label = multipleDuring
+          ? `During-Change · ${formatTrendCheckpointDate(option.dateKey)}`
+          : 'During-Change';
+        const snapshot = trendSnapshots[key];
+        return snapshot ? { ...snapshot, label } : emptyStage(key, label);
+      }),
+      postSnapshot || emptyStage(TREND_POST_KEY, 'Post-Change'),
+    ];
     const availableStages = fullOrder.filter((stage) => stage.available);
     return availableStages.length > 0 ? availableStages : fullOrder;
-  }, [trendSnapshots]);
+  }, [trendSnapshots, selectedTrendDuringIds, orderedDuringOptions]);
   const trendDivergenceFlags = useMemo(
     () => buildCrossStageDivergenceFlags(orderedTrendStages, 1.0),
     [orderedTrendStages]
@@ -1325,28 +1376,42 @@ export default function PlatformClientPulse() {
         sharedParams.includeManagerSelf = includeManagerSelf ? 'true' : 'false';
       }
 
-      // Trend analysis always renders the canonical stage aggregates, independent of the
-      // dropdown checkpoint selection on the rest of the page.
-      const preParams = { ...sharedParams, timepoint: 'pre' };
-      const duringParams = { ...sharedParams, timepoint: 'during' };
-      const postParams = { ...sharedParams, timepoint: 'completed' };
+      // Pre/Post are the two canonical singleton checkpoints. During is
+      // whatever the admin has ticked in the checkpoint picker — each gets
+      // its own request via duringSessionId so it plots as its own point,
+      // rather than always collapsing every active During session into one
+      // bucket. Falls back to the newest During checkpoint if nothing has
+      // been explicitly selected yet.
+      const duringIds = selectedTrendDuringIds && selectedTrendDuringIds.length > 0
+        ? selectedTrendDuringIds
+        : (orderedDuringOptions[0] ? [orderedDuringOptions[0].id] : []);
+      const duringIdsSorted = duringIds
+        .map((id) => orderedDuringOptions.find((option) => option.id === id))
+        .filter(Boolean)
+        .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+        .map((option) => option.id);
 
-      const [preResult, duringResult, postResult] = await Promise.allSettled([
-        api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: preParams }),
-        api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: duringParams }),
-        api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: postParams }),
-      ]);
+      const requests = [
+        { key: TREND_PRE_KEY, label: 'Pre-Change', params: { ...sharedParams, timepoint: 'pre' } },
+        ...duringIdsSorted.map((id) => ({
+          key: trendDuringKey(id),
+          label: 'During-Change',
+          params: { ...sharedParams, timepoint: 'during', duringSessionId: id },
+        })),
+        { key: TREND_POST_KEY, label: 'Post-Change', params: { ...sharedParams, timepoint: 'completed' } },
+      ];
+
+      const results = await Promise.allSettled(
+        requests.map((r) => api.get(`/api/platform/organizations/${orgId}/rhythm-engine-dashboard`, { params: r.params }))
+      );
 
       const snapshotMap = {};
-      if (preResult.status === 'fulfilled' && preResult.value?.data) {
-        snapshotMap.pre = buildTrendStageSnapshot('pre', 'Pre-Change', preResult.value.data);
-      }
-      if (duringResult.status === 'fulfilled' && duringResult.value?.data) {
-        snapshotMap.mid = buildTrendStageSnapshot('mid', 'During-Change', duringResult.value.data);
-      }
-      if (postResult.status === 'fulfilled' && postResult.value?.data) {
-        snapshotMap.post = buildTrendStageSnapshot('post', 'Post-Change', postResult.value.data);
-      }
+      results.forEach((result, idx) => {
+        const { key, label } = requests[idx];
+        if (result.status === 'fulfilled' && result.value?.data) {
+          snapshotMap[key] = buildTrendStageSnapshot(key, label, result.value.data);
+        }
+      });
 
       if (Object.keys(snapshotMap).length === 0) {
         throw new Error('No trend data returned');
@@ -1375,9 +1440,11 @@ export default function PlatformClientPulse() {
     }
   }, [
     includeManagerSelf,
+    orderedDuringOptions,
     orgId,
     pulseEnabled,
     selectedManagerIds,
+    selectedTrendDuringIds,
     trendAnalysisVisible,
   ]);
 
@@ -1772,13 +1839,41 @@ export default function PlatformClientPulse() {
       {loading ? <p className="muted">Loading dashboard data...</p> : null}
 
       {showTrendSection ? (
-        <PulseTrendAnalysisSection
-          loading={trendLoading}
-          error={trendError}
-          orderedStages={orderedTrendStages}
-          divergenceFlags={trendDivergenceFlags}
-          sectionSignals={trendSignals}
-        />
+        <>
+          {orderedDuringOptions.length > 1 ? (
+            <div className="card pulse-trend-checkpoint-picker" style={{ marginBottom: '1rem' }}>
+              <p style={{ margin: '0 0 0.5rem', fontWeight: 600, fontSize: '0.9rem' }}>
+                During checkpoints shown in Trend Analysis
+              </p>
+              <p className="muted" style={{ margin: '0 0 0.6rem', fontSize: '0.82rem' }}>
+                Pre and Post are always included. Pick which During checkpoint(s) to plot alongside them —
+                selecting several can make the 9 sections busier, so add only the ones you need to compare.
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem 1.2rem' }}>
+                {orderedDuringOptions.map((option) => (
+                  <label
+                    key={option.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={(selectedTrendDuringIds || []).includes(option.id)}
+                      onChange={() => toggleTrendDuringId(option.id)}
+                    />
+                    During · {formatTrendCheckpointDate(option.dateKey)}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <PulseTrendAnalysisSection
+            loading={trendLoading}
+            error={trendError}
+            orderedStages={orderedTrendStages}
+            divergenceFlags={trendDivergenceFlags}
+            sectionSignals={trendSignals}
+          />
+        </>
       ) : null}
 
       {showReadinessSection ? (
