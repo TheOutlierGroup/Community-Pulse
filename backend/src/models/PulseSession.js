@@ -160,17 +160,18 @@ export async function softDeleteDuringSession(id, organizationId, options = {}) 
 }
 
 /**
- * Cosmetic display-date override for Pre/Post checkpoints, whose created_at
- * otherwise just reflects when the org record was bootstrapped rather than
- * the real engagement start/end date. Purely a label — never used for
- * filtering or cutoffs, so it's restricted to the singleton Pre/Post
- * sessions where that distinction actually matters.
+ * Cosmetic display-date override for During checkpoints, whose created_at
+ * otherwise just reflects when the checkpoint was opened rather than the
+ * real mid-engagement date it represents. Purely a label — never used for
+ * filtering or cutoffs. Pre/Post dates are sourced from the client's
+ * contract (licence_config.contract_start/contract_end) and are not
+ * editable here, so this is restricted to During sessions only.
  */
 export async function setLabelDate(id, organizationId, labelDate) {
   const { rows } = await query(
     `UPDATE pulse_sessions
      SET label_date = $3
-     WHERE id = $1 AND organization_id = $2 AND session_purpose IN ('pre_project', 'completed_project')
+     WHERE id = $1 AND organization_id = $2 AND session_purpose = 'during_project'
      RETURNING *`,
     [id, organizationId, labelDate]
   );

@@ -17,6 +17,7 @@ import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAs
 import {
   consumeAssessmentForClient,
   refundAssessmentForLicensee,
+  getParentLicenseeForClient,
 } from '../../services/assessmentMeter.js';
 import * as AssessmentConsumptionEvent from '../../models/AssessmentConsumptionEvent.js';
 const { SOURCE_PLATFORM_DURING_CHECKPOINT } = AssessmentConsumptionEvent;
@@ -2220,6 +2221,14 @@ export function registerPlatformOrgRoutes(router) {
     let licenseConfig = null;
     if (org.kind === 'licensee') {
       licenseConfig = await LicenseConfig.publicForOrganization(org.id);
+    } else if (org.kind === 'client' && org.parent_organization_id) {
+      // Client orgs don't carry their own contract — it lives on the
+      // licensee they're provisioned under (Rhythm Engine Pre/Post
+      // checkpoint dates are sourced from this parent contract).
+      const parentLicensee = await getParentLicenseeForClient(org);
+      if (parentLicensee) {
+        licenseConfig = await LicenseConfig.publicForOrganization(parentLicensee.id);
+      }
     }
     res.json({ organization: org, licenseConfig });
   });
@@ -2753,10 +2762,12 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ session: publicPulseSessionRow(updated) });
   });
 
-  // Cosmetic display-date override for the singleton Pre/Post sessions —
-  // their created_at is just when the org record was bootstrapped, not the
-  // real engagement start/end date, so this lets admins re-label them from
-  // the Rhythm Engine Settings screen.
+  // Cosmetic display-date override for During checkpoints — their created_at
+  // is just when the checkpoint was opened, not the real mid-engagement date
+  // it represents, so this lets admins re-label them from the Rhythm Engine
+  // Settings screen. Pre/Post dates come from the client's contract
+  // (licence_config) and are not editable here; PulseSession.setLabelDate
+  // rejects any purpose other than during_project.
   router.patch(
     '/organizations/:id/pulse-sessions/:sessionId/label-date',
     requirePlatformAdminRole,
