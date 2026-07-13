@@ -123,6 +123,12 @@ export default function PlatformClientLayout() {
     if (!orgId) return [];
     const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-sessions`);
     const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
+    // Pre/Post are driven by the client's contract, set at the CRM layer
+    // (Configurations → Licence) — not editable from Rhythm Engine. Only
+    // fall back to the session's own creation time when no contract date
+    // has been configured yet.
+    const contractStartKey = sessionDateKey(licenseConfig?.contractStart);
+    const contractEndKey = sessionDateKey(licenseConfig?.contractEnd);
     const normalized = sessions
       .map((session) => {
         const phase = pulseTimepointFromSession(session?.sessionPurpose);
@@ -135,12 +141,16 @@ export default function PlatformClientLayout() {
         }
         const rawDateKey = sessionDateKey(session?.createdAt);
         if (!rawDateKey) return null;
-        const labelDate = /^\d{4}-\d{2}-\d{2}$/.test(String(session?.labelDate || '')) ? session.labelDate : '';
+        const labelDate = phase === 'during' && /^\d{4}-\d{2}-\d{2}$/.test(String(session?.labelDate || ''))
+          ? session.labelDate
+          : '';
+        const contractDateKey = phase === 'pre' ? contractStartKey : phase === 'completed' ? contractEndKey : '';
         return {
           id: String(session?.id || ''),
           phase,
-          dateKey: labelDate || rawDateKey,
+          dateKey: phase === 'during' ? (labelDate || rawDateKey) : (contractDateKey || rawDateKey),
           labelDate,
+          isContractDate: phase !== 'during' && Boolean(contractDateKey),
           createdAt: session?.createdAt || '',
           isActive: session?.status === 'active',
           audience: session?.audience === 'manager' ? 'manager' : 'staff',
@@ -187,7 +197,7 @@ export default function PlatformClientLayout() {
       }
     }
     return options;
-  }, [orgId]);
+  }, [orgId, licenseConfig]);
 
   const createPulseDuringTimepoint = useCallback(async () => {
     if (!orgId) return { ok: false, error: 'Missing organization.' };

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { CalendarClock, Plus, TriangleAlert, Trash2 } from 'lucide-react';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
@@ -15,6 +15,7 @@ function formatCheckpointDate(dateKey) {
 
 export default function PlatformPulseSettings() {
   const {
+    licenseConfig,
     pulseTimepointOptions,
     pulseTimepointBusy,
     pulseTimepointError,
@@ -103,8 +104,9 @@ export default function PlatformPulseSettings() {
           <div className="pulse-platform-header__eyebrow">Client administration</div>
           <h1 className="pulse-platform-header__title">Point in time settings</h1>
           <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-            Create or delete During checkpoints, and set the real engagement dates for Pre and Post. The Point
-            in Time selector in the sidebar only switches between existing checkpoints — manage them here.
+            Create, delete, or set the date for During checkpoints. Pre and Post dates come from this
+            client&rsquo;s contract in Configurations and can&rsquo;t be edited here. The Point in Time
+            selector in the sidebar only switches between existing checkpoints — manage them here.
           </p>
         </div>
         <div className="pulse-platform-header__right">
@@ -124,9 +126,8 @@ export default function PlatformPulseSettings() {
 
       <h2 className="pulse-settings-section-title">Pre &amp; Post dates</h2>
       <p className="muted" style={{ margin: '0 0 0.6rem' }}>
-        Pre and Post are single ongoing checkpoints, so their date defaults to when this client was set up.
-        Set the real engagement start/end date here — it only changes the label shown elsewhere, not which
-        responses count toward each.
+        Pre and Post are single ongoing checkpoints, set from this client&rsquo;s contract start and end date
+        in Configurations — read only here.
       </p>
       <div className="card pulse-settings-list">
         {[
@@ -138,17 +139,15 @@ export default function PlatformPulseSettings() {
               <span className="pulse-settings-row__title">
                 {label} · {option ? formatCheckpointDate(option.dateKey) : 'Not available yet'}
               </span>
-              {option?.labelDate ? <span className="badge badge-draft">Custom date</span> : null}
+              {option && !option.isContractDate ? (
+                <span className="badge badge-draft">Contract date not set</span>
+              ) : null}
             </div>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => openEditDate(option, label)}
-              disabled={pulseTimepointBusy || !option}
-            >
-              <CalendarClock size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
-              Edit date
-            </button>
+            {option && !option.isContractDate && licenseConfig ? (
+              <Link to={`/platform/clients/${licenseConfig.organizationId}/account`} className="btn btn-ghost">
+                Set in Configurations
+              </Link>
+            ) : null}
           </div>
         ))}
       </div>
@@ -174,17 +173,29 @@ export default function PlatformPulseSettings() {
                   During · {formatCheckpointDate(option.dateKey)}
                 </span>
                 {option.isActive ? <span className="badge badge-active">Active</span> : null}
+                {option.labelDate ? <span className="badge badge-draft">Custom date</span> : null}
               </div>
-              <button
-                type="button"
-                className="btn btn-ghost pulse-settings-row__delete"
-                onClick={() => setDeleteTarget(option)}
-                disabled={pulseTimepointBusy}
-                aria-label={`Delete during checkpoint ${formatCheckpointDate(option.dateKey)}`}
-              >
-                <Trash2 size={16} strokeWidth={2} aria-hidden />
-                Delete
-              </button>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => openEditDate(option, 'During')}
+                  disabled={pulseTimepointBusy}
+                >
+                  <CalendarClock size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                  Edit date
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost pulse-settings-row__delete"
+                  onClick={() => setDeleteTarget(option)}
+                  disabled={pulseTimepointBusy}
+                  aria-label={`Delete during checkpoint ${formatCheckpointDate(option.dateKey)}`}
+                >
+                  <Trash2 size={16} strokeWidth={2} aria-hidden />
+                  Delete
+                </button>
+              </div>
             </div>
           ))
         )}
