@@ -793,7 +793,30 @@ async function autoCarryForwardRecipientsForDuringCheckpoint(org, duringSessionI
 const DEFAULT_PULSE_SESSION_PURPOSES = ['pre_project', 'during_project', 'completed_project'];
 const DEFAULT_PULSE_SESSION_AUDIENCES = ['staff', 'manager'];
 
+// Respondent links only ever resolve for kind === 'client' orgs (see
+// requirePulseLink in pulseLink.js), so every admin-side route that creates
+// or manages Rhythm Engine sessions/checkpoints/invites must reject a
+// licensee target with a clear reason instead of letting it silently
+// produce sessions/invites nobody can ever open.
+function pulseNotAvailableError(org) {
+  if (org.kind !== 'client') {
+    return 'Rhythm Engine is only available on client organisations, not on a licensee directly. Create a downstream client for this licensee and use it there.';
+  }
+  if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
+    return 'Rhythm Engine is not enabled for this client';
+  }
+  return null;
+}
+
 async function ensureDefaultPulseSessionsForOrg(organizationId) {
+  // Rhythm Engine respondent links only ever resolve for kind === 'client'
+  // orgs (see requirePulseLink in pulseLink.js) — licensees provision
+  // downstream clients to actually run surveys, they never run their own.
+  // Guard here (the single chokepoint every call site funnels through, incl.
+  // the lazy-init on GET /pulse-sessions) so a licensee can never end up
+  // with sessions/invites that respondents can never open.
+  const org = await Organization.getOrganization(organizationId);
+  if (!org || org.kind !== 'client') return [];
   const existing = await PulseSession.listSessionsForOrg(organizationId);
   const existingPurposes = new Set(
     existing.map((s) => `${s.session_purpose}:${s.audience || 'staff'}`)
@@ -1678,6 +1701,22 @@ export function registerPlatformOrgRoutes(router) {
         console.error('Failed to create licence_config row for licensee org:', e);
       }
     }
+      // Standalone "Enterprise" clients carry their own licence directly
+      // instead of sitting under a Practitioner (licensee) shell — only
+      // platform admins can set this up (a licensee's own downstream
+      // clients always inherit from their parent, never their own row).
+      if (
+      createdKind === 'client'
+      && !isLicenseeRequester
+      && parseMultipartBool(req.body.enterpriseLicence)
+      && organizationHasService(org.settings, CLIENT_SERVICE_PULSE)
+    ) {
+      try {
+        await LicenseConfig.createDefaultForLicensee(org.id, { tier: 'enterprise_mid' });
+      } catch (e) {
+        console.error('Failed to create licence_config row for Enterprise client:', e);
+      }
+    }
       try {
       // Licensee orgs do not run pulse sessions themselves; their own
       // downstream clients each get default sessions when needed.
@@ -1897,6 +1936,18 @@ export function registerPlatformOrgRoutes(router) {
           return res.status(403).json({
             error: 'The Rhythm Engine Licensee service can only be granted when creating a new company.',
           });
+        }
+        // Rhythm Engine survey links only ever resolve for kind === 'client'
+        // orgs (see requirePulseLink in pulseLink.js) — a licensee can only
+        // enable it on its own downstream clients, never on itself, or every
+        // respondent link generated from it would silently 403.
+        if (Array.isArray(settingsPatch.services) && settingsPatch.services.includes(CLIENT_SERVICE_PULSE)) {
+          const targetOrg = await Organization.getOrganization(req.params.id);
+          if (targetOrg && targetOrg.kind !== 'client') {
+            return res.status(403).json({
+              error: 'Rhythm Engine can only be enabled on a client, not on a licensee directly. Create a downstream client for this licensee and enable it there.',
+            });
+          }
         }
         let allowedServiceIds;
         if (isLicenseeRequester) {
@@ -2287,13 +2338,18 @@ export function registerPlatformOrgRoutes(router) {
     if (org.kind === 'licensee') {
       licenseConfig = await LicenseConfig.publicForOrganization(org.id);
     } else if (org.kind === 'client' && org.parent_organization_id) {
-      // Client orgs don't carry their own contract — it lives on the
-      // licensee they're provisioned under (Rhythm Engine Pre/Post
-      // checkpoint dates are sourced from this parent contract).
+      // A downstream client doesn't carry its own contract — it lives on
+      // the Practitioner (licensee) it's provisioned under (Rhythm Engine
+      // Pre/Post checkpoint dates are sourced from this parent contract).
       const parentLicensee = await getParentLicenseeForClient(org);
       if (parentLicensee) {
         licenseConfig = await LicenseConfig.publicForOrganization(parentLicensee.id);
       }
+    } else if (org.kind === 'client' && !org.parent_organization_id) {
+      // A standalone "Enterprise" client carries its own licence directly —
+      // null here just means it's a plain client with no Rhythm Engine
+      // licence at all.
+      licenseConfig = await LicenseConfig.publicForOrganization(org.id);
     }
     res.json({ organization: org, licenseConfig });
   });
@@ -2303,8 +2359,9 @@ export function registerPlatformOrgRoutes(router) {
       return res.status(403).json({ error: 'Only platform admins can edit licence configuration' });
     }
     const org = await Organization.getOrganization(req.params.id);
-    if (!org || org.kind !== 'licensee') {
-      return res.status(404).json({ error: 'Licensee organization not found' });
+    const isStandaloneEnterpriseClient = org && org.kind === 'client' && !org.parent_organization_id;
+    if (!org || (org.kind !== 'licensee' && !isStandaloneEnterpriseClient)) {
+      return res.status(404).json({ error: 'Organization not found or not eligible for a Rhythm Engine licence' });
     }
     const body = req.body || {};
     const patch = {};
@@ -2672,8 +2729,9 @@ export function registerPlatformOrgRoutes(router) {
       return res.status(403).json({ error: 'Only platform admins can view assessment consumption' });
     }
     const org = await Organization.getOrganization(req.params.id);
-    if (!org || org.kind !== 'licensee') {
-      return res.status(404).json({ error: 'Licensee organization not found' });
+    const isStandaloneEnterpriseClient = org && org.kind === 'client' && !org.parent_organization_id;
+    if (!org || (org.kind !== 'licensee' && !isStandaloneEnterpriseClient)) {
+      return res.status(404).json({ error: 'Organization not found or not eligible for a Rhythm Engine licence' });
     }
     const events = await AssessmentConsumptionEvent.listForLicensee(org.id, { limit: 200 });
     res.json({
@@ -2867,9 +2925,8 @@ export function registerPlatformOrgRoutes(router) {
     try {
       const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
       if (!org) return res.status(404).json({ error: 'Organization not found' });
-      if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
-        return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
-      }
+      const pulseError = pulseNotAvailableError(org);
+      if (pulseError) return res.status(403).json({ error: pulseError });
 
       // INF-04: charge one assessment against the parent licensee (if any)
       // before any pulse_session insert. This is atomic via licence_config
@@ -2977,9 +3034,8 @@ export function registerPlatformOrgRoutes(router) {
     async (req, res) => {
       const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
       if (!org) return res.status(404).json({ error: 'Organization not found' });
-      if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
-        return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
-      }
+      const pulseError = pulseNotAvailableError(org);
+      if (pulseError) return res.status(403).json({ error: pulseError });
 
       const sessions = await PulseSession.listSessionsForOrg(org.id);
       const pair = pairedDuringSessionsForSelection(sessions, req.params.sessionId);
@@ -3028,9 +3084,8 @@ export function registerPlatformOrgRoutes(router) {
     async (req, res) => {
       const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
       if (!org) return res.status(404).json({ error: 'Organization not found' });
-      if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
-        return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
-      }
+      const pulseError = pulseNotAvailableError(org);
+      if (pulseError) return res.status(403).json({ error: pulseError });
 
       const active = Boolean(req.body?.active);
       const nextStatus = active ? 'active' : 'paused';
@@ -4058,9 +4113,8 @@ export function registerPlatformOrgRoutes(router) {
   router.post('/organizations/:id/pulse-handoff-link', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
-    if (!organizationHasService(org.settings, CLIENT_SERVICE_PULSE)) {
-      return res.status(403).json({ error: 'Rhythm Engine is not enabled for this client' });
-    }
+    const pulseError = pulseNotAvailableError(org);
+    if (pulseError) return res.status(403).json({ error: pulseError });
 
     const pulseBaseUrl = resolvePulseAppBaseUrl();
     if (!pulseBaseUrl) {
@@ -4428,6 +4482,8 @@ export function registerPlatformOrgRoutes(router) {
   router.post('/organizations/:id/pulse-link-invites/import', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const pulseImportError = pulseNotAvailableError(org);
+    if (pulseImportError) return res.status(403).json({ error: pulseImportError });
     const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
     const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
     const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
@@ -4455,6 +4511,8 @@ export function registerPlatformOrgRoutes(router) {
   router.post('/organizations/:id/pulse-link-invites/test-data', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const pulseTestDataError = pulseNotAvailableError(org);
+    if (pulseTestDataError) return res.status(403).json({ error: pulseTestDataError });
 
     const managerCount = Number.parseInt(String(req.body?.managerCount ?? ''), 10);
     const staffCount = Number.parseInt(String(req.body?.staffCount ?? ''), 10);

@@ -69,6 +69,14 @@ export default function PlatformClientAccount() {
   const isPlatformAdmin =
     user?.organizationKind === 'platform' && user?.role === 'admin';
   const isLicenseeOrg = org.kind === 'licensee';
+  // A standalone "Enterprise" client (no Practitioner parent) carries its
+  // own Rhythm Engine licence directly, same panel as a Practitioner uses
+  // for itself — a plain client with no Rhythm Engine service never shows
+  // this, matching today's behaviour.
+  const isEnterpriseClient =
+    org.kind === 'client'
+    && !org.parent_organization_id
+    && normalizeServices(org.settings).includes(CLIENT_SERVICE_PULSE);
   const logoInputRef = useRef(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -354,13 +362,16 @@ export default function PlatformClientAccount() {
     <>
       <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
       {error && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
+      {(isLicenseeOrg || isEnterpriseClient) && isPlatformAdmin && (
+        <LicenseConfigPanel
+          orgId={orgId}
+          licenseConfig={licenseConfig}
+          onSaved={refreshOrg}
+          isPractitioner={isLicenseeOrg}
+        />
+      )}
       {isLicenseeOrg && isPlatformAdmin && (
         <>
-          <LicenseConfigPanel
-            orgId={orgId}
-            licenseConfig={licenseConfig}
-            onSaved={refreshOrg}
-          />
           <div className="card" style={{ marginBottom: '1.5rem' }}>
             <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>Support tools</h2>
             <p className="muted" style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>

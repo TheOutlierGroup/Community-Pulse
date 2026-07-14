@@ -41,6 +41,11 @@ export default function NewClientModal({
   const [error, setError] = useState('');
   const [servicesOpen, setServicesOpen] = useState(false);
   const servicesRef = useRef(null);
+  // null = not yet chosen. Only relevant when Rhythm Engine is selected and
+  // this account can create Practitioners — decides whether the new org
+  // becomes a Practitioner (licensee) shell or a standalone Enterprise
+  // client with its own licence.
+  const [rhythmEngineMode, setRhythmEngineMode] = useState(null);
 
   useEffect(() => {
     if (!open) return;
@@ -50,6 +55,7 @@ export default function NewClientModal({
     setLogo(null);
     setError('');
     setServicesOpen(false);
+    setRhythmEngineMode(null);
     (async () => {
       try {
         const { data } = await api.get('/api/platform/service-catalog');
@@ -88,10 +94,18 @@ export default function NewClientModal({
         ? p.serviceIds.filter((s) => s !== id)
         : [...p.serviceIds, id],
     }));
+    if (id === CLIENT_SERVICE_PULSE) setRhythmEngineMode(null);
   }
+
+  const rhythmEngineSelected = fields.serviceIds.includes(CLIENT_SERVICE_PULSE);
+  const needsRhythmEngineModeChoice = canCreateLicensees && rhythmEngineSelected;
 
   async function submit(e) {
     e.preventDefault();
+    if (needsRhythmEngineModeChoice && !rhythmEngineMode) {
+      setError('Choose whether this is a Practitioner or an Enterprise of Rhythm Engine.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -105,14 +119,18 @@ export default function NewClientModal({
         fd.append('sendWelcomeEmail', sendWelcomeEmail ? 'true' : 'false');
         fd.append('enableLogin', enableLogin ? 'true' : 'false');
       }
-      // Rhythm Engine access implies Rhythm Engine Licensee access — no
-      // separate opt-in. Licensee status can only be granted at creation
-      // time (it never changes after), so this has to happen here rather
-      // than later in Configurations.
-      const serviceIds = canCreateLicensees && fields.serviceIds.includes(CLIENT_SERVICE_PULSE)
+      // Rhythm Engine no longer implies Rhythm Engine Licensee (Practitioner)
+      // automatically — the admin explicitly chooses Practitioner or
+      // Enterprise above. Practitioner status can only be granted at
+      // creation time (it never changes after), so that choice has to
+      // travel with this same request.
+      const serviceIds = needsRhythmEngineModeChoice && rhythmEngineMode === 'practitioner'
         ? [...fields.serviceIds, CLIENT_SERVICE_LICENSEE]
         : fields.serviceIds;
       if (serviceIds.length) fd.append('clientServiceIds', JSON.stringify(serviceIds));
+      if (needsRhythmEngineModeChoice && rhythmEngineMode === 'enterprise') {
+        fd.append('enterpriseLicence', 'true');
+      }
       if (logo) fd.append('logo', logo);
       const { data } = await api.post('/api/platform/organizations', fd);
       await onCreated(data);
@@ -258,11 +276,6 @@ export default function NewClientModal({
                 <span>{serviceSummary(fields.serviceIds, serviceCatalog)}</span>
                 <ChevronDown size={16} strokeWidth={2} aria-hidden />
               </button>
-              {canCreateLicensees ? (
-                <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
-                  Selecting Rhythm Engine also grants Rhythm Engine Licensee access.
-                </p>
-              ) : null}
               {servicesOpen && (
                 <div className="platform-select-panel" role="listbox" aria-multiselectable="true">
                   {serviceCatalog.map((service) => (
@@ -280,6 +293,36 @@ export default function NewClientModal({
               )}
             </div>
           )}
+          {needsRhythmEngineModeChoice ? (
+            <div className="field" style={{ background: 'var(--surface2)', borderRadius: 10, padding: '0.85rem 1rem' }}>
+              <p style={{ margin: '0 0 0.6rem', fontWeight: 600, fontSize: '0.9rem' }}>
+                Is this a Practitioner or an Enterprise of Rhythm Engine?
+              </p>
+              <p className="muted" style={{ fontSize: '0.8rem', margin: '0 0 0.7rem' }}>
+                A <strong>Practitioner</strong> resells or administers Rhythm Engine to its own downstream
+                clients and holds the licence there. An <strong>Enterprise</strong> runs Rhythm Engine
+                directly on itself, with its own contract and assessment quota.
+              </p>
+              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                <button
+                  type="button"
+                  className={`btn ${rhythmEngineMode === 'practitioner' ? 'btn-primary' : 'btn-ghost'}`}
+                  disabled={busy}
+                  onClick={() => setRhythmEngineMode('practitioner')}
+                >
+                  Practitioner
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${rhythmEngineMode === 'enterprise' ? 'btn-primary' : 'btn-ghost'}`}
+                  disabled={busy}
+                  onClick={() => setRhythmEngineMode('enterprise')}
+                >
+                  Enterprise
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="field">
             <label htmlFor="ncm-logo">Client logo (optional)</label>
             <input

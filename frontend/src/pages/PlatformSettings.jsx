@@ -29,7 +29,7 @@ const TEMPLATE_MAX_SUBJECT_LENGTH = 200;
 const SETTINGS_TABS = [
   { id: 'general', label: 'General' },
   { id: 'rhythm-engine', label: 'Rhythm Engine' },
-  { id: 'licensees', label: 'Licensees' },
+  { id: 'licensees', label: 'Practitioners' },
   { id: 'communications', label: 'Communications' },
 ];
 const SETTINGS_TAB_IDS = new Set(SETTINGS_TABS.map((tab) => tab.id));
@@ -293,10 +293,11 @@ export default function PlatformSettings() {
   const [serviceSaving, setServiceSaving] = useState(false);
   const [serviceMessage, setServiceMessage] = useState('');
   const [serviceError, setServiceError] = useState('');
-  // Rhythm Engine Licensee is granted automatically whenever Rhythm Engine
-  // is selected for a licensee account (see NewClientModal) — it has no
-  // independent existence a platform admin can configure, so it's hidden
-  // here to avoid presenting it as a second, separately-managed service.
+  // Rhythm Engine Practitioner status is chosen via the Practitioner/
+  // Enterprise prompt in NewClientModal, not toggled independently — it
+  // has no separate configuration a platform admin can edit, so it's
+  // hidden here to avoid presenting it as a second, separately-managed
+  // service.
   const visibleServiceCatalog = serviceCatalog.filter((service) => service.id !== CLIENT_SERVICE_LICENSEE);
   const [loadingDefaultTemplates, setLoadingDefaultTemplates] = useState(false);
   const [savingDefaultTemplates, setSavingDefaultTemplates] = useState({
@@ -483,7 +484,7 @@ export default function PlatformSettings() {
                 service.id === CLIENT_SERVICE_PULSE
                   ? 'Rhythm Engine'
                   : service.id === CLIENT_SERVICE_LICENSEE
-                    ? 'Rhythm Engine Licensee'
+                    ? 'Rhythm Engine Practitioner'
                     : service.id === CLIENT_SERVICE_OTHER
                       ? 'Other'
                       : name,
@@ -522,7 +523,7 @@ export default function PlatformSettings() {
           service.id === CLIENT_SERVICE_PULSE
             ? 'Rhythm Engine'
             : service.id === CLIENT_SERVICE_LICENSEE
-              ? 'Rhythm Engine Licensee'
+              ? 'Rhythm Engine Practitioner'
               : service.id === CLIENT_SERVICE_OTHER
                 ? 'Other'
                 : String(service.name || '').trim(),
@@ -662,7 +663,7 @@ export default function PlatformSettings() {
         bodyHtml,
       });
       setLicenseeWelcomeTemplate(normalizeLicenseeWelcomeTemplate(data?.template));
-      setLicenseeWelcomeTemplateMessage('Licensee welcome email template saved.');
+      setLicenseeWelcomeTemplateMessage('Practitioner welcome email template saved.');
     } catch (err) {
       setLicenseeWelcomeTemplateError(
         err.response?.data?.error || 'Could not save licensee welcome email template.'
@@ -1143,10 +1144,10 @@ export default function PlatformSettings() {
         aria-labelledby="settings-tab-trigger-licensees"
       >
       <div className="card" style={{ marginTop: '1rem' }}>
-        <h2 className="settings-section-title">Licensee admin welcome email</h2>
+        <h2 className="settings-section-title">Practitioner admin welcome email</h2>
         <p className="muted" style={{ margin: '0.45rem 0 0.95rem' }}>
-          Sent to the first admin when a new licensee organisation is created
-          (i.e. when the Licensee service is selected at create-time). The standard
+          Sent to the first admin when a new Practitioner organisation is created
+          (i.e. when "Practitioner" is chosen for a new Rhythm Engine org). The standard
           Outlier logo header, <strong>Create password</strong> and <strong>Sign in</strong>{' '}
           buttons, and link-fallback footer are added automatically — only the subject
           and editorial body below are configurable.
@@ -1171,7 +1172,7 @@ export default function PlatformSettings() {
             disabled={loadingLicenseeWelcomeTemplate || savingLicenseeWelcomeTemplate}
           />
         </div>
-        <div className="pulse-template-mode-switch" role="tablist" aria-label="Licensee welcome template editor mode">
+        <div className="pulse-template-mode-switch" role="tablist" aria-label="Practitioner welcome template editor mode">
           <button
             type="button"
             role="tab"
@@ -1229,7 +1230,7 @@ export default function PlatformSettings() {
           disabled={loadingLicenseeWelcomeTemplate || savingLicenseeWelcomeTemplate}
           onClick={saveLicenseeWelcomeTemplate}
         >
-          {savingLicenseeWelcomeTemplate ? 'Saving…' : 'Save licensee welcome email'}
+          {savingLicenseeWelcomeTemplate ? 'Saving…' : 'Save Practitioner welcome email'}
         </button>
         <p className="muted" style={{ margin: '0.95rem 0 0' }}>
           Placeholders available in subject and body:{' '}

@@ -44,7 +44,10 @@ export function previousCompletedMonthIso(now = new Date()) {
 export async function buildMonthlyReconciliation(licenseeOrganizationId, monthIso) {
   if (!licenseeOrganizationId) throw new Error('licenseeOrganizationId is required');
   const licensee = await Organization.getOrganization(licenseeOrganizationId);
-  if (!licensee || licensee.kind !== 'licensee') throw new Error('Not a licensee organization');
+  const isStandaloneEnterpriseClient = licensee && licensee.kind === 'client' && !licensee.parent_organization_id;
+  if (!licensee || (licensee.kind !== 'licensee' && !isStandaloneEnterpriseClient)) {
+    throw new Error('Not a licensee organization');
+  }
 
   const { from, to } = monthBoundsUtc(monthIso);
   const [events, summary, licenceConfig] = await Promise.all([

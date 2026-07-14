@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import api from '../../services/api.js';
 
 const AUDIENCE_OPTIONS = [
-  { value: 'all', label: 'Everyone (platform + licensee admins)' },
-  { value: 'licensee', label: 'Licensee admins only' },
+  { value: 'all', label: 'Everyone (platform + Practitioner admins)' },
+  { value: 'licensee', label: 'Practitioner admins only' },
   { value: 'platform', label: 'Platform admins only' },
 ];
 
