@@ -9,7 +9,9 @@ import SupportTicketButton from './SupportTicketButton.jsx';
 import AnnouncementBanner from './AnnouncementBanner.jsx';
 import { sidebarBrandTargetForRoute } from './layoutRouteTarget.js';
 import outlierLogo from '../../images/outlier-logo.png';
+import rhythmEngineLogo from '../../images/rhythm-engine-logo.png';
 import { useAuth } from './Auth.jsx';
+import { IS_RHYTHM_ENGINE_SURFACE } from '../../config/appSurface.js';
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'pulse_sidebar_collapsed';
 
@@ -38,9 +40,11 @@ export default function Layout({ children, user, onLogout, hideHeader = false, n
 
   // INF-06: white-label chrome when the user is on a licensee workspace
   // or on a downstream client of one. `brand.logoUrl` falls back to the
-  // bundled Outlier logo when the licensee hasn't uploaded one yet.
-  const brandLogoSrc = brand?.logoUrl || outlierLogo;
-  const brandLabel = brand?.displayName || 'Outlier';
+  // bundled Outlier logo when the licensee hasn't uploaded one yet — or to
+  // the Rhythm Engine logo when this is the standalone Rhythm Engine
+  // surface (a licensee's own upload still takes priority over both).
+  const brandLogoSrc = brand?.logoUrl || (IS_RHYTHM_ENGINE_SURFACE ? rhythmEngineLogo : outlierLogo);
+  const brandLabel = brand?.displayName || (IS_RHYTHM_ENGINE_SURFACE ? 'Rhythm Engine' : 'Outlier');
 
   if (hideHeader) {
     return (
