@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { CalendarClock, Plus, TriangleAlert, Trash2 } from 'lucide-react';
+import { CalendarClock, CircleCheck, CirclePause, Plus, TriangleAlert, Trash2 } from 'lucide-react';
+import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
@@ -15,12 +16,16 @@ function formatCheckpointDate(dateKey) {
 
 export default function PlatformPulseSettings() {
   const {
+    orgId,
+    org,
+    refreshOrg,
     licenseConfig,
     pulseTimepointOptions,
     pulseTimepointBusy,
     pulseTimepointError,
     createPulseDuringTimepoint,
     deletePulseDuringTimepoint,
+    toggleDuringCheckpointStatus,
     updatePulseSessionLabelDate,
   } = useOutletContext();
   const { user } = useAuth();
@@ -29,6 +34,9 @@ export default function PlatformPulseSettings() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [dateEditTarget, setDateEditTarget] = useState(null);
   const [dateEditValue, setDateEditValue] = useState('');
+  const [activateTarget, setActivateTarget] = useState(null);
+  const [carryForwardBusy, setCarryForwardBusy] = useState(false);
+  const carryForwardEnabled = org?.settings?.pulseCarryForwardRecipients !== false;
 
   const preOption = useMemo(
     () => (Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : []).find((row) => row?.phase === 'pre'),
@@ -47,6 +55,10 @@ export default function PlatformPulseSettings() {
         .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
     [pulseTimepointOptions]
   );
+
+  const assessmentsIncluded = licenseConfig?.assessmentsIncluded;
+  const assessmentsUnlimited = assessmentsIncluded == null || assessmentsIncluded === 0;
+  const assessmentsConsumed = licenseConfig?.assessmentsConsumed ?? 0;
 
   if (!user) return null;
 
@@ -82,6 +94,47 @@ export default function PlatformPulseSettings() {
       showToast('During checkpoint deleted.', { variant: 'success' });
     } else {
       showToast(result?.error || 'Could not delete the During checkpoint.', { variant: 'error' });
+    }
+  }
+
+  async function handleDeactivate(option) {
+    const result = await toggleDuringCheckpointStatus(option.id, false);
+    if (result?.ok) {
+      showToast(`During · ${formatCheckpointDate(option.dateKey)} deactivated.`, { variant: 'success' });
+    } else {
+      showToast(result?.error || 'Could not deactivate the checkpoint.', { variant: 'error' });
+    }
+  }
+
+  async function handleConfirmActivate() {
+    if (!activateTarget) return;
+    const label = formatCheckpointDate(activateTarget.dateKey);
+    const result = await toggleDuringCheckpointStatus(activateTarget.id, true);
+    setActivateTarget(null);
+    if (result?.ok) {
+      showToast(`During · ${label} activated.`, { variant: 'success' });
+    } else {
+      showToast(result?.error || 'Could not activate the checkpoint.', { variant: 'error' });
+    }
+  }
+
+  async function handleToggleCarryForward() {
+    setCarryForwardBusy(true);
+    try {
+      await api.patch(`/api/platform/organizations/${orgId}/rhythm-engine-timepoints/carry-forward-setting`, {
+        enabled: !carryForwardEnabled,
+      });
+      await refreshOrg();
+      showToast(
+        !carryForwardEnabled
+          ? 'New During checkpoints will now carry Pre’s recipients forward automatically.'
+          : 'New During checkpoints will start with an empty recipient list.',
+        { variant: 'success' }
+      );
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not update this setting.', { variant: 'error' });
+    } finally {
+      setCarryForwardBusy(false);
     }
   }
 
@@ -179,6 +232,24 @@ export default function PlatformPulseSettings() {
                 <button
                   type="button"
                   className="btn btn-ghost"
+                  onClick={() => (option.isActive ? handleDeactivate(option) : setActivateTarget(option))}
+                  disabled={pulseTimepointBusy}
+                >
+                  {option.isActive ? (
+                    <>
+                      <CirclePause size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                      Deactivate
+                    </>
+                  ) : (
+                    <>
+                      <CircleCheck size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                      Activate
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
                   onClick={() => openEditDate(option, 'During')}
                   disabled={pulseTimepointBusy}
                 >
@@ -199,6 +270,40 @@ export default function PlatformPulseSettings() {
             </div>
           ))
         )}
+      </div>
+
+      <h2 className="pulse-settings-section-title">Recipients</h2>
+      <div className="card pulse-settings-list">
+        <div className="pulse-settings-row">
+          <div className="pulse-settings-row__heading">
+            <span className="pulse-settings-row__title">Carry recipients forward automatically</span>
+            <p className="muted" style={{ margin: '0.3rem 0 0', fontWeight: 400 }}>
+              When on, a new During checkpoint starts pre-populated with everyone currently on Pre&rsquo;s
+              recipient list (and Post is seeded the same way, the first time it&rsquo;s still empty), so nobody
+              has to be re-entered at every stage. Turn this off to start each new checkpoint with an empty list
+              instead.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={handleToggleCarryForward}
+            disabled={carryForwardBusy}
+            aria-pressed={carryForwardEnabled}
+          >
+            {carryForwardEnabled ? (
+              <>
+                <CircleCheck size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                On — turn off
+              </>
+            ) : (
+              <>
+                <CirclePause size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                Off — turn on
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       <ModalDialog
@@ -272,6 +377,48 @@ export default function PlatformPulseSettings() {
               disabled={pulseTimepointBusy}
             >
               {pulseTimepointBusy ? 'Deleting…' : 'Delete checkpoint'}
+            </button>
+          </div>
+        </div>
+      </ModalDialog>
+
+      <ModalDialog
+        open={Boolean(activateTarget)}
+        title="Activate this During checkpoint?"
+        titleId="pulse-activate-during-title"
+        onClose={() => {
+          if (!pulseTimepointBusy) setActivateTarget(null);
+        }}
+      >
+        <div style={{ padding: '0 0 1rem' }}>
+          <p style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+            <TriangleAlert size={20} strokeWidth={2} aria-hidden style={{ flexShrink: 0, marginTop: '0.15rem' }} />
+            <span>
+              {activateTarget ? `During · ${formatCheckpointDate(activateTarget.dateKey)}` : 'This checkpoint'} will
+              become the checkpoint staff and managers currently see when they log in, and whichever checkpoint is
+              active now will be deactivated. Assessments are only ever consumed when a During checkpoint is first
+              created, not on activation — this licence has used{' '}
+              {assessmentsUnlimited ? 'an unlimited allowance' : `${assessmentsConsumed} of ${assessmentsIncluded}`}
+              {' '}assessments so far. Note: previously sent personal survey links may still work even while a
+              checkpoint is inactive.
+            </span>
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.8rem' }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setActivateTarget(null)}
+              disabled={pulseTimepointBusy}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleConfirmActivate}
+              disabled={pulseTimepointBusy}
+            >
+              {pulseTimepointBusy ? 'Activating…' : 'Activate checkpoint'}
             </button>
           </div>
         </div>

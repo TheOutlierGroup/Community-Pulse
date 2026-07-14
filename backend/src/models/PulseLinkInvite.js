@@ -27,9 +27,13 @@ export function normalizeInviteTimepointPhase(raw) {
 }
 
 function inviteInstanceKeyForScope(timepointPhase, options = {}) {
+  // timepointPhase here is always the already-internally-normalized value
+  // from normalizeInviteTimepointPhase ('pre' | 'during' | 'completed'), not
+  // the external canonical stage name ('pre' | 'mid' | 'post') — compare
+  // against 'during', not 'mid'.
   if (timepointPhase === 'pre') return 'pre';
   if (timepointPhase === 'completed') return 'post';
-  if (timepointPhase !== 'mid') return null;
+  if (timepointPhase !== 'during') return null;
   const duringSessionId = String(options?.duringSessionId || '').trim();
   if (!duringSessionId) return null;
   return `session:${duringSessionId}`;
@@ -233,7 +237,7 @@ export async function upsertInviteRow({
   const role = surveyRole === 'manager' ? 'manager' : 'staff';
   const phase = normalizeInviteTimepointPhase(timepointPhase);
   const timepointInstanceKey = inviteInstanceKeyForScope(phase, { duringSessionId });
-  if (phase === 'mid' && !timepointInstanceKey) return { row: null, error: 'missing_during_session' };
+  if (phase === 'during' && !timepointInstanceKey) return { row: null, error: 'missing_during_session' };
   const name = String(displayName || '').trim();
   const managerId = role === 'manager' ? null : managerInviteId || null;
   const normalizedGroupLevelValues = normalizeGroupLevelValues(groupLevelValues);
