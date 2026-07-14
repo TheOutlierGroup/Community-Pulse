@@ -82,7 +82,7 @@ export default function LicenseeHealthPanel() {
   return (
     <div className="card" style={{ marginBottom: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
-        <h2 style={{ margin: 0 }}>Licensee health</h2>
+        <h2 style={{ margin: 0 }}>Practitioner health</h2>
         <button
           type="button"
           className="btn btn-ghost"
@@ -94,7 +94,7 @@ export default function LicenseeHealthPanel() {
         </button>
       </div>
       <p className="muted" style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>
-        Operational snapshot for every licensee — last login, recent activity, and quota burn.
+        Operational snapshot for every Practitioner — last login, recent activity, and quota burn.
       </p>
       {error && <p className="error" style={{ marginBottom: '0.5rem' }}>{error}</p>}
       <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -126,14 +126,14 @@ export default function LicenseeHealthPanel() {
         </select>
       </div>
       {!loading && sorted.length === 0 && (
-        <p className="muted" style={{ margin: 0 }}>No licensees found.</p>
+        <p className="muted" style={{ margin: 0 }}>No Practitioners found.</p>
       )}
       {sorted.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
-                <th style={{ padding: '0.35rem 0.5rem' }}>Licensee</th>
+                <th style={{ padding: '0.35rem 0.5rem' }}>Practitioner</th>
                 <th style={{ padding: '0.35rem 0.5rem' }}>Health</th>
                 <th style={{ padding: '0.35rem 0.5rem' }}>Last login</th>
                 <th style={{ padding: '0.35rem 0.5rem' }}>Active users</th>

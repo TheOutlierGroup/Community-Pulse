@@ -18,6 +18,35 @@ export async function getParentLicenseeForClient(clientOrgOrId) {
   return parent;
 }
 
+/**
+ * A standalone "Enterprise" client — kind === 'client', no licensee
+ * parent — can carry its own licence_config directly instead of a
+ * Practitioner (licensee) shell provisioning it. Returns the client
+ * itself as its own metering target when it has a licence_config row,
+ * or null when it's either a downstream client (metered via its parent
+ * Practitioner) or a plain client with no Rhythm Engine licence at all.
+ */
+export async function standaloneLicenceOwnerForClient(clientOrgOrId) {
+  const client = typeof clientOrgOrId === 'string'
+    ? await Organization.getOrganization(clientOrgOrId)
+    : clientOrgOrId;
+  if (!client || client.kind !== 'client' || client.parent_organization_id) return null;
+  const config = await LicenseConfig.getForOrganization(client.id);
+  return config ? client : null;
+}
+
+/**
+ * Resolves whichever org actually owns this client's licence/quota —
+ * a parent Practitioner if one exists, otherwise the client's own
+ * standalone Enterprise licence, otherwise null (unmetered, platform-
+ * direct client with no Rhythm Engine contract at all).
+ */
+async function meteringOrgForClient(client) {
+  const licensee = await getParentLicenseeForClient(client);
+  if (licensee) return licensee;
+  return standaloneLicenceOwnerForClient(client);
+}
+
 function reasonToHttp(reason) {
   if (reason === 'quota_exceeded') {
     return {
@@ -45,10 +74,12 @@ function reasonToHttp(reason) {
 }
 
 /**
- * INF-04 entry point. Charges one assessment against a client's parent
- * licensee, if one exists. Platform-direct clients (no licensee parent)
- * are not metered. Returns:
- *   - { metered: false } when the client has no licensee parent
+ * INF-04 entry point. Charges one assessment against whichever org holds
+ * this client's licence — a parent Practitioner (licensee) if one exists,
+ * or the client's own licence_config if it's a standalone Enterprise
+ * client. Plain platform-direct clients with neither are not metered.
+ * Returns:
+ *   - { metered: false } when the client has no licence owner at all
  *   - { metered: true, ok: true, licensee, licenseConfig } on success
  *   - { metered: true, ok: false, status, error, reason, licensee } on
  *     quota / status failure
@@ -66,7 +97,7 @@ export async function consumeAssessmentForClient(clientOrgOrId, options = {}) {
   if (!client) {
     return { metered: false };
   }
-  const licensee = await getParentLicenseeForClient(client);
+  const licensee = await meteringOrgForClient(client);
   if (!licensee) {
     return { metered: false };
   }
@@ -174,7 +205,7 @@ export async function effectiveRespondentCapForSession(session, options = {}) {
     const resolvedClient = options.client
       || (session.organization_id ? await Organization.getOrganization(session.organization_id) : null);
     if (!resolvedClient) return null;
-    const licensee = await getParentLicenseeForClient(resolvedClient);
+    const licensee = await meteringOrgForClient(resolvedClient);
     resolvedLicenseConfig = licensee ? await LicenseConfig.getForOrganization(licensee.id) : null;
   }
   if (resolvedLicenseConfig && resolvedLicenseConfig.respondent_cap_per_assessment != null) {

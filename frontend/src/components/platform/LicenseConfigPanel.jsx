@@ -59,7 +59,7 @@ function dateInputToIso(value) {
   return new Date(`${trimmed}T00:00:00.000Z`).toISOString();
 }
 
-export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved }) {
+export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved, isPractitioner = true }) {
   const { showToast } = useToast();
   const [tier, setTier] = useState('practitioner');
   const [status, setStatus] = useState('active');
@@ -200,8 +200,8 @@ export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved }) {
         Licence
       </h2>
       <p className="muted" style={{ marginTop: '-0.25rem' }}>
-        Commercial guardrails for this Rhythm Engine licensee. Only Outlier platform admins can edit
-        these.
+        Commercial guardrails for this {isPractitioner ? 'Rhythm Engine Practitioner' : 'Enterprise Rhythm Engine client'}.
+        Only Outlier platform admins can edit these.
       </p>
       {error && <p className="error" style={{ marginBottom: '0.75rem' }}>{error}</p>}
       <div style={{ marginBottom: '1rem' }}>
@@ -356,6 +356,8 @@ export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved }) {
             disabled={busy}
           />
         </div>
+        {isPractitioner && (
+        <>
         <fieldset
           style={{
             marginTop: '1.25rem',
@@ -366,8 +368,8 @@ export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved }) {
         >
           <legend style={{ padding: '0 0.5rem', fontWeight: 600 }}>Brand (white-label)</legend>
           <p className="muted" style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>
-            Used in the licensee’s own workspace, in their downstream client surveys, and in
-            licence emails. The logo is the licensee organisation’s company logo (uploaded via
+            Used in the Practitioner’s own workspace, in their downstream client surveys, and in
+            licence emails. The logo is the Practitioner organisation’s company logo (uploaded via
             the company logo control elsewhere on this page).
           </p>
           <div style={{ display: 'grid', gap: '0.9rem', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
@@ -468,6 +470,8 @@ export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved }) {
             />
           </div>
         </fieldset>
+        </>
+        )}
         <div style={{ marginTop: '0.75rem' }}>
           <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? 'Saving…' : 'Save licence'}

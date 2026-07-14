@@ -1701,6 +1701,22 @@ export function registerPlatformOrgRoutes(router) {
         console.error('Failed to create licence_config row for licensee org:', e);
       }
     }
+      // Standalone "Enterprise" clients carry their own licence directly
+      // instead of sitting under a Practitioner (licensee) shell — only
+      // platform admins can set this up (a licensee's own downstream
+      // clients always inherit from their parent, never their own row).
+      if (
+      createdKind === 'client'
+      && !isLicenseeRequester
+      && parseMultipartBool(req.body.enterpriseLicence)
+      && organizationHasService(org.settings, CLIENT_SERVICE_PULSE)
+    ) {
+      try {
+        await LicenseConfig.createDefaultForLicensee(org.id, { tier: 'enterprise_mid' });
+      } catch (e) {
+        console.error('Failed to create licence_config row for Enterprise client:', e);
+      }
+    }
       try {
       // Licensee orgs do not run pulse sessions themselves; their own
       // downstream clients each get default sessions when needed.
@@ -2322,13 +2338,18 @@ export function registerPlatformOrgRoutes(router) {
     if (org.kind === 'licensee') {
       licenseConfig = await LicenseConfig.publicForOrganization(org.id);
     } else if (org.kind === 'client' && org.parent_organization_id) {
-      // Client orgs don't carry their own contract — it lives on the
-      // licensee they're provisioned under (Rhythm Engine Pre/Post
-      // checkpoint dates are sourced from this parent contract).
+      // A downstream client doesn't carry its own contract — it lives on
+      // the Practitioner (licensee) it's provisioned under (Rhythm Engine
+      // Pre/Post checkpoint dates are sourced from this parent contract).
       const parentLicensee = await getParentLicenseeForClient(org);
       if (parentLicensee) {
         licenseConfig = await LicenseConfig.publicForOrganization(parentLicensee.id);
       }
+    } else if (org.kind === 'client' && !org.parent_organization_id) {
+      // A standalone "Enterprise" client carries its own licence directly —
+      // null here just means it's a plain client with no Rhythm Engine
+      // licence at all.
+      licenseConfig = await LicenseConfig.publicForOrganization(org.id);
     }
     res.json({ organization: org, licenseConfig });
   });
@@ -2338,8 +2359,9 @@ export function registerPlatformOrgRoutes(router) {
       return res.status(403).json({ error: 'Only platform admins can edit licence configuration' });
     }
     const org = await Organization.getOrganization(req.params.id);
-    if (!org || org.kind !== 'licensee') {
-      return res.status(404).json({ error: 'Licensee organization not found' });
+    const isStandaloneEnterpriseClient = org && org.kind === 'client' && !org.parent_organization_id;
+    if (!org || (org.kind !== 'licensee' && !isStandaloneEnterpriseClient)) {
+      return res.status(404).json({ error: 'Organization not found or not eligible for a Rhythm Engine licence' });
     }
     const body = req.body || {};
     const patch = {};
@@ -2707,8 +2729,9 @@ export function registerPlatformOrgRoutes(router) {
       return res.status(403).json({ error: 'Only platform admins can view assessment consumption' });
     }
     const org = await Organization.getOrganization(req.params.id);
-    if (!org || org.kind !== 'licensee') {
-      return res.status(404).json({ error: 'Licensee organization not found' });
+    const isStandaloneEnterpriseClient = org && org.kind === 'client' && !org.parent_organization_id;
+    if (!org || (org.kind !== 'licensee' && !isStandaloneEnterpriseClient)) {
+      return res.status(404).json({ error: 'Organization not found or not eligible for a Rhythm Engine licence' });
     }
     const events = await AssessmentConsumptionEvent.listForLicensee(org.id, { limit: 200 });
     res.json({

@@ -11,6 +11,7 @@ import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { Building2, ChevronDown, ChevronUp, ChevronsUpDown, Plus } from 'lucide-react';
 import {
   CLIENT_SERVICE_LICENSEE,
+  CLIENT_SERVICE_PULSE,
   clientServiceLabel,
   clientServiceBadgeClass,
   normalizeClientStatus,
@@ -20,10 +21,9 @@ import {
 } from './platformClientUtils.js';
 import '../styles/crm.css';
 
-// Rhythm Engine Licensee is granted automatically alongside Rhythm Engine
-// for licensee accounts (see NewClientModal) — it's not a separate,
-// independently-managed service, so it's folded into the Rhythm Engine
-// label here rather than shown as its own duplicate entry.
+// A Practitioner (licensee) org's own Rhythm Engine Licensee grant is
+// implied by its kind, so it's folded into the badge shown next to the
+// name rather than duplicated as its own service entry here.
 function activeServiceLabels(settings, serviceCatalog) {
   return normalizeServices(settings)
     .filter((serviceId) => serviceId !== CLIENT_SERVICE_LICENSEE)
@@ -310,7 +310,12 @@ export default function PlatformClients() {
                       <span className="platform-users-table__name">{o.name}</span>
                       {o.kind === 'licensee' && (
                         <span className="badge badge-active" style={{ marginLeft: '0.5rem' }}>
-                          Licensee
+                          Practitioner
+                        </span>
+                      )}
+                      {o.kind === 'client' && !o.parent_organization_id && normalizeServices(o.settings).includes(CLIENT_SERVICE_PULSE) && (
+                        <span className="badge badge-active" style={{ marginLeft: '0.5rem' }}>
+                          Enterprise
                         </span>
                       )}
                     </div>
