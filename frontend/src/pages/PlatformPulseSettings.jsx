@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { useOutletContext } from 'react-router-dom';
 import { CalendarClock, CircleCheck, CirclePause, Plus, TriangleAlert, Trash2 } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
@@ -196,10 +196,10 @@ export default function PlatformPulseSettings() {
                 <span className="badge badge-draft">Contract date not set</span>
               ) : null}
             </div>
-            {option && !option.isContractDate && licenseConfig ? (
-              <Link to={`/platform/clients/${licenseConfig.organizationId}/account`} className="btn btn-ghost">
-                Set in Configurations
-              </Link>
+            {option && !option.isContractDate ? (
+              <span className="muted" style={{ fontSize: '0.85rem' }}>
+                Request Outlier Group to set the contract {label === 'Pre' ? 'start' : 'end'} date.
+              </span>
             ) : null}
           </div>
         ))}
@@ -286,22 +286,17 @@ export default function PlatformPulseSettings() {
           </div>
           <button
             type="button"
-            className="btn btn-ghost"
+            role="switch"
+            className="pulse-settings-toggle"
             onClick={handleToggleCarryForward}
             disabled={carryForwardBusy}
             aria-pressed={carryForwardEnabled}
+            aria-checked={carryForwardEnabled}
+            aria-label={`Carry recipients forward automatically: ${carryForwardEnabled ? 'on' : 'off'}`}
           >
-            {carryForwardEnabled ? (
-              <>
-                <CircleCheck size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                On — turn off
-              </>
-            ) : (
-              <>
-                <CirclePause size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                Off — turn on
-              </>
-            )}
+            <span className="pulse-settings-toggle__track" aria-hidden>
+              <span className="pulse-settings-toggle__thumb" />
+            </span>
           </button>
         </div>
       </div>
