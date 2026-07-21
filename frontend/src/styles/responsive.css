@@ -959,6 +959,12 @@ a:hover {
   max-width: min(680px, 94vw);
 }
 
+/* Custom-filter editor / manager — a touch wider than --wide to give the
+   filter predicate grid and saved-filter list room to breathe. */
+.modal-dialog--custom-filter {
+  max-width: min(760px, 94vw);
+}
+
 .modal-dialog--skate-fields {
   max-width: min(720px, 94vw);
   overflow-x: hidden;

@@ -1,9 +1,9 @@
-// A segment is a named, saved filter over the contacts list. Its definition is
-// a small set of predicates that map onto contact fields. The predicates are
-// applied client-side here today (the manual dataset is small); once CSV import
-// lands and contact volumes grow, this same shape moves server-side and gains
-// real counts. The backend mirrors this normaliser in
-// backend/src/models/CrmSegment.js — keep the two in sync.
+// A custom filter is a named, saved filter over the contacts list. Its
+// definition is a small set of predicates that map onto contact fields. The
+// predicates are applied client-side here today (the manual dataset is small);
+// once CSV import lands and contact volumes grow, this same shape moves
+// server-side and gains real counts. The backend mirrors this normaliser in
+// backend/src/models/CrmCustomFilter.js — keep the two in sync.
 
 import { BUSINESS_UNITS } from '../config/crmConstants.js';
 import { RELATIONSHIP_STATUS_OPTIONS } from '../pages/platformClientUtils.js';
@@ -18,7 +18,7 @@ export const LINK_TYPE_OPTIONS = [
 const LINK_TYPES = new Set(LINK_TYPE_OPTIONS.map((o) => o.value));
 const RELATIONSHIP_STATUS_IDS = new Set(RELATIONSHIP_STATUS_OPTIONS.map((o) => o.id));
 
-export const EMPTY_SEGMENT_DEFINITION = {
+export const EMPTY_CUSTOM_FILTER_DEFINITION = {
   search: '',
   linkType: '',
   businessUnit: '',
@@ -28,7 +28,7 @@ export const EMPTY_SEGMENT_DEFINITION = {
   hasPhone: false,
 };
 
-export function normalizeSegmentDefinition(raw) {
+export function normalizeCustomFilterDefinition(raw) {
   const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   return {
     search: typeof src.search === 'string' ? src.search.trim() : '',
@@ -44,9 +44,9 @@ export function normalizeSegmentDefinition(raw) {
 }
 
 // True when a definition would filter nothing out — used to warn before saving
-// an "empty" segment that just mirrors the full contact list.
+// an "empty" custom filter that just mirrors the full contact list.
 export function isEmptyDefinition(def) {
-  const d = normalizeSegmentDefinition(def);
+  const d = normalizeCustomFilterDefinition(def);
   return (
     !d.search &&
     !d.linkType &&
@@ -70,8 +70,8 @@ function contactBusinessUnit(contact) {
   return contact.prospect_business_unit || contact.client_business_unit || '';
 }
 
-export function contactMatchesSegment(contact, rawDef) {
-  const def = normalizeSegmentDefinition(rawDef);
+export function contactMatchesFilter(contact, rawDef) {
+  const def = normalizeCustomFilterDefinition(rawDef);
 
   if (def.search) {
     const needle = def.search.toLowerCase();
@@ -107,15 +107,15 @@ export function contactMatchesSegment(contact, rawDef) {
   return true;
 }
 
-export function applySegment(contacts, rawDef) {
+export function applyCustomFilter(contacts, rawDef) {
   const list = Array.isArray(contacts) ? contacts : [];
-  return list.filter((c) => contactMatchesSegment(c, rawDef));
+  return list.filter((c) => contactMatchesFilter(c, rawDef));
 }
 
 // Reachability counts for a set of contacts, per outreach channel. Phone here
 // is "has a number" — the Firmable Do-Not-Call flag isn't imported yet, so a
 // DNC-aware phone count is a follow-up once enrichment lands.
-export function segmentReach(contacts) {
+export function customFilterReach(contacts) {
   const list = Array.isArray(contacts) ? contacts : [];
   let email = 0;
   let phone = 0;
@@ -126,9 +126,9 @@ export function segmentReach(contacts) {
   return { total: list.length, email, phone };
 }
 
-// Short human-readable summary of what a segment filters on, for list rows.
-export function describeSegment(rawDef) {
-  const def = normalizeSegmentDefinition(rawDef);
+// Short human-readable summary of what a custom filter filters on, for list rows.
+export function describeCustomFilter(rawDef) {
+  const def = normalizeCustomFilterDefinition(rawDef);
   const parts = [];
   if (def.search) parts.push(`matches “${def.search}”`);
   if (def.roleContains) parts.push(`role has “${def.roleContains}”`);

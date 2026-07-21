@@ -390,10 +390,10 @@
   min-height: 38px;
 }
 
-/* Active-segment summary strip shown above the contacts table: the segment's
-   name + description on the left, count and per-channel reachable badges on
-   the right. */
-.segment-summary {
+/* Active custom-filter summary strip shown above the contacts table: the
+   filter's name + description on the left, count and per-channel reachable
+   badges on the right. */
+.custom-filter-summary {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -405,22 +405,116 @@
   background: var(--surface);
 }
 
-.segment-summary__name {
+.custom-filter-summary__name {
   font-weight: 600;
 }
 
-.segment-summary__desc {
+.custom-filter-summary__desc {
   font-size: 0.85rem;
 }
 
-.segment-summary__spacer {
+.custom-filter-summary__spacer {
   flex: 1 1 auto;
 }
 
-.segment-summary .badge {
+.custom-filter-summary .badge {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+}
+
+/* Personal custom-filter usage tracker (non-admins are capped). */
+.custom-filter-tracker {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text-muted, #6b6b6b);
+}
+
+.custom-filter-tracker__meter {
+  flex: 0 0 140px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--grey-soft, rgba(0, 0, 0, 0.08));
+  overflow: hidden;
+}
+
+.custom-filter-tracker__meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent, #1f6f63);
+}
+
+.custom-filter-tracker__full {
+  color: var(--danger, #a4432b);
+  font-weight: 600;
+}
+
+/* Inline warning callout (e.g. before creating a shared custom filter). */
+.inline-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  margin: 0.25rem 0 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(160, 106, 31, 0.35);
+  background: rgba(160, 106, 31, 0.1);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.inline-warning svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--warning, #a06a1f);
+}
+
+/* Personal/shared custom-filter list inside the Contacts manager modal. */
+.custom-filter-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.custom-filter-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.custom-filter-list__main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.custom-filter-list__name {
+  font-weight: 600;
+}
+
+.custom-filter-list__desc {
+  font-size: 0.82rem;
+}
+
+.custom-filter-list .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 /* Project task board — reuses pipeline-board layout inside project detail */
