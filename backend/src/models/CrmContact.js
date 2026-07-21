@@ -10,6 +10,22 @@ function normalizeContactRelationshipStatus(value) {
   return RELATIONSHIP_STATUSES.has(value) ? value : 'new';
 }
 
+// Core fields a human can set by hand. When they do, the field is recorded in
+// crm_contacts.protected_fields so a later CSV import never overwrites it
+// (see migration 078 / services/contactImport.js).
+const PROTECTABLE_FIELDS = ['contact_firstname', 'contact_lastname', 'contact_email', 'contact_phone', 'contact_role', 'relationship_status'];
+
+function providedProtectedFields(data) {
+  return PROTECTABLE_FIELDS.filter((f) => f in data && String(data[f] ?? '').trim() !== '');
+}
+
+// SQL fragment that merges freshly-set field names into protected_fields,
+// de-duplicated. Pushes one param (the text[] of new field names).
+function pushProtectedMerge(sets, values, index, newlyProtected) {
+  sets.push(`protected_fields = (SELECT ARRAY(SELECT DISTINCT e FROM unnest(protected_fields || $${index}::text[]) AS e))`);
+  values.push(newlyProtected);
+}
+
 // ── Prospect-scoped (existing behaviour, column renamed under the hood) ────
 
 export async function listContacts(organisationId) {
@@ -32,12 +48,13 @@ export async function createContact(organisationId, data, platformOrgId, created
   const { contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status } = data;
   const { rows } = await query(
     `INSERT INTO crm_contacts
-       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, crm_organisation_id, platform_org_id, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, crm_organisation_id, platform_org_id, created_by, protected_fields)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [
       contact_firstname, contact_lastname || null, contact_email || null, contact_phone || null, contact_role || null,
       normalizeContactRelationshipStatus(relationship_status),
       organisationId, platformOrgId, createdBy,
+      providedProtectedFields(data),
     ],
   );
   // touch parent updated_at
@@ -58,6 +75,9 @@ export async function updateContact(contactId, organisationId, data) {
     }
   }
   if (sets.length === 0) return getContact(contactId, organisationId);
+
+  const newlyProtected = providedProtectedFields(data);
+  if (newlyProtected.length) pushProtectedMerge(sets, values, i++, newlyProtected);
 
   sets.push(`updated_at = NOW()`);
   values.push(contactId, organisationId);
@@ -110,12 +130,13 @@ export async function createContactForClient(clientOrganizationId, data, platfor
   const { contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status } = data;
   const { rows } = await query(
     `INSERT INTO crm_contacts
-       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, client_organization_id, platform_org_id, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, client_organization_id, platform_org_id, created_by, protected_fields)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [
       contact_firstname, contact_lastname || null, contact_email || null, contact_phone || null, contact_role || null,
       normalizeContactRelationshipStatus(relationship_status),
       clientOrganizationId, platformOrgId, createdBy,
+      providedProtectedFields(data),
     ],
   );
   return rows[0];
@@ -134,6 +155,9 @@ export async function updateContactForClient(contactId, clientOrganizationId, da
     }
   }
   if (sets.length === 0) return getContactForClient(contactId, clientOrganizationId);
+
+  const newlyProtected = providedProtectedFields(data);
+  if (newlyProtected.length) pushProtectedMerge(sets, values, i++, newlyProtected);
 
   sets.push(`updated_at = NOW()`);
   values.push(contactId, clientOrganizationId);
@@ -232,12 +256,13 @@ export async function createContactGlobal(platformOrgId, data, createdBy = null)
   const { contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, crm_organisation_id, client_organization_id } = data;
   const { rows } = await query(
     `INSERT INTO crm_contacts
-       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, crm_organisation_id, client_organization_id, platform_org_id, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+       (contact_firstname, contact_lastname, contact_email, contact_phone, contact_role, relationship_status, crm_organisation_id, client_organization_id, platform_org_id, created_by, protected_fields)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
     [
       contact_firstname, contact_lastname || null, contact_email || null, contact_phone || null, contact_role || null,
       normalizeContactRelationshipStatus(relationship_status),
       crm_organisation_id || null, client_organization_id || null, platformOrgId, createdBy,
+      providedProtectedFields(data),
     ],
   );
   return rows[0];
@@ -269,6 +294,9 @@ export async function updateContactGlobal(platformOrgId, contactId, data) {
   }
 
   if (sets.length === 0) return getContactGlobal(platformOrgId, contactId);
+
+  const newlyProtected = providedProtectedFields(data);
+  if (newlyProtected.length) pushProtectedMerge(sets, values, i++, newlyProtected);
 
   sets.push('updated_at = NOW()');
   values.push(contactId, platformOrgId);

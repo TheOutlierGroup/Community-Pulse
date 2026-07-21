@@ -18,12 +18,22 @@ export const LINK_TYPE_OPTIONS = [
 const LINK_TYPES = new Set(LINK_TYPE_OPTIONS.map((o) => o.value));
 const RELATIONSHIP_STATUS_IDS = new Set(RELATIONSHIP_STATUS_OPTIONS.map((o) => o.id));
 
+// Contact source / tier: how a contact entered the CRM. Manual entry, imported
+// from a LinkedIn (MeetAlfred) export, or from a Firmable export.
+export const CONTACT_SOURCE_OPTIONS = [
+  { id: 'manual', label: 'Manual' },
+  { id: 'linkedin', label: 'LinkedIn' },
+  { id: 'firmable', label: 'Firmable' },
+];
+const CONTACT_SOURCE_IDS = new Set(CONTACT_SOURCE_OPTIONS.map((o) => o.id));
+
 export const EMPTY_CUSTOM_FILTER_DEFINITION = {
   search: '',
   linkType: '',
   businessUnit: '',
   roleContains: '',
   relationshipStatuses: [],
+  sources: [],
   hasEmail: false,
   hasPhone: false,
 };
@@ -37,6 +47,9 @@ export function normalizeCustomFilterDefinition(raw) {
     roleContains: typeof src.roleContains === 'string' ? src.roleContains.trim() : '',
     relationshipStatuses: Array.isArray(src.relationshipStatuses)
       ? [...new Set(src.relationshipStatuses.filter((s) => RELATIONSHIP_STATUS_IDS.has(s)))]
+      : [],
+    sources: Array.isArray(src.sources)
+      ? [...new Set(src.sources.filter((s) => CONTACT_SOURCE_IDS.has(s)))]
       : [],
     hasEmail: src.hasEmail === true,
     hasPhone: src.hasPhone === true,
@@ -53,6 +66,7 @@ export function isEmptyDefinition(def) {
     !d.businessUnit &&
     !d.roleContains &&
     d.relationshipStatuses.length === 0 &&
+    d.sources.length === 0 &&
     !d.hasEmail &&
     !d.hasPhone
   );
@@ -101,6 +115,11 @@ export function contactMatchesFilter(contact, rawDef) {
     if (!def.relationshipStatuses.includes(status)) return false;
   }
 
+  if (def.sources.length > 0) {
+    const source = String(contact.source || 'manual');
+    if (!def.sources.includes(source)) return false;
+  }
+
   if (def.hasEmail && !String(contact.contact_email || '').trim()) return false;
   if (def.hasPhone && !String(contact.contact_phone || '').trim()) return false;
 
@@ -141,6 +160,9 @@ export function describeCustomFilter(rawDef) {
         .map((s) => RELATIONSHIP_STATUS_OPTIONS.find((o) => o.id === s)?.label || s)
         .join(' / '),
     );
+  }
+  if (def.sources.length > 0) {
+    parts.push(def.sources.map((s) => CONTACT_SOURCE_OPTIONS.find((o) => o.id === s)?.label || s).join(' / '));
   }
   if (def.hasEmail) parts.push('has email');
   if (def.hasPhone) parts.push('has phone');

@@ -699,6 +699,91 @@
   .badge-atl-btl { background: rgba(198, 155, 208, 0.18); color: #c69bd0; }
 }
 
+/* Enrichment panel shown at the top of the contact detail modal. */
+.enrichment-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-alt, rgba(0, 0, 0, 0.02));
+  padding: 0.75rem 0.9rem;
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.enrichment-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.enrichment-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.enrichment-panel__head .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.enrichment-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+.enrichment-facts > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.enrichment-facts dt {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #6b6b6b);
+  font-weight: 600;
+}
+.enrichment-facts dd {
+  margin: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.enrichment-panel__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  width: fit-content;
+}
+
+.import-preview {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+.import-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: 0.5rem 0 0.75rem;
+}
+.import-summary > div {
+  font-size: 0.9rem;
+  color: var(--text-muted, #6b6b6b);
+}
+.import-summary__n {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text, #222);
+  margin-right: 0.25rem;
+}
+
+@media (max-width: 560px) {
+  .enrichment-facts { grid-template-columns: 1fr; }
+}
+
 /* Personal/shared custom-filter list inside the Contacts manager modal. */
 .custom-filter-list {
   list-style: none;

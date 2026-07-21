@@ -1,6 +1,6 @@
 import { BUSINESS_UNITS } from '../../config/crmConstants.js';
 import { RELATIONSHIP_STATUS_OPTIONS } from '../../pages/platformClientUtils.js';
-import { LINK_TYPE_OPTIONS } from '../../utils/customFilters.js';
+import { LINK_TYPE_OPTIONS, CONTACT_SOURCE_OPTIONS } from '../../utils/customFilters.js';
 
 // Shared editor for a custom filter's predicates. Used by the Settings
 // Custom Filters panel and anywhere else a definition is built. `def` is a
@@ -14,6 +14,15 @@ export default function CustomFilterDefinitionFields({ def, setDef, disabled = f
       if (current.has(statusId)) current.delete(statusId);
       else current.add(statusId);
       return { ...prev, relationshipStatuses: [...current] };
+    });
+  }
+
+  function toggleSource(sourceId) {
+    setDef((prev) => {
+      const current = new Set(prev.sources || []);
+      if (current.has(sourceId)) current.delete(sourceId);
+      else current.add(sourceId);
+      return { ...prev, sources: [...current] };
     });
   }
 
@@ -63,6 +72,22 @@ export default function CustomFilterDefinitionFields({ def, setDef, disabled = f
                 type="checkbox"
                 checked={def.relationshipStatuses.includes(o.id)}
                 onChange={() => toggleStatus(o.id)}
+              />
+              {o.label}
+            </label>
+          ))}
+          <span className="muted" style={{ fontSize: '0.8rem' }}>(none = any)</span>
+        </div>
+      </div>
+      <div className="field">
+        <label>Source / tier</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', marginTop: '0.25rem' }}>
+          {CONTACT_SOURCE_OPTIONS.map((o) => (
+            <label key={o.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 400, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={(def.sources || []).includes(o.id)}
+                onChange={() => toggleSource(o.id)}
               />
               {o.label}
             </label>
