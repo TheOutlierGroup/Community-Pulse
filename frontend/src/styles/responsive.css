@@ -4821,6 +4821,57 @@ input[type='range'] {
   padding: 0.15rem 0.1rem;
 }
 
+.pulse-settings-toggle {
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.pulse-settings-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.pulse-settings-toggle:focus-visible {
+  outline: 2px solid #0c66e4;
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.pulse-settings-toggle__track {
+  position: relative;
+  display: block;
+  width: 2.75rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: #d1d5db;
+  transition: background 0.15s ease;
+}
+
+.pulse-settings-toggle[aria-pressed='true'] .pulse-settings-toggle__track {
+  background: #22c55e;
+}
+
+.pulse-settings-toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(1.5rem - 4px);
+  height: calc(1.5rem - 4px);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: transform 0.15s ease;
+}
+
+.pulse-settings-toggle[aria-pressed='true'] .pulse-settings-toggle__thumb {
+  transform: translateX(1.25rem);
+}
+
 .pulse-refresh-btn::after {
   display: none;
 }

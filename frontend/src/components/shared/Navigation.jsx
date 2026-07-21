@@ -189,9 +189,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       // Ensure the opened tab does not retain access back to this window.
       popup.opener = null;
       popup.location.replace(url);
-    } catch (_e) {
+    } catch (e) {
       popup.close();
-      setPulseLaunchError('Could not open Rhythm Engine right now.');
+      setPulseLaunchError(e.response?.data?.error || 'Could not open Rhythm Engine right now.');
     } finally {
       setPulseLaunching(false);
     }
