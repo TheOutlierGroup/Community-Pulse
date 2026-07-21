@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, ChevronUp, ChevronDown, ChevronsUpDown, X, ArrowUpRight, Mail, Phone, BookmarkPlus, User, Users2 } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
@@ -141,6 +141,7 @@ function ContactFormFields({ form, setForm, prospects, clients }) {
 export default function PlatformContacts() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const ok = usePlatformAccess(user, loading, navigate);
   const { showToast } = useToast();
 
@@ -214,6 +215,19 @@ export default function PlatformContacts() {
       .then(({ data }) => setClients((data.organizations || []).filter((o) => o.kind === 'client')))
       .catch(() => setClients([]));
   }, [ok, loadCustomFilters]);
+
+  // Deep link from a campaign stage's WHO chip: ?customFilter=<id> preselects
+  // that filter once the list has loaded, then clears the param so a manual
+  // "Clear" sticks.
+  useEffect(() => {
+    const wanted = searchParams.get('customFilter');
+    if (!wanted || customFilters.length === 0) return;
+    if (customFilters.some((f) => String(f.filter_id) === String(wanted))) {
+      setSelectedFilterId(String(wanted));
+    }
+    searchParams.delete('customFilter');
+    setSearchParams(searchParams, { replace: true });
+  }, [customFilters, searchParams, setSearchParams]);
 
   const selectedFilter = useMemo(
     () => customFilters.find((f) => String(f.filter_id) === String(selectedFilterId)) || null,

@@ -474,6 +474,231 @@
   color: var(--warning, #a06a1f);
 }
 
+/* ── Campaigns swimlane board ──────────────────────────────────────────── */
+.campaign-board {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding: 0.5rem 0 1.5rem;
+}
+
+.campaign-lane {
+  flex: 0 0 320px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--surface-alt, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+
+.campaign-lane__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.campaign-lane__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.campaign-lane__reorder {
+  display: inline-flex;
+}
+
+.campaign-lane__name {
+  font-size: 1.02rem;
+  font-weight: 700;
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.campaign-lane__tools,
+.campaign-stage__tools {
+  display: inline-flex;
+  gap: 0.15rem;
+}
+
+.campaign-lane__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.campaign-lane__objective,
+.campaign-lane__owner {
+  font-size: 0.82rem;
+  color: var(--text-muted, #6b6b6b);
+}
+
+.campaign-lane__stages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.campaign-lane__empty {
+  font-size: 0.85rem;
+  padding: 0.5rem 0;
+  margin: 0;
+}
+
+.campaign-lane__add {
+  justify-content: center;
+  width: 100%;
+}
+
+/* Stage card — a flow box inside a lane. */
+.campaign-stage {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.campaign-stage__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.campaign-stage__pos {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent, #1f6f63);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.campaign-stage__name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.campaign-stage__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.campaign-stage__who {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.campaign-stage__who--none {
+  opacity: 0.65;
+}
+
+.campaign-stage__row {
+  font-size: 0.8rem;
+  color: var(--text, #222);
+  display: flex;
+  gap: 0.3rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.campaign-stage__label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #6b6b6b);
+  font-weight: 600;
+}
+
+.campaign-stage__branch {
+  border-left: 2px solid var(--border);
+  padding-left: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.campaign-stage__row--yes .campaign-stage__label { color: #2e7d32; }
+.campaign-stage__row--no .campaign-stage__label { color: #a4432b; }
+
+.campaign-stage__notes {
+  font-size: 0.78rem;
+  color: var(--text-muted, #6b6b6b);
+  font-style: italic;
+}
+
+/* Small square icon buttons used in lane/stage toolbars. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted, #6b6b6b);
+  cursor: pointer;
+}
+.icon-btn:hover:not(:disabled) {
+  background: var(--surface-alt, rgba(0, 0, 0, 0.05));
+  color: var(--text, #222);
+}
+.icon-btn:disabled { opacity: 0.35; cursor: default; }
+.icon-btn--danger:hover:not(:disabled) { color: var(--danger, #a4432b); }
+
+.badge-channel {
+  background: rgba(47, 90, 146, 0.14);
+  color: #2f5a92;
+}
+.badge-atl-btl {
+  background: rgba(124, 75, 134, 0.16);
+  color: #7a4b86;
+}
+
+.campaign-status-select {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.4rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.campaign-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 3rem 1rem;
+  color: var(--text-muted, #6b6b6b);
+  text-align: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .badge-channel { background: rgba(143, 179, 221, 0.16); color: #8fb3dd; }
+  .badge-atl-btl { background: rgba(198, 155, 208, 0.18); color: #c69bd0; }
+}
+
 /* Personal/shared custom-filter list inside the Contacts manager modal. */
 .custom-filter-list {
   list-style: none;

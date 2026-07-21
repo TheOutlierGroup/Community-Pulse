@@ -19,6 +19,7 @@ import {
   Target,
   Handshake,
   BookUser,
+  Megaphone,
 } from 'lucide-react';
 import {
   CLIENT_SERVICE_PULSE,
@@ -383,6 +384,12 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 <Handshake size={20} strokeWidth={1.75} aria-hidden />
                 Prospects
               </NavLink>
+              {!isLicensee && (
+                <NavLink to="/platform/campaigns" className={sidebarLinkClass}>
+                  <Megaphone size={20} strokeWidth={1.75} aria-hidden />
+                  Campaigns
+                </NavLink>
+              )}
               {!isLicensee && (
                 <NavLink to="/platform/contacts" className={sidebarLinkClass}>
                   <BookUser size={20} strokeWidth={1.75} aria-hidden />

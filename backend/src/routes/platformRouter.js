@@ -19,6 +19,7 @@ import platformClientProjectRoutes from './platform/clientProjectRoutes.js';
 import platformContactRoutes from './platform/contactRoutes.js';
 import platformClientContactRoutes from './platform/clientContactRoutes.js';
 import platformCustomFilterRoutes from './platform/customFilterRoutes.js';
+import platformCampaignRoutes from './platform/campaignRoutes.js';
 import platformWebhookRoutes from './platform/webhookRoutes.js';
 import crmOrgRoutes from './platform/crmOrgRoutes.js';
 import { checkPulseSoWhatSummaryHealth } from '../services/pulseSoWhatSummary.js';
@@ -102,6 +103,7 @@ router.use(platformClientProjectRoutes);
 router.use(platformContactRoutes);
 router.use(platformClientContactRoutes);
 router.use(platformCustomFilterRoutes);
+router.use(platformCampaignRoutes);
 router.use(platformWebhookRoutes);
 
 router.use(requirePlatformOnlyUser, platformComplianceRoutes);
