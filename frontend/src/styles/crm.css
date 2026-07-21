@@ -390,6 +390,39 @@
   min-height: 38px;
 }
 
+/* Active-segment summary strip shown above the contacts table: the segment's
+   name + description on the left, count and per-channel reachable badges on
+   the right. */
+.segment-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.9rem;
+  margin: -0.25rem 0 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.segment-summary__name {
+  font-weight: 600;
+}
+
+.segment-summary__desc {
+  font-size: 0.85rem;
+}
+
+.segment-summary__spacer {
+  flex: 1 1 auto;
+}
+
+.segment-summary .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 /* Project task board — reuses pipeline-board layout inside project detail */
 .project-layout {
   display: grid;

@@ -102,7 +102,7 @@ export async function createOrganisation(platformOrgId, data) {
   return rows[0];
 }
 
-const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new', 'active-campaign']);
+const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new']);
 
 export async function updateOrganisation(platformOrgId, organisationId, data) {
   const allowed = [
