@@ -997,7 +997,7 @@ const CLIENT_STATUSES = new Set([
   'prospect-active-campaign',
   'do-not-call-contact-blocked',
 ]);
-const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new', 'active-campaign']);
+const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new']);
 const CLIENT_STATUS_LEGACY_MAP = new Map([
   ['lead', 'prospect-new'],
   ['active', 'client-current'],
@@ -1880,7 +1880,7 @@ export function registerPlatformOrgRoutes(router) {
       normalizedRelationshipStatus = normalizeRelationshipStatus(relationshipStatus);
       if (!normalizedRelationshipStatus) {
         return res.status(400).json({
-          error: 'relationshipStatus must be one of: warm, cold, lost, new, active-campaign',
+          error: 'relationshipStatus must be one of: warm, cold, lost, new',
         });
       }
     }

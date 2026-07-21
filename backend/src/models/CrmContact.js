@@ -4,7 +4,7 @@ import { businessUnitsForEnabledServices, enabledServicesFromOrganizationSetting
 // A contact's relationship status is its own field, independent of whatever
 // Prospect/Client it's linked to (see migration 074) — same vocabulary as
 // crm_organisations/organizations for a consistent badge set.
-const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new', 'active-campaign']);
+const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new']);
 
 function normalizeContactRelationshipStatus(value) {
   return RELATIONSHIP_STATUSES.has(value) ? value : 'new';

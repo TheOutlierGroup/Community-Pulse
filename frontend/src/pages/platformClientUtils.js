@@ -108,9 +108,10 @@ export function clientStatusBadgeClass(value) {
   return 'draft';
 }
 
-// Independent of client_status: a warm/cold/lost/new/active-campaign
-// relationship status, shared vocabulary between Prospects and Clients so
-// it can carry through cleanly on promotion.
+// Independent of client_status: a warm/cold/lost/new relationship status,
+// shared vocabulary between Prospects and Clients so it can carry through
+// cleanly on promotion. (The old "Active Campaign" value was retired in
+// migration 075 — campaign membership now lives in the Campaigns feature.)
 export const DEFAULT_RELATIONSHIP_STATUS = 'new';
 
 export const RELATIONSHIP_STATUS_OPTIONS = [
@@ -118,7 +119,6 @@ export const RELATIONSHIP_STATUS_OPTIONS = [
   { id: 'cold', label: 'Cold' },
   { id: 'lost', label: 'Lost' },
   { id: 'new', label: 'New' },
-  { id: 'active-campaign', label: 'Active Campaign' },
 ];
 
 const RELATIONSHIP_STATUS_SET = new Set(RELATIONSHIP_STATUS_OPTIONS.map((o) => o.id));
@@ -128,7 +128,6 @@ const RELATIONSHIP_STATUS_BADGE_CLASS = {
   cold: 'badge-cold',
   lost: 'badge-lost',
   new: 'badge',
-  'active-campaign': 'badge-campaign',
 };
 
 export function normalizeRelationshipStatus(value) {

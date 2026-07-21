@@ -18,6 +18,7 @@ import {
 import StatusIncidentsAdminPanel from '../components/platform/StatusIncidentsAdminPanel.jsx';
 import LicenseeHealthPanel from '../components/platform/LicenseeHealthPanel.jsx';
 import AnnouncementsAdminPanel from '../components/platform/AnnouncementsAdminPanel.jsx';
+import SegmentsPanel from '../components/platform/SegmentsPanel.jsx';
 
 const LOCKED_SERVICE_IDS = new Set([
   CLIENT_SERVICE_PULSE,
@@ -28,6 +29,7 @@ const TEMPLATE_MAX_SUBJECT_LENGTH = 200;
 
 const SETTINGS_TABS = [
   { id: 'general', label: 'General' },
+  { id: 'segments', label: 'Segments' },
   { id: 'rhythm-engine', label: 'Rhythm Engine' },
   { id: 'licensees', label: 'Practitioners' },
   { id: 'communications', label: 'Communications' },
@@ -830,6 +832,15 @@ export default function PlatformSettings() {
           </button>
         </form>
       </div>
+      </div>
+      )}
+      {activeTab === 'segments' && (
+      <div
+        role="tabpanel"
+        id="settings-tab-segments"
+        aria-labelledby="settings-tab-trigger-segments"
+      >
+        <SegmentsPanel isAdmin={isPlatformAdmin} />
       </div>
       )}
       {activeTab === 'rhythm-engine' && (

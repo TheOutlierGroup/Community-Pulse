@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ChevronUp, ChevronDown, ChevronsUpDown, X, ArrowUpRight } from 'lucide-react';
+import { Plus, ChevronUp, ChevronDown, ChevronsUpDown, X, ArrowUpRight, Mail, Phone, BookmarkPlus } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
@@ -14,6 +14,7 @@ import {
   relationshipStatusLabel,
   relationshipStatusBadgeClass,
 } from './platformClientUtils.js';
+import { applySegment, segmentReach, describeSegment } from '../utils/segments.js';
 import '../styles/crm.css';
 
 const LINK_TYPE_OPTIONS = [
@@ -143,12 +144,22 @@ export default function PlatformContacts() {
   const ok = usePlatformAccess(user, loading, navigate);
   const { showToast } = useToast();
 
+  const isAdmin = user?.role === 'admin';
+
   const [contacts, setContacts] = useState([]);
   const [fetching, setFetching] = useState(false);
   const [search, setSearch] = useState('');
   const [linkType, setLinkType] = useState('');
   const [buFilter, setBuFilter] = useState('');
   const [sort, setSort] = useState({ column: null, direction: null });
+
+  const [segments, setSegments] = useState([]);
+  const [selectedSegmentId, setSelectedSegmentId] = useState('');
+
+  const [saveSegOpen, setSaveSegOpen] = useState(false);
+  const [saveSegForm, setSaveSegForm] = useState({ name: '', scope: 'personal' });
+  const [saveSegBusy, setSaveSegBusy] = useState(false);
+  const [saveSegError, setSaveSegError] = useState('');
 
   const [prospects, setProspects] = useState([]);
   const [clients, setClients] = useState([]);
@@ -183,15 +194,40 @@ export default function PlatformContacts() {
 
   useEffect(() => { if (ok) load(); }, [ok, load]);
 
+  const loadSegments = useCallback(() => {
+    api.get('/api/platform/segments')
+      .then(({ data }) => setSegments(data.segments || []))
+      .catch(() => setSegments([]));
+  }, []);
+
   useEffect(() => {
     if (!ok) return;
+    loadSegments();
     api.get('/api/platform/crm/organisations', { params: { limit: 500, includePromoted: true } })
       .then(({ data }) => setProspects(data.organisations || []))
       .catch(() => setProspects([]));
     api.get('/api/platform/organizations')
       .then(({ data }) => setClients((data.organizations || []).filter((o) => o.kind === 'client')))
       .catch(() => setClients([]));
-  }, [ok]);
+  }, [ok, loadSegments]);
+
+  const selectedSegment = useMemo(
+    () => segments.find((s) => String(s.segment_id) === String(selectedSegmentId)) || null,
+    [segments, selectedSegmentId],
+  );
+
+  // The selected segment filters the loaded rows client-side (the manual
+  // dataset is small today; this moves server-side with real counts once CSV
+  // import lands and volumes grow).
+  const visibleContacts = useMemo(
+    () => (selectedSegment ? applySegment(contacts, selectedSegment.definition) : contacts),
+    [contacts, selectedSegment],
+  );
+
+  const reach = useMemo(() => segmentReach(visibleContacts), [visibleContacts]);
+
+  const sharedSegments = segments.filter((s) => s.scope === 'shared');
+  const personalSegments = segments.filter((s) => s.scope === 'personal');
 
   function toggleSort(column) {
     setSort((current) => nextSortState(current, column));
@@ -202,13 +238,13 @@ export default function PlatformContacts() {
     const direction = sort.column ? sort.direction : 'desc';
     const dirMultiplier = direction === 'asc' ? 1 : -1;
     const getValue = SORTABLE_COLUMNS[activeColumn];
-    return [...contacts].sort((a, b) => {
+    return [...visibleContacts].sort((a, b) => {
       const av = getValue(a);
       const bv = getValue(b);
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dirMultiplier;
       return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * dirMultiplier;
     });
-  }, [contacts, sort]);
+  }, [visibleContacts, sort]);
 
   function patchContactLocal(contactId, patch) {
     setContacts((prev) => prev.map((c) => (c.contact_id === contactId ? { ...c, ...patch } : c)));
@@ -274,6 +310,34 @@ export default function PlatformContacts() {
       showToast(e.response?.data?.error || 'Failed to delete contact.', { variant: 'error' });
     } finally {
       setEditBusy(false);
+    }
+  }
+
+  function openSaveSegment() {
+    setSaveSegForm({ name: '', scope: isAdmin ? 'shared' : 'personal' });
+    setSaveSegError('');
+    setSaveSegOpen(true);
+  }
+
+  async function saveSegment(e) {
+    e.preventDefault();
+    if (!saveSegForm.name.trim()) { setSaveSegError('A segment name is required.'); return; }
+    setSaveSegBusy(true); setSaveSegError('');
+    try {
+      // Snapshot the current filter bar as the segment's definition.
+      const { data } = await api.post('/api/platform/segments', {
+        name: saveSegForm.name.trim(),
+        scope: saveSegForm.scope,
+        definition: { search, linkType, businessUnit: buFilter },
+      });
+      showToast('Segment saved.', { variant: 'success' });
+      setSaveSegOpen(false);
+      loadSegments();
+      if (data?.segment?.segment_id) setSelectedSegmentId(String(data.segment.segment_id));
+    } catch (err) {
+      setSaveSegError(err.response?.data?.error || 'Failed to save segment.');
+    } finally {
+      setSaveSegBusy(false);
     }
   }
 
@@ -384,7 +448,51 @@ export default function PlatformContacts() {
             <option value="">All business units</option>
             {BUSINESS_UNITS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
+          <select
+            value={selectedSegmentId}
+            onChange={(e) => setSelectedSegmentId(e.target.value)}
+            aria-label="Segment"
+            title="Apply a saved segment"
+          >
+            <option value="">No segment</option>
+            {sharedSegments.length > 0 && (
+              <optgroup label="Shared">
+                {sharedSegments.map((s) => <option key={s.segment_id} value={s.segment_id}>{s.name}</option>)}
+              </optgroup>
+            )}
+            {personalSegments.length > 0 && (
+              <optgroup label="Personal">
+                {personalSegments.map((s) => <option key={s.segment_id} value={s.segment_id}>{s.name}</option>)}
+              </optgroup>
+            )}
+          </select>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={openSaveSegment}
+            title="Save the current filters as a segment"
+          >
+            <BookmarkPlus size={16} strokeWidth={2} aria-hidden /> Save as segment
+          </button>
         </div>
+
+        {selectedSegment && (
+          <div className="segment-summary" role="status">
+            <span className="segment-summary__name">{selectedSegment.name}</span>
+            <span className="segment-summary__desc muted">{describeSegment(selectedSegment.definition)}</span>
+            <span className="segment-summary__spacer" />
+            <span className="badge" title="Contacts currently in this segment">{reach.total} contacts</span>
+            <span className="badge badge-open" title="Reachable by email">
+              <Mail size={12} strokeWidth={2} aria-hidden /> {reach.email} email
+            </span>
+            <span className="badge" title="Have a phone number">
+              <Phone size={12} strokeWidth={2} aria-hidden /> {reach.phone} phone
+            </span>
+            <button type="button" className="btn btn-ghost" onClick={() => setSelectedSegmentId('')} aria-label="Clear segment">
+              <X size={15} aria-hidden /> Clear
+            </button>
+          </div>
+        )}
 
         <div className="table-wrap">
           <table className="crm-table">
@@ -418,8 +526,10 @@ export default function PlatformContacts() {
               {fetching && (
                 <tr><td colSpan={6} className="crm-table__empty">Loading…</td></tr>
               )}
-              {!fetching && contacts.length === 0 && (
-                <tr><td colSpan={6} className="crm-table__empty">No contacts yet.</td></tr>
+              {!fetching && visibleContacts.length === 0 && (
+                <tr><td colSpan={6} className="crm-table__empty">
+                  {selectedSegment ? 'No contacts match this segment.' : 'No contacts yet.'}
+                </td></tr>
               )}
               {sortedContacts.map((c) => (
                 <tr
@@ -491,6 +601,45 @@ export default function PlatformContacts() {
                   <button className="btn btn-ghost" type="button" onClick={() => setEditContact(null)} disabled={editBusy}>Cancel</button>
                   <button className="btn btn-primary" type="submit" disabled={editBusy}>{editBusy ? 'Saving…' : 'Save'}</button>
                 </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {saveSegOpen && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog card" role="dialog" aria-modal aria-labelledby="save-segment-title">
+            <div className="modal-dialog__head">
+              <h2 id="save-segment-title" style={{ fontSize: '1.15rem', fontWeight: 700 }}>Save as segment</h2>
+              <button type="button" className="btn btn-ghost modal-dialog__close" onClick={() => setSaveSegOpen(false)} aria-label="Close">
+                <X size={22} aria-hidden />
+              </button>
+            </div>
+            <form onSubmit={saveSegment} style={{ marginTop: '1rem' }}>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Saves the current filters as a reusable segment: <strong>{describeSegment({ search, linkType, businessUnit: buFilter })}</strong>.
+                You can fine-tune its rules later in Settings → Segments.
+              </p>
+              <div className="field">
+                <label htmlFor="save-segment-name">Name *</label>
+                <input id="save-segment-name" value={saveSegForm.name} onChange={(e) => setSaveSegForm((p) => ({ ...p, name: e.target.value }))} required autoFocus />
+              </div>
+              <div className="field">
+                <label htmlFor="save-segment-scope">Visibility</label>
+                <select
+                  id="save-segment-scope"
+                  value={saveSegForm.scope}
+                  onChange={(e) => setSaveSegForm((p) => ({ ...p, scope: e.target.value }))}
+                >
+                  {isAdmin && <option value="shared">Shared — everyone in the workspace</option>}
+                  <option value="personal">Personal — only me</option>
+                </select>
+              </div>
+              {saveSegError && <p className="error">{saveSegError}</p>}
+              <div className="modal-dialog__actions">
+                <button className="btn btn-ghost" type="button" onClick={() => setSaveSegOpen(false)} disabled={saveSegBusy}>Cancel</button>
+                <button className="btn btn-primary" type="submit" disabled={saveSegBusy}>{saveSegBusy ? 'Saving…' : 'Save segment'}</button>
               </div>
             </form>
           </div>
