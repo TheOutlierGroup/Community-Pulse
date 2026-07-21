@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, ChevronUp, ChevronDown, ChevronsUpDown, X, ArrowUpRight, Mail, Phone, BookmarkPlus } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, ChevronUp, ChevronDown, ChevronsUpDown, X, ArrowUpRight, Mail, Phone, BookmarkPlus, User, Users2 } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
@@ -14,7 +14,7 @@ import {
   relationshipStatusLabel,
   relationshipStatusBadgeClass,
 } from './platformClientUtils.js';
-import { applySegment, segmentReach, describeSegment } from '../utils/segments.js';
+import { applyCustomFilter, customFilterReach, describeCustomFilter } from '../utils/customFilters.js';
 import '../styles/crm.css';
 
 const LINK_TYPE_OPTIONS = [
@@ -141,6 +141,7 @@ function ContactFormFields({ form, setForm, prospects, clients }) {
 export default function PlatformContacts() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const ok = usePlatformAccess(user, loading, navigate);
   const { showToast } = useToast();
 
@@ -153,13 +154,14 @@ export default function PlatformContacts() {
   const [buFilter, setBuFilter] = useState('');
   const [sort, setSort] = useState({ column: null, direction: null });
 
-  const [segments, setSegments] = useState([]);
-  const [selectedSegmentId, setSelectedSegmentId] = useState('');
+  const [customFilters, setCustomFilters] = useState([]);
+  const [personalLimit, setPersonalLimit] = useState(-1);
+  const [selectedFilterId, setSelectedFilterId] = useState('');
 
-  const [saveSegOpen, setSaveSegOpen] = useState(false);
-  const [saveSegForm, setSaveSegForm] = useState({ name: '', scope: 'personal' });
-  const [saveSegBusy, setSaveSegBusy] = useState(false);
-  const [saveSegError, setSaveSegError] = useState('');
+  const [filtersManagerOpen, setFiltersManagerOpen] = useState(false);
+  const [saveFilterForm, setSaveFilterForm] = useState({ name: '', scope: 'personal' });
+  const [saveFilterBusy, setSaveFilterBusy] = useState(false);
+  const [saveFilterError, setSaveFilterError] = useState('');
 
   const [prospects, setProspects] = useState([]);
   const [clients, setClients] = useState([]);
@@ -194,40 +196,58 @@ export default function PlatformContacts() {
 
   useEffect(() => { if (ok) load(); }, [ok, load]);
 
-  const loadSegments = useCallback(() => {
-    api.get('/api/platform/segments')
-      .then(({ data }) => setSegments(data.segments || []))
-      .catch(() => setSegments([]));
+  const loadCustomFilters = useCallback(() => {
+    api.get('/api/platform/custom-filters')
+      .then(({ data }) => {
+        setCustomFilters(data.customFilters || []);
+        setPersonalLimit(Number.isFinite(data.personalLimit) ? data.personalLimit : -1);
+      })
+      .catch(() => setCustomFilters([]));
   }, []);
 
   useEffect(() => {
     if (!ok) return;
-    loadSegments();
+    loadCustomFilters();
     api.get('/api/platform/crm/organisations', { params: { limit: 500, includePromoted: true } })
       .then(({ data }) => setProspects(data.organisations || []))
       .catch(() => setProspects([]));
     api.get('/api/platform/organizations')
       .then(({ data }) => setClients((data.organizations || []).filter((o) => o.kind === 'client')))
       .catch(() => setClients([]));
-  }, [ok, loadSegments]);
+  }, [ok, loadCustomFilters]);
 
-  const selectedSegment = useMemo(
-    () => segments.find((s) => String(s.segment_id) === String(selectedSegmentId)) || null,
-    [segments, selectedSegmentId],
+  // Deep link from a campaign stage's WHO chip: ?customFilter=<id> preselects
+  // that filter once the list has loaded, then clears the param so a manual
+  // "Clear" sticks.
+  useEffect(() => {
+    const wanted = searchParams.get('customFilter');
+    if (!wanted || customFilters.length === 0) return;
+    if (customFilters.some((f) => String(f.filter_id) === String(wanted))) {
+      setSelectedFilterId(String(wanted));
+    }
+    searchParams.delete('customFilter');
+    setSearchParams(searchParams, { replace: true });
+  }, [customFilters, searchParams, setSearchParams]);
+
+  const selectedFilter = useMemo(
+    () => customFilters.find((f) => String(f.filter_id) === String(selectedFilterId)) || null,
+    [customFilters, selectedFilterId],
   );
 
-  // The selected segment filters the loaded rows client-side (the manual
+  // The selected custom filter filters the loaded rows client-side (the manual
   // dataset is small today; this moves server-side with real counts once CSV
   // import lands and volumes grow).
   const visibleContacts = useMemo(
-    () => (selectedSegment ? applySegment(contacts, selectedSegment.definition) : contacts),
-    [contacts, selectedSegment],
+    () => (selectedFilter ? applyCustomFilter(contacts, selectedFilter.definition) : contacts),
+    [contacts, selectedFilter],
   );
 
-  const reach = useMemo(() => segmentReach(visibleContacts), [visibleContacts]);
+  const reach = useMemo(() => customFilterReach(visibleContacts), [visibleContacts]);
 
-  const sharedSegments = segments.filter((s) => s.scope === 'shared');
-  const personalSegments = segments.filter((s) => s.scope === 'personal');
+  const sharedFilters = customFilters.filter((f) => f.scope === 'shared');
+  const personalFilters = customFilters.filter((f) => f.scope === 'personal');
+  const hasPersonalLimit = personalLimit >= 0;
+  const personalFull = hasPersonalLimit && personalFilters.length >= personalLimit;
 
   function toggleSort(column) {
     setSort((current) => nextSortState(current, column));
@@ -313,31 +333,50 @@ export default function PlatformContacts() {
     }
   }
 
-  function openSaveSegment() {
-    setSaveSegForm({ name: '', scope: isAdmin ? 'shared' : 'personal' });
-    setSaveSegError('');
-    setSaveSegOpen(true);
+  function openFiltersManager() {
+    setSaveFilterForm({ name: '', scope: isAdmin ? 'shared' : 'personal' });
+    setSaveFilterError('');
+    setFiltersManagerOpen(true);
   }
 
-  async function saveSegment(e) {
+  async function saveCustomFilter(e) {
     e.preventDefault();
-    if (!saveSegForm.name.trim()) { setSaveSegError('A segment name is required.'); return; }
-    setSaveSegBusy(true); setSaveSegError('');
+    if (!saveFilterForm.name.trim()) { setSaveFilterError('A custom filter name is required.'); return; }
+    // Warn before creating a shared filter — it becomes visible to everyone.
+    if (saveFilterForm.scope === 'shared') {
+      const okShared = window.confirm(
+        'Create a shared custom filter?\n\nShared filters are visible to everyone in the workspace and can be targeted by any campaign.',
+      );
+      if (!okShared) return;
+    }
+    setSaveFilterBusy(true); setSaveFilterError('');
     try {
-      // Snapshot the current filter bar as the segment's definition.
-      const { data } = await api.post('/api/platform/segments', {
-        name: saveSegForm.name.trim(),
-        scope: saveSegForm.scope,
+      // Snapshot the current filter bar as the custom filter's definition.
+      const { data } = await api.post('/api/platform/custom-filters', {
+        name: saveFilterForm.name.trim(),
+        scope: saveFilterForm.scope,
         definition: { search, linkType, businessUnit: buFilter },
       });
-      showToast('Segment saved.', { variant: 'success' });
-      setSaveSegOpen(false);
-      loadSegments();
-      if (data?.segment?.segment_id) setSelectedSegmentId(String(data.segment.segment_id));
+      showToast('Custom filter saved.', { variant: 'success' });
+      setSaveFilterForm((p) => ({ ...p, name: '' }));
+      loadCustomFilters();
+      if (data?.customFilter?.filter_id) setSelectedFilterId(String(data.customFilter.filter_id));
     } catch (err) {
-      setSaveSegError(err.response?.data?.error || 'Failed to save segment.');
+      setSaveFilterError(err.response?.data?.error || 'Failed to save custom filter.');
     } finally {
-      setSaveSegBusy(false);
+      setSaveFilterBusy(false);
+    }
+  }
+
+  async function deleteCustomFilter(filter) {
+    if (!window.confirm(`Delete custom filter "${filter.name}"?`)) return;
+    try {
+      await api.delete(`/api/platform/custom-filters/${filter.filter_id}`);
+      showToast('Custom filter deleted.', { variant: 'success' });
+      if (String(selectedFilterId) === String(filter.filter_id)) setSelectedFilterId('');
+      loadCustomFilters();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to delete custom filter.', { variant: 'error' });
     }
   }
 
@@ -449,46 +488,46 @@ export default function PlatformContacts() {
             {BUSINESS_UNITS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
           <select
-            value={selectedSegmentId}
-            onChange={(e) => setSelectedSegmentId(e.target.value)}
-            aria-label="Segment"
-            title="Apply a saved segment"
+            value={selectedFilterId}
+            onChange={(e) => setSelectedFilterId(e.target.value)}
+            aria-label="Custom filter"
+            title="Apply a saved custom filter"
           >
-            <option value="">No segment</option>
-            {sharedSegments.length > 0 && (
+            <option value="">No custom filter</option>
+            {sharedFilters.length > 0 && (
               <optgroup label="Shared">
-                {sharedSegments.map((s) => <option key={s.segment_id} value={s.segment_id}>{s.name}</option>)}
+                {sharedFilters.map((f) => <option key={f.filter_id} value={f.filter_id}>{f.name}</option>)}
               </optgroup>
             )}
-            {personalSegments.length > 0 && (
+            {personalFilters.length > 0 && (
               <optgroup label="Personal">
-                {personalSegments.map((s) => <option key={s.segment_id} value={s.segment_id}>{s.name}</option>)}
+                {personalFilters.map((f) => <option key={f.filter_id} value={f.filter_id}>{f.name}</option>)}
               </optgroup>
             )}
           </select>
           <button
             type="button"
             className="btn btn-ghost"
-            onClick={openSaveSegment}
-            title="Save the current filters as a segment"
+            onClick={openFiltersManager}
+            title="Save the current filters, and manage your custom filters"
           >
-            <BookmarkPlus size={16} strokeWidth={2} aria-hidden /> Save as segment
+            <BookmarkPlus size={16} strokeWidth={2} aria-hidden /> Custom filters
           </button>
         </div>
 
-        {selectedSegment && (
-          <div className="segment-summary" role="status">
-            <span className="segment-summary__name">{selectedSegment.name}</span>
-            <span className="segment-summary__desc muted">{describeSegment(selectedSegment.definition)}</span>
-            <span className="segment-summary__spacer" />
-            <span className="badge" title="Contacts currently in this segment">{reach.total} contacts</span>
+        {selectedFilter && (
+          <div className="custom-filter-summary" role="status">
+            <span className="custom-filter-summary__name">{selectedFilter.name}</span>
+            <span className="custom-filter-summary__desc muted">{describeCustomFilter(selectedFilter.definition)}</span>
+            <span className="custom-filter-summary__spacer" />
+            <span className="badge" title="Contacts currently in this custom filter">{reach.total} contacts</span>
             <span className="badge badge-open" title="Reachable by email">
               <Mail size={12} strokeWidth={2} aria-hidden /> {reach.email} email
             </span>
             <span className="badge" title="Have a phone number">
               <Phone size={12} strokeWidth={2} aria-hidden /> {reach.phone} phone
             </span>
-            <button type="button" className="btn btn-ghost" onClick={() => setSelectedSegmentId('')} aria-label="Clear segment">
+            <button type="button" className="btn btn-ghost" onClick={() => setSelectedFilterId('')} aria-label="Clear custom filter">
               <X size={15} aria-hidden /> Clear
             </button>
           </div>
@@ -528,7 +567,7 @@ export default function PlatformContacts() {
               )}
               {!fetching && visibleContacts.length === 0 && (
                 <tr><td colSpan={6} className="crm-table__empty">
-                  {selectedSegment ? 'No contacts match this segment.' : 'No contacts yet.'}
+                  {selectedFilter ? 'No contacts match this custom filter.' : 'No contacts yet.'}
                 </td></tr>
               )}
               {sortedContacts.map((c) => (
@@ -607,41 +646,93 @@ export default function PlatformContacts() {
         </div>
       )}
 
-      {saveSegOpen && (
+      {filtersManagerOpen && (
         <div className="modal-backdrop">
-          <div className="modal-dialog card" role="dialog" aria-modal aria-labelledby="save-segment-title">
+          <div className="modal-dialog modal-dialog--custom-filter card" role="dialog" aria-modal aria-labelledby="custom-filters-title">
             <div className="modal-dialog__head">
-              <h2 id="save-segment-title" style={{ fontSize: '1.15rem', fontWeight: 700 }}>Save as segment</h2>
-              <button type="button" className="btn btn-ghost modal-dialog__close" onClick={() => setSaveSegOpen(false)} aria-label="Close">
+              <h2 id="custom-filters-title" style={{ fontSize: '1.15rem', fontWeight: 700 }}>Custom filters</h2>
+              <button type="button" className="btn btn-ghost modal-dialog__close" onClick={() => setFiltersManagerOpen(false)} aria-label="Close">
                 <X size={22} aria-hidden />
               </button>
             </div>
-            <form onSubmit={saveSegment} style={{ marginTop: '1rem' }}>
+
+            {hasPersonalLimit && (
+              <div className="custom-filter-tracker" role="status" style={{ marginTop: '0.75rem' }}>
+                <span>{personalFilters.length} of {personalLimit} personal custom filters used</span>
+                <span className="custom-filter-tracker__meter" aria-hidden>
+                  <span style={{ width: `${Math.min(100, (personalFilters.length / personalLimit) * 100)}%` }} />
+                </span>
+                {personalFull && <span className="custom-filter-tracker__full">Limit reached — delete one to add another.</span>}
+              </div>
+            )}
+
+            <form onSubmit={saveCustomFilter} style={{ marginTop: '1rem' }}>
               <p className="muted" style={{ marginTop: 0 }}>
-                Saves the current filters as a reusable segment: <strong>{describeSegment({ search, linkType, businessUnit: buFilter })}</strong>.
-                You can fine-tune its rules later in Settings → Segments.
+                Save the current filters as a reusable custom filter: <strong>{describeCustomFilter({ search, linkType, businessUnit: buFilter })}</strong>.
+                {isAdmin ? ' You can fine-tune its rules later in Settings → Custom Filters.' : ''}
               </p>
-              <div className="field">
-                <label htmlFor="save-segment-name">Name *</label>
-                <input id="save-segment-name" value={saveSegForm.name} onChange={(e) => setSaveSegForm((p) => ({ ...p, name: e.target.value }))} required autoFocus />
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: '0.75rem' }}>
+                <div className="field">
+                  <label htmlFor="save-filter-name">Name *</label>
+                  <input id="save-filter-name" value={saveFilterForm.name} onChange={(e) => setSaveFilterForm((p) => ({ ...p, name: e.target.value }))} required autoFocus />
+                </div>
+                <div className="field">
+                  <label htmlFor="save-filter-scope">Visibility</label>
+                  <select
+                    id="save-filter-scope"
+                    value={saveFilterForm.scope}
+                    onChange={(e) => setSaveFilterForm((p) => ({ ...p, scope: e.target.value }))}
+                  >
+                    {isAdmin && <option value="shared">Shared — everyone in the workspace</option>}
+                    <option value="personal">Personal — only me</option>
+                  </select>
+                </div>
               </div>
-              <div className="field">
-                <label htmlFor="save-segment-scope">Visibility</label>
-                <select
-                  id="save-segment-scope"
-                  value={saveSegForm.scope}
-                  onChange={(e) => setSaveSegForm((p) => ({ ...p, scope: e.target.value }))}
+              {saveFilterError && <p className="error">{saveFilterError}</p>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-primary"
+                  type="submit"
+                  disabled={saveFilterBusy || (saveFilterForm.scope === 'personal' && personalFull)}
                 >
-                  {isAdmin && <option value="shared">Shared — everyone in the workspace</option>}
-                  <option value="personal">Personal — only me</option>
-                </select>
-              </div>
-              {saveSegError && <p className="error">{saveSegError}</p>}
-              <div className="modal-dialog__actions">
-                <button className="btn btn-ghost" type="button" onClick={() => setSaveSegOpen(false)} disabled={saveSegBusy}>Cancel</button>
-                <button className="btn btn-primary" type="submit" disabled={saveSegBusy}>{saveSegBusy ? 'Saving…' : 'Save segment'}</button>
+                  {saveFilterBusy ? 'Saving…' : 'Save current filters'}
+                </button>
               </div>
             </form>
+
+            {(personalFilters.length > 0 || sharedFilters.length > 0) && (
+              <div style={{ marginTop: '1.25rem' }}>
+                <h3 style={{ fontSize: '0.95rem', margin: '0 0 0.5rem' }}>Your custom filters</h3>
+                <ul className="custom-filter-list">
+                  {personalFilters.map((f) => (
+                    <li key={f.filter_id}>
+                      <div className="custom-filter-list__main">
+                        <span className="custom-filter-list__name">{f.name}</span>
+                        <span className="badge"><User size={11} aria-hidden /> Personal</span>
+                        <span className="muted custom-filter-list__desc">{describeCustomFilter(f.definition)}</span>
+                      </div>
+                      <button type="button" className="btn btn-ghost" onClick={() => deleteCustomFilter(f)}>Delete</button>
+                    </li>
+                  ))}
+                  {sharedFilters.map((f) => (
+                    <li key={f.filter_id}>
+                      <div className="custom-filter-list__main">
+                        <span className="custom-filter-list__name">{f.name}</span>
+                        <span className="badge badge-active"><Users2 size={11} aria-hidden /> Shared</span>
+                        <span className="muted custom-filter-list__desc">{describeCustomFilter(f.definition)}</span>
+                      </div>
+                      {isAdmin
+                        ? <button type="button" className="btn btn-ghost" onClick={() => deleteCustomFilter(f)}>Delete</button>
+                        : <span className="muted" style={{ fontSize: '0.8rem' }}>Admin-managed</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="modal-dialog__actions">
+              <button className="btn btn-ghost" type="button" onClick={() => setFiltersManagerOpen(false)}>Done</button>
+            </div>
           </div>
         </div>
       )}

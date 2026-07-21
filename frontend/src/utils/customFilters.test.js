@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  normalizeSegmentDefinition,
+  normalizeCustomFilterDefinition,
   isEmptyDefinition,
-  contactMatchesSegment,
-  applySegment,
-  segmentReach,
-  describeSegment,
-} from './segments.js';
+  contactMatchesFilter,
+  applyCustomFilter,
+  customFilterReach,
+  describeCustomFilter,
+} from './customFilters.js';
 
 const contacts = [
   { contact_id: 1, contact_firstname: 'Kay', contact_lastname: 'Clancy', contact_role: 'Group Chief People Officer', contact_email: 'kay@wise.com', contact_phone: '', relationship_status: 'warm', crm_organisation_id: 10, prospect_business_unit: 'Rhythm Engine' },
@@ -15,8 +15,8 @@ const contacts = [
   { contact_id: 3, contact_firstname: 'Sam', contact_lastname: 'Referral', contact_role: 'Director', contact_email: 'sam@x.com', contact_phone: '123', relationship_status: 'cold' },
 ];
 
-test('normalizeSegmentDefinition drops unknown keys and coerces types', () => {
-  const def = normalizeSegmentDefinition({
+test('normalizeCustomFilterDefinition drops unknown keys and coerces types', () => {
+  const def = normalizeCustomFilterDefinition({
     search: '  gov ', linkType: 'bogus', businessUnit: 'Not A BU',
     roleContains: 'Chief', relationshipStatuses: ['warm', 'nope', 'warm'],
     hasEmail: 'yes', hasPhone: true, junk: 1,
@@ -38,45 +38,45 @@ test('isEmptyDefinition detects no-op filters', () => {
 
 test('roleContains matches case-insensitively', () => {
   const def = { roleContains: 'chief' };
-  assert.equal(contactMatchesSegment(contacts[0], def), true);
-  assert.equal(contactMatchesSegment(contacts[1], def), false);
+  assert.equal(contactMatchesFilter(contacts[0], def), true);
+  assert.equal(contactMatchesFilter(contacts[1], def), false);
 });
 
 test('linkType filters prospect / client / unlinked', () => {
-  assert.deepEqual(applySegment(contacts, { linkType: 'prospect' }).map((c) => c.contact_id), [1]);
-  assert.deepEqual(applySegment(contacts, { linkType: 'client' }).map((c) => c.contact_id), [2]);
-  assert.deepEqual(applySegment(contacts, { linkType: 'unlinked' }).map((c) => c.contact_id), [3]);
+  assert.deepEqual(applyCustomFilter(contacts, { linkType: 'prospect' }).map((c) => c.contact_id), [1]);
+  assert.deepEqual(applyCustomFilter(contacts, { linkType: 'client' }).map((c) => c.contact_id), [2]);
+  assert.deepEqual(applyCustomFilter(contacts, { linkType: 'unlinked' }).map((c) => c.contact_id), [3]);
 });
 
 test('businessUnit matches the linked org BU', () => {
-  assert.deepEqual(applySegment(contacts, { businessUnit: 'Rhythm Engine' }).map((c) => c.contact_id), [1]);
+  assert.deepEqual(applyCustomFilter(contacts, { businessUnit: 'Rhythm Engine' }).map((c) => c.contact_id), [1]);
 });
 
 test('relationshipStatuses is an OR set; empty means any', () => {
-  assert.deepEqual(applySegment(contacts, { relationshipStatuses: ['warm', 'cold'] }).map((c) => c.contact_id), [1, 3]);
-  assert.equal(applySegment(contacts, { relationshipStatuses: [] }).length, 3);
+  assert.deepEqual(applyCustomFilter(contacts, { relationshipStatuses: ['warm', 'cold'] }).map((c) => c.contact_id), [1, 3]);
+  assert.equal(applyCustomFilter(contacts, { relationshipStatuses: [] }).length, 3);
 });
 
 test('hasEmail / hasPhone gate on presence', () => {
-  assert.deepEqual(applySegment(contacts, { hasEmail: true }).map((c) => c.contact_id), [1, 3]);
-  assert.deepEqual(applySegment(contacts, { hasPhone: true }).map((c) => c.contact_id), [2, 3]);
+  assert.deepEqual(applyCustomFilter(contacts, { hasEmail: true }).map((c) => c.contact_id), [1, 3]);
+  assert.deepEqual(applyCustomFilter(contacts, { hasPhone: true }).map((c) => c.contact_id), [2, 3]);
 });
 
 test('search spans name, email and role', () => {
-  assert.deepEqual(applySegment(contacts, { search: 'wise.com' }).map((c) => c.contact_id), [1]);
-  assert.deepEqual(applySegment(contacts, { search: 'referral' }).map((c) => c.contact_id), [3]);
+  assert.deepEqual(applyCustomFilter(contacts, { search: 'wise.com' }).map((c) => c.contact_id), [1]);
+  assert.deepEqual(applyCustomFilter(contacts, { search: 'referral' }).map((c) => c.contact_id), [3]);
 });
 
 test('predicates combine with AND', () => {
   const def = { relationshipStatuses: ['warm', 'cold'], hasPhone: true };
-  assert.deepEqual(applySegment(contacts, def).map((c) => c.contact_id), [3]);
+  assert.deepEqual(applyCustomFilter(contacts, def).map((c) => c.contact_id), [3]);
 });
 
-test('segmentReach counts totals and per-channel reachability', () => {
-  assert.deepEqual(segmentReach(contacts), { total: 3, email: 2, phone: 2 });
+test('customFilterReach counts totals and per-channel reachability', () => {
+  assert.deepEqual(customFilterReach(contacts), { total: 3, email: 2, phone: 2 });
 });
 
-test('describeSegment summarises, or says all contacts when empty', () => {
-  assert.equal(describeSegment({}), 'All contacts (no filters)');
-  assert.match(describeSegment({ businessUnit: 'Rhythm Engine', hasEmail: true }), /Rhythm Engine/);
+test('describeCustomFilter summarises, or says all contacts when empty', () => {
+  assert.equal(describeCustomFilter({}), 'All contacts (no filters)');
+  assert.match(describeCustomFilter({ businessUnit: 'Rhythm Engine', hasEmail: true }), /Rhythm Engine/);
 });

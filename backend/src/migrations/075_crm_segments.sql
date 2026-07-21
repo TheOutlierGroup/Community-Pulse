@@ -2,8 +2,10 @@
 -- the workspace (platform_org_id) and is either 'personal' (visible only to
 -- its owner) or 'shared' (visible to everyone in the workspace, created by an
 -- admin). The `definition` JSONB holds the filter predicates — validated
--- app-side in backend/src/models/CrmSegment.js, kept schema-flexible while the
--- predicate set is still settling (same pattern as crm_organisations.custom_fields).
+-- app-side, kept schema-flexible while the predicate set is still settling
+-- (same pattern as crm_organisations.custom_fields). NB: this table is renamed
+-- to crm_custom_filters in migration 076; the model now lives in
+-- backend/src/models/CrmCustomFilter.js.
 -- `business_unit` is an optional tag; when set, it scopes visibility to users
 -- who can already see that BU (enforced app-side, not by the DB).
 CREATE TABLE crm_segments (

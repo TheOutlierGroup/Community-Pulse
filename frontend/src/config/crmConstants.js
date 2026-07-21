@@ -24,6 +24,55 @@ export function businessUnitBadgeClass(businessUnit) {
   return BUSINESS_UNIT_BADGE_CLASS[businessUnit] || 'badge';
 }
 
+// ── Campaigns ──────────────────────────────────────────────────────────────
+// Multichannel outreach/marketing channels a campaign or stage can use. Ids are
+// validated on the backend in backend/src/models/Campaign.js — keep in sync.
+export const CAMPAIGN_CHANNELS = [
+  { id: 'linkedin', label: 'LinkedIn' },
+  { id: 'email', label: 'Email' },
+  { id: 'phone', label: 'Phone' },
+  { id: 'paid-ads', label: 'Paid Ads' },
+  { id: 'organic-social', label: 'Organic Social' },
+  { id: 'pr', label: 'PR' },
+  { id: 'podcast', label: 'Podcast' },
+  { id: 'web', label: 'Web / Landing' },
+  { id: 'quiz', label: 'Quiz' },
+  { id: 'other', label: 'Other' },
+];
+
+export function campaignChannelLabel(id) {
+  return CAMPAIGN_CHANNELS.find((c) => c.id === id)?.label || id;
+}
+
+export const CAMPAIGN_STATUSES = [
+  { id: 'draft', label: 'Draft' },
+  { id: 'active', label: 'Active' },
+  { id: 'paused', label: 'Paused' },
+  { id: 'archived', label: 'Archived' },
+];
+
+export function campaignStatusLabel(id) {
+  return CAMPAIGN_STATUSES.find((s) => s.id === id)?.label || 'Draft';
+}
+
+export function campaignStatusBadgeClass(id) {
+  if (id === 'active') return 'badge badge-active';
+  if (id === 'paused') return 'badge badge-on-hold';
+  if (id === 'archived') return 'badge badge-lost';
+  return 'badge';
+}
+
+// Above / below the line — a campaign-level classification (broad brand reach
+// vs. targeted direct outreach).
+export const ATL_BTL_OPTIONS = [
+  { id: 'atl', label: 'ATL' },
+  { id: 'btl', label: 'BTL' },
+];
+
+export function atlBtlLabel(id) {
+  return ATL_BTL_OPTIONS.find((o) => o.id === id)?.label || '';
+}
+
 export const LEAD_STATUSES = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost', 'On Hold'];
 
 export const LEAD_STATUS_BADGE = {

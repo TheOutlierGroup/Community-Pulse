@@ -1,11 +1,11 @@
 import { BUSINESS_UNITS } from '../../config/crmConstants.js';
 import { RELATIONSHIP_STATUS_OPTIONS } from '../../pages/platformClientUtils.js';
-import { LINK_TYPE_OPTIONS } from '../../utils/segments.js';
+import { LINK_TYPE_OPTIONS } from '../../utils/customFilters.js';
 
-// Shared editor for a segment's filter predicates. Used by the Settings
-// Segments panel and anywhere else a definition is built. `def` is a
+// Shared editor for a custom filter's predicates. Used by the Settings
+// Custom Filters panel and anywhere else a definition is built. `def` is a
 // normalised definition object; `setDef` receives an updater.
-export default function SegmentDefinitionFields({ def, setDef, disabled = false, idPrefix = 'seg' }) {
+export default function CustomFilterDefinitionFields({ def, setDef, disabled = false, idPrefix = 'cf' }) {
   const patch = (partial) => setDef((prev) => ({ ...prev, ...partial }));
 
   function toggleStatus(statusId) {
@@ -18,7 +18,7 @@ export default function SegmentDefinitionFields({ def, setDef, disabled = false,
   }
 
   return (
-    <fieldset className="segment-def" disabled={disabled} style={{ border: 'none', padding: 0, margin: 0 }}>
+    <fieldset className="custom-filter-def" disabled={disabled} style={{ border: 'none', padding: 0, margin: 0 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: '0.75rem' }}>
         <div className="field">
           <label htmlFor={`${idPrefix}-search`}>Name / email / role contains</label>
