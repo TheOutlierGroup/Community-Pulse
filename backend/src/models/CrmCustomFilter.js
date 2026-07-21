@@ -9,6 +9,7 @@ import { query } from '../config/database.js';
 
 const LINK_TYPES = new Set(['', 'prospect', 'client', 'unlinked']);
 const RELATIONSHIP_STATUSES = new Set(['warm', 'cold', 'lost', 'new']);
+const CONTACT_SOURCES = new Set(['manual', 'linkedin', 'firmable']);
 const SCOPES = new Set(['personal', 'shared']);
 
 // Personal custom filters a single non-admin user may keep. Admins are not
@@ -21,12 +22,16 @@ function normalizeDefinition(raw) {
   const relationshipStatuses = Array.isArray(src.relationshipStatuses)
     ? [...new Set(src.relationshipStatuses.filter((s) => RELATIONSHIP_STATUSES.has(s)))]
     : [];
+  const sources = Array.isArray(src.sources)
+    ? [...new Set(src.sources.filter((s) => CONTACT_SOURCES.has(s)))]
+    : [];
   return {
     search: typeof src.search === 'string' ? src.search.trim().slice(0, 200) : '',
     linkType,
     businessUnit: typeof src.businessUnit === 'string' ? src.businessUnit.trim().slice(0, 120) : '',
     roleContains: typeof src.roleContains === 'string' ? src.roleContains.trim().slice(0, 120) : '',
     relationshipStatuses,
+    sources,
     hasEmail: src.hasEmail === true,
     hasPhone: src.hasPhone === true,
   };

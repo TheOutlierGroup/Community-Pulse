@@ -3,6 +3,7 @@ import * as CrmContact from '../../models/CrmContact.js';
 import { organisationBelongsToOrg } from '../../models/CrmOrganisation.js';
 import { auditFromRequest, AUDIT_ACTIONS } from '../../services/auditLog.js';
 import { assertClientOrganizationPlatformForUser } from './shared.js';
+import { importContacts } from '../../services/contactImport.js';
 
 const router = Router();
 
@@ -36,6 +37,28 @@ router.get('/contacts', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to load contacts.' });
+  }
+});
+
+// Bulk CSV import (MeetAlfred/LinkedIn or Firmable). The frontend parses the
+// CSV and sends normalised rows; matching, enrichment and manual-field
+// protection happen server-side (services/contactImport.js).
+router.post('/contacts/import', async (req, res) => {
+  try {
+    const source = String(req.body?.source || '').trim();
+    const summary = await importContacts(orgId(req), source, req.body?.rows, req.user.id);
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CONTACT_IMPORT,
+      targetType: 'crm_contact',
+      targetId: 'bulk',
+      targetOrganizationId: orgId(req),
+      metadata: summary,
+    });
+    res.json({ summary });
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    console.error(e);
+    res.status(500).json({ error: 'Failed to import contacts.' });
   }
 });
 

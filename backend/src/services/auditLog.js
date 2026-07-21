@@ -86,6 +86,7 @@ export const AUDIT_ACTIONS = Object.freeze({
   CONTACT_CREATE: 'contact.create',
   CONTACT_UPDATE: 'contact.update',
   CONTACT_DELETE: 'contact.delete',
+  CONTACT_IMPORT: 'contact.import',
   CUSTOM_FILTER_CREATE: 'custom_filter.create',
   CUSTOM_FILTER_UPDATE: 'custom_filter.update',
   CUSTOM_FILTER_DELETE: 'custom_filter.delete',
