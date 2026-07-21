@@ -16,13 +16,34 @@ function trendSignalsTimeoutMs() {
   return readPositiveIntEnv('CLAUDE_TREND_SIGNALS_TIMEOUT_MS', 2500);
 }
 
+// A stage's `available` flag only means the dashboard snapshot for it was
+// fetched successfully — it says nothing about whether that checkpoint has
+// enough completed responses to produce real scores. Filter on the
+// accessor's own value instead, so an empty checkpoint (e.g. a Post-Change
+// session that hasn't run yet) is never mistaken for the latest data point.
 function stageDelta(stages, accessor) {
-  const available = stages.filter((stage) => stage?.available);
-  if (available.length < 2) return null;
-  const latest = accessor(available[available.length - 1]);
-  const previous = accessor(available[available.length - 2]);
-  if (!Number.isFinite(latest) || !Number.isFinite(previous)) return null;
+  const populated = stages.filter((stage) => Number.isFinite(accessor(stage)));
+  if (populated.length < 2) return null;
+  const latest = accessor(populated[populated.length - 1]);
+  const previous = accessor(populated[populated.length - 2]);
   return latest - previous;
+}
+
+function strongestMovement(stages, ids, accessor) {
+  let best = null;
+  for (const id of ids) {
+    const populated = stages.filter((stage) => Number.isFinite(accessor(stage, id)));
+    for (let idx = 1; idx < populated.length; idx += 1) {
+      const from = accessor(populated[idx - 1], id);
+      const to = accessor(populated[idx], id);
+      const delta = to - from;
+      const absDelta = Math.abs(delta);
+      if (!best || absDelta > best.absDelta) {
+        best = { id, fromLabel: populated[idx - 1].label, toLabel: populated[idx].label, delta, absDelta };
+      }
+    }
+  }
+  return best;
 }
 
 function formatDelta(value, minDigits = 1, maxDigits = 3) {
@@ -90,15 +111,16 @@ function buildCrossStageDivergenceFlags(stages, threshold = 1.0) {
   });
 }
 
-function latestAvailableStage(stages) {
+function latestPopulatedStage(stages) {
   for (let idx = stages.length - 1; idx >= 0; idx -= 1) {
-    if (stages[idx]?.available) return stages[idx];
+    const stage = stages[idx];
+    if (Number.isFinite(stage?.adoptionScore) && Number.isFinite(stage?.sponsorshipScore)) return stage;
   }
   return null;
 }
 
 function defaultTrendSignals(stages) {
-  const currentStage = latestAvailableStage(stages);
+  const currentStage = latestPopulatedStage(stages);
   const adoptionDelta = stageDelta(stages, (stage) => stage?.adoptionScore);
   const sponsorshipDelta = stageDelta(stages, (stage) => stage?.sponsorshipScore);
   const receivedDelta = stageDelta(stages, (stage) => stage?.receivedAvg);
@@ -106,12 +128,26 @@ function defaultTrendSignals(stages) {
   const chainDelta = stageDelta(stages, (stage) => stage?.chainStates?.['Chain Functioning']);
   const divergenceFlags = buildCrossStageDivergenceFlags(stages, 1.0);
 
-  const section1Headline = Math.abs(adoptionDelta || 0) >= Math.abs(sponsorshipDelta || 0)
-    ? 'Adoption has moved the most.'
-    : 'Sponsorship has moved the most.';
-  const section3Headline = (currentStage?.receivedAvg ?? Infinity) <= (currentStage?.capacityAvg ?? Infinity)
-    ? 'Received is currently the weaker sub-score.'
-    : 'Capacity is currently the weaker sub-score.';
+  const primaryMovement = strongestMovement(
+    stages,
+    ['adoption', 'sponsorship'],
+    (stage, id) => (id === 'adoption' ? stage?.adoptionScore : stage?.sponsorshipScore)
+  );
+  const section1Headline = !primaryMovement
+    ? 'Primary score movement is not available yet.'
+    : primaryMovement.absDelta < 0.05
+      ? 'Primary scores have been stable across the stages shown.'
+      : `${primaryMovement.id === 'adoption' ? 'Adoption' : 'Sponsorship'} moved the most, from ${primaryMovement.fromLabel} to ${primaryMovement.toLabel} (${formatDelta(primaryMovement.delta)}).`;
+  const subScoreMovement = strongestMovement(
+    stages,
+    ['received', 'capacity'],
+    (stage, id) => (id === 'received' ? stage?.receivedAvg : stage?.capacityAvg)
+  );
+  const section3Headline = !subScoreMovement
+    ? 'Sub-score movement is not available yet.'
+    : subScoreMovement.absDelta < 0.05
+      ? 'Received and Capacity have been stable across the stages shown.'
+      : `${subScoreMovement.id === 'received' ? 'Received' : 'Capacity'} moved the most, from ${subScoreMovement.fromLabel} to ${subScoreMovement.toLabel} (${formatDelta(subScoreMovement.delta)}).`;
   const section4Headline = (currentStage?.loadBands?.Overloaded || 0) >= 10
     ? `Critical load threshold breached (${Math.round(currentStage?.loadBands?.Overloaded || 0)}% overloaded).`
     : 'Overloaded band remains below critical threshold.';

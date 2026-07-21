@@ -8650,6 +8650,10 @@ input[type='range'] {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.pulse-trend-flow__node--pending {
+  opacity: 0.6;
+}
+
 .pulse-trend-flow__stage {
   margin: 0;
   color: var(--muted);
@@ -8663,13 +8667,26 @@ input[type='range'] {
   font-weight: 600;
 }
 
+.pulse-trend-flow__quadrant--pending {
+  color: var(--muted);
+  font-weight: 500;
+  font-style: italic;
+}
+
 .pulse-trend-flow__arrow {
   position: absolute;
   right: -0.52rem;
   top: 50%;
   transform: translateY(-50%);
   color: var(--muted);
+  font-weight: 700;
 }
+
+.pulse-trend-flow__arrow--improved { color: var(--pulse-green); }
+.pulse-trend-flow__arrow--declined { color: var(--pulse-red); }
+.pulse-trend-flow__arrow--lateral { color: var(--pulse-amber); }
+.pulse-trend-flow__arrow--unchanged { color: var(--muted); }
+.pulse-trend-flow__arrow--unknown { color: var(--muted); }
 
 .pulse-trend-chip {
   display: inline-flex;
