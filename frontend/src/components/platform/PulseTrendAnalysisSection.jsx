@@ -49,39 +49,64 @@ function bandTone(value) {
   return 'red';
 }
 
-function latestAvailableStage(orderedStages) {
+// A stage's `available` flag only means the dashboard API call for it
+// succeeded — it says nothing about whether that checkpoint has enough
+// completed responses to produce real scores (a freshly-opened checkpoint
+// with zero responses is still "available"). Every helper below instead
+// checks the accessor's own value for finiteness, so a checkpoint with no
+// data yet is never mistaken for the latest real data point.
+function latestPopulatedStage(orderedStages) {
   for (let index = orderedStages.length - 1; index >= 0; index -= 1) {
-    if (orderedStages[index]?.available) return orderedStages[index];
+    const stage = orderedStages[index];
+    if (Number.isFinite(stage?.adoptionScore) && Number.isFinite(stage?.sponsorshipScore)) return stage;
   }
   return null;
 }
 
 function stageDelta(orderedStages, accessor) {
-  const available = orderedStages.filter((stage) => stage.available);
-  if (available.length < 2) return null;
-  const latest = accessor(available[available.length - 1]);
-  const previous = accessor(available[available.length - 2]);
-  if (!Number.isFinite(latest) || !Number.isFinite(previous)) return null;
+  const populated = orderedStages.filter((stage) => Number.isFinite(accessor(stage)));
+  if (populated.length < 2) return null;
+  const latest = accessor(populated[populated.length - 1]);
+  const previous = accessor(populated[populated.length - 2]);
   return latest - previous;
 }
 
 function strongestDimensionMovement(orderedStages, dimensionIds, accessor) {
-  const available = orderedStages.filter((stage) => stage.available);
-  if (available.length < 2) return null;
   let best = null;
   for (const id of dimensionIds) {
-    for (let idx = 1; idx < available.length; idx += 1) {
-      const from = accessor(available[idx - 1], id);
-      const to = accessor(available[idx], id);
-      if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+    const populated = orderedStages.filter((stage) => Number.isFinite(accessor(stage, id)));
+    for (let idx = 1; idx < populated.length; idx += 1) {
+      const from = accessor(populated[idx - 1], id);
+      const to = accessor(populated[idx], id);
       const delta = to - from;
       const absDelta = Math.abs(delta);
       if (!best || absDelta > best.absDelta) {
-        best = { id, fromStage: available[idx - 1].label, toStage: available[idx].label, delta, absDelta };
+        best = { id, fromStage: populated[idx - 1].label, toStage: populated[idx].label, delta, absDelta };
       }
     }
   }
   return best;
+}
+
+const QUADRANT_RANK = {
+  'High Risk': 0,
+  'Motivated but Lost': 1,
+  'Capable but Wary': 1,
+  Optimal: 2,
+};
+
+function quadrantTransitionTone(fromPopulated, toPopulated, fromQuadrant, toQuadrant) {
+  if (!fromPopulated || !toPopulated) return 'unknown';
+  const fromRank = QUADRANT_RANK[fromQuadrant];
+  const toRank = QUADRANT_RANK[toQuadrant];
+  if (fromRank == null || toRank == null) return 'unknown';
+  if (toRank > fromRank) return 'improved';
+  if (toRank < fromRank) return 'declined';
+  return fromQuadrant === toQuadrant ? 'unchanged' : 'lateral';
+}
+
+function isStagePopulated(stage) {
+  return Number.isFinite(stage?.adoptionScore) && Number.isFinite(stage?.sponsorshipScore);
 }
 
 function chartScore(value) {
@@ -140,7 +165,7 @@ export default function PulseTrendAnalysisSection({
     () => orderedStages.map((stage) => stage.label),
     [orderedStages]
   );
-  const currentStage = useMemo(() => latestAvailableStage(orderedStages), [orderedStages]);
+  const currentStage = useMemo(() => latestPopulatedStage(orderedStages), [orderedStages]);
   const primaryAdoptionDelta = useMemo(
     () => stageDelta(orderedStages, (stage) => stage.adoptionScore),
     [orderedStages]
@@ -161,27 +186,36 @@ export default function PulseTrendAnalysisSection({
     () => stageDelta(orderedStages, (stage) => stage.chainStates['Chain Functioning']),
     [orderedStages]
   );
+  const primaryMovement = useMemo(
+    () =>
+      strongestDimensionMovement(
+        orderedStages,
+        ['adoption', 'sponsorship'],
+        (stage, id) => (id === 'adoption' ? stage.adoptionScore : stage.sponsorshipScore)
+      ),
+    [orderedStages]
+  );
   const primaryMovementHeadline = useMemo(() => {
-    const hasAdoptionDelta = Number.isFinite(primaryAdoptionDelta);
-    const hasSponsorshipDelta = Number.isFinite(primarySponsorshipDelta);
-    if (!hasAdoptionDelta && !hasSponsorshipDelta) return 'Primary score movement is not available yet.';
-    if (hasAdoptionDelta && !hasSponsorshipDelta) return 'Adoption has movement data; Sponsorship delta is not available yet.';
-    if (!hasAdoptionDelta && hasSponsorshipDelta) return 'Sponsorship has movement data; Adoption delta is not available yet.';
-    const adoptionAbs = Math.abs(primaryAdoptionDelta);
-    const sponsorshipAbs = Math.abs(primarySponsorshipDelta);
-    if (adoptionAbs < 0.05 && sponsorshipAbs < 0.05) return 'Both primary scores are currently stable.';
-    if (Math.abs(adoptionAbs - sponsorshipAbs) < 0.05) return 'Adoption and Sponsorship moved by similar amounts.';
-    return adoptionAbs > sponsorshipAbs ? 'Adoption has moved the most.' : 'Sponsorship has moved the most.';
-  }, [primaryAdoptionDelta, primarySponsorshipDelta]);
+    if (!primaryMovement) return 'Primary score movement is not available yet.';
+    if (primaryMovement.absDelta < 0.05) return 'Primary scores have been stable across the stages shown.';
+    const dimensionLabel = primaryMovement.id === 'adoption' ? 'Adoption' : 'Sponsorship';
+    return `${dimensionLabel} moved the most, from ${primaryMovement.fromStage} to ${primaryMovement.toStage} (${formatDelta(primaryMovement.delta)}).`;
+  }, [primaryMovement]);
+  const subScoreMovement = useMemo(
+    () =>
+      strongestDimensionMovement(
+        orderedStages,
+        ['received', 'capacity'],
+        (stage, id) => (id === 'received' ? stage.receivedAvg : stage.capacityAvg)
+      ),
+    [orderedStages]
+  );
   const subScoreHeadline = useMemo(() => {
-    const received = currentStage?.receivedAvg;
-    const capacity = currentStage?.capacityAvg;
-    if (!Number.isFinite(received) || !Number.isFinite(capacity)) {
-      return 'Current sub-score comparison is not available yet.';
-    }
-    if (Math.abs(received - capacity) < 0.05) return 'Received and Capacity are currently aligned.';
-    return received <= capacity ? 'Received is currently the weaker sub-score.' : 'Capacity is currently the weaker sub-score.';
-  }, [currentStage?.capacityAvg, currentStage?.receivedAvg]);
+    if (!subScoreMovement) return 'Sub-score movement is not available yet.';
+    if (subScoreMovement.absDelta < 0.05) return 'Received and Capacity have been stable across the stages shown.';
+    const dimensionLabel = subScoreMovement.id === 'received' ? 'Received' : 'Capacity';
+    return `${dimensionLabel} moved the most, from ${subScoreMovement.fromStage} to ${subScoreMovement.toStage} (${formatDelta(subScoreMovement.delta)}).`;
+  }, [subScoreMovement]);
   const overloadHeadline = useMemo(() => {
     const overloaded = currentStage?.loadBands?.Overloaded;
     if (!Number.isFinite(overloaded)) return 'Overloaded-band data is not available yet.';
@@ -293,11 +327,11 @@ export default function PulseTrendAnalysisSection({
   const section8Signal = sectionSignals?.section8;
   const section9Signal = sectionSignals?.section9;
   const quadrantJourneySummary = useMemo(() => {
-    const withNames = orderedStages
-      .map((stage) => ({ label: stage.label, quadrant: String(stage.quadrant || '').trim() || '--' }))
-      .filter((stage) => stage.quadrant !== '--');
-    if (withNames.length === 0) return 'Quadrant journey is not available yet.';
-    const sequence = withNames.map((stage) => `${stage.label}: ${stage.quadrant}`).join(' -> ');
+    const populatedStages = orderedStages.filter((stage) => isStagePopulated(stage));
+    if (populatedStages.length === 0) return 'Quadrant journey is not available yet.';
+    const sequence = orderedStages
+      .map((stage) => `${stage.label}: ${isStagePopulated(stage) ? (stage.quadrant || '--') : 'Yet to be done'}`)
+      .join(' -> ');
     return `Quadrant journey: ${sequence}.`;
   }, [orderedStages]);
 
@@ -360,13 +394,24 @@ export default function PulseTrendAnalysisSection({
         <p className="pulse-trend-card__label">Section 2 - Quadrant Journey</p>
         <TrendMeasure copy={TREND_MEASURE_COPY.section2} />
         <div className="pulse-trend-flow">
-          {orderedStages.map((stage, idx) => (
-            <div key={`quad-${stage.key}`} className="pulse-trend-flow__node">
-              <p className="pulse-trend-flow__stage">{stage.label}</p>
-              <p className="pulse-trend-flow__quadrant">{stage.quadrant || '--'}</p>
-              {idx < orderedStages.length - 1 ? <span className="pulse-trend-flow__arrow">→</span> : null}
-            </div>
-          ))}
+          {orderedStages.map((stage, idx) => {
+            const populated = isStagePopulated(stage);
+            const nextStage = orderedStages[idx + 1];
+            const tone = nextStage
+              ? quadrantTransitionTone(populated, isStagePopulated(nextStage), stage.quadrant, nextStage.quadrant)
+              : null;
+            return (
+              <div key={`quad-${stage.key}`} className={`pulse-trend-flow__node${populated ? '' : ' pulse-trend-flow__node--pending'}`}>
+                <p className="pulse-trend-flow__stage">{stage.label}</p>
+                <p className={`pulse-trend-flow__quadrant${populated ? '' : ' pulse-trend-flow__quadrant--pending'}`}>
+                  {populated ? (stage.quadrant || '--') : 'Yet to be done'}
+                </p>
+                {idx < orderedStages.length - 1 ? (
+                  <span className={`pulse-trend-flow__arrow pulse-trend-flow__arrow--${tone || 'unknown'}`}>→</span>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
         <p className="pulse-trend-card__subnote">{quadrantJourneySummary}</p>
         <p className="pulse-trend-card__signal">
