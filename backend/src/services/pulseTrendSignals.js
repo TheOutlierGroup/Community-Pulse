@@ -16,6 +16,21 @@ function trendSignalsTimeoutMs() {
   return readPositiveIntEnv('CLAUDE_TREND_SIGNALS_TIMEOUT_MS', 2500);
 }
 
+// Mirrors the labels shown to leaders on the Organisation View "What it
+// measures" lists — raw survey dimension IDs (1A, 2D, ...) mean nothing
+// outside the survey design, so any signal text going to leaders should
+// read in plain language instead.
+const DIMENSION_LABELS = {
+  '1A': 'Competence & Capability',
+  '1B': 'Change Track Record',
+  '1C': 'Change Load / Capacity',
+  '1D': 'Manager as Enabler',
+  '2A': 'Visible Sponsorship',
+  '2B': 'Walk the Talk',
+  '2C': 'Honest Communication',
+  '2D': 'Psychological Safety',
+};
+
 // A stage's `available` flag only means the dashboard snapshot for it was
 // fetched successfully — it says nothing about whether that checkpoint has
 // enough completed responses to produce real scores. Filter on the
@@ -168,7 +183,7 @@ function defaultTrendSignals(stages) {
     section7: `<strong>Chain Functioning is ${Math.round(currentStage?.chainStates?.['Chain Functioning'] || 0)}% at the current stage.</strong> Delta vs prior stage: ${formatDelta(chainDelta)}pp.`,
     section8: `<strong>${section8Headline}</strong> Track whether the gap narrows or widens in the next wave.`,
     section9: divergenceFlags.length > 0
-      ? `<strong>${divergenceFlags[0].delta > 0 ? 'Largest flagged movement is an improvement.' : 'Largest flagged movement is a decline.'}</strong> Prioritise intervention around ${divergenceFlags[0].dimensionId} (${divergenceFlags[0].transition}).`
+      ? `<strong>${divergenceFlags[0].delta > 0 ? 'Largest flagged movement is an improvement.' : 'Largest flagged movement is a decline.'}</strong> Prioritise intervention around ${DIMENSION_LABELS[divergenceFlags[0].dimensionId] || divergenceFlags[0].dimensionId} (${divergenceFlags[0].transition}).`
       : null,
   };
 }
@@ -212,7 +227,9 @@ async function requestTrendSignalsFromAi({ orgName, selectedTimepoint, stages })
   const prompt = [
     'Return a JSON object with keys section1..section9.',
     'Each value must be plain text with at most 2 sentences and may include <strong> tags around one key finding.',
-    'Use factual tone for a change-readiness dashboard.',
+    'Use factual tone for a change-readiness dashboard written for leaders.',
+    'Never reference raw dimension codes like 1A, 2D, or MQ5 — use their plain-language names instead '
+      + `(${Object.entries(DIMENSION_LABELS).map(([id, label]) => `${id}=${label}`).join(', ')}).`,
     'If no clear finding exists for a section, still return a useful concise line.',
     '',
     `Org: ${orgName || 'Unknown org'}`,
