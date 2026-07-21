@@ -8593,13 +8593,6 @@ input[type='range'] {
   font-weight: 600;
 }
 
-.pulse-trend-panel__note {
-  margin: 0.4rem 0 0;
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-style: italic;
-}
-
 .pulse-trend-card__signal {
   margin: 0.65rem 0 0;
   padding: 0.5rem 0.65rem;

@@ -88,6 +88,21 @@ function strongestDimensionMovement(orderedStages, dimensionIds, accessor) {
   return best;
 }
 
+// Mirrors the labels shown to leaders on the Organisation View "What it
+// measures" lists — IDs like "1A" or "MQ5" mean nothing outside the survey
+// design, so anywhere this trend data is shown to leaders it should read in
+// plain language instead.
+const DIMENSION_LABELS = {
+  '1A': 'Competence & Capability',
+  '1B': 'Change Track Record',
+  '1C': 'Change Load / Capacity',
+  '1D': 'Manager as Enabler',
+  '2A': 'Visible Sponsorship',
+  '2B': 'Walk the Talk',
+  '2C': 'Honest Communication',
+  '2D': 'Psychological Safety',
+};
+
 const QUADRANT_RANK = {
   'High Risk': 0,
   'Motivated but Lost': 1,
@@ -119,7 +134,7 @@ const TREND_MEASURE_COPY = {
   section3: `The overall Sponsorship Credibility score is broken into two distinct constructs, each scored 0-20 from the manager survey. Sponsorship Received (MQ9-MQ12) measures whether senior leaders are visibly modelling the change, staying present under pressure, communicating clearly, and speaking with one voice. Sponsorship Capacity (MQ13-MQ16) measures whether managers have the autonomy, support, resilience, and capability to sponsor their teams effectively. Separating these constructs identifies whether the sponsorship deficit originates above the manager layer or within manager support conditions.`,
   section4: `Manager Load is the degree to which managers have genuine bandwidth to take on additional change leadership. It is derived from manager load questions and classifies managers into Sustainable, Stretched, At Capacity, or Overloaded. A shift toward Sustainable indicates recovering capacity; a shift toward Overloaded is a critical signal that the change is depleting the people expected to lead it.`,
   section5: `The employee survey contains eight dimensions across adoption (1A-1D) and sponsorship (2A-2D), scored on a 1.0-5.0 normalised scale. Adoption dimensions capture capability, track record, change load, and manager enablement. Sponsorship dimensions capture visible sponsorship, walk-the-talk behaviour, communication quality, and psychological safety. Tracking these across stages shows which specific readiness conditions are improving or deteriorating.`,
-  section6: `Two manager dimensions are surfaced because they are directly tied to manager capacity and sponsorship chain resilience. Change Saturation (1C) measures whether the number and pace of initiatives remain manageable. Manager Wellbeing (2D) measures whether managers feel resilient and supported under sustained change pressure. Decline in either is an early warning that sponsorship capacity is eroding.`,
+  section6: `Two manager dimensions are surfaced because they are directly tied to manager capacity and sponsorship chain resilience. Change Saturation (1C, from MQ5 + MQ6) measures whether the number and pace of initiatives remain manageable. Manager Wellbeing (2D, from MQ15 + MQ16) measures whether managers feel resilient and supported under sustained change pressure. Both also contribute to the Manager Load score. Decline in either is an early warning that sponsorship capacity is eroding.`,
   section7: `Sponsorship chain state classifies each manager by crossing Received and Capacity against threshold into one of four states: Chain Functioning, Breaking at Manager Level, Resilient Under-Supported, or Sponsorship Failed at Both Levels. Tracking this distribution across stages shows whether sponsorship transmission from senior leaders through managers is strengthening or fracturing.`,
   section8: `Perception gap measures the difference between employee sponsorship experience and manager self-assessment. Employee sponsorship is derived from Q9-Q16 and manager sponsorship from MQ9-MQ16, both normalised to 1.0-5.0. A positive gap (manager above employee) indicates managers are overestimating sponsorship delivery; a narrowing gap across stages indicates sponsorship behaviour is becoming more visible and consistent to employees.`,
   section9: `Cross-stage divergence flags surface any dimension where average score movement is 1.0 points or more on the 1.0-5.0 scale between adjacent stages (Pre->During or During->Post). This threshold captures material cohort-level change in either direction. The section is intended to prevent manual scanning by automatically surfacing the largest shifts. If no dimension meets threshold, a holding state is shown.`,
@@ -494,7 +509,7 @@ export default function PulseTrendAnalysisSection({
             <tbody>
               {['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'].map((id) => (
                 <tr key={`emp-${id}`}>
-                  <td>{id}</td>
+                  <td>{DIMENSION_LABELS[id] || id}</td>
                   {orderedStages.map((stage) => (
                     <td key={`emp-${id}-${stage.key}`}>
                       <span className={`pulse-trend-chip pulse-trend-chip--${bandTone(stage.dimensions.employee[id])}`}>
@@ -514,11 +529,11 @@ export default function PulseTrendAnalysisSection({
               <>
                 <strong>
                   {employeeAdoptionMove
-                    ? `${employeeAdoptionMove.id} shows the largest adoption-side movement (${formatDelta(employeeAdoptionMove.delta)}).`
+                    ? `${DIMENSION_LABELS[employeeAdoptionMove.id] || employeeAdoptionMove.id} shows the largest adoption-side movement (${formatDelta(employeeAdoptionMove.delta)}).`
                     : 'No adoption-side movement available yet.'}
                 </strong>{' '}
                 {employeeSponsorshipMove
-                  ? `${employeeSponsorshipMove.id} shows the largest sponsorship-side movement (${formatDelta(employeeSponsorshipMove.delta)}).`
+                  ? `${DIMENSION_LABELS[employeeSponsorshipMove.id] || employeeSponsorshipMove.id} shows the largest sponsorship-side movement (${formatDelta(employeeSponsorshipMove.delta)}).`
                   : ''}
               </>
             )}
@@ -530,30 +545,28 @@ export default function PulseTrendAnalysisSection({
         <TrendMeasure copy={TREND_MEASURE_COPY.section6} />
         <div className="pulse-trend-panels">
           <div className="pulse-trend-panel">
-            <p className="pulse-trend-panel__title">1C Change Saturation</p>
+            <p className="pulse-trend-panel__title">Change Saturation</p>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={managerSaturationSeriesData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
                 <XAxis dataKey="stage" tick={{ fill: '#71717a', fontSize: 11 }} />
                 <YAxis domain={[1, 5]} tick={{ fill: '#71717a', fontSize: 11 }} />
                 <Tooltip formatter={(value) => formatScore(value, 1)} />
-                <Line type="monotone" dataKey="value" name="1C avg" stroke="#4a90d9" strokeWidth={2} dot />
+                <Line type="monotone" dataKey="value" name="Change Saturation avg" stroke="#4a90d9" strokeWidth={2} dot />
               </LineChart>
             </ResponsiveContainer>
-            <p className="pulse-trend-panel__note">MQ5 + MQ6 contribute to Manager Load score.</p>
           </div>
           <div className="pulse-trend-panel">
-            <p className="pulse-trend-panel__title">2D Manager Wellbeing</p>
+            <p className="pulse-trend-panel__title">Manager Wellbeing</p>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={managerWellbeingSeriesData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
                 <XAxis dataKey="stage" tick={{ fill: '#71717a', fontSize: 11 }} />
                 <YAxis domain={[1, 5]} tick={{ fill: '#71717a', fontSize: 11 }} />
                 <Tooltip formatter={(value) => formatScore(value, 1)} />
-                <Line type="monotone" dataKey="value" name="2D avg" stroke="#c47a4a" strokeWidth={2} dot />
+                <Line type="monotone" dataKey="value" name="Manager Wellbeing avg" stroke="#c47a4a" strokeWidth={2} dot />
               </LineChart>
             </ResponsiveContainer>
-            <p className="pulse-trend-panel__note">MQ15 + MQ16 contribute to Manager Load score.</p>
           </div>
         </div>
         <p className="pulse-trend-card__signal">
@@ -646,7 +659,7 @@ export default function PulseTrendAnalysisSection({
               <tbody>
                 {divergenceFlags.map((flag) => (
                   <tr key={flag.key}>
-                    <td>{flag.dimensionId}</td>
+                    <td>{DIMENSION_LABELS[flag.dimensionId] || flag.dimensionId}</td>
                     <td>{flag.survey}</td>
                     <td>{flag.transition}</td>
                     <td>{formatScore(flag.from)}</td>
@@ -672,7 +685,7 @@ export default function PulseTrendAnalysisSection({
                   <strong>
                     {divergenceFlags[0].delta > 0 ? 'Largest flagged movement is an improvement.' : 'Largest flagged movement is a decline.'}
                   </strong>{' '}
-                  Prioritise intervention around {divergenceFlags[0].dimensionId} ({divergenceFlags[0].transition}).
+                  Prioritise intervention around {DIMENSION_LABELS[divergenceFlags[0].dimensionId] || divergenceFlags[0].dimensionId} ({divergenceFlags[0].transition}).
                 </>
               )}
           </p>
