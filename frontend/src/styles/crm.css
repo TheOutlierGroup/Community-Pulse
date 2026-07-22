@@ -694,6 +694,90 @@
   text-align: center;
 }
 
+.campaign-lane__name-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.campaign-lane__name-link:hover { text-decoration: underline; }
+
+.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-ink, #0f4c43);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Campaign detail — read-only flow list (Flow subtab). */
+.flow-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 640px;
+}
+.flow-list__item {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 0.6rem 0.75rem;
+}
+.flow-list__body { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; flex: 1; }
+.flow-list__title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-weight: 600;
+}
+
+/* Quiz results subtab. */
+.quiz-list { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem; }
+.quiz-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.quiz-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+}
+.quiz-card__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+}
+.quiz-card__name { font-weight: 600; }
+.quiz-card__tools { display: inline-flex; align-items: center; gap: 0.4rem; }
+.quiz-card__body { border-top: 1px solid var(--border); }
+.btn-file { position: relative; cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; }
+
+.quiz-table th, .quiz-table td { white-space: nowrap; }
+.quiz-table td[style*="max-width"] { white-space: normal; }
+.quiz-table__detail td { background: var(--surface-alt, rgba(0,0,0,0.02)); }
+
 @media (prefers-color-scheme: dark) {
   .badge-channel { background: rgba(143, 179, 221, 0.16); color: #8fb3dd; }
   .badge-atl-btl { background: rgba(198, 155, 208, 0.18); color: #c69bd0; }

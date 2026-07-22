@@ -28,6 +28,17 @@ router.get('/campaigns', async (req, res) => {
   }
 });
 
+router.get('/campaigns/:id', async (req, res) => {
+  try {
+    const campaign = await Campaign.getCampaignWithStages(orgId(req), req.params.id);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found.' });
+    res.json({ campaign });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load campaign.' });
+  }
+});
+
 router.post('/campaigns', async (req, res) => {
   try {
     if (!String(req.body?.name || '').trim()) {
