@@ -1,3 +1,11 @@
+// Minimum respondent count required before any score/quadrant/dimension
+// breakdown is returned for a given population (org-wide, a single
+// manager's team, a dimension's employee/manager cohort, etc). Prevents
+// the "filter-down" attack: narrowing the manager filter to a tiny group
+// (down to a single manager) must not expose that group's actual scores,
+// since a small enough group can be re-identified as specific individuals.
+export const DASHBOARD_MIN_SAMPLE_SIZE = 5;
+
 export function parseQueryBool(v, fallback = false) {
   if (v === true || v === 'true' || v === '1') return true;
   if (v === false || v === 'false' || v === '0') return false;
