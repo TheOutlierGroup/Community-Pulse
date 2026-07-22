@@ -1711,8 +1711,17 @@ export function registerPlatformOrgRoutes(router) {
       && parseMultipartBool(req.body.enterpriseLicence)
       && organizationHasService(org.settings, CLIENT_SERVICE_PULSE)
     ) {
+      // Respect whichever specific Enterprise size was chosen on the
+      // creation form — previously this was hardcoded to 'enterprise_mid'
+      // regardless of intent, so the Licence panel could end up showing a
+      // tier that didn't match what was actually entered.
+      const requestedTier = String(req.body.enterpriseLicenceTier || '').trim();
+      const enterpriseTier = LicenseConfig.LICENSE_TIERS.includes(requestedTier)
+        && requestedTier !== 'practitioner'
+        ? requestedTier
+        : 'enterprise_mid';
       try {
-        await LicenseConfig.createDefaultForLicensee(org.id, { tier: 'enterprise_mid' });
+        await LicenseConfig.createDefaultForLicensee(org.id, { tier: enterpriseTier });
       } catch (e) {
         console.error('Failed to create licence_config row for Enterprise client:', e);
       }
@@ -2138,7 +2147,13 @@ export function registerPlatformOrgRoutes(router) {
     }
     const requesterOrg = req.workspaceOrganization;
     const isLicenseeRequester = requesterOrg?.kind === 'licensee';
-    const invitedRole = req.body.invitedRole === 'admin' ? 'admin' : 'employee';
+    // Enterprise client self-service admins may only ever invite other
+    // admins for this MVP — force the role regardless of what the request
+    // body asks for. Staff/licensee callers keep the existing behaviour.
+    const isSelfServiceClientRequester = req.user.organizationKind === 'client';
+    const invitedRole = isSelfServiceClientRequester
+      ? 'admin'
+      : req.body.invitedRole === 'admin' ? 'admin' : 'employee';
     const emailNorm = String(req.body.email || '').trim().toLowerCase();
     const firstName = req.body.firstName;
     const lastName = req.body.lastName;

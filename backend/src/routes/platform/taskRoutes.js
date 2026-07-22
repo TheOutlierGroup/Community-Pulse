@@ -300,9 +300,9 @@ function assigneeLabelFromTaskRow(row) {
   return full || String(row.assignee_email || '').trim() || null;
 }
 
-async function assertAssignableUserIds(clientOrgId, userIds) {
+async function assertAssignableUserIds(clientOrgId, userIds, { clientOnly = false } = {}) {
   if (!userIds?.length) return true;
-  const allow = await User.listAssignableUsersForClientTasks(clientOrgId);
+  const allow = await User.listAssignableUsersForClientTasks(clientOrgId, { clientOnly });
   const set = new Set(allow.map((u) => String(u.id)));
   return userIds.every((id) => set.has(String(id)));
 }
@@ -450,7 +450,10 @@ router.get('/organizations/:id/tasks', async (req, res) => {
 router.get('/organizations/:id/tasks/assignable-users', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
-  const rows = await User.listAssignableUsersForClientTasks(req.params.id);
+  // Enterprise client self-service callers never see Outlier platform
+  // staff in the assignable list — only this client's own org members.
+  const clientOnly = req.user.organizationKind === 'client';
+  const rows = await User.listAssignableUsersForClientTasks(req.params.id, { clientOnly });
   res.json({ users: rows.map(publicAssignableUser) });
 });
 
@@ -465,11 +468,12 @@ router.post('/organizations/:id/tasks', requireBodyFields(['title']), async (req
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
   const b = req.body || {};
+  const clientOnly = req.user.organizationKind === 'client';
   const tagged = Array.isArray(b.taggedUserIds) ? b.taggedUserIds : [];
-  if (!(await assertAssignableUserIds(req.params.id, tagged))) {
+  if (!(await assertAssignableUserIds(req.params.id, tagged, { clientOnly }))) {
     return res.status(400).json({ error: 'Invalid tagged users' });
   }
-  if (b.assignedTo && !(await assertAssignableUserIds(req.params.id, [b.assignedTo]))) {
+  if (b.assignedTo && !(await assertAssignableUserIds(req.params.id, [b.assignedTo], { clientOnly }))) {
     return res.status(400).json({ error: 'Invalid assignee' });
   }
   const row = await ClientWorkTask.createTask(
@@ -546,11 +550,12 @@ router.patch('/organizations/:id/tasks/:taskId', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
   const body = req.body || {};
+  const clientOnly = req.user.organizationKind === 'client';
   const tagged = body.taggedUserIds;
-  if (Array.isArray(tagged) && !(await assertAssignableUserIds(req.params.id, tagged))) {
+  if (Array.isArray(tagged) && !(await assertAssignableUserIds(req.params.id, tagged, { clientOnly }))) {
     return res.status(400).json({ error: 'Invalid tagged users' });
   }
-  if (body.assignedTo && !(await assertAssignableUserIds(req.params.id, [body.assignedTo]))) {
+  if (body.assignedTo && !(await assertAssignableUserIds(req.params.id, [body.assignedTo], { clientOnly }))) {
     return res.status(400).json({ error: 'Invalid assignee' });
   }
   if (
@@ -825,7 +830,7 @@ router.post('/organizations/:id/tasks/:taskId/comments', async (req, res) => {
   if (!org) return res.status(404).json({ error: 'Organization not found' });
   const body = req.body || {};
   const mentionIds = Array.isArray(body.mentionUserIds) ? body.mentionUserIds : [];
-  if (!(await assertAssignableUserIds(req.params.id, mentionIds))) {
+  if (!(await assertAssignableUserIds(req.params.id, mentionIds, { clientOnly: req.user.organizationKind === 'client' }))) {
     return res.status(400).json({ error: 'Invalid mentions' });
   }
   const commentBody = ClientWorkTask.trimCommentBody(body.body ?? '');

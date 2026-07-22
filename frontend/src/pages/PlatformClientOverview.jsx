@@ -14,7 +14,7 @@ import {
   relationshipStatusBadgeClass,
 } from './platformClientUtils.js';
 import '../styles/crm.css';
-import { isLicenseeUser } from '../hooks/usePlatformAccess.js';
+import { isLicenseeUser, isEnterpriseClientSelfUser } from '../hooks/usePlatformAccess.js';
 
 function getLocalWeekRange() {
   const now = new Date();
@@ -74,6 +74,10 @@ export default function PlatformClientOverview() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isLicensee = isLicenseeUser(user);
+  // Client-relationship contacts (Outlier's own CRM record of who to talk
+  // to at this client) are internal-only — not on the self-service
+  // allowlist and not meaningful for the client to see about itself.
+  const isEnterpriseClientSelf = isEnterpriseClientSelfUser(user);
   const week = useMemo(() => getLocalWeekRange(), []);
   const [dash, setDash] = useState(null);
   const [dashError, setDashError] = useState('');
@@ -260,7 +264,7 @@ export default function PlatformClientOverview() {
           </div>
         ) : null}
 
-        {!isLicensee ? <ClientContactsPanel orgId={orgId} /> : null}
+        {!isLicensee && !isEnterpriseClientSelf ? <ClientContactsPanel orgId={orgId} /> : null}
       </div>
     </>
   );

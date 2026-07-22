@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
-import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
+import { usePlatformClientAccess } from '../hooks/usePlatformAccess.js';
 import { jsonErrorFromBuffer, sniffImageMime } from '../utils/imageResponseHelpers.js';
 import { ArrowLeft } from 'lucide-react';
 import { IS_RHYTHM_ENGINE_SURFACE } from '../config/appSurface.js';
@@ -51,7 +51,7 @@ export default function PlatformClientLayout() {
   const location = useLocation();
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
-  const ok = usePlatformAccess(user, loading, navigate);
+  const ok = usePlatformClientAccess(user, loading, navigate, orgId);
 
   const [org, setOrg] = useState(null);
   const [licenseConfig, setLicenseConfig] = useState(null);

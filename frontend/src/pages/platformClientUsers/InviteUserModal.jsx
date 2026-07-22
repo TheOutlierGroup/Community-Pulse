@@ -13,6 +13,7 @@ export default function InviteUserModal({
   setInviteFirstName,
   setInviteLastName,
   setInviteRole,
+  roleFixedToAdmin = false,
   onClose,
   onSubmit,
 }) {
@@ -56,17 +57,23 @@ export default function InviteUserModal({
             </div>
           </div>
         </fieldset>
-        <div className="field">
-          <label htmlFor="client-invite-role">User type</label>
-          <select
-            id="client-invite-role"
-            value={inviteRole}
-            onChange={(e) => setInviteRole(e.target.value)}
-          >
-            <option value="employee">Member</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
+        {roleFixedToAdmin ? (
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            New users are invited as Admins.
+          </p>
+        ) : (
+          <div className="field">
+            <label htmlFor="client-invite-role">User type</label>
+            <select
+              id="client-invite-role"
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+            >
+              <option value="employee">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        )}
         <div className="modal-dialog__actions">
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
             Cancel

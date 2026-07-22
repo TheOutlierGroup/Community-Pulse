@@ -208,3 +208,64 @@ test('null inputs are denied', () => {
     false
   );
 });
+
+// Enterprise self-service: a client org's own admin/employee may reach only
+// their own org, and only when the Enterprise portal tier is enabled.
+const enterpriseClient = {
+  id: 'client-ent',
+  kind: 'client',
+  parent_organization_id: null,
+  settings: { clientPortalTier: 'enterprise' },
+};
+const standardClient = {
+  id: 'client-std',
+  kind: 'client',
+  parent_organization_id: null,
+  settings: {},
+};
+const enterpriseClientAdmin = { id: 'u-ec', role: 'admin', organizationId: 'client-ent' };
+const standardClientAdmin = { id: 'u-sc', role: 'admin', organizationId: 'client-std' };
+
+test('Enterprise-tier client admin can access their own org', () => {
+  assert.equal(
+    canPlatformUserAccessClientOrgPure({
+      user: enterpriseClientAdmin,
+      requesterOrg: enterpriseClient,
+      targetOrg: enterpriseClient,
+    }),
+    true
+  );
+});
+
+test('Standard-tier client admin cannot access their own org via this helper (no Enterprise portal tier)', () => {
+  assert.equal(
+    canPlatformUserAccessClientOrgPure({
+      user: standardClientAdmin,
+      requesterOrg: standardClient,
+      targetOrg: standardClient,
+    }),
+    false
+  );
+});
+
+test('Enterprise-tier client admin cannot access a different client org', () => {
+  assert.equal(
+    canPlatformUserAccessClientOrgPure({
+      user: enterpriseClientAdmin,
+      requesterOrg: enterpriseClient,
+      targetOrg: clientOfA,
+    }),
+    false
+  );
+});
+
+test('Enterprise-tier client admin cannot access a licensee org', () => {
+  assert.equal(
+    canPlatformUserAccessClientOrgPure({
+      user: enterpriseClientAdmin,
+      requesterOrg: enterpriseClient,
+      targetOrg: licenseeOrgA,
+    }),
+    false
+  );
+});

@@ -7,7 +7,11 @@ import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
 import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
-import { normalizeClientServiceIds, organizationVisibleToBusinessUnits } from '../../services/clientServices.js';
+import {
+  normalizeClientServiceIds,
+  organizationVisibleToBusinessUnits,
+  organizationHasEnterprisePortalTier,
+} from '../../services/clientServices.js';
 import { normalizePulseStage } from '../../services/pulseStage.js';
 
 function platformUploadError(err, fileSizeMessage) {
@@ -128,6 +132,15 @@ export function canPlatformUserAccessClientOrgPure({
     // see other licensees, sibling licensees' clients, or the platform.
     if (targetOrg.kind !== 'client') return false;
     return targetOrg.parent_organization_id === requesterOrg.id;
+  }
+  if (requesterOrg.kind === 'client') {
+    // Enterprise self-service: a client org's own admin/employee may only
+    // ever reach their own org, and only when the Enterprise portal tier is
+    // enabled. On the main platform router this branch is unreachable
+    // (requireWorkspaceUser already rejects client orgs before any handler
+    // runs) — it only ever fires through platformEnterpriseSelfRouter.js.
+    if (targetOrg.kind !== 'client' || targetOrg.id !== requesterOrg.id) return false;
+    return organizationHasEnterprisePortalTier(requesterOrg.settings);
   }
   return false;
 }

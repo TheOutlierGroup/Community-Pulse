@@ -43,28 +43,16 @@ const LICENSE_STATUS_OPTIONS = [
   { id: 'expired', label: 'Expired' },
 ];
 
-function toDateInputValue(iso) {
-  if (!iso) return '';
-  const dt = new Date(iso);
-  if (Number.isNaN(dt.getTime())) return '';
-  const yyyy = dt.getUTCFullYear();
-  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(dt.getUTCDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function dateInputToIso(value) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return null;
-  return new Date(`${trimmed}T00:00:00.000Z`).toISOString();
-}
-
-export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved, isPractitioner = true }) {
+export default function LicenseConfigPanel({
+  orgId,
+  licenseConfig,
+  onSaved,
+  isPractitioner = true,
+  selfServiceView = false,
+}) {
   const { showToast } = useToast();
   const [tier, setTier] = useState('practitioner');
   const [status, setStatus] = useState('active');
-  const [contractStart, setContractStart] = useState('');
-  const [contractEnd, setContractEnd] = useState('');
   const [adminUserLimit, setAdminUserLimit] = useState('5');
   const [assessmentsIncluded, setAssessmentsIncluded] = useState('0');
   const [assessmentsConsumed, setAssessmentsConsumed] = useState('0');
@@ -125,10 +113,13 @@ export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved, isPr
   }, [orgId, licenseConfig?.assessmentsConsumed]);
 
   useEffect(() => {
-    setTier(licenseConfig?.licenseTier || 'practitioner');
+    // A <select> whose bound value doesn't match any <option> silently
+    // renders showing the first option ("Practitioner") without that ever
+    // being reflected back into state — normalize defensively so the
+    // displayed tier always matches a real, known value.
+    const incomingTier = licenseConfig?.licenseTier;
+    setTier(LICENSE_TIER_OPTIONS.some((opt) => opt.id === incomingTier) ? incomingTier : 'practitioner');
     setStatus(licenseConfig?.status || 'active');
-    setContractStart(toDateInputValue(licenseConfig?.contractStart));
-    setContractEnd(toDateInputValue(licenseConfig?.contractEnd));
     setAdminUserLimit(String(licenseConfig?.adminUserLimit ?? 5));
     setAssessmentsIncluded(String(licenseConfig?.assessmentsIncluded ?? 0));
     setAssessmentsConsumed(String(licenseConfig?.assessmentsConsumed ?? 0));
@@ -158,8 +149,6 @@ export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved, isPr
       const payload = {
         licenseTier: tier,
         status,
-        contractStart: dateInputToIso(contractStart),
-        contractEnd: dateInputToIso(contractEnd),
         adminUserLimit: Number.parseInt(adminUserLimit, 10),
         assessmentsIncluded: Number.parseInt(assessmentsIncluded, 10),
         assessmentsConsumed: Number.parseInt(assessmentsConsumed, 10),
@@ -192,6 +181,42 @@ export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved, isPr
     } finally {
       setBusy(false);
     }
+  }
+
+  if (selfServiceView) {
+    return (
+      <div className="card platform-client-dashboard__card" style={{ marginBottom: '1.5rem' }}>
+        <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>
+          Licence
+        </h2>
+        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+          <div>
+            <div className="muted" style={{ fontSize: '0.8rem' }}>Assessments included</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>
+              {isUnlimited ? 'Unlimited' : includedNum}
+            </div>
+          </div>
+          <div>
+            <div className="muted" style={{ fontSize: '0.8rem' }}>Assessments consumed</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{consumedNum}</div>
+          </div>
+        </div>
+        <div
+          aria-hidden
+          style={{ height: 8, borderRadius: 4, background: 'rgba(0,0,0,0.06)', overflow: 'hidden' }}
+        >
+          <div
+            style={{
+              width: isUnlimited ? '100%' : `${usagePct}%`,
+              height: '100%',
+              background: isUnlimited ? '#94a3b8' : usageBarColor,
+              transition: 'width 0.2s ease',
+            }}
+          />
+        </div>
+        <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.8125rem' }}>{remainingLabel}</p>
+      </div>
+    );
   }
 
   return (
@@ -258,26 +283,6 @@ export default function LicenseConfigPanel({ orgId, licenseConfig, onSaved, isPr
                 <option key={opt.id} value={opt.id}>{opt.label}</option>
               ))}
             </select>
-          </div>
-          <div className="field">
-            <label htmlFor="lc-contract-start">Contract start</label>
-            <input
-              id="lc-contract-start"
-              type="date"
-              value={contractStart}
-              onChange={(e) => setContractStart(e.target.value)}
-              disabled={busy}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="lc-contract-end">Contract end</label>
-            <input
-              id="lc-contract-end"
-              type="date"
-              value={contractEnd}
-              onChange={(e) => setContractEnd(e.target.value)}
-              disabled={busy}
-            />
           </div>
           <div className="field">
             <label htmlFor="lc-admin-limit">Admin user limit</label>
