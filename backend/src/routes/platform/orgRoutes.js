@@ -728,12 +728,13 @@ async function upsertPulseInviteRecipients({
 /**
  * Carries Pre's current recipient roster forward automatically, so admins
  * don't have to re-enter the same people at every checkpoint. Runs the same
- * upsert path the manual "Copy from Pre" button already uses. Opt-out via
- * organizations.settings.pulseCarryForwardRecipients === false (Settings
- * toggle). Best-effort — a copy failure never blocks checkpoint creation.
+ * upsert path the manual "Copy from Pre" button already uses. Opt-in via
+ * organizations.settings.pulseCarryForwardRecipients === true (Settings
+ * toggle, defaults off). Best-effort — a copy failure never blocks
+ * checkpoint creation.
  */
 async function autoCarryForwardRecipientsForDuringCheckpoint(org, duringSessionId) {
-  if (org?.settings?.pulseCarryForwardRecipients === false) return;
+  if (org?.settings?.pulseCarryForwardRecipients !== true) return;
   const expectedGroupLevelLabels = normalizedGroupLevelLabelsFromSettings(org.settings);
 
   async function copyFrom(sourcePhase, sourceDuringSessionId, targetPhase, targetDuringSessionId) {
@@ -3020,9 +3021,9 @@ export function registerPlatformOrgRoutes(router) {
   });
 
   // Toggle for autoCarryForwardRecipientsForDuringCheckpoint — lets admins
-  // turn off the default "carry Pre's roster forward automatically"
-  // behaviour for this client if they'd rather build each checkpoint's
-  // recipient list from scratch.
+  // turn on "carry Pre's roster forward automatically" for this client;
+  // defaults off, so each checkpoint's recipient list starts empty unless
+  // explicitly enabled.
   router.patch(
     '/organizations/:id/pulse-timepoints/carry-forward-setting',
     requirePlatformAdminRole,
@@ -3034,7 +3035,7 @@ export function registerPlatformOrgRoutes(router) {
         pulseCarryForwardRecipients: enabled,
       });
       if (!updated) return res.status(500).json({ error: 'Could not update setting' });
-      res.json({ pulseCarryForwardRecipients: updated.settings?.pulseCarryForwardRecipients !== false });
+      res.json({ pulseCarryForwardRecipients: updated.settings?.pulseCarryForwardRecipients === true });
     }
   );
 

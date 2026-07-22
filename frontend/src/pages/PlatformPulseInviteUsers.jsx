@@ -2161,8 +2161,8 @@ export default function PlatformPulseInviteUsers() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th scope="col">Name</th>
                   <th scope="col">Email</th>
+                  <th scope="col">Name</th>
                   <th scope="col">Role</th>
                   <th scope="col">Manager (yes/no)</th>
                   <th scope="col">Manager</th>
@@ -2218,8 +2218,8 @@ export default function PlatformPulseInviteUsers() {
                   const surveyComplete = row.surveyStatus === 'completed';
                   return (
                     <tr key={row.id}>
-                      <td>{row.displayName || '—'}</td>
                       <td className="pulse-prototype-mono">{row.email}</td>
+                      <td>{row.displayName || '—'}</td>
                       <td>{row.surveyRole === 'manager' ? 'Manager' : 'Staff'}</td>
                       <td>{row.surveyRole === 'manager' ? 'Yes' : 'No'}</td>
                       <td>{row.surveyRole === 'staff' ? row.managerName || row.managerEmail || '—' : '—'}</td>

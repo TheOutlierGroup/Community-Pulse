@@ -82,7 +82,7 @@ export default function PlatformPulseSettings() {
   const [dateEditValue, setDateEditValue] = useState('');
   const [activateTarget, setActivateTarget] = useState(null);
   const [carryForwardBusy, setCarryForwardBusy] = useState(false);
-  const carryForwardEnabled = org?.settings?.pulseCarryForwardRecipients !== false;
+  const carryForwardEnabled = org?.settings?.pulseCarryForwardRecipients === true;
 
   const [groupLevels, setGroupLevels] = useState(() => readGroupLevels(org?.settings));
   const [groupLevelLabels, setGroupLevelLabels] = useState(() => readGroupLevelLabels(org?.settings));
