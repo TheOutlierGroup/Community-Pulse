@@ -37,6 +37,7 @@ const PlatformSettings = lazy(() => import('./pages/PlatformSettings.jsx'));
 const PlatformOrganisations = lazy(() => import('./pages/PlatformOrganisations.jsx'));
 const PlatformContacts = lazy(() => import('./pages/PlatformContacts.jsx'));
 const PlatformCampaigns = lazy(() => import('./pages/PlatformCampaigns.jsx'));
+const PlatformCampaignDetail = lazy(() => import('./pages/PlatformCampaignDetail.jsx'));
 const PlatformProspectLayout = lazy(() => import('./pages/PlatformProspectLayout.jsx'));
 const PlatformProspectDashboard = lazy(() => import('./pages/PlatformProspectDashboard.jsx'));
 const PlatformProspectTasks = lazy(() => import('./pages/PlatformProspectTasks.jsx'));
@@ -95,6 +96,7 @@ export default function App() {
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm" element={<Navigate to="/platform/crm/organisations" replace />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/organisations" element={<PlatformOrganisations />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/campaigns" element={<PlatformCampaigns />} />}
+            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/campaigns/:id" element={<PlatformCampaignDetail />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/contacts" element={<PlatformContacts />} />}
             {!IS_RHYTHM_ENGINE_SURFACE && (
               <Route path="/platform/crm/organisations/:id" element={<PlatformProspectLayout />}>

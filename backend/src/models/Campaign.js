@@ -56,6 +56,22 @@ export async function getCampaign(platformOrgId, campaignId) {
   return rows[0] || null;
 }
 
+// Single campaign + its ordered stages (with WHO filter names) for the detail
+// page.
+export async function getCampaignWithStages(platformOrgId, campaignId) {
+  const campaign = await getCampaign(platformOrgId, campaignId);
+  if (!campaign) return null;
+  const { rows: stages } = await query(
+    `SELECT s.*, f.name AS who_filter_name
+       FROM campaign_stages s
+       LEFT JOIN crm_custom_filters f ON f.filter_id = s.who_filter_id
+      WHERE s.campaign_id = $1
+      ORDER BY s.position ASC, s.stage_id ASC`,
+    [campaignId],
+  );
+  return { ...campaign, stages };
+}
+
 export async function createCampaign(platformOrgId, data, userId) {
   // New lanes go to the end of the board.
   const { rows: posRows } = await query(

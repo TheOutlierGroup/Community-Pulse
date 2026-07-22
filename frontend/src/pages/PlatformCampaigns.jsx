@@ -264,7 +264,11 @@ export default function PlatformCampaigns() {
               <button type="button" className="icon-btn" title="Move left" disabled={index === 0} onClick={() => moveCampaign(index, -1)}><ChevronLeft size={15} aria-hidden /></button>
               <button type="button" className="icon-btn" title="Move right" disabled={index === campaigns.length - 1} onClick={() => moveCampaign(index, 1)}><ChevronRight size={15} aria-hidden /></button>
             </div>
-            <h2 className="campaign-lane__name">{campaign.name}</h2>
+            <h2 className="campaign-lane__name">
+              <button type="button" className="campaign-lane__name-link" onClick={() => navigate(`/platform/campaigns/${campaign.campaign_id}`)} title="Open campaign (flow &amp; quiz results)">
+                {campaign.name}
+              </button>
+            </h2>
             <div className="campaign-lane__tools">
               <button type="button" className="icon-btn" title="Edit campaign" onClick={() => openEditCampaign(campaign)}><Pencil size={15} aria-hidden /></button>
               <button type="button" className="icon-btn icon-btn--danger" title="Delete campaign" onClick={() => deleteCampaign(campaign)}><Trash2 size={15} aria-hidden /></button>

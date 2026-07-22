@@ -36,15 +36,16 @@ export function parseCsv(text) {
   if (records.length === 0) return { headers: [], rows: [] };
 
   const headers = records[0].map((h) => String(h).trim());
-  const rows = records
-    .slice(1)
-    .filter((r) => r.some((v) => String(v).trim() !== ''))
-    .map((r) => {
-      const obj = {};
-      headers.forEach((h, idx) => { obj[h] = r[idx] !== undefined ? r[idx] : ''; });
-      return obj;
-    });
-  return { headers, rows };
+  const dataRecords = records.slice(1).filter((r) => r.some((v) => String(v).trim() !== ''));
+  const rows = dataRecords.map((r) => {
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h] = r[idx] !== undefined ? r[idx] : ''; });
+    return obj;
+  });
+  // `records` keeps the raw per-row arrays so callers can read columns by
+  // position — needed when headers are blank or duplicated (e.g. Formidable's
+  // name/email columns), where a header-keyed object would collide.
+  return { headers, rows, records: dataRecords };
 }
 
 function normalizeHeader(h) {
