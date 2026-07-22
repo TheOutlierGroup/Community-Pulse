@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
@@ -7,7 +7,7 @@ import ModalDialog from '../components/shared/ModalDialog.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { Building2, Sparkles, Trash2 } from 'lucide-react';
 import LicenseConfigPanel from '../components/platform/LicenseConfigPanel.jsx';
-import RecentActivityPanel from '../components/platform/RecentActivityPanel.jsx';
+import { isWorkspaceUser, isEnterpriseClientSelfUser } from '../hooks/usePlatformAccess.js';
 import {
   CLIENT_SERVICE_LICENSEE,
   CLIENT_SERVICE_OTHER,
@@ -20,8 +20,6 @@ import {
   normalizeRelationshipStatus,
 } from './platformClientUtils.js';
 import '../styles/crm.css';
-
-const SUGGESTED_GROUP_LEVEL_LABELS = ['Business Unit', 'Division', 'Team'];
 
 function readClientSettings(settings) {
   if (settings == null) return null;
@@ -68,6 +66,8 @@ export default function PlatformClientAccount() {
   const navigate = useNavigate();
   const isPlatformAdmin =
     user?.organizationKind === 'platform' && user?.role === 'admin';
+  const isWorkspace = isWorkspaceUser(user);
+  const isSelfService = isEnterpriseClientSelfUser(user);
   const isLicenseeOrg = org.kind === 'licensee';
   // A standalone "Enterprise" client (no Practitioner parent) carries its
   // own Rhythm Engine licence directly, same panel as a Practitioner uses
@@ -94,9 +94,12 @@ export default function PlatformClientAccount() {
   const [selectedServices, setSelectedServices] = useState(() =>
     normalizeServices(org.settings).filter((id) => id !== CLIENT_SERVICE_LICENSEE)
   );
-  const [groupLevels, setGroupLevels] = useState(() => readGroupLevels(org.settings));
-  const [groupLevelLabels, setGroupLevelLabels] = useState(() => readGroupLevelLabels(org.settings));
+  // Group levels are configured in Rhythm Engine settings now — read only
+  // here, just to gate the CSV import template download below.
+  const groupLevels = useMemo(() => readGroupLevels(org.settings), [org.settings]);
+  const groupLevelLabels = useMemo(() => readGroupLevelLabels(org.settings), [org.settings]);
   const [otherServiceDisplayValue, setOtherServiceDisplayValue] = useState('');
+  const [clientPortalTier, setClientPortalTier] = useState(() => org.settings?.clientPortalTier === 'enterprise' ? 'enterprise' : 'standard');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -107,23 +110,9 @@ export default function PlatformClientAccount() {
     setRelationshipStatus(normalizeRelationshipStatus(org.relationship_status));
     setAddress(readCompanyAddress(org.settings));
     setSelectedServices(normalizeServices(org.settings).filter((id) => id !== CLIENT_SERVICE_LICENSEE));
-    setGroupLevels(readGroupLevels(org.settings));
-    setGroupLevelLabels(readGroupLevelLabels(org.settings));
     setOtherServiceDisplayValue('');
+    setClientPortalTier(org.settings?.clientPortalTier === 'enterprise' ? 'enterprise' : 'standard');
   }, [org.name, org.client_status, org.relationship_status, org.settings]);
-
-  useEffect(() => {
-    const count = Number.parseInt(groupLevels, 10);
-    if (!Number.isInteger(count) || count < 1 || count > 5) {
-      setGroupLevelLabels([]);
-      return;
-    }
-    setGroupLevelLabels((current) => {
-      const next = current.slice(0, count);
-      while (next.length < count) next.push('');
-      return next;
-    });
-  }, [groupLevels]);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,36 +165,35 @@ export default function PlatformClientAccount() {
 
   async function saveServices(e) {
     e.preventDefault();
-    const pulseEnabled = selectedServices.includes(CLIENT_SERVICE_PULSE);
-    const parsedGroupLevels = pulseEnabled ? Number.parseInt(groupLevels, 10) : null;
-    if (pulseEnabled && !Number.isInteger(parsedGroupLevels)) {
-      setError('Select how many group levels this client has.');
-      return;
-    }
-    const normalizedGroupLevelLabels = pulseEnabled
-      ? groupLevelLabels
-          .slice(0, parsedGroupLevels)
-          .map((label) => String(label || '').trim())
-      : [];
-    if (pulseEnabled && normalizedGroupLevelLabels.some((label) => !label)) {
-      setError('Provide a name for each group level.');
-      return;
-    }
     if (!confirm('Save changes to this client’s services?')) return;
     setBusy(true);
     setError('');
     try {
       await api.patch(`/api/platform/organizations/${orgId}`, {
-        settings: {
-          services: selectedServices,
-          groupLevels: pulseEnabled ? parsedGroupLevels : null,
-          groupLevelLabels: pulseEnabled ? normalizedGroupLevelLabels : null,
-        },
+        settings: { services: selectedServices },
       });
       await refreshOrg();
       showToast('Services saved.', { variant: 'success' });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not save services.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveClientPortalTier(e) {
+    e.preventDefault();
+    if (!confirm('Save changes to this client’s portal access tier?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.patch(`/api/platform/organizations/${orgId}`, {
+        settings: { clientPortalTier },
+      });
+      await refreshOrg();
+      showToast('Portal access tier saved.', { variant: 'success' });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not save portal access tier.');
     } finally {
       setBusy(false);
     }
@@ -297,14 +285,14 @@ export default function PlatformClientAccount() {
     const pulseEnabled = selectedServices.includes(CLIENT_SERVICE_PULSE);
     const parsedGroupLevels = pulseEnabled ? Number.parseInt(groupLevels, 10) : null;
     if (!pulseEnabled || !Number.isInteger(parsedGroupLevels)) {
-      setError('Select how many group levels this client has before downloading the template.');
+      setError('Set the group levels for this client in Rhythm Engine settings before downloading the template.');
       return;
     }
     const normalizedGroupLevelLabels = groupLevelLabels
       .slice(0, parsedGroupLevels)
       .map((label) => String(label || '').trim());
     if (normalizedGroupLevelLabels.some((label) => !label)) {
-      setError('Provide a name for each group level before downloading the template.');
+      setError('Every group level needs a label — set them in Rhythm Engine settings before downloading the template.');
       return;
     }
     setError('');
@@ -370,6 +358,9 @@ export default function PlatformClientAccount() {
           isPractitioner={isLicenseeOrg}
         />
       )}
+      {isEnterpriseClient && isSelfService && user?.role === 'admin' && (
+        <LicenseConfigPanel orgId={orgId} licenseConfig={licenseConfig} selfServiceView />
+      )}
       {isLicenseeOrg && isPlatformAdmin && (
         <>
           <div className="card" style={{ marginBottom: '1.5rem' }}>
@@ -408,6 +399,7 @@ export default function PlatformClientAccount() {
         </>
       )}
       <div className="platform-client-dashboard-grid">
+        {isWorkspace && (
         <div className="card platform-client-dashboard__card">
           <h1 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>
             Configurations
@@ -479,6 +471,34 @@ export default function PlatformClientAccount() {
             </button>
           </form>
 
+          {isPlatformAdmin && (
+            <form
+              onSubmit={saveClientPortalTier}
+              style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}
+            >
+              <h2 className="platform-client-dashboard__h2">Portal access</h2>
+              <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+                Enterprise gives this client&rsquo;s own admins/employees self-service access to their
+                Dashboard, Users, Tasks, and Rhythm Engine — separate from which services are enabled below.
+              </p>
+              <div className="field">
+                <label htmlFor="acct-portal-tier">Client portal tier</label>
+                <select
+                  id="acct-portal-tier"
+                  value={clientPortalTier}
+                  onChange={(e) => setClientPortalTier(e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="standard">Standard</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
+              </div>
+              <button type="submit" className="btn btn-ghost" disabled={busy}>
+                Save portal access
+              </button>
+            </form>
+          )}
+
           <form onSubmit={saveServices} style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
             <h2 className="platform-client-dashboard__h2">Services</h2>
             <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
@@ -524,54 +544,6 @@ export default function PlatformClientAccount() {
                 />
               </div>
             ) : null}
-            {selectedServices.includes(CLIENT_SERVICE_PULSE) ? (
-              <div className="field" style={{ marginTop: '0.9rem' }}>
-                <label htmlFor="acct-group-levels">How many group levels does this client have?</label>
-                <select
-                  id="acct-group-levels"
-                  value={groupLevels}
-                  onChange={(e) => setGroupLevels(e.target.value)}
-                  disabled={busy}
-                  required
-                >
-                  <option value="">Select group levels</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                </select>
-              </div>
-            ) : null}
-            {selectedServices.includes(CLIENT_SERVICE_PULSE) && Number.parseInt(groupLevels, 10) > 0 ? (
-              <div style={{ marginTop: '0.9rem', display: 'grid', gap: '0.55rem' }}>
-                {Array.from({ length: Number.parseInt(groupLevels, 10) }, (_, index) => (
-                  <div className="field" key={`group-level-label-${index + 1}`} style={{ margin: 0 }}>
-                    <label htmlFor={`acct-group-level-label-${index + 1}`}>
-                      Group level {index + 1} label
-                    </label>
-                    <input
-                      id={`acct-group-level-label-${index + 1}`}
-                      value={groupLevelLabels[index] ?? ''}
-                      onChange={(e) =>
-                        setGroupLevelLabels((current) => {
-                          const next = [...current];
-                          next[index] = e.target.value;
-                          return next;
-                        })
-                      }
-                      placeholder={
-                        SUGGESTED_GROUP_LEVEL_LABELS[index]
-                          ? `e.g. ${SUGGESTED_GROUP_LEVEL_LABELS[index]}`
-                          : ''
-                      }
-                      disabled={busy}
-                      required
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : null}
             <button type="submit" className="btn btn-ghost" disabled={busy} style={{ marginTop: '0.9rem' }}>
               Save services
             </button>
@@ -589,72 +561,88 @@ export default function PlatformClientAccount() {
           </form>
 
         </div>
+        )}
 
-        <div className="card platform-client-dashboard__card">
+        <div
+          className="card platform-client-dashboard__card"
+          style={!isWorkspace ? { gridColumn: '1 / -1', maxWidth: 640 } : undefined}
+        >
           <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Building2 size={20} strokeWidth={1.75} aria-hidden />
             Client logo
           </h2>
-          <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
-            Shown in the client workspace header and in client accounts for their admins.
-          </p>
-          <div className="company-logo-preview-wrap">
-            {clientLogoUrl ? (
-              <img src={clientLogoUrl} alt="" className="company-logo-preview" />
-            ) : (
-              <span className="muted" style={{ fontSize: '0.9rem' }}>
-                No logo yet.
-              </span>
-            )}
-          </div>
-          <input
-            ref={logoInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            className="visually-hidden"
-            onChange={onCompanyLogoFile}
-            disabled={busy}
-          />
-          <div className="btn-row" style={{ marginTop: 0 }}>
-            <button
-              type="button"
-              className="btn btn-primary platform-inline-primary"
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div className="company-logo-preview-wrap" style={{ marginBottom: 0 }}>
+              {clientLogoUrl ? (
+                <img src={clientLogoUrl} alt="" className="company-logo-preview" />
+              ) : (
+                <span className="muted" style={{ fontSize: '0.9rem' }}>
+                  No logo yet.
+                </span>
+              )}
+            </div>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="visually-hidden"
+              onChange={onCompanyLogoFile}
               disabled={busy}
-              onClick={() => logoInputRef.current?.click()}
-            >
-              <Sparkles size={18} strokeWidth={1.75} aria-hidden style={{ marginRight: '0.35rem' }} />
-              {busy ? 'Working…' : org.company_logo_filename ? 'Change logo' : 'Upload logo'}
-            </button>
-            {org.company_logo_filename ? (
-              <button type="button" className="btn btn-ghost" disabled={busy} onClick={removeClientLogo}>
-                Remove logo
+            />
+            <div className="btn-row" style={{ marginTop: 0 }}>
+              <button
+                type="button"
+                className="btn btn-primary platform-inline-primary"
+                disabled={busy}
+                onClick={() => logoInputRef.current?.click()}
+              >
+                <Sparkles size={18} strokeWidth={1.75} aria-hidden style={{ marginRight: '0.35rem' }} />
+                {busy ? 'Working…' : org.company_logo_filename ? 'Change logo' : 'Upload logo'}
               </button>
-            ) : null}
+              {org.company_logo_filename ? (
+                <button type="button" className="btn btn-ghost" disabled={busy} onClick={removeClientLogo}>
+                  Remove logo
+                </button>
+              ) : null}
+            </div>
           </div>
-          <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.75rem', marginBottom: 0 }}>
-            JPG, PNG, GIF, or WebP, up to 2&nbsp;MB.
+          <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.5rem', marginBottom: 0 }}>
+            Shown in the client workspace header and in client accounts for their admins. JPG, PNG, GIF, or
+            WebP, up to 2&nbsp;MB.
           </p>
 
-          <form onSubmit={saveAddress} style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
-            <h2 className="platform-client-dashboard__h2">Address</h2>
-            <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
-              Business or mailing address for your records.
-            </p>
-            <div className="field">
-              <label htmlFor="acct-address">Street, city, region, postcode, country</label>
-              <textarea
-                id="acct-address"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                rows={4}
-                className="platform-textarea"
-                placeholder="e.g. 123 Example St&#10;Sydney NSW 2000&#10;Australia"
-              />
+          {isWorkspace ? (
+            <form onSubmit={saveAddress} style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+              <h2 className="platform-client-dashboard__h2">Address</h2>
+              <p className="muted" style={{ fontSize: '0.9rem', marginTop: 0 }}>
+                Business or mailing address for your records.
+              </p>
+              <div className="field">
+                <label htmlFor="acct-address">Street, city, region, postcode, country</label>
+                <textarea
+                  id="acct-address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  rows={4}
+                  className="platform-textarea"
+                  placeholder="e.g. 123 Example St&#10;Sydney NSW 2000&#10;Australia"
+                />
+              </div>
+              <button type="submit" className="btn btn-ghost" disabled={busy}>
+                Save address
+              </button>
+            </form>
+          ) : (
+            // Read-only for self-service — editing goes through
+            // PATCH /organizations/:id, which is intentionally staff-only
+            // (it's also where clientPortalTier itself gets set).
+            <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+              <h2 className="platform-client-dashboard__h2">Address</h2>
+              <p className="muted" style={{ fontSize: '0.9rem', marginTop: '0.5rem', whiteSpace: 'pre-line' }}>
+                {address || 'Not set. Contact Outlier to update this.'}
+              </p>
             </div>
-            <button type="submit" className="btn btn-ghost" disabled={busy}>
-              Save address
-            </button>
-          </form>
+          )}
 
           <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
             <h2 className="platform-client-dashboard__h2">Workspace metadata</h2>
@@ -670,7 +658,10 @@ export default function PlatformClientAccount() {
             </p>
           </div>
 
-          {org.prospect_snapshot ? (
+          {/* Internal CRM sales/lead notes from before this client was
+              promoted from a prospect — not shown to the client themselves,
+              even though the rest of this card is. */}
+          {org.prospect_snapshot && isWorkspace ? (
             <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
               <h2 className="platform-client-dashboard__h2">Prospect history</h2>
               <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.5rem', marginBottom: '0.75rem' }}>
@@ -686,8 +677,7 @@ export default function PlatformClientAccount() {
 
       </div>
 
-      <RecentActivityPanel orgId={orgId} style={{ marginTop: '1.5rem' }} />
-
+      {isWorkspace && (
       <div
         className="card"
         style={{
@@ -718,6 +708,7 @@ export default function PlatformClientAccount() {
           Delete client
         </button>
       </div>
+      )}
 
       <ModalDialog
         open={showDeleteConfirm}

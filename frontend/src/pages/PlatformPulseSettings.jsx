@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { CalendarClock, CircleCheck, CirclePause, Plus, TriangleAlert, Trash2 } from 'lucide-react';
 import api from '../services/api.js';
@@ -12,6 +12,52 @@ function formatCheckpointDate(dateKey) {
   const dt = new Date(`${raw}T00:00:00.000Z`);
   if (Number.isNaN(dt.getTime())) return raw;
   return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+const SUGGESTED_GROUP_LEVEL_LABELS = ['Business Unit', 'Division', 'Team'];
+
+function readClientSettings(settings) {
+  if (settings == null) return null;
+  let s = settings;
+  if (typeof s === 'string') {
+    try {
+      s = JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+  return s;
+}
+
+function readGroupLevels(settings) {
+  const parsed = readClientSettings(settings);
+  if (!parsed) return '';
+  const asNumber = Number.parseInt(String(parsed.groupLevels ?? ''), 10);
+  if (!Number.isInteger(asNumber) || asNumber < 1 || asNumber > 5) return '';
+  return String(asNumber);
+}
+
+function readGroupLevelLabels(settings) {
+  const parsed = readClientSettings(settings);
+  if (!parsed || !Array.isArray(parsed.groupLevelLabels)) return [];
+  return parsed.groupLevelLabels.slice(0, 5).map((label) => String(label ?? ''));
+}
+
+function toDateInputValue(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return '';
+  const yyyy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function dateInputToIso(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  return new Date(`${trimmed}T00:00:00.000Z`).toISOString();
 }
 
 export default function PlatformPulseSettings() {
@@ -38,6 +84,16 @@ export default function PlatformPulseSettings() {
   const [carryForwardBusy, setCarryForwardBusy] = useState(false);
   const carryForwardEnabled = org?.settings?.pulseCarryForwardRecipients !== false;
 
+  const [groupLevels, setGroupLevels] = useState(() => readGroupLevels(org?.settings));
+  const [groupLevelLabels, setGroupLevelLabels] = useState(() => readGroupLevelLabels(org?.settings));
+  const [groupLevelsBusy, setGroupLevelsBusy] = useState(false);
+  const [groupLevelsError, setGroupLevelsError] = useState('');
+
+  const [contractStart, setContractStart] = useState(() => toDateInputValue(licenseConfig?.contractStart));
+  const [contractEnd, setContractEnd] = useState(() => toDateInputValue(licenseConfig?.contractEnd));
+  const [contractBusy, setContractBusy] = useState(false);
+  const [contractError, setContractError] = useState('');
+
   const preOption = useMemo(
     () => (Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : []).find((row) => row?.phase === 'pre'),
     [pulseTimepointOptions]
@@ -59,6 +115,29 @@ export default function PlatformPulseSettings() {
   const assessmentsIncluded = licenseConfig?.assessmentsIncluded;
   const assessmentsUnlimited = assessmentsIncluded == null || assessmentsIncluded === 0;
   const assessmentsConsumed = licenseConfig?.assessmentsConsumed ?? 0;
+
+  useEffect(() => {
+    setGroupLevels(readGroupLevels(org?.settings));
+    setGroupLevelLabels(readGroupLevelLabels(org?.settings));
+  }, [org?.settings]);
+
+  useEffect(() => {
+    const count = Number.parseInt(groupLevels, 10);
+    if (!Number.isInteger(count) || count < 1 || count > 5) {
+      setGroupLevelLabels([]);
+      return;
+    }
+    setGroupLevelLabels((current) => {
+      const next = current.slice(0, count);
+      while (next.length < count) next.push('');
+      return next;
+    });
+  }, [groupLevels]);
+
+  useEffect(() => {
+    setContractStart(toDateInputValue(licenseConfig?.contractStart));
+    setContractEnd(toDateInputValue(licenseConfig?.contractEnd));
+  }, [licenseConfig]);
 
   if (!user) return null;
 
@@ -150,6 +229,53 @@ export default function PlatformPulseSettings() {
     }
   }
 
+  async function saveGroupLevels(e) {
+    e.preventDefault();
+    const parsedGroupLevels = Number.parseInt(groupLevels, 10);
+    if (!Number.isInteger(parsedGroupLevels)) {
+      setGroupLevelsError('Select how many group levels this client has.');
+      return;
+    }
+    const normalizedLabels = groupLevelLabels
+      .slice(0, parsedGroupLevels)
+      .map((label) => String(label || '').trim());
+    if (normalizedLabels.some((label) => !label)) {
+      setGroupLevelsError('Provide a name for each group level.');
+      return;
+    }
+    setGroupLevelsBusy(true);
+    setGroupLevelsError('');
+    try {
+      await api.patch(`/api/platform/organizations/${orgId}`, {
+        settings: { groupLevels: parsedGroupLevels, groupLevelLabels: normalizedLabels },
+      });
+      await refreshOrg();
+      showToast('Group levels saved.', { variant: 'success' });
+    } catch (err) {
+      setGroupLevelsError(err.response?.data?.error || 'Could not save group levels.');
+    } finally {
+      setGroupLevelsBusy(false);
+    }
+  }
+
+  async function saveContractDates(e) {
+    e.preventDefault();
+    setContractBusy(true);
+    setContractError('');
+    try {
+      await api.patch(`/api/platform/organizations/${orgId}/licence-config`, {
+        contractStart: dateInputToIso(contractStart),
+        contractEnd: dateInputToIso(contractEnd),
+      });
+      await refreshOrg();
+      showToast('Contract dates saved.', { variant: 'success' });
+    } catch (err) {
+      setContractError(err.response?.data?.error || 'Could not save contract dates.');
+    } finally {
+      setContractBusy(false);
+    }
+  }
+
   return (
     <div className="pulse-prototype-page">
       <div className="pulse-platform-header">
@@ -158,8 +284,8 @@ export default function PlatformPulseSettings() {
           <h1 className="pulse-platform-header__title">Point in time settings</h1>
           <p className="muted" style={{ margin: '0.35rem 0 0' }}>
             Create, delete, or set the date for During checkpoints. Pre and Post dates come from this
-            client&rsquo;s contract in Configurations and can&rsquo;t be edited here. The Point in Time
-            selector in the sidebar only switches between existing checkpoints — manage them here.
+            client&rsquo;s contract, set below. The Point in Time selector in the sidebar only switches
+            between existing checkpoints — manage them here.
           </p>
         </div>
         <div className="pulse-platform-header__right">
@@ -177,10 +303,95 @@ export default function PlatformPulseSettings() {
 
       {pulseTimepointError ? <p className="error">{pulseTimepointError}</p> : null}
 
+      <h2 className="pulse-settings-section-title">Contract dates</h2>
+      <p className="muted" style={{ margin: '0 0 0.6rem' }}>
+        Drives the Pre and Post checkpoint dates below.
+      </p>
+      <form onSubmit={saveContractDates} className="card pulse-settings-list">
+        {contractError ? <p className="error" style={{ marginTop: 0 }}>{contractError}</p> : null}
+        <div style={{ display: 'grid', gap: '0.9rem', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label htmlFor="pulse-contract-start">Contract start</label>
+            <input
+              id="pulse-contract-start"
+              type="date"
+              value={contractStart}
+              onChange={(e) => setContractStart(e.target.value)}
+              disabled={contractBusy}
+            />
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label htmlFor="pulse-contract-end">Contract end</label>
+            <input
+              id="pulse-contract-end"
+              type="date"
+              value={contractEnd}
+              onChange={(e) => setContractEnd(e.target.value)}
+              disabled={contractBusy}
+            />
+          </div>
+        </div>
+        <button type="submit" className="btn btn-ghost" disabled={contractBusy} style={{ marginTop: '0.9rem' }}>
+          {contractBusy ? 'Saving…' : 'Save contract dates'}
+        </button>
+      </form>
+
+      <h2 className="pulse-settings-section-title">Group levels</h2>
+      <p className="muted" style={{ margin: '0 0 0.6rem' }}>
+        How many organisational group levels does this client have (e.g. Business Unit, Division, Team)?
+      </p>
+      <form onSubmit={saveGroupLevels} className="card pulse-settings-list">
+        {groupLevelsError ? <p className="error" style={{ marginTop: 0 }}>{groupLevelsError}</p> : null}
+        <div className="field">
+          <label htmlFor="pulse-group-levels">Number of group levels</label>
+          <select
+            id="pulse-group-levels"
+            value={groupLevels}
+            onChange={(e) => setGroupLevels(e.target.value)}
+            disabled={groupLevelsBusy}
+            required
+          >
+            <option value="">Select group levels</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </div>
+        {Number.parseInt(groupLevels, 10) > 0 ? (
+          <div style={{ display: 'grid', gap: '0.55rem' }}>
+            {Array.from({ length: Number.parseInt(groupLevels, 10) }, (_, index) => (
+              <div className="field" key={`pulse-group-level-label-${index + 1}`} style={{ margin: 0 }}>
+                <label htmlFor={`pulse-group-level-label-${index + 1}`}>Group level {index + 1} label</label>
+                <input
+                  id={`pulse-group-level-label-${index + 1}`}
+                  value={groupLevelLabels[index] ?? ''}
+                  onChange={(e) =>
+                    setGroupLevelLabels((current) => {
+                      const next = [...current];
+                      next[index] = e.target.value;
+                      return next;
+                    })
+                  }
+                  placeholder={
+                    SUGGESTED_GROUP_LEVEL_LABELS[index] ? `e.g. ${SUGGESTED_GROUP_LEVEL_LABELS[index]}` : ''
+                  }
+                  disabled={groupLevelsBusy}
+                  required
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <button type="submit" className="btn btn-ghost" disabled={groupLevelsBusy} style={{ marginTop: '0.9rem' }}>
+          {groupLevelsBusy ? 'Saving…' : 'Save group levels'}
+        </button>
+      </form>
+
       <h2 className="pulse-settings-section-title">Pre &amp; Post dates</h2>
       <p className="muted" style={{ margin: '0 0 0.6rem' }}>
-        Pre and Post are single ongoing checkpoints, set from this client&rsquo;s contract start and end date
-        in Configurations — read only here.
+        Pre and Post are single ongoing checkpoints, driven by the contract dates above.
       </p>
       <div className="card pulse-settings-list">
         {[
@@ -198,7 +409,7 @@ export default function PlatformPulseSettings() {
             </div>
             {option && !option.isContractDate ? (
               <span className="muted" style={{ fontSize: '0.85rem' }}>
-                Request Outlier Group to set the contract {label === 'Pre' ? 'start' : 'end'} date.
+                Set the contract {label === 'Pre' ? 'start' : 'end'} date above.
               </span>
             ) : null}
           </div>

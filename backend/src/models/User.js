@@ -100,8 +100,13 @@ export async function createUserWithProfile({
   return rows[0];
 }
 
-/** Client org members + all platform-org users (for task assign / @mentions). */
-export async function listAssignableUsersForClientTasks(clientOrgId) {
+/**
+ * Client org members + all platform-org users (for task assign / @mentions).
+ * Pass `{ clientOnly: true }` to drop the platform-staff branch entirely —
+ * used for Enterprise client self-service callers, who should never see
+ * Outlier staff in the assignable list, only their own org's members.
+ */
+export async function listAssignableUsersForClientTasks(clientOrgId, { clientOnly = false } = {}) {
   const { rows } = await query(
     `SELECT DISTINCT u.id, u.email, u.role, u.organization_id, u.first_name, u.last_name,
             u.profile_avatar_filename, o.kind AS organization_kind,
@@ -114,10 +119,10 @@ export async function listAssignableUsersForClientTasks(clientOrgId) {
      WHERE u.deactivated_at IS NULL
        AND (
          u.organization_id = $1
-         OR (
+         ${clientOnly ? '' : `OR (
            o.kind = 'platform'
            AND (u.role = 'admin' OR a.platform_user_id IS NOT NULL)
-         )
+         )`}
        )
      ORDER BY sort_platform_first, u.email ASC`,
     [clientOrgId]

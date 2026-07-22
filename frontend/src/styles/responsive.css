@@ -4684,8 +4684,8 @@ input[type='range'] {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  min-height: 80px;
-  margin-bottom: 0.75rem;
+  min-height: 0;
+  margin-bottom: 0.6rem;
 }
 
 /* Rhythm Engine prototype dashboard */

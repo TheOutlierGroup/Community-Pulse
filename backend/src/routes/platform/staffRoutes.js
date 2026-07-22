@@ -18,6 +18,7 @@ import {
   sendAvatarFileOr404,
 } from './shared.js';
 import { isResendConfigured, sendPlatformWelcomeEmail } from '../../services/email.js';
+import { organizationHasEnterprisePortalTier } from '../../services/clientServices.js';
 import { requirePlatformOnlyUser, requireAtLeastPlatformTier } from '../../middleware/auth.js';
 import { auditFromRequest, AUDIT_ACTIONS, listRecentAuditEvents, publicAuditEvent } from '../../services/auditLog.js';
 import {
@@ -489,6 +490,12 @@ export function registerPlatformStaffRoutes(router) {
         target.organization_id === req.user.organizationId ||
         (targetOrg.kind === 'client' &&
           targetOrg.parent_organization_id === req.user.organizationId);
+    } else if (requesterOrg.kind === 'client') {
+      // Enterprise self-service: only the caller's own org, and only when
+      // Enterprise portal tier is enabled for it.
+      allowed =
+        target.organization_id === req.user.organizationId &&
+        organizationHasEnterprisePortalTier(requesterOrg.settings);
     }
     if (!allowed) {
       return res.status(403).json({ error: 'Forbidden' });

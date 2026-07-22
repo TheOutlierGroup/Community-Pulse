@@ -5,6 +5,7 @@ import * as LicenseConfig from '../models/LicenseConfig.js';
 import {
   CLIENT_SERVICE_PULSE,
   organizationHasService,
+  organizationHasEnterprisePortalTier,
 } from '../services/clientServices.js';
 
 function getSecret() {
@@ -245,3 +246,31 @@ export function buildRequireClientPulseService({
 }
 
 export const requireClientPulseService = buildRequireClientPulseService();
+
+// Gate for the Enterprise client self-service workspace router
+// (platformEnterpriseSelfRouter.js), which is mounted BEFORE the main
+// platformRouter at the same '/api/platform' prefix. When the caller is
+// NOT an Enterprise-tier client org, this calls next('router') to exit the
+// self-service router entirely and defer to platformRouter's own
+// (unchanged) requireWorkspaceUser gate — it must never respond with an
+// error itself in that case, or every staff/licensee request would break.
+//
+// Deliberately does NOT set req.workspaceOrganization/req.platformOrganization/
+// req.licenseeOrganization — reused handlers from
+// orgRoutes.js/taskRoutes.js/staffRoutes.js already degrade correctly when
+// those are undefined (they were written to run behind requireWorkspaceUser,
+// which never lets a client org through, so a client-org caller reaching
+// them here is new — but every place that reads those fields uses optional
+// chaining and falls back to non-platform/non-licensee defaults).
+export async function requireEnterpriseClientSelf(req, res, next) {
+  try {
+    const org = await Organization.getOrganization(req.user.organizationId);
+    if (!org || org.kind !== 'client' || !organizationHasEnterprisePortalTier(org.settings)) {
+      return next('router');
+    }
+    req.enterpriseClientOrganization = org;
+    next();
+  } catch (e) {
+    next(e);
+  }
+}

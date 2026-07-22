@@ -33,6 +33,7 @@ import {
   clientServiceCatalogFromPlatformSettings,
   enabledServicesFromOrganizationSettings,
   normalizeClientServiceIds,
+  clientPortalTierFromOrganizationSettings,
 } from '../services/clientServices.js';
 import { resolveBrandForOrganization, publicBrand } from '../services/licenseeBrand.js';
 import { buildLicenseeOnboardingChecklist } from '../services/licenseeOnboarding.js';
@@ -64,6 +65,10 @@ function publicUser(u) {
     organizationHasCompanyLogo: Boolean(u.organization_company_logo_filename),
     mfaEnabled: Boolean(u.mfa_enabled),
     enabledServices,
+    clientPortalTier:
+      u.organization_kind === 'client'
+        ? clientPortalTierFromOrganizationSettings(u.organization_settings)
+        : null,
   };
 }
 

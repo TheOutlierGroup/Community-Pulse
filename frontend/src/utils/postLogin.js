@@ -7,6 +7,7 @@ export function getPostLoginPath(user) {
   if (user.organizationKind === 'platform') return '/platform';
   if (user.organizationKind === 'licensee') return '/platform';
   if (user.organizationKind === 'client') {
+    if (user.clientPortalTier === 'enterprise') return `/platform/clients/${user.organizationId}`;
     if (user.role === 'admin') return '/client';
     return userHasService(user, CLIENT_SERVICE_PULSE) ? '/rhythm-engine' : '/account';
   }

@@ -19,6 +19,7 @@ import pulseLinkRoutes from './routes/pulseLink.js';
 import adminRoutes from './routes/admin.js';
 import analyticsRoutes from './routes/analytics.js';
 import platformRoutes from './routes/platformRouter.js';
+import platformEnterpriseSelfRoutes from './routes/platformEnterpriseSelfRouter.js';
 import reportRoutes from './routes/reports.js';
 import internalMaintenanceRoutes from './routes/internalMaintenance.js';
 import brandingRoutes from './routes/branding.js';
@@ -179,6 +180,11 @@ app.get(
     res.download(full, safe);
   }
 );
+// Must be mounted before platformRoutes: it handles a narrow allowlist of
+// paths for Enterprise client self-service callers and 404s everything
+// else, letting requests it doesn't claim fall through to platformRoutes'
+// normal staff/licensee-only handling untouched.
+app.use('/api/platform', platformEnterpriseSelfRoutes);
 app.use('/api/platform', platformRoutes);
 if (!isPulseSurface) {
   app.use('/api/reports', reportRoutes);

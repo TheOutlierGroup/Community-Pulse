@@ -189,3 +189,23 @@ export function organizationHasService(rawSettings, serviceId) {
   return enabledServicesFromOrganizationSettings(rawSettings).includes(id);
 }
 
+// Self-service CRM portal access tier for a client organization. This is
+// deliberately a separate axis from LicenseConfig's `licenseTier` (a
+// commercial Rhythm Engine billing/quota tier: practitioner/enterprise_mid/
+// enterprise_large/enterprise_unlimited, stored in licence_config) — this
+// one only controls whether a client's own users get self-service access
+// to the Dashboard/Users/Tasks/Rhythm Engine workspace nav, stored on
+// organizations.settings like `services`/`pulseEnabled`.
+export const CLIENT_PORTAL_TIER_STANDARD = 'standard';
+export const CLIENT_PORTAL_TIER_ENTERPRISE = 'enterprise';
+
+export function clientPortalTierFromOrganizationSettings(rawSettings) {
+  const settings = normalizeOrganizationSettings(rawSettings);
+  const tier = String(settings.clientPortalTier || '').trim().toLowerCase();
+  return tier === CLIENT_PORTAL_TIER_ENTERPRISE ? CLIENT_PORTAL_TIER_ENTERPRISE : CLIENT_PORTAL_TIER_STANDARD;
+}
+
+export function organizationHasEnterprisePortalTier(rawSettings) {
+  return clientPortalTierFromOrganizationSettings(rawSettings) === CLIENT_PORTAL_TIER_ENTERPRISE;
+}
+

@@ -8,12 +8,14 @@ import { Plus, Users } from 'lucide-react';
 import UsersTable from './platformClientUsers/UsersTable.jsx';
 import InviteUserModal from './platformClientUsers/InviteUserModal.jsx';
 import EditUserModal from './platformClientUsers/EditUserModal.jsx';
+import { isEnterpriseClientSelfUser } from '../hooks/usePlatformAccess.js';
 
 export default function PlatformClientUsers() {
   const { user } = useAuth();
   const { org, orgId, clientLogoUrl } = useOutletContext();
   const { showToast } = useToast();
   const isLicensee = user?.organizationKind === 'licensee';
+  const isEnterpriseClientSelf = isEnterpriseClientSelfUser(user);
   const [orgUsers, setOrgUsers] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -23,7 +25,7 @@ export default function PlatformClientUsers() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteFirstName, setInviteFirstName] = useState('');
   const [inviteLastName, setInviteLastName] = useState('');
-  const [inviteRole, setInviteRole] = useState('employee');
+  const [inviteRole, setInviteRole] = useState(isEnterpriseClientSelf ? 'admin' : 'employee');
 
   const [editUser, setEditUser] = useState(null);
   const [editFirst, setEditFirst] = useState('');
@@ -64,7 +66,7 @@ export default function PlatformClientUsers() {
     setInviteEmail('');
     setInviteFirstName('');
     setInviteLastName('');
-    setInviteRole('employee');
+    setInviteRole(isEnterpriseClientSelf ? 'admin' : 'employee');
   }
 
   function openEditModal(u) {
@@ -270,6 +272,7 @@ export default function PlatformClientUsers() {
         setInviteFirstName={setInviteFirstName}
         setInviteLastName={setInviteLastName}
         setInviteRole={setInviteRole}
+        roleFixedToAdmin={isEnterpriseClientSelf}
         onClose={closeInviteModal}
         onSubmit={sendOrgInvite}
       />

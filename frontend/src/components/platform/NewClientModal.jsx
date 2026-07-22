@@ -46,6 +46,12 @@ export default function NewClientModal({
   // becomes a Practitioner (licensee) shell or a standalone Enterprise
   // client with its own licence.
   const [rhythmEngineMode, setRhythmEngineMode] = useState(null);
+  // Only relevant when rhythmEngineMode === 'enterprise' — which specific
+  // Enterprise licence size to provision. Previously this was silently
+  // hardcoded server-side to 'enterprise_mid' regardless of intent, so the
+  // Licence panel could show a tier that didn't match what was actually
+  // meant at creation time.
+  const [enterpriseLicenceTier, setEnterpriseLicenceTier] = useState('enterprise_mid');
 
   useEffect(() => {
     if (!open) return;
@@ -56,6 +62,7 @@ export default function NewClientModal({
     setError('');
     setServicesOpen(false);
     setRhythmEngineMode(null);
+    setEnterpriseLicenceTier('enterprise_mid');
     (async () => {
       try {
         const { data } = await api.get('/api/platform/service-catalog');
@@ -130,6 +137,7 @@ export default function NewClientModal({
       if (serviceIds.length) fd.append('clientServiceIds', JSON.stringify(serviceIds));
       if (needsRhythmEngineModeChoice && rhythmEngineMode === 'enterprise') {
         fd.append('enterpriseLicence', 'true');
+        fd.append('enterpriseLicenceTier', enterpriseLicenceTier);
       }
       if (logo) fd.append('logo', logo);
       const { data } = await api.post('/api/platform/organizations', fd);
@@ -321,6 +329,24 @@ export default function NewClientModal({
                   Enterprise
                 </button>
               </div>
+              {rhythmEngineMode === 'enterprise' ? (
+                <div className="field" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+                  <label htmlFor="ncm-enterprise-tier">Enterprise licence size</label>
+                  <select
+                    id="ncm-enterprise-tier"
+                    value={enterpriseLicenceTier}
+                    onChange={(e) => setEnterpriseLicenceTier(e.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="enterprise_mid">Enterprise (Mid)</option>
+                    <option value="enterprise_large">Enterprise (Large)</option>
+                    <option value="enterprise_unlimited">Enterprise (Unlimited)</option>
+                  </select>
+                  <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                    Sets the initial licence tier. Adjustable later in Configurations.
+                  </p>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="field">

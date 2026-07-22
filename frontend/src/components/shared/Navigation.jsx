@@ -28,7 +28,7 @@ import {
 } from '../../utils/clientServices.js';
 import api from '../../services/api.js';
 import { rhythmEngineAppBaseUrl } from '../../config/appSurface.js';
-import { isWorkspaceUser, isLicenseeUser } from '../../hooks/usePlatformAccess.js';
+import { isWorkspaceUser, isLicenseeUser, isEnterpriseClientSelfUser } from '../../hooks/usePlatformAccess.js';
 import AuthenticatedBlobImage from '../platform/AuthenticatedBlobImage.jsx';
 
 function sidebarLinkClass({ isActive }) {
@@ -71,7 +71,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const [pulseLaunchError, setPulseLaunchError] = useState('');
   const isWorkspace = isWorkspaceUser(user);
   const isLicensee = isLicenseeUser(user);
-  const platformClientOrgId = isWorkspace && params.orgId ? params.orgId : null;
+  const isEnterpriseClientSelf = isEnterpriseClientSelfUser(user);
+  const platformClientOrgId =
+    (isWorkspace || isEnterpriseClientSelf) && params.orgId ? params.orgId : null;
   const platformProspectId =
     isWorkspace && params.id && location.pathname.startsWith('/platform/crm/organisations/')
       ? params.id
@@ -213,7 +215,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     return (
       <div className="nav-wrap nav-wrap--sidebar">
         <nav className="sidebar-links" aria-label="Main">
-          {isWorkspace && platformClientOrgId && (
+          {(isWorkspace || isEnterpriseClientSelf) && platformClientOrgId && (
             <>
               {isPlatformPulseRoute ? (
                 <>
@@ -310,6 +312,40 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                       Settings
                     </NavLink>
                   ) : null}
+                </>
+              ) : isEnterpriseClientSelf ? (
+                <>
+                  <NavLink
+                    to={`/platform/clients/${platformClientOrgId}`}
+                    className={sidebarLinkClass}
+                    end
+                  >
+                    <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
+                    Dashboard
+                  </NavLink>
+                  {user.role === 'admin' && (
+                    <NavLink to={`/platform/clients/${platformClientOrgId}/users`} className={sidebarLinkClass}>
+                      <Users size={20} strokeWidth={1.75} aria-hidden />
+                      Users
+                    </NavLink>
+                  )}
+                  <NavLink to={`/platform/clients/${platformClientOrgId}/tasks`} className={sidebarLinkClass}>
+                    <ClipboardList size={20} strokeWidth={1.75} aria-hidden />
+                    Tasks
+                  </NavLink>
+                  {user.role === 'admin' && (
+                    <NavLink
+                      to={`/platform/clients/${platformClientOrgId}/rhythm-engine`}
+                      className={sidebarLinkClass}
+                    >
+                      <Activity size={20} strokeWidth={1.75} aria-hidden />
+                      Rhythm Engine
+                    </NavLink>
+                  )}
+                  <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
+                    <Cog size={20} strokeWidth={1.75} aria-hidden />
+                    Configurations
+                  </NavLink>
                 </>
               ) : (
                 <>
