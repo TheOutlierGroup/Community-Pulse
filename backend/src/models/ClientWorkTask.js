@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { pool, query } from '../config/database.js';
+import { undoPurgeAfter } from '../services/undoConfig.js';
 
 const TITLE_MAX = 500;
 const BODY_MAX = 8000;
@@ -126,7 +127,7 @@ export async function listTasksForClientOrg(organizationId, { limit, offset } = 
        SELECT t.id, t.organization_id, t.title, t.body, t.status, t.position,
               t.start_date, t.due_date, t.assigned_to, t.created_at, t.updated_at, t.created_by
        FROM client_work_tasks t
-       WHERE t.organization_id = $1
+       WHERE t.organization_id = $1 AND t.deleted_at IS NULL
        ${TASK_LIST_ORDER_BY}
        LIMIT $2 OFFSET $3
      ),
@@ -209,7 +210,7 @@ export async function countTasksByStatusForOrg(organizationId) {
   const { rows } = await query(
     `SELECT status, COUNT(*)::int AS c
      FROM client_work_tasks
-     WHERE organization_id = $1
+     WHERE organization_id = $1 AND deleted_at IS NULL
      GROUP BY status`,
     [organizationId]
   );
@@ -230,6 +231,7 @@ export async function listTasksDueBetween(organizationId, startDate, endDate) {
      FROM client_work_tasks t
      LEFT JOIN users ua ON ua.id = t.assigned_to
      WHERE t.organization_id = $1
+       AND t.deleted_at IS NULL
        AND t.due_date IS NOT NULL
        AND t.due_date >= $2::date
        AND t.due_date <= $3::date
@@ -246,6 +248,7 @@ export async function listTasksDueBetweenForAssignee(userId, startDate, endDate)
      FROM client_work_tasks t
      INNER JOIN organizations o ON o.id = t.organization_id AND o.kind IN ('client', 'licensee')
      WHERE t.assigned_to = $1
+       AND t.deleted_at IS NULL
        AND t.due_date IS NOT NULL
        AND t.due_date >= $2::date
        AND t.due_date <= $3::date
@@ -261,7 +264,7 @@ export async function listTasksAssignedToUserAcrossClientOrgs(userId) {
     `SELECT t.id, t.organization_id, o.name AS organization_name, t.title, t.status, t.due_date, t.start_date
      FROM client_work_tasks t
      INNER JOIN organizations o ON o.id = t.organization_id AND o.kind IN ('client', 'licensee')
-     WHERE t.assigned_to = $1
+     WHERE t.assigned_to = $1 AND t.deleted_at IS NULL
      ORDER BY
        CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END,
        t.due_date ASC NULLS LAST,
@@ -276,7 +279,7 @@ export async function countOpenTasksAssignedToUserAcrossClientOrgs(userId) {
     `SELECT COUNT(*)::int AS c
      FROM client_work_tasks t
      INNER JOIN organizations o ON o.id = t.organization_id AND o.kind IN ('client', 'licensee')
-     WHERE t.assigned_to = $1 AND t.status <> 'completed'`,
+     WHERE t.assigned_to = $1 AND t.status <> 'completed' AND t.deleted_at IS NULL`,
     [userId]
   );
   return rows[0]?.c ?? 0;
@@ -288,6 +291,7 @@ export async function platformUserHasStakeInClientOrgTasks(platformUserId, clien
     `SELECT 1
      FROM client_work_tasks t
      WHERE t.organization_id = $1
+       AND t.deleted_at IS NULL
        AND (
          t.assigned_to = $2
          OR t.created_by = $2
@@ -313,10 +317,10 @@ export async function platformUserHasStakeInClientOrgTasks(platformUserId, clien
 }
 
 export async function getTaskListRow(taskId, organizationId) {
-  const { rows } = await query(`${LIST_SELECT} WHERE t.organization_id = $1 AND t.id = $2`, [
-    organizationId,
-    taskId,
-  ]);
+  const { rows } = await query(
+    `${LIST_SELECT} WHERE t.organization_id = $1 AND t.id = $2 AND t.deleted_at IS NULL`,
+    [organizationId, taskId]
+  );
   return rows[0] || null;
 }
 
@@ -546,9 +550,13 @@ export async function deleteChecklistItemForOrg(itemId, taskId, organizationId) 
   return rows[0] || null;
 }
 
+// Deliberately filters deleted_at unlike PulseSession's single-row lookup
+// precedent: this is the guard almost every child-mutation route (checklist
+// items, comments, images, watchers) calls first, so a soft-deleted task's
+// children become read-only rather than staying editable.
 export async function getTaskForOrg(taskId, organizationId) {
   const { rows } = await query(
-    `SELECT * FROM client_work_tasks WHERE id = $1 AND organization_id = $2`,
+    `SELECT * FROM client_work_tasks WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
     [taskId, organizationId]
   );
   return rows[0] || null;
@@ -657,18 +665,86 @@ export async function updateTaskForOrg(taskId, organizationId, patch, actorUserI
   return getTaskListRow(taskId, organizationId);
 }
 
-export async function deleteTaskForOrg(taskId, organizationId) {
-  const { rowCount } = await query(
-    `DELETE FROM client_work_tasks WHERE id = $1 AND organization_id = $2`,
+// Soft-delete: leaves the row (and its children — comments, images,
+// checklist items) byte-for-byte intact so restore is a true undo. A purge
+// sweep hard-deletes it (and unlinks its files) once purge_after elapses.
+export async function deleteTaskForOrg(taskId, organizationId, deletedByUserId = null) {
+  const { rows } = await query(
+    `UPDATE client_work_tasks
+     SET deleted_at = NOW(), deleted_by = $3, purge_after = $4
+     WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL
+     RETURNING *`,
+    [taskId, organizationId, deletedByUserId, undoPurgeAfter()]
+  );
+  return rows[0] || null;
+}
+
+export async function restoreTaskForOrg(taskId, organizationId) {
+  const { rows } = await query(
+    `UPDATE client_work_tasks
+     SET deleted_at = NULL, deleted_by = NULL, purge_after = NULL
+     WHERE id = $1 AND organization_id = $2 AND deleted_at IS NOT NULL
+     RETURNING id`,
     [taskId, organizationId]
   );
+  if (!rows.length) return null;
+  return getTaskListRow(taskId, organizationId);
+}
+
+// ── Purge sweep (backend/src/services/undoPurge.js) ────────────────────────
+
+export async function findTasksDueForPurge(now = new Date()) {
+  const { rows } = await query(
+    `SELECT id, organization_id, title
+     FROM client_work_tasks
+     WHERE deleted_at IS NOT NULL AND purge_after IS NOT NULL AND purge_after <= $1`,
+    [now.toISOString()]
+  );
+  return rows;
+}
+
+export async function listAttachmentFilenamesForTask(taskId) {
+  const { rows } = await query(
+    `SELECT stored_filename FROM client_work_task_images WHERE task_id = $1
+     UNION ALL
+     SELECT ci.stored_filename
+     FROM client_work_task_comment_images ci
+     JOIN client_work_task_comments c ON c.id = ci.comment_id
+     WHERE c.task_id = $1`,
+    [taskId]
+  );
+  return rows.map((r) => r.stored_filename).filter(Boolean);
+}
+
+// Cascades to every child table (comments, images, checklist items,
+// labels, tags, watchers, activity) via ON DELETE CASCADE.
+export async function hardDeleteTask(taskId) {
+  const { rowCount } = await query(`DELETE FROM client_work_tasks WHERE id = $1`, [taskId]);
   return rowCount > 0;
+}
+
+export async function listDeletedTasksForOrg(organizationId, { limit = 100 } = {}) {
+  const cappedLimit = Math.min(Math.max(Number.isInteger(limit) ? limit : 100, 1), 500);
+  const { rows } = await query(
+    `SELECT t.id, t.organization_id, t.title, t.status, t.deleted_at, t.deleted_by,
+            t.purge_after,
+            du.email AS deleted_by_email,
+            du.first_name AS deleted_by_first_name,
+            du.last_name AS deleted_by_last_name
+     FROM client_work_tasks t
+     LEFT JOIN users du ON du.id = t.deleted_by
+     WHERE t.organization_id = $1 AND t.deleted_at IS NOT NULL
+     ORDER BY t.deleted_at DESC
+     LIMIT $2`,
+    [organizationId, cappedLimit]
+  );
+  return rows;
 }
 
 export async function reorderTasksForOrg(organizationId, updates, actorUserId = null) {
   if (!Array.isArray(updates) || updates.length === 0) return false;
   const { rows: existingRows } = await query(
-    `SELECT id FROM client_work_tasks WHERE organization_id = $1`,
+    `SELECT id FROM client_work_tasks WHERE organization_id = $1 AND deleted_at IS NULL`,
     [organizationId]
   );
   const idSet = new Set(existingRows.map((r) => String(r.id)));
@@ -679,7 +755,7 @@ export async function reorderTasksForOrg(organizationId, updates, actorUserId = 
   const ids = [];
   const existingStatusByTaskId = new Map();
   for (const row of await query(
-    `SELECT id, status FROM client_work_tasks WHERE organization_id = $1`,
+    `SELECT id, status FROM client_work_tasks WHERE organization_id = $1 AND deleted_at IS NULL`,
     [organizationId]
   ).then((result) => result.rows)) {
     existingStatusByTaskId.set(String(row.id), row.status);
@@ -980,7 +1056,7 @@ export async function listTasksForProject(projectId, organizationId, { limit, of
               t.start_date, t.due_date, t.assigned_to, t.created_at, t.updated_at,
               t.created_by, t.project_id
        FROM client_work_tasks t
-       WHERE t.project_id = $1 AND t.organization_id = $2
+       WHERE t.project_id = $1 AND t.organization_id = $2 AND t.deleted_at IS NULL
        ${TASK_LIST_ORDER_BY}
        LIMIT $3 OFFSET $4
      )
@@ -1079,7 +1155,8 @@ export async function createProjectTask(
 
 export async function countTasksByStatusForProject(projectId) {
   const { rows } = await query(
-    `SELECT status, COUNT(*)::int AS c FROM client_work_tasks WHERE project_id = $1 GROUP BY status`,
+    `SELECT status, COUNT(*)::int AS c FROM client_work_tasks
+     WHERE project_id = $1 AND deleted_at IS NULL GROUP BY status`,
     [projectId]
   );
   const counts = { todo: 0, working: 0, review: 0, completed: 0 };

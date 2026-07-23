@@ -14,6 +14,7 @@ import * as PulseSession from '../../models/PulseSession.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
 import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
+import * as EntityFieldHistory from '../../models/EntityFieldHistory.js';
 import {
   consumeAssessmentForClient,
   refundAssessmentForLicensee,
@@ -28,6 +29,7 @@ import {
   AUDIT_ACTIONS,
   listRecentAuditEvents,
   publicAuditEvent,
+  diffFields,
 } from '../../services/auditLog.js';
 import {
   brandUploadLimiter,
@@ -1978,6 +1980,7 @@ export function registerPlatformOrgRoutes(router) {
         }
       }
     }
+    const beforeOrg = await Organization.getOrganization(req.params.id);
     const updated = await Organization.updateOrganizationClient(req.params.id, {
       name,
       settings: settingsPatch,
@@ -1995,7 +1998,15 @@ export function registerPlatformOrgRoutes(router) {
         console.error('Failed to create default pulse sessions on service enable:', e);
       }
     }
-    auditFromRequest(req)({
+    const diffPaths = [];
+    if (name !== undefined) diffPaths.push('name');
+    if (clientStatus !== undefined) diffPaths.push('client_status');
+    if (relationshipStatus !== undefined) diffPaths.push('relationship_status');
+    if (settingsPatch) {
+      for (const key of Object.keys(settingsPatch)) diffPaths.push(`settings.${key}`);
+    }
+    const fieldChanges = diffFields(beforeOrg, updated, diffPaths);
+    const auditRow = await auditFromRequest(req)({
       action: AUDIT_ACTIONS.ORG_UPDATE,
       targetType: 'organization',
       targetId: updated.id,
@@ -2006,8 +2017,19 @@ export function registerPlatformOrgRoutes(router) {
         settingsKeys: settingsPatch ? Object.keys(settingsPatch) : [],
         clientStatusChanged: clientStatus !== undefined,
         relationshipStatusChanged: relationshipStatus !== undefined,
+        fieldChanges,
       },
     });
+    if (Object.keys(fieldChanges).length > 0) {
+      await EntityFieldHistory.recordFieldChanges({
+        organizationId: updated.id,
+        entityType: 'organization',
+        entityId: updated.id,
+        changes: fieldChanges,
+        changedBy: req.user?.id || null,
+        auditEventId: auditRow?.id || null,
+      });
+    }
     res.json(updated);
   });
 
@@ -2463,14 +2485,30 @@ export function registerPlatformOrgRoutes(router) {
     }
     // Ensure a row exists; createDefaultForLicensee is a no-op if it does.
     await LicenseConfig.createDefaultForLicensee(org.id);
+    const beforeConfigRow = await LicenseConfig.getForOrganization(org.id);
     const updated = await LicenseConfig.updateForOrganization(org.id, patch);
-    auditFromRequest(req)({
+    const fieldChanges = diffFields(
+      LicenseConfig.publicLicenseConfig(beforeConfigRow) || {},
+      LicenseConfig.publicLicenseConfig(updated) || {},
+      Object.keys(patch)
+    );
+    const auditRow = await auditFromRequest(req)({
       action: AUDIT_ACTIONS.LICENCE_CONFIG_UPDATE,
       targetType: 'licence_config',
       targetId: org.id,
       targetOrganizationId: org.id,
-      metadata: { patchedFields: Object.keys(patch) },
+      metadata: { patchedFields: Object.keys(patch), fieldChanges },
     });
+    if (Object.keys(fieldChanges).length > 0) {
+      await EntityFieldHistory.recordFieldChanges({
+        organizationId: org.id,
+        entityType: 'licence_config',
+        entityId: org.id,
+        changes: fieldChanges,
+        changedBy: req.user?.id || null,
+        auditEventId: auditRow?.id || null,
+      });
+    }
     res.json({ licenseConfig: LicenseConfig.publicLicenseConfig(updated) });
   });
 
@@ -2489,11 +2527,130 @@ export function registerPlatformOrgRoutes(router) {
         limit,
         action,
       });
-      res.json({ events: rows.map(publicAuditEvent) });
+      // Attach still-live (not yet reverted) entity_field_history linkage so
+      // the frontend can render an "Undo" affordance without a second
+      // lookup per event.
+      const historyRows = await EntityFieldHistory.listHistoryForOrganization(org.id, {
+        limit: Math.max(limit, 100),
+      });
+      const revertibleByAuditEventId = new Map();
+      for (const h of historyRows) {
+        if (h.reverted_at || !h.audit_event_id) continue;
+        const list = revertibleByAuditEventId.get(h.audit_event_id) || [];
+        list.push({ id: h.id, fieldName: h.field_name });
+        revertibleByAuditEventId.set(h.audit_event_id, list);
+      }
+      const events = rows.map((row) => {
+        const pub = publicAuditEvent(row);
+        const revertibleFields = revertibleByAuditEventId.get(row.id);
+        if (revertibleFields) pub.revertibleFields = revertibleFields;
+        return pub;
+      });
+      res.json({ events });
     } catch (error) {
       next(error);
     }
   });
+
+  const ORG_FIELD_HISTORY_TO_UPDATE_KEY = {
+    name: 'name',
+    client_status: 'clientStatus',
+    relationship_status: 'relationshipStatus',
+  };
+
+  // Staff-only field-level revert: writes a history row's old_value back
+  // through the same model function that produced it, so the revert itself
+  // re-diffs and creates a fresh audit event + history row (never mutates
+  // history in place beyond the reverted_at/reverted_by lifecycle stamp).
+  router.post(
+    '/organizations/:id/field-history/:historyId/revert',
+    requirePlatformAdminRole,
+    async (req, res, next) => {
+      try {
+        // Field-level revert is platform-staff-only — these fields carry
+        // billing/contract weight — unlike requirePlatformAdminRole alone,
+        // which licensee admins also satisfy (see the licence-config PATCH
+        // route above for the same extra check).
+        if (req.workspaceOrganization?.kind !== 'platform') {
+          return res.status(403).json({ error: 'Only platform admins can revert this field' });
+        }
+        const org = await Organization.getOrganization(req.params.id);
+        if (!org) return res.status(404).json({ error: 'Organization not found' });
+        const historyRow = await EntityFieldHistory.getHistoryById(req.params.historyId);
+        if (!historyRow || String(historyRow.organization_id) !== String(org.id)) {
+          return res.status(404).json({ error: 'History entry not found' });
+        }
+        if (historyRow.reverted_at) {
+          return res.status(409).json({ error: 'This change was already reverted' });
+        }
+        const fieldName = historyRow.field_name;
+        const oldValue = historyRow.old_value ?? null;
+        let updatedEntityId;
+        let fieldChanges;
+        let auditRow;
+
+        if (historyRow.entity_type === 'organization') {
+          const beforeOrg = await Organization.getOrganization(org.id);
+          let updated;
+          if (fieldName.startsWith('settings.')) {
+            const key = fieldName.slice('settings.'.length);
+            updated = await Organization.updateOrganizationClient(org.id, { settings: { [key]: oldValue } });
+          } else if (ORG_FIELD_HISTORY_TO_UPDATE_KEY[fieldName]) {
+            updated = await Organization.updateOrganizationClient(org.id, {
+              [ORG_FIELD_HISTORY_TO_UPDATE_KEY[fieldName]]: oldValue,
+            });
+          } else {
+            return res.status(400).json({ error: 'This field cannot be reverted' });
+          }
+          if (!updated) return res.status(500).json({ error: 'Revert failed' });
+          updatedEntityId = updated.id;
+          fieldChanges = diffFields(beforeOrg, updated, [fieldName]);
+          auditRow = await auditFromRequest(req)({
+            action: AUDIT_ACTIONS.ENTITY_FIELD_REVERT,
+            targetType: 'organization',
+            targetId: updated.id,
+            targetOrganizationId: updated.id,
+            metadata: { fieldName, fieldChanges, revertOfId: historyRow.id },
+          });
+        } else if (historyRow.entity_type === 'licence_config') {
+          await LicenseConfig.createDefaultForLicensee(org.id);
+          const beforeConfigRow = await LicenseConfig.getForOrganization(org.id);
+          const updated = await LicenseConfig.updateForOrganization(org.id, { [fieldName]: oldValue });
+          updatedEntityId = org.id;
+          fieldChanges = diffFields(
+            LicenseConfig.publicLicenseConfig(beforeConfigRow) || {},
+            LicenseConfig.publicLicenseConfig(updated) || {},
+            [fieldName]
+          );
+          auditRow = await auditFromRequest(req)({
+            action: AUDIT_ACTIONS.ENTITY_FIELD_REVERT,
+            targetType: 'licence_config',
+            targetId: org.id,
+            targetOrganizationId: org.id,
+            metadata: { fieldName, fieldChanges, revertOfId: historyRow.id },
+          });
+        } else {
+          return res.status(400).json({ error: 'Unsupported entity type' });
+        }
+
+        if (Object.keys(fieldChanges).length > 0) {
+          await EntityFieldHistory.recordFieldChanges({
+            organizationId: org.id,
+            entityType: historyRow.entity_type,
+            entityId: updatedEntityId,
+            changes: fieldChanges,
+            changedBy: req.user?.id || null,
+            auditEventId: auditRow?.id || null,
+            revertOfId: historyRow.id,
+          });
+        }
+        await EntityFieldHistory.markReverted(historyRow.id, req.user?.id || null);
+        res.json({ ok: true });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   // Static prospect record captured at promotion time — see
   // services/prospectSnapshot.js. Separate from the live audit-events feed

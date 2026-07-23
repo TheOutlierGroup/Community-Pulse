@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../services/api.js';
+import { useAuth } from '../shared/Auth.jsx';
+import { isPlatformStaffUser } from '../../hooks/usePlatformAccess.js';
 
 const ACTION_LABELS = {
   'org.create': 'Organisation created',
@@ -104,6 +106,25 @@ function describeProspectCarryover(m) {
   return bits.length === 0 ? null : `From prospect "${m.prospectName || 'unknown'}" — ${bits.join(' · ')}`;
 }
 
+function formatFieldChangeValue(v) {
+  if (v === null || v === undefined) return '∅';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+// Renders the real before/after values captured by diffFields() (see
+// backend/src/services/auditLog.js) instead of just the field names that
+// used to be all audit_events.metadata carried.
+function describeFieldChanges(fieldChanges) {
+  if (!fieldChanges || typeof fieldChanges !== 'object') return null;
+  const entries = Object.entries(fieldChanges);
+  if (entries.length === 0) return null;
+  const parts = entries
+    .slice(0, 4)
+    .map(([field, change]) => `${field}: ${formatFieldChangeValue(change?.from)} → ${formatFieldChangeValue(change?.to)}`);
+  return parts.join(' · ') + (entries.length > 4 ? '…' : '');
+}
+
 function describeMetadata(event) {
   if (!event?.metadata || typeof event.metadata !== 'object') return null;
   const m = event.metadata;
@@ -114,7 +135,10 @@ function describeMetadata(event) {
   if (m.kind) bits.push(m.kind);
   if (m.businessUnit) bits.push(m.businessUnit);
   if (m.excerpt) bits.push(`"${m.excerpt}"`);
-  if (Array.isArray(m.patchedFields) && m.patchedFields.length > 0) {
+  const fieldChangeDetail = describeFieldChanges(m.fieldChanges);
+  if (fieldChangeDetail) {
+    bits.push(fieldChangeDetail);
+  } else if (Array.isArray(m.patchedFields) && m.patchedFields.length > 0) {
     bits.push(`fields: ${m.patchedFields.slice(0, 4).join(', ')}${m.patchedFields.length > 4 ? '…' : ''}`);
   }
   if (typeof m.notificationsSent === 'number') bits.push(`notifications: ${m.notificationsSent}`);
@@ -133,11 +157,13 @@ function describeMetadata(event) {
  * once on mount; refresh button reloads on demand.
  */
 export default function RecentActivityPanel({ orgId, style, resourcePath = '/api/platform/organizations' }) {
+  const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [revertingId, setRevertingId] = useState(null);
 
   async function reload() {
     if (!orgId) return;
@@ -192,6 +218,20 @@ export default function RecentActivityPanel({ orgId, style, resourcePath = '/api
     }
   }
 
+  async function revertField(historyId) {
+    if (!orgId || !historyId) return;
+    if (!window.confirm('Revert this field to its previous value?')) return;
+    setRevertingId(historyId);
+    try {
+      await api.post(`${resourcePath}/${orgId}/field-history/${historyId}/revert`);
+      await reload();
+    } catch (e) {
+      setError(e?.response?.data?.error || 'Could not revert this field.');
+    } finally {
+      setRevertingId(null);
+    }
+  }
+
   useEffect(() => {
     reload();
   }, [orgId, resourcePath]);
@@ -235,6 +275,7 @@ export default function RecentActivityPanel({ orgId, style, resourcePath = '/api
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.4rem' }}>
           {events.map((event) => {
             const detail = describeMetadata(event);
+            const canRevert = isPlatformStaffUser(user) && Array.isArray(event.revertibleFields) && event.revertibleFields.length > 0;
             return (
               <li
                 key={event.id}
@@ -247,6 +288,7 @@ export default function RecentActivityPanel({ orgId, style, resourcePath = '/api
                   justifyContent: 'space-between',
                   gap: '1rem',
                   alignItems: 'baseline',
+                  flexWrap: 'wrap',
                 }}
               >
                 <span>
@@ -259,6 +301,22 @@ export default function RecentActivityPanel({ orgId, style, resourcePath = '/api
                       ({event.result})
                     </span>
                   ) : null}
+                  {canRevert && (
+                    <span style={{ marginLeft: '0.5rem', display: 'inline-flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                      {event.revertibleFields.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={revertingId === f.id}
+                          onClick={() => revertField(f.id)}
+                          style={{ fontSize: '0.75rem', padding: '0.1rem 0.5rem' }}
+                        >
+                          {revertingId === f.id ? 'Reverting…' : `Undo ${f.fieldName}`}
+                        </button>
+                      ))}
+                    </span>
+                  )}
                 </span>
                 <span className="muted" style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
                   {formatDate(event.occurredAt)}

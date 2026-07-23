@@ -74,18 +74,51 @@ router.delete('/organizations/:orgId/contacts/:contactId', async (req, res) => {
     if (!await CrmContact.contactBelongsToClientOrg(org.id, req.params.contactId)) {
       return res.status(404).json({ error: 'Contact not found.' });
     }
-    await CrmContact.deleteContactForClient(req.params.contactId, org.id);
+    const deleted = await CrmContact.deleteContactForClient(req.params.contactId, org.id, req.user.id);
+    if (!deleted) return res.status(404).json({ error: 'Contact not found.' });
     auditFromRequest(req)({
       action: AUDIT_ACTIONS.CLIENT_CONTACT_DELETE,
       targetType: 'organization',
       targetId: org.id,
       targetOrganizationId: org.id,
-      metadata: {},
+      metadata: { name: contactLabel(deleted) },
     });
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to delete contact.' });
+  }
+});
+
+router.get('/organizations/:orgId/contacts/deleted', async (req, res) => {
+  try {
+    const org = await assertClientOrganizationPlatformForUser(req.params.orgId, req.user);
+    if (!org) return res.status(404).json({ error: 'Client not found.' });
+    const contacts = await CrmContact.listDeletedContactsForClient(org.id);
+    res.json({ contacts });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load recently deleted contacts.' });
+  }
+});
+
+router.post('/organizations/:orgId/contacts/:contactId/restore', async (req, res) => {
+  try {
+    const org = await assertClientOrganizationPlatformForUser(req.params.orgId, req.user);
+    if (!org) return res.status(404).json({ error: 'Client not found.' });
+    const contact = await CrmContact.restoreContactForClient(req.params.contactId, org.id);
+    if (!contact) return res.status(404).json({ error: 'Deleted contact not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CLIENT_CONTACT_RESTORE,
+      targetType: 'organization',
+      targetId: org.id,
+      targetOrganizationId: org.id,
+      metadata: { name: contactLabel(contact) },
+    });
+    res.json({ contact });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to restore contact.' });
   }
 });
 

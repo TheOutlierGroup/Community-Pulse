@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import api from '../../services/api.js';
 import { useToast } from '../shared/ToastProvider.jsx';
+import ModalDialog from '../shared/ModalDialog.jsx';
 import {
   RELATIONSHIP_STATUS_OPTIONS,
   normalizeRelationshipStatus,
@@ -67,6 +68,11 @@ export default function ClientContactsPanel({ orgId }) {
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editBusy, setEditBusy] = useState(false);
 
+  const [deletedModalOpen, setDeletedModalOpen] = useState(false);
+  const [deletedContacts, setDeletedContacts] = useState([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -126,7 +132,8 @@ export default function ClientContactsPanel({ orgId }) {
   }
 
   async function deleteContact(contact) {
-    if (!window.confirm(`Delete ${contact.contact_firstname} ${contact.contact_lastname || ''}`.trim() + '?')) return;
+    const name = `${contact.contact_firstname} ${contact.contact_lastname || ''}`.trim();
+    if (!window.confirm(`Delete ${name}? It can be restored from "Recently deleted" for 30 days.`)) return;
     try {
       await api.delete(`/api/platform/organizations/${orgId}/contacts/${contact.contact_id}`);
       showToast('Contact deleted.', { variant: 'success' });
@@ -136,15 +143,47 @@ export default function ClientContactsPanel({ orgId }) {
     }
   }
 
+  const openDeletedModal = useCallback(async () => {
+    setDeletedModalOpen(true);
+    setDeletedLoading(true);
+    try {
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/contacts/deleted`);
+      setDeletedContacts(data.contacts || []);
+    } catch {
+      setDeletedContacts([]);
+    } finally {
+      setDeletedLoading(false);
+    }
+  }, [orgId]);
+
+  async function restoreDeletedContact(contact) {
+    setRestoringId(contact.contact_id);
+    try {
+      await api.post(`/api/platform/organizations/${orgId}/contacts/${contact.contact_id}/restore`);
+      setDeletedContacts((prev) => prev.filter((c) => c.contact_id !== contact.contact_id));
+      showToast('Contact restored.', { variant: 'success' });
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not restore contact.', { variant: 'error' });
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
   return (
     <div className="card platform-client-dashboard__card platform-client-dashboard__card--wide">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
         <h3 className="platform-client-dashboard__h2" style={{ margin: 0 }}>
           Contacts {contacts.length > 0 ? `(${contacts.length})` : ''}
         </h3>
-        <button className="btn btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.7rem' }} onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Cancel' : <><Plus size={13} /> Add contact</>}
-        </button>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <button className="btn btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.7rem' }} onClick={openDeletedModal}>
+            <RotateCcw size={13} strokeWidth={2} /> Recently deleted
+          </button>
+          <button className="btn btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.7rem' }} onClick={() => setAdding((v) => !v)}>
+            {adding ? 'Cancel' : <><Plus size={13} /> Add contact</>}
+          </button>
+        </div>
       </div>
 
       {adding && (
@@ -193,6 +232,50 @@ export default function ClientContactsPanel({ orgId }) {
           )}
         </div>
       ))}
+
+      <ModalDialog
+        open={deletedModalOpen}
+        title="Recently deleted"
+        titleId="recently-deleted-contacts-title"
+        onClose={() => setDeletedModalOpen(false)}
+      >
+        {deletedLoading ? (
+          <p>Loading…</p>
+        ) : deletedContacts.length === 0 ? (
+          <p>No recently deleted contacts. Deleted contacts stay recoverable here for 30 days.</p>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {deletedContacts.map((c) => (
+              <li
+                key={c.contact_id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  padding: '0.6rem 0',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 500 }}>{c.contact_firstname} {c.contact_lastname}</div>
+                  <div style={{ fontSize: '0.85rem', opacity: 0.7 }}>
+                    Deleted {c.deleted_at ? new Date(c.deleted_at).toLocaleDateString() : ''}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={restoringId === c.contact_id}
+                  onClick={() => restoreDeletedContact(c)}
+                >
+                  {restoringId === c.contact_id ? 'Restoring…' : 'Restore'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ModalDialog>
     </div>
   );
 }

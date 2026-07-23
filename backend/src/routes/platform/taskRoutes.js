@@ -11,6 +11,7 @@ import * as ClientWorkTask from '../../models/ClientWorkTask.js';
 import * as Organization from '../../models/Organization.js';
 import * as taskNotificationTriggers from '../../services/taskNotificationTriggers.js';
 import { assertClientOrganizationPlatformForUser } from './shared.js';
+import { auditFromRequest, AUDIT_ACTIONS, diffFields } from '../../services/auditLog.js';
 
 const router = Router();
 
@@ -292,6 +293,48 @@ function publicDashboardDueTask(row) {
   };
 }
 
+function taskDiffSnapshot(row) {
+  if (!row) return {};
+  return {
+    title: row.title,
+    body: row.body,
+    status: row.status,
+    position: row.position,
+    startDate: formatIsoDate(row.start_date),
+    dueDate: formatIsoDate(row.due_date),
+    assignedTo: row.assignee_id != null ? String(row.assignee_id) : null,
+  };
+}
+
+const TASK_PATCH_KEY_TO_SNAPSHOT_KEY = {
+  title: 'title',
+  body: 'body',
+  notes: 'body',
+  status: 'status',
+  position: 'position',
+  startDate: 'startDate',
+  dueDate: 'dueDate',
+  assignedTo: 'assignedTo',
+};
+
+function publicDeletedTask(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    deletedAt: row.deleted_at,
+    deletedBy: row.deleted_by
+      ? {
+          id: row.deleted_by,
+          email: row.deleted_by_email,
+          firstName: row.deleted_by_first_name ?? '',
+          lastName: row.deleted_by_last_name ?? '',
+        }
+      : null,
+    purgeAfter: row.purge_after,
+  };
+}
+
 function assigneeLabelFromTaskRow(row) {
   if (!row?.assignee_id) return null;
   const first = String(row.assignee_first_name || '').trim();
@@ -491,6 +534,13 @@ router.post('/organizations/:id/tasks', requireBodyFields(['title']), async (req
     req.user.id
   );
   if (!row) return res.status(400).json({ error: 'Invalid task' });
+  auditFromRequest(req)({
+    action: AUDIT_ACTIONS.CLIENT_WORK_TASK_CREATE,
+    targetType: 'client_work_task',
+    targetId: row.id,
+    targetOrganizationId: req.params.id,
+    metadata: { title: row.title },
+  });
   const detail = await buildTaskDetail(req.params.id, row.id, req.user.id);
   if (detail?.assignedTo?.id) {
     taskNotificationTriggers.scheduleNotifyTaskAssigned({
@@ -516,6 +566,28 @@ router.patch('/organizations/:id/tasks/reorder', async (req, res) => {
   if (!ok) return res.status(400).json({ error: 'Invalid reorder payload' });
   const rows = await ClientWorkTask.listTasksForClientOrg(req.params.id, { limit: 500, offset: 0 });
   res.json({ tasks: rows.map(publicClientTask) });
+});
+
+router.get('/organizations/:id/tasks/deleted', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const rows = await ClientWorkTask.listDeletedTasksForOrg(req.params.id);
+  res.json({ tasks: rows.map(publicDeletedTask) });
+});
+
+router.post('/organizations/:id/tasks/:taskId/restore', async (req, res) => {
+  const org = await assertClientOrganizationPlatform(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organization not found' });
+  const row = await ClientWorkTask.restoreTaskForOrg(req.params.taskId, req.params.id);
+  if (!row) return res.status(404).json({ error: 'Deleted task not found' });
+  auditFromRequest(req)({
+    action: AUDIT_ACTIONS.CLIENT_WORK_TASK_RESTORE,
+    targetType: 'client_work_task',
+    targetId: req.params.taskId,
+    targetOrganizationId: req.params.id,
+    metadata: { title: row.title },
+  });
+  res.json({ task: publicClientTask(row) });
 });
 
 router.get('/organizations/:id/tasks/:taskId', async (req, res) => {
@@ -643,6 +715,22 @@ router.patch('/organizations/:id/tasks/:taskId', async (req, res) => {
       taskTitle: afterRow.title,
     });
   }
+
+  const diffPaths = [
+    ...new Set(
+      Object.keys(patch)
+        .map((k) => TASK_PATCH_KEY_TO_SNAPSHOT_KEY[k])
+        .filter(Boolean)
+    ),
+  ];
+  const fieldChanges = diffFields(taskDiffSnapshot(beforeRow), taskDiffSnapshot(afterRow), diffPaths);
+  auditFromRequest(req)({
+    action: AUDIT_ACTIONS.CLIENT_WORK_TASK_UPDATE,
+    targetType: 'client_work_task',
+    targetId: req.params.taskId,
+    targetOrganizationId: req.params.id,
+    metadata: { title: afterRow.title, fieldChanges },
+  });
 
   const notifyKeys = new Set(['title', 'body', 'notes', 'status', 'startDate', 'dueDate', 'assignedTo']);
   const shouldNotifyWatchers = Object.keys(patch).some((k) => notifyKeys.has(k));
@@ -958,13 +1046,18 @@ router.delete('/organizations/:id/tasks/:taskId/comments/:commentId/images/:imag
 router.delete('/organizations/:id/tasks/:taskId', async (req, res) => {
   const org = await assertClientOrganizationPlatform(req.params.id);
   if (!org) return res.status(404).json({ error: 'Organization not found' });
-  const images = await ClientWorkTask.listTaskImages(req.params.taskId, req.params.id);
-  const cImages = await ClientWorkTask.listCommentImagesForTask(req.params.taskId, req.params.id);
-  const ok = await ClientWorkTask.deleteTaskForOrg(req.params.taskId, req.params.id);
-  if (!ok) return res.status(404).json({ error: 'Task not found' });
-  await Promise.allSettled(
-    [...images, ...cImages].map((im) => fs.promises.unlink(taskImageFilePath(im.stored_filename)))
-  );
+  // Soft-delete: files/comments/checklist stay on disk and in the DB
+  // untouched so restore is a true undo. A purge sweep hard-deletes and
+  // unlinks files once the recovery window elapses.
+  const deleted = await ClientWorkTask.deleteTaskForOrg(req.params.taskId, req.params.id, req.user.id);
+  if (!deleted) return res.status(404).json({ error: 'Task not found' });
+  auditFromRequest(req)({
+    action: AUDIT_ACTIONS.CLIENT_WORK_TASK_DELETE,
+    targetType: 'client_work_task',
+    targetId: req.params.taskId,
+    targetOrganizationId: req.params.id,
+    metadata: { title: deleted.title },
+  });
   res.json({ ok: true });
 });
 

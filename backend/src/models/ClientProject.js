@@ -1,4 +1,5 @@
 import { query } from '../config/database.js';
+import { undoPurgeAfter } from '../services/undoConfig.js';
 
 export const MILESTONE_STATUSES = ['planned', 'in_progress', 'complete'];
 
@@ -53,7 +54,9 @@ export async function updateProject(projectId, { summary, progressPct }) {
 
 export async function listMilestones(projectId) {
   const { rows } = await query(
-    `SELECT * FROM client_project_milestones WHERE project_id = $1 ORDER BY position ASC, created_at ASC`,
+    `SELECT * FROM client_project_milestones
+     WHERE project_id = $1 AND deleted_at IS NULL
+     ORDER BY position ASC, created_at ASC`,
     [projectId],
   );
   return rows;
@@ -104,19 +107,64 @@ export async function updateMilestone(projectId, milestoneId, { title, targetDat
   return rows[0] || null;
 }
 
-export async function deleteMilestone(projectId, milestoneId) {
-  await query(
-    `DELETE FROM client_project_milestones WHERE id = $1 AND project_id = $2`,
+// Soft-delete: leaves the row intact so restore is a true undo. A purge
+// sweep hard-deletes it once purge_after elapses.
+export async function deleteMilestone(projectId, milestoneId, deletedByUserId = null) {
+  const { rows } = await query(
+    `UPDATE client_project_milestones
+     SET deleted_at = NOW(), deleted_by = $3, purge_after = $4
+     WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL
+     RETURNING *`,
+    [milestoneId, projectId, deletedByUserId, undoPurgeAfter()],
+  );
+  return rows[0] || null;
+}
+
+export async function restoreMilestone(projectId, milestoneId) {
+  const { rows } = await query(
+    `UPDATE client_project_milestones
+     SET deleted_at = NULL, deleted_by = NULL, purge_after = NULL
+     WHERE id = $1 AND project_id = $2 AND deleted_at IS NOT NULL
+     RETURNING *`,
     [milestoneId, projectId],
   );
+  return rows[0] || null;
+}
+
+export async function listDeletedMilestones(projectId) {
+  const { rows } = await query(
+    `SELECT * FROM client_project_milestones
+     WHERE project_id = $1 AND deleted_at IS NOT NULL
+     ORDER BY deleted_at DESC`,
+    [projectId],
+  );
+  return rows;
 }
 
 export async function milestoneBelongsToProject(projectId, milestoneId) {
   const { rows } = await query(
-    `SELECT 1 FROM client_project_milestones WHERE id = $1 AND project_id = $2`,
+    `SELECT 1 FROM client_project_milestones WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
     [milestoneId, projectId],
   );
   return rows.length > 0;
+}
+
+// ── Purge sweep (backend/src/services/undoPurge.js) ────────────────────────
+
+export async function findMilestonesDueForPurge(now = new Date()) {
+  const { rows } = await query(
+    `SELECT m.id, m.project_id, m.title, p.organization_id
+     FROM client_project_milestones m
+     JOIN client_projects p ON p.id = m.project_id
+     WHERE m.deleted_at IS NOT NULL AND m.purge_after IS NOT NULL AND m.purge_after <= $1`,
+    [now.toISOString()],
+  );
+  return rows;
+}
+
+export async function hardDeleteMilestone(milestoneId) {
+  const { rowCount } = await query(`DELETE FROM client_project_milestones WHERE id = $1`, [milestoneId]);
+  return rowCount > 0;
 }
 
 export async function listFiles(projectId) {
@@ -124,7 +172,7 @@ export async function listFiles(projectId) {
     `SELECT f.*, u.first_name, u.last_name, u.email
        FROM client_project_files f
        LEFT JOIN users u ON u.id = f.uploaded_by
-      WHERE f.project_id = $1
+      WHERE f.project_id = $1 AND f.deleted_at IS NULL
       ORDER BY f.created_at DESC`,
     [projectId],
   );
@@ -143,15 +191,61 @@ export async function createFileRecord(projectId, { filename, originalName, size
 
 export async function getFile(projectId, fileId) {
   const { rows } = await query(
-    `SELECT * FROM client_project_files WHERE id = $1 AND project_id = $2`,
+    `SELECT * FROM client_project_files WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL`,
     [fileId, projectId],
   );
   return rows[0] || null;
 }
 
-export async function deleteFileRecord(projectId, fileId) {
-  await query(
-    `DELETE FROM client_project_files WHERE id = $1 AND project_id = $2`,
+// Soft-delete: the on-disk file stays put so restore is a true undo. A
+// purge sweep hard-deletes the row and unlinks the file once purge_after
+// elapses.
+export async function deleteFileRecord(projectId, fileId, deletedByUserId = null) {
+  const { rows } = await query(
+    `UPDATE client_project_files
+     SET deleted_at = NOW(), deleted_by = $3, purge_after = $4
+     WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL
+     RETURNING *`,
+    [fileId, projectId, deletedByUserId, undoPurgeAfter()],
+  );
+  return rows[0] || null;
+}
+
+export async function restoreFileRecord(projectId, fileId) {
+  const { rows } = await query(
+    `UPDATE client_project_files
+     SET deleted_at = NULL, deleted_by = NULL, purge_after = NULL
+     WHERE id = $1 AND project_id = $2 AND deleted_at IS NOT NULL
+     RETURNING *`,
     [fileId, projectId],
   );
+  return rows[0] || null;
+}
+
+export async function listDeletedFiles(projectId) {
+  const { rows } = await query(
+    `SELECT f.*, u.first_name, u.last_name, u.email
+       FROM client_project_files f
+       LEFT JOIN users u ON u.id = f.uploaded_by
+      WHERE f.project_id = $1 AND f.deleted_at IS NOT NULL
+      ORDER BY f.deleted_at DESC`,
+    [projectId],
+  );
+  return rows;
+}
+
+export async function findFilesDueForPurge(now = new Date()) {
+  const { rows } = await query(
+    `SELECT f.id, f.project_id, f.filename, f.original_name, p.organization_id
+     FROM client_project_files f
+     JOIN client_projects p ON p.id = f.project_id
+     WHERE f.deleted_at IS NOT NULL AND f.purge_after IS NOT NULL AND f.purge_after <= $1`,
+    [now.toISOString()],
+  );
+  return rows;
+}
+
+export async function hardDeleteFileRecord(fileId) {
+  const { rowCount } = await query(`DELETE FROM client_project_files WHERE id = $1`, [fileId]);
+  return rowCount > 0;
 }

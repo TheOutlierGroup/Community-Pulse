@@ -111,7 +111,7 @@ router.delete('/contacts/:id', async (req, res) => {
   try {
     const existing = await CrmContact.getContactGlobal(orgId(req), req.params.id);
     if (!existing) return res.status(404).json({ error: 'Contact not found.' });
-    await CrmContact.deleteContactGlobal(orgId(req), req.params.id);
+    await CrmContact.deleteContactGlobal(orgId(req), req.params.id, req.user.id);
     auditFromRequest(req)({
       action: AUDIT_ACTIONS.CONTACT_DELETE,
       targetType: 'crm_contact',
@@ -123,6 +123,34 @@ router.delete('/contacts/:id', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to delete contact.' });
+  }
+});
+
+router.get('/contacts/deleted', async (req, res) => {
+  try {
+    const contacts = await CrmContact.listDeletedContactsGlobal(orgId(req));
+    res.json({ contacts });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load recently deleted contacts.' });
+  }
+});
+
+router.post('/contacts/:id/restore', async (req, res) => {
+  try {
+    const contact = await CrmContact.restoreContactGlobal(orgId(req), req.params.id);
+    if (!contact) return res.status(404).json({ error: 'Deleted contact not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CONTACT_RESTORE,
+      targetType: 'crm_contact',
+      targetId: String(req.params.id),
+      targetOrganizationId: orgId(req),
+      metadata: { name: contactLabel(contact) },
+    });
+    res.json({ contact });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to restore contact.' });
   }
 });
 
