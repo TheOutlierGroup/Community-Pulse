@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { requireAuth, blockSupportWrites, requireEnterpriseClientSelf } from '../middleware/auth.js';
+import { requireAuth, requireEnterpriseClientSelf } from '../middleware/auth.js';
 import { registerPlatformOrgRoutes } from './platform/orgRoutes.js';
 import { registerPlatformStaffRoutes } from './platform/staffRoutes.js';
 import platformTaskRoutes from './platform/taskRoutes.js';
@@ -35,7 +35,9 @@ const enterpriseSelfLimiter = rateLimit({
   keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : req.ip || 'unknown'),
 });
 
-router.use(requireAuth, blockSupportWrites, requireEnterpriseClientSelf, enterpriseSelfLimiter);
+// SUP-01 write-blocking for impersonation sessions is enforced globally
+// inside requireAuth itself now (see middleware/auth.js), not mounted here.
+router.use(requireAuth, requireEnterpriseClientSelf, enterpriseSelfLimiter);
 
 // Mirrors the same rhythm-engine-* -> pulse-* rewrite platformRouter.js
 // applies, so frontend calls to .../rhythm-engine-dashboard etc. resolve

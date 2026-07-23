@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { buildRequireClientPulseService, requireAdmin, requireAuth } from './auth.js';
+import {
+  buildRequireClientPulseService,
+  requireAdmin,
+  requireAuth,
+  isImpersonationBlockedWrite,
+} from './auth.js';
 import { authLimiter } from '../routes/auth.js';
 
 async function runRequest(app, { path = '/probe', method = 'GET', headers = {}, body } = {}) {
@@ -135,6 +140,17 @@ test('auth limiter throttles requests after threshold', async () => {
 
   assert.ok(last);
   assert.equal(last.status, 429);
+});
+
+test('isImpersonationBlockedWrite blocks non-safe methods only for impersonation tokens', () => {
+  assert.equal(isImpersonationBlockedWrite({ supportImpersonation: true }, 'POST'), true);
+  assert.equal(isImpersonationBlockedWrite({ supportImpersonation: true }, 'PATCH'), true);
+  assert.equal(isImpersonationBlockedWrite({ supportImpersonation: true }, 'DELETE'), true);
+  assert.equal(isImpersonationBlockedWrite({ supportImpersonation: true }, 'GET'), false);
+  assert.equal(isImpersonationBlockedWrite({ supportImpersonation: true }, 'HEAD'), false);
+  assert.equal(isImpersonationBlockedWrite({ supportImpersonation: true }, 'OPTIONS'), false);
+  assert.equal(isImpersonationBlockedWrite({ supportImpersonation: false }, 'POST'), false);
+  assert.equal(isImpersonationBlockedWrite(null, 'POST'), false);
 });
 
 test('requireAdmin enforces MFA claim by default', async () => {

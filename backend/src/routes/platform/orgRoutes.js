@@ -2697,11 +2697,15 @@ export function registerPlatformOrgRoutes(router) {
     }
   });
 
-  // SUP-01 read-only support impersonation. Mints a short-lived JWT
-  // that authenticates as the licensee's first active admin but with a
-  // `supportImpersonation` flag so blockSupportWrites refuses any non-
-  // GET request. Audit-logged at mint time so we can always prove who
-  // looked at what.
+  // SUP-01 read-only impersonation. Works for both licensee and client
+  // orgs — the frontend currently only surfaces the trigger button for
+  // licensees plus (as of the admin "impersonate a client" feature)
+  // clients, but the endpoint itself has never been org-kind-specific.
+  // Mints a short-lived JWT that authenticates as the target org's first
+  // active admin but with a `supportImpersonation` flag, so requireAuth's
+  // write guard (middleware/auth.js) refuses any non-GET/HEAD/OPTIONS
+  // request no matter which router handles it. Audit-logged at mint time
+  // so we can always prove who looked at what.
   router.post('/organizations/:id/support-impersonate', requirePlatformAdminRole, async (req, res, next) => {
     if (req.workspaceOrganization?.kind !== 'platform') {
       return res.status(403).json({ error: 'Only platform admins can impersonate' });
@@ -2715,7 +2719,7 @@ export function registerPlatformOrgRoutes(router) {
       const target = (admins || []).find((u) => !u.deactivated_at && u.login_enabled !== false);
       if (!target) {
         return res.status(409).json({
-          error: 'No active admin user to impersonate. Create one or have the licensee invite an admin first.',
+          error: 'No active admin user to impersonate. Create one, or have an existing admin invite one first.',
         });
       }
       // Short window — long enough to investigate, too short to forget

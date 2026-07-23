@@ -33,7 +33,7 @@ export default function SupportImpersonationBanner() {
       }}
     >
       <strong>Support session — read only.</strong>
-      <span>Writes are disabled. All viewing is audit logged.</span>
+      <span>Writes are disabled and logged. The session start was audit logged too.</span>
       <button
         type="button"
         onClick={() => {
