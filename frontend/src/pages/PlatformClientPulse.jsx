@@ -782,6 +782,13 @@ export default function PlatformClientPulse() {
   const showReportsSection = pulseFocusedSection === 'reports';
   const kpis = dashboard?.kpis || {};
   const scoreSemantics = dashboard?.scoreSemantics || {};
+  // False when the current scope (org-wide, or narrowed by the manager
+  // filter) has too few respondents to return real scores — see
+  // DASHBOARD_MIN_SAMPLE_SIZE on the backend. Defaults true so dashboards
+  // from before this field existed don't spuriously show "insufficient
+  // data".
+  const orgSampleSizeMet = dashboard?.orgSampleSizeMet !== false;
+  const minSampleSize = Number.isFinite(dashboard?.minSampleSize) ? dashboard.minSampleSize : 5;
   const quadrants = useMemo(() => {
     const source = dashboard?.quadrants || [];
     return QUADRANT_ORDER.map((name) => source.find((q) => q.name === name) || { name, percent: 0 });
@@ -926,8 +933,12 @@ export default function PlatformClientPulse() {
       'At-Risk Leadership',
       'Failed at Both Levels',
     ];
-    const total = managerBreakdownRows.length;
-    const counts = managerBreakdownRows.reduce((acc, row) => {
+    // Exclude suppressed managers (insufficient team sample size) rather
+    // than let a null quadrant fall through managerChainStatus's default
+    // and get miscounted as "Failed at Both Levels".
+    const eligibleRows = managerBreakdownRows.filter((row) => row?.sampleSizeMet !== false && row?.quadrant);
+    const total = eligibleRows.length;
+    const counts = eligibleRows.reduce((acc, row) => {
       const status = managerChainStatus(String(row?.quadrant || '').trim());
       acc[status] = (acc[status] || 0) + 1;
       return acc;
@@ -988,12 +999,20 @@ export default function PlatformClientPulse() {
         const weight = Math.max(1, Number(row.directReportCompletedCount || row.completedResponses || 0));
         return { row, weight };
       });
-      const totalWeight = weightedRows.reduce((sum, item) => sum + item.weight, 0);
       const weightedAverage = (selector) => {
-        if (!weightedRows.length || totalWeight <= 0) return null;
-        const numerator = weightedRows.reduce((sum, item) => {
+        // Weight the denominator by only the rows that actually contribute
+        // a value — a manager suppressed for insufficient team sample size
+        // has a null score but a real (nonzero) weight, and including that
+        // weight in the denominator while its value contributes 0 to the
+        // numerator would silently dilute the group average toward zero.
+        const contributing = weightedRows.filter((item) => {
           const value = selector(item.row);
-          if (value == null || Number.isNaN(value)) return sum;
+          return value != null && !Number.isNaN(value);
+        });
+        const totalWeight = contributing.reduce((sum, item) => sum + item.weight, 0);
+        if (!contributing.length || totalWeight <= 0) return null;
+        const numerator = contributing.reduce((sum, item) => {
+          const value = selector(item.row);
           return sum + (value * item.weight);
         }, 0);
         return numerator / totalWeight;
@@ -1265,7 +1284,15 @@ export default function PlatformClientPulse() {
     || sponsorshipExecutiveSignal
     || executiveSignalText
     || 'Use this to gauge whether managers can actively sponsor change across their teams.';
-  const launchStatusLabel = kpis.launchVerdict === 'cleared' ? 'Cleared to Launch' : 'Not Cleared';
+  // insufficient_data (too few respondents in the current scope/filter to
+  // return a real score — see DASHBOARD_MIN_SAMPLE_SIZE) must read as
+  // distinct from a genuine "Not Cleared" verdict, not collapse into it.
+  const launchStatusLabel =
+    kpis.launchVerdict === 'cleared'
+      ? 'Cleared to Launch'
+      : kpis.launchVerdict === 'insufficient_data'
+        ? 'Insufficient Data'
+        : 'Not Cleared';
   const likelihoodSignalText = String(
     likelihoodSignal.text
     || likelihoodSignal.fallback
@@ -1629,7 +1656,13 @@ export default function PlatformClientPulse() {
             <div className="pulse-clean-header__kpi pulse-clean-header__kpi--verdict">
               <p className="pulse-clean-header__kpi-label">Likelihood of Success</p>
               <p
-                className={`pulse-clean-header__verdict-pill pulse-clean-header__verdict-pill--${kpis.launchVerdict === 'cleared' ? 'cleared' : 'not-cleared'}`}
+                className={`pulse-clean-header__verdict-pill pulse-clean-header__verdict-pill--${
+                  kpis.launchVerdict === 'cleared'
+                    ? 'cleared'
+                    : kpis.launchVerdict === 'insufficient_data'
+                      ? 'insufficient'
+                      : 'not-cleared'
+                }`}
                 aria-live="polite"
               >
                 {launchStatusLabel}
@@ -1778,42 +1811,52 @@ export default function PlatformClientPulse() {
                   The quadrant is determined by crossing two scores: Adoption Readiness (whether the organisation has the capability, capacity, and managerial support to absorb the change) and Sponsorship Credibility (whether leadership is visibly and credibly driving it). Optimal means both are strong; High Risk means both are weak; Capable but Wary means sponsorship is strong but adoption is not; Motivated but Lost means adoption is strong but sponsorship is not.
                 </p>
               </div>
-              <div
-                className={`pulse-quadrant-signal pulse-quadrant-signal--${quadrantBannerVariant}`}
-                role="note"
-                aria-label="Quadrant signal banner"
-              >
-                <span className="pulse-quadrant-signal__label">Insight</span>
-                <p className="pulse-quadrant-signal__text">
-                  {renderSignalMarkup(quadrantSignalText)}
-                </p>
-              </div>
-              <div className="pulse-clean-readiness__quadrants">
-                {quadrants.map((quadrant) => (
+              {orgSampleSizeMet ? (
+                <>
                   <div
-                    key={`overview-${quadrant.name}`}
-                    className={`pulse-clean-readiness__quadrant pulse-clean-readiness__quadrant--${quadrantTone(quadrant.name)}`}
+                    className={`pulse-quadrant-signal pulse-quadrant-signal--${quadrantBannerVariant}`}
+                    role="note"
+                    aria-label="Quadrant signal banner"
                   >
-                    <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
-                    <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
-                    {QUADRANT_DESCRIPTORS[quadrant.name] ? (
-                      <p className="pulse-clean-readiness__quadrant-desc">
-                        {QUADRANT_DESCRIPTORS[quadrant.name][0]}
-                        <br />
-                        {QUADRANT_DESCRIPTORS[quadrant.name][1]}
-                      </p>
-                    ) : null}
+                    <span className="pulse-quadrant-signal__label">Insight</span>
+                    <p className="pulse-quadrant-signal__text">
+                      {renderSignalMarkup(quadrantSignalText)}
+                    </p>
                   </div>
-                ))}
-              </div>
-              <p className="pulse-sa-card__explainer" style={{ marginTop: '0.8rem' }}>
-                <strong>Score:</strong> {dominantQuadrant.name} ({formatPercent(dominantQuadrant.percent)})
-              </p>
-              <p className="pulse-sa-card__explainer" style={{ marginTop: '0.35rem' }}>
-                <strong>What it means:</strong> {renderSignalMarkup(
-                  likelihoodSignalText || 'Use the dominant quadrant to prioritise intervention and launch pacing.'
-                )}
-              </p>
+                  <div className="pulse-clean-readiness__quadrants">
+                    {quadrants.map((quadrant) => (
+                      <div
+                        key={`overview-${quadrant.name}`}
+                        className={`pulse-clean-readiness__quadrant pulse-clean-readiness__quadrant--${quadrantTone(quadrant.name)}`}
+                      >
+                        <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
+                        <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
+                        {QUADRANT_DESCRIPTORS[quadrant.name] ? (
+                          <p className="pulse-clean-readiness__quadrant-desc">
+                            {QUADRANT_DESCRIPTORS[quadrant.name][0]}
+                            <br />
+                            {QUADRANT_DESCRIPTORS[quadrant.name][1]}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="pulse-sa-card__explainer" style={{ marginTop: '0.8rem' }}>
+                    <strong>Score:</strong> {dominantQuadrant.name} ({formatPercent(dominantQuadrant.percent)})
+                  </p>
+                  <p className="pulse-sa-card__explainer" style={{ marginTop: '0.35rem' }}>
+                    <strong>What it means:</strong> {renderSignalMarkup(
+                      likelihoodSignalText || 'Use the dominant quadrant to prioritise intervention and launch pacing.'
+                    )}
+                  </p>
+                </>
+              ) : (
+                <p className="pulse-sa-card__explainer" role="note">
+                  Insufficient data — this view has fewer than {minSampleSize} respondents, so quadrant
+                  and score results are hidden to protect individual anonymity. Broaden the manager
+                  filter to see results.
+                </p>
+              )}
             </div>
 
             {micDropScenarios.length > 0 ? (

@@ -6784,6 +6784,10 @@ input[type='range'] {
   background: var(--pulse-green);
 }
 
+.pulse-clean-header__verdict-pill--insufficient {
+  background: #6b7280;
+}
+
 .pulse-clean-header__summary {
   display: flex;
   justify-content: space-between;
