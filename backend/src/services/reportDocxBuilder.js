@@ -902,12 +902,16 @@ const QUADRANT_BG = {
 function teamBreakdownTable(teams) {
   const headers = ['Team', 'Responses', 'Adoption', 'Sponsorship', 'Quadrant', 'Manager Load'];
   const rows = teams.map((team) => {
+    // PT-01: a team held back by the sample-size floor says so, rather
+    // than showing an em-dash that reads like missing data.
+    const suppressed = team.sample_size_met === false;
+    const withheld = suppressed ? 'Insufficient data' : '—';
     const adoptionText = team.adoption_score != null
       ? `${team.adoption_score} / 40 (${team.adoption_status})`
-      : '—';
+      : withheld;
     const sponsorshipText = team.sponsorship_score != null
       ? `${team.sponsorship_score} / 40 (${team.sponsorship_status})`
-      : '—';
+      : withheld;
     const responsesText = team.manager_count
       ? `${team.response_count} (${team.employee_count} staff · ${team.manager_count} mgr)`
       : `${team.response_count}`;
@@ -933,7 +937,7 @@ function teamBreakdownTable(teams) {
       },
       {
         _styled: true,
-        text: team.quadrant_label || '—',
+        text: team.quadrant_label || withheld,
         bold: true,
         color: COLOUR.text,
         shading: QUADRANT_BG[team.quadrant] || COLOUR.white,
@@ -941,7 +945,7 @@ function teamBreakdownTable(teams) {
       },
       {
         _styled: true,
-        text: team.manager_load_band || '—',
+        text: team.manager_load_band || withheld,
         bold: true,
         color: COLOUR.text,
         shading: LOAD_BAND_BG[team.manager_load_band] || COLOUR.white,
@@ -960,6 +964,26 @@ function teamBreakdownTable(teams) {
       { size: 14, type: WidthType.PERCENTAGE },
     ],
   });
+}
+
+/**
+ * PT-01: replaces the "interpret with caution" disclaimer that used to sit
+ * under this table. The small-sample risk was recognised here and answered
+ * with a footnote while the underlying figures were still printed; the
+ * figures are now withheld, so the note explains the rule instead of
+ * asking the reader to apply it themselves.
+ */
+function teamSuppressionNote(reportData) {
+  const min = reportData?.suppression?.min_sample_size ?? 5;
+  const suppressed = reportData?.suppression?.suppressed_team_count ?? 0;
+  const base = `To protect respondent anonymity, scores are withheld for any team with fewer than ${min} responses. Manager Load reflects the team's lead manager and is withheld on the same basis.`;
+  if (!suppressed) return base;
+  const plural = suppressed === 1 ? 'team is' : 'teams are';
+  return `${base} ${suppressed} ${plural} shown as "Insufficient data" on that basis.`;
+}
+
+function cohortSuppressionNote(min, cohort) {
+  return `Withheld to protect respondent anonymity: fewer than ${min} ${cohort} responses were recorded, so this breakdown would reflect individually identifiable answers.`;
 }
 
 function dimensionStatusText(avg) {
@@ -1007,16 +1031,18 @@ function logoParagraph(buffer, { width = 180, height = 56, after = 120 } = {}) {
 }
 
 /**
- * Cover page logo lock-up. The Outlier (or licensee) brand logo always
+ * Cover page logo lock-up. The Rhythm Engine (or licensee) brand logo always
  * sits at the top; the client's own company logo (when uploaded) is
  * stacked below it so the report visually identifies "for whom" as well
  * as "by whom" before the title even appears.
  */
-function coverLogoStack({ outlierLogoBuffer, brandLogoBuffer, companyLogoBuffer }) {
+function coverLogoStack({ defaultLogoBuffer, brandLogoBuffer, companyLogoBuffer }) {
   const paragraphs = [];
   // Prefer the licensee brand logo when one is configured, otherwise
-  // fall back to the canonical Outlier logo.
-  const topLogo = isUsableLogoBuffer(brandLogoBuffer) ? brandLogoBuffer : outlierLogoBuffer;
+  // fall back to the Rhythm Engine mark. BRAND-01: this used to fall back
+  // to Outlier's logo, which put Outlier branding on reports Practitioners
+  // hand to their own clients.
+  const topLogo = isUsableLogoBuffer(brandLogoBuffer) ? brandLogoBuffer : defaultLogoBuffer;
   const top = logoParagraph(topLogo, { width: 200, height: 60, after: companyLogoBuffer ? 120 : 240 });
   if (top) paragraphs.push(top);
   const company = logoParagraph(companyLogoBuffer, { width: 180, height: 60, after: 240 });
@@ -1047,27 +1073,61 @@ export async function buildReportDocx({
   signals,
   context = {},
   brand = null,
-  outlierLogoBuffer = null,
+  defaultLogoBuffer = null,
   companyLogoBuffer = null,
 }) {
   const adoptionDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('1'));
   const sponsorshipDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('2'));
 
+  // PT-01: the employee dimension tables average over the staff cohort
+  // alone, so they follow that cohort's floor rather than the report-wide
+  // response minimum.
+  const employeeSuppressed = reportData.dimensions?.employee_sample_size_met === false;
+  const employeeWithheld = employeeSuppressed ? 'Insufficient data' : '—';
+
   const dimTableRows = (dims, sectionLabel) =>
     dims.map((d) => [
       { _styled: true, text: `${d.id} — ${d.label}`, bold: true },
       sectionLabel,
-      { _styled: true, text: `${d.avg ?? '—'} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
-      dimensionStatusText(d.avg),
+      { _styled: true, text: d.avg == null ? employeeWithheld : `${d.avg} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
+      d.avg == null && employeeSuppressed ? '' : dimensionStatusText(d.avg),
     ]);
+
+  // BRAND-01: who the report presents itself as coming from. Reports are
+  // a Rhythm Engine artefact and are routinely delivered by Practitioners
+  // to their own clients, so Outlier's name no longer appears. A licensee
+  // with white-label branding configured displaces this with their own.
+  const providerName = brand?.displayName || 'Rhythm Engine';
+
+  // BRAND-01: the contact line used to fall back to Outlier's own email
+  // and website, which put Outlier's details on every report where the
+  // client had no report_contact set — including reports a Practitioner
+  // delivers under their own brand. Falls back to the Practitioner's
+  // configured support details instead, and is omitted entirely when
+  // there is nothing to show rather than inventing an address.
+  const reportContactLine = (() => {
+    const explicit = String(reportData.org.report_contact || '').trim();
+    if (explicit) return explicit;
+    const parts = [brand?.supportEmail, brand?.supportUrl]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean);
+    return parts.length ? parts.join('  |  ') : null;
+  })();
+
+  // PT-01: the whole Manager Overview section averages over the manager
+  // cohort alone, so it stands or falls on that cohort's size — not on
+  // the org-wide response count that gates the report as a whole.
+  const managerSuppressed = reportData.manager?.sample_size_met === false;
+  const minSample = reportData.suppression?.min_sample_size ?? 5;
+  const managerWithheld = managerSuppressed ? 'Insufficient data' : '—';
 
   const mgrDimTableRows = reportData.dimensions.manager.map((d) => {
     const section = d.id.startsWith('1') ? 'Received' : 'Capacity';
     return [
       { _styled: true, text: `${d.id} — ${d.managerLabel}`, bold: true },
       section,
-      { _styled: true, text: `${d.avg ?? '—'} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
-      dimensionStatusText(d.avg),
+      { _styled: true, text: d.avg == null ? managerWithheld : `${d.avg} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
+      d.avg == null && managerSuppressed ? '' : dimensionStatusText(d.avg),
     ];
   });
 
@@ -1178,11 +1238,11 @@ export async function buildReportDocx({
         },
         children: [
           // ── Cover Page ────────────────────────────────────────────────
-          // Logo lock-up: brand logo (or Outlier default) over the
-          // client's company logo when one is on file.
-          spacer((outlierLogoBuffer || brand?.logoBuffer || companyLogoBuffer) ? 240 : 600),
+          // Logo lock-up: brand logo (or the Rhythm Engine default) over
+          // the client's company logo when one is on file.
+          spacer((defaultLogoBuffer || brand?.logoBuffer || companyLogoBuffer) ? 240 : 600),
           ...coverLogoStack({
-            outlierLogoBuffer,
+            defaultLogoBuffer,
             brandLogoBuffer: brand?.logoBuffer,
             companyLogoBuffer,
           }),
@@ -1210,13 +1270,14 @@ export async function buildReportDocx({
           ...(context.programme_timeline ? [metricRow('Programme Timeline', context.programme_timeline)] : []),
           spacer(600),
           new Paragraph({
-            children: [new TextRun({ text: 'Prepared by Rhythm Engine,', font: FONT.heading, size: 22, bold: true, color: COLOUR.text })],
+            children: [new TextRun({ text: `Prepared by ${providerName}`, font: FONT.heading, size: 22, bold: true, color: COLOUR.text })],
             spacing: { after: 40 },
           }),
-          new Paragraph({
-            children: [new TextRun({ text: 'powered by The Outlier Group', font: FONT.body, size: 20, italics: true, color: COLOUR.text })],
-            spacing: { after: 40 },
-          }),
+          // BRAND-01: the line above already reads "Prepared by
+          // <provider>"; the Outlier attribution that sat here has been
+          // removed so reports carry only Rhythm Engine (or the
+          // Practitioner's own) branding.
+          
           spacer(300),
           new Paragraph({
             children: [new TextRun({ text: 'CONFIDENTIAL — FOR AUTHORISED RECIPIENTS ONLY', font: FONT.heading, size: 20, bold: true, color: COLOUR.scoreRed })],
@@ -1309,30 +1370,42 @@ export async function buildReportDocx({
           h2('Manager Load'),
           body('Manager Load is derived from four survey questions assessing whether managers have the bandwidth, personal sustainability, and equipped capacity to lead their teams through change. It is a risk signal: a high proportion of managers in the At Capacity or Overloaded bands indicates that launching without structural support will amplify organisational risk.'),
           spacer(80),
-          h3('Load Band Distribution'),
-          loadBandCards(reportData.manager.load_distribution),
-          spacer(160),
-          signalBox('Manager Load', signals.managerLoad, COLOUR.signalBorderOrange),
-          spacer(200),
+          ...(managerSuppressed
+            ? [
+                bodySmallItalic(cohortSuppressionNote(minSample, 'manager')),
+                spacer(200),
+                h2('Manager Analysis'),
+                body('This analysis disaggregates the Sponsorship Credibility score into two constructs with distinct intervention owners: what managers are receiving from senior leadership above, and whether managers have the conditions to sponsor their own teams below.'),
+                spacer(80),
+                bodySmallItalic(cohortSuppressionNote(minSample, 'manager')),
+                spacer(160),
+              ]
+            : [
+                h3('Load Band Distribution'),
+                loadBandCards(reportData.manager.load_distribution),
+                spacer(160),
+                signalBox('Manager Load', signals.managerLoad, COLOUR.signalBorderOrange),
+                spacer(200),
 
-          h2('Manager Analysis'),
-          body('This analysis disaggregates the Sponsorship Credibility score into two constructs with distinct intervention owners: what managers are receiving from senior leadership above, and whether managers have the conditions to sponsor their own teams below.'),
-          spacer(80),
-          h3('Sponsorship Sub-Score Overview'),
-          scoreCardPair(
-            'Sponsorship Received',
-            reportData.manager.sponsorship_received_avg ?? '—', 20,
-            (reportData.manager.sponsorship_received_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
-            'Sponsorship Capacity',
-            reportData.manager.sponsorship_capacity_avg ?? '—', 20,
-            (reportData.manager.sponsorship_capacity_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
-          ),
-          spacer(160),
+                h2('Manager Analysis'),
+                body('This analysis disaggregates the Sponsorship Credibility score into two constructs with distinct intervention owners: what managers are receiving from senior leadership above, and whether managers have the conditions to sponsor their own teams below.'),
+                spacer(80),
+                h3('Sponsorship Sub-Score Overview'),
+                scoreCardPair(
+                  'Sponsorship Received',
+                  reportData.manager.sponsorship_received_avg ?? '—', 20,
+                  (reportData.manager.sponsorship_received_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
+                  'Sponsorship Capacity',
+                  reportData.manager.sponsorship_capacity_avg ?? '—', 20,
+                  (reportData.manager.sponsorship_capacity_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
+                ),
+                spacer(160),
 
-          h3('Sponsorship Chain Matrix'),
-          body('The matrix below shows the distribution of managers across four chain states, derived by crossing Received and Capacity scores against the 14/20 threshold.'),
-          sponsorshipChainMatrix(reportData.manager.sponsorship_chain_distribution),
-          spacer(160),
+                h3('Sponsorship Chain Matrix'),
+                body('The matrix below shows the distribution of managers across four chain states, derived by crossing Received and Capacity scores against the 14/20 threshold.'),
+                sponsorshipChainMatrix(reportData.manager.sponsorship_chain_distribution),
+                spacer(160),
+              ]),
 
           h3('Sponsorship Dimension Detail'),
           styledTable(
@@ -1347,14 +1420,18 @@ export async function buildReportDocx({
           ),
           spacer(160),
 
-          h3('Load Band × Chain State'),
-          body('The cross-analysis below identifies the highest-risk sub-groups by combining each manager\'s load band with their chain state.'),
-          styledTable(
-            ['', ...reportData.manager.load_chain_matrix[0]?.cells.map((cell) => cell.chainState) || []],
-            loadChainRows,
-          ),
-          spacer(120),
-          signalBox('Sponsorship Chain Analysis', signals.chain, COLOUR.signalBorderOrange),
+          ...(managerSuppressed
+            ? []
+            : [
+                h3('Load Band × Chain State'),
+                body('The cross-analysis below identifies the highest-risk sub-groups by combining each manager\'s load band with their chain state.'),
+                styledTable(
+                  ['', ...reportData.manager.load_chain_matrix[0]?.cells.map((cell) => cell.chainState) || []],
+                  loadChainRows,
+                ),
+                spacer(120),
+                signalBox('Sponsorship Chain Analysis', signals.chain, COLOUR.signalBorderOrange),
+              ]),
 
           // ── Team-Level Breakdown ──────────────────────────────────────
           ...((reportData.teams && reportData.teams.length > 0) ? [
@@ -1364,7 +1441,7 @@ export async function buildReportDocx({
             spacer(80),
             teamBreakdownTable(reportData.teams),
             spacer(80),
-            bodySmallItalic('Teams with fewer than 5 respondents should be interpreted with caution; small samples are sensitive to individual perspectives. Manager Load is shown only for teams whose lead manager completed the assessment.'),
+            bodySmallItalic(teamSuppressionNote(reportData)),
             spacer(120),
             signalBox('Team-Level Breakdown', signals.teams, COLOUR.signalBorderOrange),
           ] : []),
@@ -1381,7 +1458,7 @@ export async function buildReportDocx({
           // ── Next Steps & Recommended Support ──────────────────────────
           new Paragraph({ pageBreakBefore: true }),
           h1('Next Steps & Recommended Support'),
-          body('The findings in this report point to a clear and sequenced set of interventions. The Outlier Group partners with organisations to design and deliver the specific interventions this assessment points to. The recommendations below reflect the priority sequence indicated by the data.'),
+          body('The findings in this report point to a clear and sequenced set of interventions. The recommendations below reflect the priority sequence indicated by the data.'),
           spacer(120),
           ...nextStepOrder.flatMap((name, idx) => [
             nextStepCard({
@@ -1409,16 +1486,16 @@ export async function buildReportDocx({
                   }),
                   new Paragraph({
                     alignment: AlignmentType.CENTER,
-                    children: [new TextRun({ text: 'Contact The Outlier Group to discuss how we can support your programme.', font: FONT.body, size: 20, color: COLOUR.white })],
+                    children: [new TextRun({ text: `Contact ${providerName} to discuss how we can support your programme.`, font: FONT.body, size: 20, color: COLOUR.white })],
                     spacing: { after: 60 },
                   }),
-                  new Paragraph({
+                  ...(reportContactLine ? [new Paragraph({
                     alignment: AlignmentType.CENTER,
                     children: [new TextRun({
-                      text: reportData.org.report_contact || 'hello@theoutliergroup.com  |  www.theoutliergroup.com',
+                      text: reportContactLine,
                       font: FONT.body, size: 20, bold: true, color: COLOUR.white,
                     })],
-                  }),
+                  })] : []),
                 ],
               })],
             })],
@@ -1427,7 +1504,7 @@ export async function buildReportDocx({
           new Paragraph({
             alignment: AlignmentType.CENTER,
             children: [new TextRun({
-              text: `This report is confidential and prepared exclusively for ${reportData.org.name}. The methodology, frameworks, and scoring logic are proprietary to The Outlier Group.`,
+              text: `This report is confidential and prepared exclusively for ${reportData.org.name}. The methodology, frameworks, and scoring logic are proprietary to ${providerName}.`,
               font: FONT.body, size: 16, italics: true, color: COLOUR.text,
             })],
           }),

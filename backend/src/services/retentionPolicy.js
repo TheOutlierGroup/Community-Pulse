@@ -48,7 +48,9 @@ export async function sweepExpiredExports({ now = Date.now() } = {}) {
   return { deleted };
 }
 
-async function runDelete(sql, params) {
+// Returns the affected row count. Used for both DELETE and the
+// PT-02 token-revocation UPDATE, hence the neutral name.
+async function runStatement(sql, params) {
   try {
     const { rowCount } = await query(sql, params);
     return rowCount || 0;
@@ -61,11 +63,26 @@ async function runDelete(sql, params) {
 export async function sweepExpiredTokens({ now = Date.now() } = {}) {
   const { tokenRetentionDays } = getRetentionPolicy();
   const cutoffIso = new Date(now - tokenRetentionDays * 24 * 60 * 60 * 1000).toISOString();
-  const [passwordResetDeleted, pulseHandoffDeleted] = await Promise.all([
-    runDelete(`DELETE FROM password_reset_tokens WHERE expires_at < $1::timestamptz`, [cutoffIso]),
-    runDelete(`DELETE FROM pulse_handoff_tokens WHERE expires_at < $1::timestamptz`, [cutoffIso]),
+  const [passwordResetDeleted, pulseHandoffDeleted, pulseLinkTokensRevoked] = await Promise.all([
+    runStatement(`DELETE FROM password_reset_tokens WHERE expires_at < $1::timestamptz`, [cutoffIso]),
+    runStatement(`DELETE FROM pulse_handoff_tokens WHERE expires_at < $1::timestamptz`, [cutoffIso]),
+    // PT-02: clear the token rather than delete the row.
+    // pulse_link_responses.invite_id is ON DELETE CASCADE (migration 014),
+    // so deleting a spent invite would take that respondent's survey
+    // answers with it. Nulling token_hash retires the credential while
+    // the invite record and its responses stay intact for reporting.
+    // findByTokenHash already refuses anything past expires_at; this is
+    // the cleanup that stops dead hashes accumulating indefinitely.
+    runStatement(
+      `UPDATE pulse_link_invites
+       SET token_hash = NULL, updated_at = NOW()
+       WHERE token_hash IS NOT NULL
+         AND expires_at IS NOT NULL
+         AND expires_at < $1::timestamptz`,
+      [cutoffIso]
+    ),
   ]);
-  return { passwordResetDeleted, pulseHandoffDeleted };
+  return { passwordResetDeleted, pulseHandoffDeleted, pulseLinkTokensRevoked };
 }
 
 export function getRetentionFieldPolicy() {

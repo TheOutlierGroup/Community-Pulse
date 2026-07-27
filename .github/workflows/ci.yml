@@ -29,6 +29,13 @@ jobs:
       - name: Run backend tests
         run: npm test
 
+      # PT-07: the audit count had drifted to 8 (2 high) with nothing
+      # watching it. Fails the build on high or critical only — moderates
+      # are reported but don't block, so a transitive advisory published
+      # overnight can't wedge an unrelated PR.
+      - name: Audit backend dependencies
+        run: npm audit --audit-level=high
+
   frontend-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -50,6 +57,16 @@ jobs:
 
       - name: Run frontend tests
         run: npm test
+
+      # PT-07: critical rather than high, unlike the backend, for one
+      # known reason: xlsx carries a high advisory with no fix on the npm
+      # registry (SheetJS ships patched builds from their own CDN only),
+      # and it is genuinely in use — dynamically imported in
+      # ClientTaskDetailPanel to preview spreadsheet attachments. Raise
+      # this to high once that is migrated or replaced; don't delete the
+      # step.
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=critical
 
   e2e-smoke:
     runs-on: ubuntu-latest

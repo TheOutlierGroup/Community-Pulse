@@ -1,6 +1,7 @@
 import * as LicenseeApiKey from '../../models/LicenseeApiKey.js';
 import * as Organization from '../../models/Organization.js';
 import { auditFromRequest, AUDIT_ACTIONS } from '../../services/auditLog.js';
+import { platformAdminMfaSatisfied } from '../../middleware/auth.js';
 
 /**
  * SEC-03 mint/list/revoke endpoints for licensee API keys.
@@ -14,6 +15,11 @@ import { auditFromRequest, AUDIT_ACTIONS } from '../../services/auditLog.js';
 function canManageKeys(req, targetOrg) {
   if (!req.user || !targetOrg || targetOrg.kind !== 'licensee') return false;
   if (req.user.role !== 'admin') return false;
+  // PT-04: API keys grant programmatic access to licensee data, so a
+  // platform admin managing them needs the same MFA claim as the rest of
+  // the platform surface. Scoped form — a licensee admin managing their
+  // own org's keys is unaffected, matching every other gate here.
+  if (!platformAdminMfaSatisfied(req)) return false;
   if (req.workspaceOrganization?.kind === 'platform') return true;
   if (req.workspaceOrganization?.kind === 'licensee') {
     return req.workspaceOrganization.id === targetOrg.id;

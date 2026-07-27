@@ -10,8 +10,14 @@ import {
 } from '../services/assessmentReconciliation.js';
 import { sendAssessmentReconciliationEmail } from '../services/email.js';
 import * as User from '../models/User.js';
+import { internalMaintenanceLimiter } from '../middleware/sensitiveRateLimit.js';
 
 const router = express.Router();
+
+// PT-08: applied at the router so every current and future maintenance
+// entrypoint is covered, rather than per-route where a new one could be
+// added without it.
+router.use(internalMaintenanceLimiter);
 
 function bearerMatches(expectedSecret, authorizationHeader) {
   const m = /^Bearer\s+([\s\S]+)$/i.exec(authorizationHeader || '');

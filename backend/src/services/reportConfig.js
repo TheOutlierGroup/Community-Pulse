@@ -1,5 +1,3 @@
-import crypto from 'crypto';
-
 export const REPORT_ACCESS_SCOPE = 'consultant_only';
 export const REPORT_MIN_RESPONSES = Number.parseInt(process.env.REPORT_MIN_RESPONSES || '10', 10);
 export const REPORT_STAGE_MAP = {
@@ -49,4 +47,30 @@ export const NEXT_STEPS_DEFAULT_ORDER = [
   'Mid-Change Assessment',
 ];
 
-export const REPORT_DOWNLOAD_SECRET = process.env.REPORT_DOWNLOAD_SECRET || process.env.JWT_SECRET || crypto.randomUUID();
+/**
+ * PT-10: signing key for report download tokens.
+ *
+ * This was `REPORT_DOWNLOAD_SECRET || JWT_SECRET || crypto.randomUUID()`,
+ * evaluated at module load. The randomUUID branch is the problem: it
+ * degrades quietly in the worst possible direction for a signing key —
+ * each web service gets a different secret, every restart rotates it, and
+ * the only symptom is users reporting "Invalid or expired download token"
+ * on links that should work. Nothing anywhere says the key is fine only
+ * because JWT_SECRET happens to be validated at boot.
+ *
+ * Now resolved on use and fails loudly. Falling back to JWT_SECRET is
+ * still intended and covers production, where assertSecurityBaseline
+ * already requires it to be strong — so this throw is a genuine
+ * last resort, not an expected path. Lazy rather than module-load so a
+ * misconfigured environment fails at the call, not at import time, which
+ * would take the whole process down on an unrelated route.
+ */
+export function reportDownloadSecret() {
+  const secret = process.env.REPORT_DOWNLOAD_SECRET || process.env.JWT_SECRET || '';
+  if (!secret) {
+    throw new Error(
+      'REPORT_DOWNLOAD_SECRET (or JWT_SECRET) must be set to sign report download links'
+    );
+  }
+  return secret;
+}

@@ -210,6 +210,60 @@ function getLinkToken(req) {
     return { ok: true };
   }
 
+  /**
+   * PT-03: whether a resolved session may still take writes from a public
+   * link.
+   *
+   * The signed-in employee routes resolve through getActiveSessionForOrg,
+   * which filters `status = 'active' AND deleted_at IS NULL`. The public
+   * link routes resolve through resolveSessionForPulseLink, whose first
+   * lookup (getLatestSessionForOrgByPurpose) filters on neither — so a
+   * closed, paused or soft-deleted session was still accepting
+   * submissions here, contradicting the documented rule that closing a
+   * session locks responses on both flows.
+   *
+   * Deliberately allows 'draft': lazy-init provisions During and Post as
+   * draft (orgRoutes.js), and only one session per org/audience can be
+   * 'active' at a time, so requiring 'active' would break those stages
+   * outright. 'closed' and 'paused' are the states an admin explicitly
+   * moved the wave into, and those are the ones that must hold.
+   */
+  function sessionAcceptsSubmissions(session) {
+    if (!session) return false;
+    if (session.deleted_at) return false;
+    const status = String(session.status || '').trim().toLowerCase();
+    return status !== 'closed' && status !== 'paused';
+  }
+
+  function sessionClosedResponse(session) {
+    // PT-06: with allowCreate:false the public routes can now resolve to
+    // no session at all, where previously one would have been created on
+    // the spot. That is a distinct state from a wave an admin closed, so
+    // it gets its own message rather than telling a respondent their
+    // survey "closed" when it was never opened.
+    if (!session) {
+      return {
+        error: 'There is no Rhythm Engine survey open for your organisation right now. Please check with your project lead.',
+        sessionClosed: true,
+        sessionStatus: 'none',
+      };
+    }
+    const status = String(session.status || '').trim().toLowerCase();
+    const message =
+      status === 'paused'
+        ? 'This Rhythm Engine survey is paused and is not accepting responses right now. Please check with your project lead.'
+        : 'This Rhythm Engine survey has closed and is no longer accepting responses. Thank you for your interest.';
+    return { error: message, sessionClosed: true, sessionStatus: status || 'unknown' };
+  }
+
+  // PT-06: the public surface never provisions. Every call in this file
+  // goes through here so the flag cannot be missed on a route added later.
+  function resolvePublicSession(organizationId, audience, stage) {
+    return pulseSessionModel.resolveSessionForPulseLink(organizationId, audience, stage, {
+      allowCreate: false,
+    });
+  }
+
   async function requirePulseLink(req, res, next) {
     try {
       const raw = getLinkToken(req);
@@ -290,11 +344,14 @@ function sessionJsonForLink(session) {
     if (!validateRequestedStage(req, stage)) {
       return res.status(400).json({ error: `Invite is for ${stage} stage` });
     }
-    const session = await pulseSessionModel.resolveSessionForPulseLink(
+    const session = await resolvePublicSession(
       req.pulseLinkInvite.organization_id,
       audience,
       stage
     );
+    if (!session) {
+      return res.status(403).json(sessionClosedResponse(session));
+    }
     const capCheck = await checkRespondentCapForLink({
       session,
       organization: req.pulseLinkOrganization,
@@ -328,11 +385,14 @@ function sessionJsonForLink(session) {
     if (!validateRequestedStage(req, stage)) {
       return res.status(400).json({ error: `Invite is for ${stage} stage` });
     }
-    const session = await pulseSessionModel.resolveSessionForPulseLink(
+    const session = await resolvePublicSession(
       req.pulseLinkInvite.organization_id,
       audience,
       stage
     );
+    if (!session) {
+      return res.status(403).json(sessionClosedResponse(session));
+    }
     const capCheck = await checkRespondentCapForLink({
       session,
       organization: req.pulseLinkOrganization,
@@ -387,11 +447,14 @@ function sessionJsonForLink(session) {
     if (!validateRequestedStage(req, stage)) {
       return res.status(400).json({ error: `Invite is for ${stage} stage` });
     }
-    const session = await pulseSessionModel.resolveSessionForPulseLink(
+    const session = await resolvePublicSession(
       req.pulseLinkInvite.organization_id,
       audience,
       stage
     );
+    if (!sessionAcceptsSubmissions(session)) {
+      return res.status(403).json(sessionClosedResponse(session));
+    }
     await pulseLinkResponseModel.ensureResponseRow(req.pulseLinkInvite.id, session.id, stage);
     const updated = await pulseLinkResponseModel.markSurveyStarted(req.pulseLinkInvite.id, session.id);
     if (!updated) {
@@ -410,11 +473,14 @@ function sessionJsonForLink(session) {
   if (!validateRequestedStage(req, stage)) {
     return res.status(400).json({ error: `Invite is for ${stage} stage` });
   }
-  const session = await pulseSessionModel.resolveSessionForPulseLink(
+  const session = await resolvePublicSession(
     req.pulseLinkInvite.organization_id,
     audience,
     stage
   );
+  if (!sessionAcceptsSubmissions(session)) {
+    return res.status(403).json(sessionClosedResponse(session));
+  }
 
   const body = req.body || {};
   let step1 = body.step1;
@@ -457,11 +523,14 @@ function sessionJsonForLink(session) {
   if (!validateRequestedStage(req, stage)) {
     return res.status(400).json({ error: `Invite is for ${stage} stage` });
   }
-  const session = await pulseSessionModel.resolveSessionForPulseLink(
+  const session = await resolvePublicSession(
     req.pulseLinkInvite.organization_id,
     audience,
     stage
   );
+  if (!sessionAcceptsSubmissions(session)) {
+    return res.status(403).json(sessionClosedResponse(session));
+  }
   const capCheck = await checkRespondentCapForLink({
     session,
     organization: req.pulseLinkOrganization,

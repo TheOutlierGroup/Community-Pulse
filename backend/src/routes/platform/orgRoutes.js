@@ -38,7 +38,10 @@ import {
   inviteSendLimiter,
   offboardLimiter,
 } from '../../middleware/sensitiveRateLimit.js';
-import { signToken } from '../../middleware/auth.js';
+import {
+  signToken,
+  requirePlatformAdminRole as sharedRequirePlatformAdminRole,
+} from '../../middleware/auth.js';
 import {
   isResendConfigured,
   getPulseInviteDefaultTemplate,
@@ -1335,12 +1338,10 @@ export function registerPlatformOrgRoutes(router) {
     limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   });
 
-  const requirePlatformAdminRole = (req, res, next) => {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin only' });
-    }
-    next();
-  };
+  // PT-04: was a local role-only gate shadowing the shared middleware of
+  // the same name. Uses the shared gate (role + platform-admin MFA) so
+  // this file tracks the admin contract instead of drifting from it.
+  const requirePlatformAdminRole = sharedRequirePlatformAdminRole;
 
   // Editing a client's own Configurations (name, service catalog, group
   // levels, status) is a different permission from platform-wide Settings

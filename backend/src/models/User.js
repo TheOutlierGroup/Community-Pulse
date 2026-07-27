@@ -222,9 +222,41 @@ export async function isUserActive(userId) {
   return rows.length > 0;
 }
 
+/**
+ * PT-05: everything requireAuth needs to re-validate per request, in the
+ * one round trip it was already making for isUserActive.
+ *
+ * Returns null when the account can no longer authenticate at all, so the
+ * caller keeps a single "reject" branch for deactivation and revocation.
+ */
+export async function getAuthStateForUser(userId) {
+  const { rows } = await query(
+    `SELECT sessions_invalidated_at
+     FROM users
+     WHERE id = $1 AND deactivated_at IS NULL AND login_enabled = true`,
+    [userId]
+  );
+  if (!rows.length) return null;
+  return { sessionsInvalidatedAt: rows[0].sessions_invalidated_at || null };
+}
+
+/**
+ * Revokes every session issued to this user before now. Called from the
+ * mutations that change what a token is allowed to do — role change,
+ * password change, MFA enable/disable, deactivation — so the next request
+ * on an old token is rejected instead of running on stale claims.
+ */
+export async function invalidateSessionsForUser(userId) {
+  const { rows } = await query(
+    `UPDATE users SET sessions_invalidated_at = NOW() WHERE id = $1 RETURNING id`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
 export async function deactivateUserInOrg(userId, organizationId) {
   const { rowCount } = await query(
-    `UPDATE users SET deactivated_at = NOW()
+    `UPDATE users SET deactivated_at = NOW(), sessions_invalidated_at = NOW()
      WHERE id = $1 AND organization_id = $2 AND deactivated_at IS NULL`,
     [userId, organizationId]
   );
@@ -247,8 +279,13 @@ export async function getPasswordHashByUserId(userId) {
 }
 
 export async function updateUserPassword(userId, passwordHash) {
+  // PT-05: revoking here is the whole point of a password reset — an
+  // attacker holding a stolen token must not keep it after the account
+  // owner changes the credential.
   const { rows } = await query(
-    `UPDATE users SET password_hash = $2 WHERE id = $1 RETURNING id`,
+    `UPDATE users
+     SET password_hash = $2, sessions_invalidated_at = NOW()
+     WHERE id = $1 RETURNING id`,
     [userId, passwordHash]
   );
   return rows[0] || null;
@@ -297,14 +334,25 @@ export async function updateStaffUserInOrg(
     parts.push(`email = $${n++}`);
     vals.push(String(body.email).toLowerCase().trim());
   }
+  // PT-05: role and login_enabled both change what an already-issued
+  // token is allowed to do, and both are read from the JWT rather than
+  // re-fetched per request. Revoke in the same statement so a demotion
+  // takes effect on the next request instead of at token expiry (7 days
+  // by default) — the case migration 068's mass tier reassignment hit.
+  let revokeSessions = false;
   if ('role' in body) {
     const r = allowedRoles.includes(body.role) ? body.role : invalidRoleFallback;
     parts.push(`role = $${n++}`);
     vals.push(r);
+    revokeSessions = true;
   }
   if ('loginEnabled' in body) {
     parts.push(`login_enabled = $${n++}`);
     vals.push(Boolean(body.loginEnabled));
+    revokeSessions = true;
+  }
+  if (revokeSessions) {
+    parts.push('sessions_invalidated_at = NOW()');
   }
   if (!parts.length) return findUserById(userId);
   vals.push(userId, organizationId);
@@ -385,7 +433,8 @@ export async function enableMfaForUser(userId) {
   const { rows } = await query(
     `UPDATE users
      SET mfa_enabled = true,
-         last_mfa_verified_at = NOW()
+         last_mfa_verified_at = NOW(),
+         sessions_invalidated_at = NOW()
      WHERE id = $1
      RETURNING id, mfa_enabled, last_mfa_verified_at`,
     [userId]
@@ -399,7 +448,8 @@ export async function disableMfaForUser(userId) {
      SET mfa_enabled = false,
          mfa_secret = NULL,
          mfa_recovery_codes = '[]'::jsonb,
-         last_mfa_verified_at = NULL
+         last_mfa_verified_at = NULL,
+         sessions_invalidated_at = NOW()
      WHERE id = $1
      RETURNING id, mfa_enabled`,
     [userId]

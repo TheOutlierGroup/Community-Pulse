@@ -19,7 +19,11 @@ import {
 } from './shared.js';
 import { isResendConfigured, sendPlatformWelcomeEmail } from '../../services/email.js';
 import { organizationHasEnterprisePortalTier } from '../../services/clientServices.js';
-import { requirePlatformOnlyUser, requireAtLeastPlatformTier } from '../../middleware/auth.js';
+import {
+  requirePlatformOnlyUser,
+  requireAtLeastPlatformTier,
+  requirePlatformAdminRole,
+} from '../../middleware/auth.js';
 import { auditFromRequest, AUDIT_ACTIONS, listRecentAuditEvents, publicAuditEvent } from '../../services/auditLog.js';
 import {
   inviteSendLimiter,
@@ -103,12 +107,9 @@ async function assertAdminUserLimitOrError(organizationId) {
 }
 
 export function registerPlatformStaffRoutes(router) {
-  const requirePlatformAdminRole = (req, res, next) => {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin only' });
-    }
-    next();
-  };
+  // PT-04: this used to be a local role-only gate shadowing the shared
+  // middleware of the same name, so staff/user management sat outside MFA
+  // enforcement. Now uses the shared gate (role + admin MFA) directly.
 
   // Mutating routes stay admin-only (Level 1 Platform loses edit rights,
   // same as it always has for licensee orgs). Read routes are split out

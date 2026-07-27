@@ -1,0 +1,21 @@
+-- PT-05: give the platform a way to revoke issued sessions.
+--
+-- requireAuth re-validated exactly one thing against the database per
+-- request (deactivated_at / login_enabled). Everything authorisation
+-- actually turns on — role, organizationId, organizationKind,
+-- mfaVerifiedAt — was trusted straight from the JWT, which defaults to a
+-- 7-day lifetime with no version, no revocation list and no
+-- password-changed check. Demoting an admin, moving a user between orgs,
+-- disabling their MFA or resetting their password left every already
+-- issued token fully valid until it expired on its own.
+--
+-- Stamped rather than versioned deliberately: every JWT already carries
+-- `iat`, so comparing it against this column needs no new claim and no
+-- change at any of the six signToken call sites — including any added
+-- later, which is the failure mode a version claim would reintroduce.
+--
+-- No backfill. NULL means "nothing has invalidated this user's sessions",
+-- so existing tokens keep working on deploy and the control starts
+-- applying from the next privilege change.
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS sessions_invalidated_at TIMESTAMPTZ;
