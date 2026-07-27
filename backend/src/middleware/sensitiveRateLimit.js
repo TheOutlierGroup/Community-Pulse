@@ -38,3 +38,27 @@ export const dataExportLimiter = sensitiveLimiter({ name: 'data_export', windowM
 export const offboardLimiter = sensitiveLimiter({ name: 'offboard', windowMs: 60 * 60 * 1000, max: 12 });
 export const expirySweepManualLimiter = sensitiveLimiter({ name: 'expiry_sweep', windowMs: 60 * 60 * 1000, max: 12 });
 export const supportTaskLimiter = sensitiveLimiter({ name: 'support_task', windowMs: 60 * 60 * 1000, max: 30 });
+
+/**
+ * PT-08: the /api/internal cron endpoints (privacy maintenance,
+ * reconciliation, licence expiry sweep) are publicly routable — Render
+ * Cron cannot mount the persistent disk, so the job is invoked over HTTPS
+ * — and were protected only by a bearer secret with nothing throttling
+ * attempts.
+ *
+ * The secret comparison is already timing-safe and 24+ characters, so
+ * brute force was never the realistic threat; the gap was that an
+ * attempt left no rate signal at all, and that anyone holding a leaked
+ * secret could trigger destructive retention work (including tier-3
+ * disposal) as fast as they liked.
+ *
+ * Keyed by IP by design: these callers are schedulers, never logged-in
+ * users, so sensitiveLimiter's user-id branch would never apply. The
+ * ceiling is well clear of a handful of daily jobs plus manual re-runs
+ * and retries.
+ */
+export const internalMaintenanceLimiter = sensitiveLimiter({
+  name: 'internal_maintenance',
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+});
