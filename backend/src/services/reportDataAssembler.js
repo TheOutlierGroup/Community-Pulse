@@ -12,6 +12,7 @@ import {
 } from './pulseEngine.js';
 import { calculateLargestRemainderPercentages } from './pulseDashboardMetrics.js';
 import { REPORT_MIN_RESPONSES, REPORT_STAGE_MAP } from './reportConfig.js';
+import { DASHBOARD_MIN_SAMPLE_SIZE } from './pulseDashboardScope.js';
 
 function round1(value) {
   return Math.round(Number(value || 0) * 10) / 10;
@@ -39,19 +40,32 @@ function rowAudience(row) {
   return row?.role === 'admin' || row?.survey_role === 'manager' ? 'manager' : 'staff';
 }
 
-function summarizeDimensions(scoredRows, audience) {
+/**
+ * PT-01: a dimension breakdown for one audience is only reported when
+ * that audience cleared the minimum sample size. REPORT_MIN_RESPONSES
+ * gates the report as a whole on the org-wide total, which says nothing
+ * about the size of the cohort a given breakdown is actually averaging —
+ * 12 staff plus 2 managers clears a floor of 10 while the manager
+ * dimension table is still two identifiable people.
+ */
+function summarizeDimensions(scoredRows, audience, minSampleSize) {
+  const audienceRows = scoredRows.filter((entry) => entry.audience === audience);
+  const sampleSizeMet = audienceRows.length >= minSampleSize;
   return DIMENSIONS.map((dimension) => {
-    const values = scoredRows
-      .filter((entry) => entry.audience === audience)
+    const values = audienceRows
       .map((entry) => entry.scored.dimensions.find((d) => d.id === dimension.id))
       .filter(Boolean)
       .map((d) => d.average);
-    const avg = values.length > 0 ? round1(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
+    const avg =
+      sampleSizeMet && values.length > 0
+        ? round1(values.reduce((sum, value) => sum + value, 0) / values.length)
+        : null;
     return {
       id: dimension.id,
       label: dimension.employeeLabel,
       managerLabel: dimension.managerLabel,
       avg,
+      sampleSizeMet,
     };
   });
 }
@@ -64,6 +78,9 @@ export function createAssembleReportData({
   reportMinResponses = REPORT_MIN_RESPONSES,
   reportStageMap = REPORT_STAGE_MAP,
   readinessThreshold = READINESS_THRESHOLD,
+  // PT-01: same floor the dashboard enforces, imported rather than
+  // redeclared so the two surfaces cannot drift apart again.
+  minSampleSize = DASHBOARD_MIN_SAMPLE_SIZE,
 } = {}) {
   return async function assembleReportData({
     organization,
@@ -121,8 +138,13 @@ export function createAssembleReportData({
     const employeeRows = scoredRows.filter((entry) => entry.audience === 'staff');
     const managerRows = scoredRows.filter((entry) => entry.audience === 'manager');
 
-    const dimensionsEmployee = summarizeDimensions(scoredRows, 'staff');
-    const dimensionsManager = summarizeDimensions(scoredRows, 'manager');
+    // PT-01: every breakdown below is an average over one of these two
+    // cohorts, not over filteredRows, so each needs its own floor.
+    const employeeSampleSizeMet = employeeRows.length >= minSampleSize;
+    const managerSampleSizeMet = managerRows.length >= minSampleSize;
+
+    const dimensionsEmployee = summarizeDimensions(scoredRows, 'staff', minSampleSize);
+    const dimensionsManager = summarizeDimensions(scoredRows, 'manager', minSampleSize);
 
     const managerLoadBands = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
     const managerLoadCounts = Object.fromEntries(managerLoadBands.map((band) => [band, 0]));
@@ -229,19 +251,28 @@ export function createAssembleReportData({
       }
     }
 
+    // PT-01: the team table was the sharpest edge of this. It published a
+    // named team's adoption, sponsorship and quadrant at any size down to
+    // a single response, plus manager_load_band — which is the lead
+    // manager's OWN answer, so on a suppressed row it would identify one
+    // person outright. Below the floor the row now keeps only its name and
+    // counts, so the reader can see a team exists and why it is blank.
     const teamBreakdown = [...teamGroupMap.values()]
       .map((team) => {
         const responses = team.responses;
-        const adoption = responses.length
+        const sampleSizeMet = responses.length >= minSampleSize;
+        const adoption = sampleSizeMet && responses.length
           ? round1(responses.reduce((sum, e) => sum + e.scored.adoption, 0) / responses.length)
           : null;
-        const sponsorship = responses.length
+        const sponsorship = sampleSizeMet && responses.length
           ? round1(responses.reduce((sum, e) => sum + e.scored.sponsorship, 0) / responses.length)
           : null;
         const teamQuadrant = adoption != null && sponsorship != null
           ? classifyQuadrant(adoption, sponsorship)
           : null;
-        const managerLoadScore = team.managerSelf?.scored?.sponsorshipLoadScore ?? null;
+        const managerLoadScore = sampleSizeMet
+          ? team.managerSelf?.scored?.sponsorshipLoadScore ?? null
+          : null;
         const managerLoadBand = managerLoadScore != null
           ? scoreBandForSponsorshipLoad(managerLoadScore)
           : null;
@@ -250,12 +281,16 @@ export function createAssembleReportData({
           response_count: responses.length,
           employee_count: responses.filter((e) => e.audience === 'staff').length,
           manager_count: responses.filter((e) => e.audience === 'manager').length,
+          sample_size_met: sampleSizeMet,
           adoption_score: adoption,
           sponsorship_score: sponsorship,
+          // Status labels are a readout of the score, so they must not
+          // survive its suppression — a bare 'LOW' on a null score still
+          // discloses which side of the threshold the team sits.
           adoption_status:
-            adoption != null && adoption >= readinessThreshold ? 'HIGH' : 'LOW',
+            adoption == null ? null : adoption >= readinessThreshold ? 'HIGH' : 'LOW',
           sponsorship_status:
-            sponsorship != null && sponsorship >= readinessThreshold ? 'HIGH' : 'LOW',
+            sponsorship == null ? null : sponsorship >= readinessThreshold ? 'HIGH' : 'LOW',
           quadrant: teamQuadrant?.code || null,
           quadrant_label: teamQuadrant?.label || null,
           manager_load_band: managerLoadBand,
@@ -271,8 +306,11 @@ export function createAssembleReportData({
       .sort((a, b) => a.avg - b.avg)[0];
 
     const alerts = [];
-    const overloadedPct = loadPercentages[3] || 0;
-    if (overloadedPct >= 10) {
+    // PT-01: this percentage is computed over managerRows. With a manager
+    // cohort below the floor it is both unreliable and disclosive — one
+    // overloaded manager out of two reads as "50% of managers".
+    const overloadedPct = managerSampleSizeMet ? loadPercentages[3] || 0 : 0;
+    if (managerSampleSizeMet && overloadedPct >= 10) {
       alerts.push({
         severity: 'CRITICAL',
         title: 'Manager Overload',
@@ -356,22 +394,34 @@ export function createAssembleReportData({
     dimensions: {
       employee: dimensionsEmployee,
       manager: dimensionsManager,
+      employee_sample_size_met: employeeSampleSizeMet,
+      manager_sample_size_met: managerSampleSizeMet,
+      // Both floors are derived from dimensionsEmployee, so they fall away
+      // on their own once those averages are suppressed.
       adoption_floor: adoptionDimFloor || null,
       sponsorship_floor: sponsorshipDimFloor || null,
     },
+    // PT-01: every field here is an aggregate over managerRows alone.
+    // Counts are kept (they explain the suppression and are not scores);
+    // percentages and averages are withheld below the floor rather than
+    // zeroed, so the renderer can say "insufficient data" instead of
+    // showing a confident 0%.
     manager: {
+      sample_size_met: managerSampleSizeMet,
+      manager_count: managerRows.length,
+      min_sample_size: minSampleSize,
       load_distribution: managerLoadBands.map((band, idx) => ({
         name: band,
-        count: managerLoadCounts[band],
-        percent: loadPercentages[idx] || 0,
+        count: managerSampleSizeMet ? managerLoadCounts[band] : null,
+        percent: managerSampleSizeMet ? loadPercentages[idx] || 0 : null,
       })),
-      sponsorship_received_avg: managerRows.length
+      sponsorship_received_avg: managerSampleSizeMet && managerRows.length
         ? round1(
             managerRows.reduce((sum, entry) => sum + entry.scored.sponsorshipReceivedScore, 0)
             / managerRows.length
           )
         : null,
-      sponsorship_capacity_avg: managerRows.length
+      sponsorship_capacity_avg: managerSampleSizeMet && managerRows.length
         ? round1(
             managerRows.reduce((sum, entry) => sum + entry.scored.sponsorshipCapacityScore, 0)
             / managerRows.length
@@ -379,12 +429,23 @@ export function createAssembleReportData({
         : null,
       sponsorship_chain_distribution: chainStateNames.map((name, idx) => ({
         name,
-        count: chainCounts[name],
-        percent: chainPercentages[idx] || 0,
+        count: managerSampleSizeMet ? chainCounts[name] : null,
+        percent: managerSampleSizeMet ? chainPercentages[idx] || 0 : null,
       })),
-      load_chain_matrix: loadChainMatrix,
+      load_chain_matrix: managerSampleSizeMet
+        ? loadChainMatrix
+        : loadChainMatrix.map((row) => ({
+            loadBand: row.loadBand,
+            cells: row.cells.map((cell) => ({ chainState: cell.chainState, count: null })),
+          })),
     },
     teams: teamBreakdown,
+    suppression: {
+      min_sample_size: minSampleSize,
+      employee_sample_size_met: employeeSampleSizeMet,
+      manager_sample_size_met: managerSampleSizeMet,
+      suppressed_team_count: teamBreakdown.filter((team) => !team.sample_size_met).length,
+    },
     alerts: alerts.slice(0, 5),
     };
   };

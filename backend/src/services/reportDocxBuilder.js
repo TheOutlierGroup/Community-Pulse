@@ -902,12 +902,16 @@ const QUADRANT_BG = {
 function teamBreakdownTable(teams) {
   const headers = ['Team', 'Responses', 'Adoption', 'Sponsorship', 'Quadrant', 'Manager Load'];
   const rows = teams.map((team) => {
+    // PT-01: a team held back by the sample-size floor says so, rather
+    // than showing an em-dash that reads like missing data.
+    const suppressed = team.sample_size_met === false;
+    const withheld = suppressed ? 'Insufficient data' : '—';
     const adoptionText = team.adoption_score != null
       ? `${team.adoption_score} / 40 (${team.adoption_status})`
-      : '—';
+      : withheld;
     const sponsorshipText = team.sponsorship_score != null
       ? `${team.sponsorship_score} / 40 (${team.sponsorship_status})`
-      : '—';
+      : withheld;
     const responsesText = team.manager_count
       ? `${team.response_count} (${team.employee_count} staff · ${team.manager_count} mgr)`
       : `${team.response_count}`;
@@ -933,7 +937,7 @@ function teamBreakdownTable(teams) {
       },
       {
         _styled: true,
-        text: team.quadrant_label || '—',
+        text: team.quadrant_label || withheld,
         bold: true,
         color: COLOUR.text,
         shading: QUADRANT_BG[team.quadrant] || COLOUR.white,
@@ -941,7 +945,7 @@ function teamBreakdownTable(teams) {
       },
       {
         _styled: true,
-        text: team.manager_load_band || '—',
+        text: team.manager_load_band || withheld,
         bold: true,
         color: COLOUR.text,
         shading: LOAD_BAND_BG[team.manager_load_band] || COLOUR.white,
@@ -960,6 +964,26 @@ function teamBreakdownTable(teams) {
       { size: 14, type: WidthType.PERCENTAGE },
     ],
   });
+}
+
+/**
+ * PT-01: replaces the "interpret with caution" disclaimer that used to sit
+ * under this table. The small-sample risk was recognised here and answered
+ * with a footnote while the underlying figures were still printed; the
+ * figures are now withheld, so the note explains the rule instead of
+ * asking the reader to apply it themselves.
+ */
+function teamSuppressionNote(reportData) {
+  const min = reportData?.suppression?.min_sample_size ?? 5;
+  const suppressed = reportData?.suppression?.suppressed_team_count ?? 0;
+  const base = `To protect respondent anonymity, scores are withheld for any team with fewer than ${min} responses. Manager Load reflects the team's lead manager and is withheld on the same basis.`;
+  if (!suppressed) return base;
+  const plural = suppressed === 1 ? 'team is' : 'teams are';
+  return `${base} ${suppressed} ${plural} shown as "Insufficient data" on that basis.`;
+}
+
+function cohortSuppressionNote(min, cohort) {
+  return `Withheld to protect respondent anonymity: fewer than ${min} ${cohort} responses were recorded, so this breakdown would reflect individually identifiable answers.`;
 }
 
 function dimensionStatusText(avg) {
@@ -1053,21 +1077,34 @@ export async function buildReportDocx({
   const adoptionDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('1'));
   const sponsorshipDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('2'));
 
+  // PT-01: the employee dimension tables average over the staff cohort
+  // alone, so they follow that cohort's floor rather than the report-wide
+  // response minimum.
+  const employeeSuppressed = reportData.dimensions?.employee_sample_size_met === false;
+  const employeeWithheld = employeeSuppressed ? 'Insufficient data' : '—';
+
   const dimTableRows = (dims, sectionLabel) =>
     dims.map((d) => [
       { _styled: true, text: `${d.id} — ${d.label}`, bold: true },
       sectionLabel,
-      { _styled: true, text: `${d.avg ?? '—'} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
-      dimensionStatusText(d.avg),
+      { _styled: true, text: d.avg == null ? employeeWithheld : `${d.avg} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
+      d.avg == null && employeeSuppressed ? '' : dimensionStatusText(d.avg),
     ]);
+
+  // PT-01: the whole Manager Overview section averages over the manager
+  // cohort alone, so it stands or falls on that cohort's size — not on
+  // the org-wide response count that gates the report as a whole.
+  const managerSuppressed = reportData.manager?.sample_size_met === false;
+  const minSample = reportData.suppression?.min_sample_size ?? 5;
+  const managerWithheld = managerSuppressed ? 'Insufficient data' : '—';
 
   const mgrDimTableRows = reportData.dimensions.manager.map((d) => {
     const section = d.id.startsWith('1') ? 'Received' : 'Capacity';
     return [
       { _styled: true, text: `${d.id} — ${d.managerLabel}`, bold: true },
       section,
-      { _styled: true, text: `${d.avg ?? '—'} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
-      dimensionStatusText(d.avg),
+      { _styled: true, text: d.avg == null ? managerWithheld : `${d.avg} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
+      d.avg == null && managerSuppressed ? '' : dimensionStatusText(d.avg),
     ];
   });
 
@@ -1309,30 +1346,42 @@ export async function buildReportDocx({
           h2('Manager Load'),
           body('Manager Load is derived from four survey questions assessing whether managers have the bandwidth, personal sustainability, and equipped capacity to lead their teams through change. It is a risk signal: a high proportion of managers in the At Capacity or Overloaded bands indicates that launching without structural support will amplify organisational risk.'),
           spacer(80),
-          h3('Load Band Distribution'),
-          loadBandCards(reportData.manager.load_distribution),
-          spacer(160),
-          signalBox('Manager Load', signals.managerLoad, COLOUR.signalBorderOrange),
-          spacer(200),
+          ...(managerSuppressed
+            ? [
+                bodySmallItalic(cohortSuppressionNote(minSample, 'manager')),
+                spacer(200),
+                h2('Manager Analysis'),
+                body('This analysis disaggregates the Sponsorship Credibility score into two constructs with distinct intervention owners: what managers are receiving from senior leadership above, and whether managers have the conditions to sponsor their own teams below.'),
+                spacer(80),
+                bodySmallItalic(cohortSuppressionNote(minSample, 'manager')),
+                spacer(160),
+              ]
+            : [
+                h3('Load Band Distribution'),
+                loadBandCards(reportData.manager.load_distribution),
+                spacer(160),
+                signalBox('Manager Load', signals.managerLoad, COLOUR.signalBorderOrange),
+                spacer(200),
 
-          h2('Manager Analysis'),
-          body('This analysis disaggregates the Sponsorship Credibility score into two constructs with distinct intervention owners: what managers are receiving from senior leadership above, and whether managers have the conditions to sponsor their own teams below.'),
-          spacer(80),
-          h3('Sponsorship Sub-Score Overview'),
-          scoreCardPair(
-            'Sponsorship Received',
-            reportData.manager.sponsorship_received_avg ?? '—', 20,
-            (reportData.manager.sponsorship_received_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
-            'Sponsorship Capacity',
-            reportData.manager.sponsorship_capacity_avg ?? '—', 20,
-            (reportData.manager.sponsorship_capacity_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
-          ),
-          spacer(160),
+                h2('Manager Analysis'),
+                body('This analysis disaggregates the Sponsorship Credibility score into two constructs with distinct intervention owners: what managers are receiving from senior leadership above, and whether managers have the conditions to sponsor their own teams below.'),
+                spacer(80),
+                h3('Sponsorship Sub-Score Overview'),
+                scoreCardPair(
+                  'Sponsorship Received',
+                  reportData.manager.sponsorship_received_avg ?? '—', 20,
+                  (reportData.manager.sponsorship_received_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
+                  'Sponsorship Capacity',
+                  reportData.manager.sponsorship_capacity_avg ?? '—', 20,
+                  (reportData.manager.sponsorship_capacity_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
+                ),
+                spacer(160),
 
-          h3('Sponsorship Chain Matrix'),
-          body('The matrix below shows the distribution of managers across four chain states, derived by crossing Received and Capacity scores against the 14/20 threshold.'),
-          sponsorshipChainMatrix(reportData.manager.sponsorship_chain_distribution),
-          spacer(160),
+                h3('Sponsorship Chain Matrix'),
+                body('The matrix below shows the distribution of managers across four chain states, derived by crossing Received and Capacity scores against the 14/20 threshold.'),
+                sponsorshipChainMatrix(reportData.manager.sponsorship_chain_distribution),
+                spacer(160),
+              ]),
 
           h3('Sponsorship Dimension Detail'),
           styledTable(
@@ -1347,14 +1396,18 @@ export async function buildReportDocx({
           ),
           spacer(160),
 
-          h3('Load Band × Chain State'),
-          body('The cross-analysis below identifies the highest-risk sub-groups by combining each manager\'s load band with their chain state.'),
-          styledTable(
-            ['', ...reportData.manager.load_chain_matrix[0]?.cells.map((cell) => cell.chainState) || []],
-            loadChainRows,
-          ),
-          spacer(120),
-          signalBox('Sponsorship Chain Analysis', signals.chain, COLOUR.signalBorderOrange),
+          ...(managerSuppressed
+            ? []
+            : [
+                h3('Load Band × Chain State'),
+                body('The cross-analysis below identifies the highest-risk sub-groups by combining each manager\'s load band with their chain state.'),
+                styledTable(
+                  ['', ...reportData.manager.load_chain_matrix[0]?.cells.map((cell) => cell.chainState) || []],
+                  loadChainRows,
+                ),
+                spacer(120),
+                signalBox('Sponsorship Chain Analysis', signals.chain, COLOUR.signalBorderOrange),
+              ]),
 
           // ── Team-Level Breakdown ──────────────────────────────────────
           ...((reportData.teams && reportData.teams.length > 0) ? [
@@ -1364,7 +1417,7 @@ export async function buildReportDocx({
             spacer(80),
             teamBreakdownTable(reportData.teams),
             spacer(80),
-            bodySmallItalic('Teams with fewer than 5 respondents should be interpreted with caution; small samples are sensitive to individual perspectives. Manager Load is shown only for teams whose lead manager completed the assessment.'),
+            bodySmallItalic(teamSuppressionNote(reportData)),
             spacer(120),
             signalBox('Team-Level Breakdown', signals.teams, COLOUR.signalBorderOrange),
           ] : []),

@@ -50,6 +50,11 @@ test('assembleReportData throws INSUFFICIENT_DATA when below minimum', async () 
 });
 
 test('assembleReportData returns stable matrix, percentages, and invite totals for matching stage', async () => {
+  // The manager cohort deliberately clears DASHBOARD_MIN_SAMPLE_SIZE (5).
+  // This test asserts the load/chain percentages sum to 100, which only
+  // has meaning when those percentages are actually reported — below the
+  // floor they are withheld as null by design (PT-01). Suppression
+  // behaviour itself is covered in reportDataAssembler.suppression.test.js.
   const responsesBySession = {
     preA: {
       rows: [
@@ -57,6 +62,8 @@ test('assembleReportData returns stable matrix, percentages, and invite totals f
         makeRow({ role: 'employee', value: 3 }),
         makeRow({ role: 'admin', value: 5 }),
         makeRow({ role: 'admin', value: 4 }),
+        makeRow({ role: 'admin', value: 4 }),
+        makeRow({ role: 'admin', value: 2 }),
       ],
     },
     preB: { rows: [makeRow({ role: 'employee', value: 5 }), makeRow({ role: 'admin', value: 3 })] },
@@ -98,7 +105,7 @@ test('assembleReportData returns stable matrix, percentages, and invite totals f
   });
 
   assert.equal(out.stage, 'pre');
-  assert.equal(out.totals.responses, 6); // only pre sessions
+  assert.equal(out.totals.responses, 8); // only pre sessions (3 staff + 5 managers)
   assert.equal(out.totals.invited, 15); // 10+2 + (2 staff +1 manager)
   assert.equal(out.manager.load_distribution.reduce((sum, row) => sum + row.percent, 0), 100);
   assert.equal(
