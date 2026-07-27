@@ -1,6 +1,7 @@
 import { checkRetentionHeartbeat, runRetentionSweep } from './retentionPolicy.js';
 import { runArchiveReviewReport } from './archiveReview.js';
 import { runLicenseePurgeSweep } from './licenseePurge.js';
+import { runUndoPurgeSweep } from './undoPurge.js';
 
 function shouldRunQuarterlyArchive(now = new Date()) {
   if (String(process.env.FORCE_ARCHIVE_REVIEW || '').trim().toLowerCase() === 'true') {
@@ -36,6 +37,11 @@ export async function runPrivacyMaintenance({ dryRun = false, now = new Date() }
   // as retention. Errors per-licensee are captured in the result; one
   // bad org won't fail the whole sweep.
   maintenanceResult.licenseePurge = await runLicenseePurgeSweep({ now, dryRun });
+
+  // Undo feature: hard-deletes tasks/milestones/files/contacts whose
+  // soft-delete recovery window has elapsed. Errors per-row are captured
+  // in the result; one bad row won't fail the whole sweep.
+  maintenanceResult.undoPurge = await runUndoPurgeSweep({ now, dryRun });
 
   return maintenanceResult;
 }

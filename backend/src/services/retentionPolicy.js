@@ -79,7 +79,7 @@ export function getRetentionFieldPolicy() {
   };
 }
 
-async function startRetentionJobRun(jobName, details = {}) {
+export async function startRetentionJobRun(jobName, details = {}) {
   const { rows } = await query(
     `INSERT INTO retention_job_runs (job_name, status, details)
      VALUES ($1, 'running', $2::jsonb)
@@ -89,7 +89,7 @@ async function startRetentionJobRun(jobName, details = {}) {
   return rows[0];
 }
 
-async function finishRetentionJobRun(runId, status, details) {
+export async function finishRetentionJobRun(runId, status, details) {
   const safeStatus = status === 'failed' ? 'failed' : 'ok';
   const { rows } = await query(
     `UPDATE retention_job_runs

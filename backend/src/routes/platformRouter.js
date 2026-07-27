@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { blockSupportWrites, requireAuth, requirePlatformOnlyUser, requireWorkspaceUser } from '../middleware/auth.js';
+import { requireAuth, requirePlatformOnlyUser, requireWorkspaceUser } from '../middleware/auth.js';
 import { registerPlatformMeRoutes } from './platform/meRoutes.js';
 import { registerPlatformOrgRoutes } from './platform/orgRoutes.js';
 import { registerPlatformStaffRoutes } from './platform/staffRoutes.js';
@@ -49,7 +49,9 @@ const platformLimiter = rateLimit({
   },
 });
 
-router.use(requireAuth, blockSupportWrites, requireWorkspaceUser, platformLimiter);
+// SUP-01 write-blocking for impersonation sessions is enforced globally
+// inside requireAuth itself now (see middleware/auth.js), not mounted here.
+router.use(requireAuth, requireWorkspaceUser, platformLimiter);
 router.use((req, _res, next) => {
   if (req.url.includes('rhythm-engine')) {
     req.url = req.url

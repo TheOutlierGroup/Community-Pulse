@@ -14,6 +14,7 @@ import * as PulseSession from '../../models/PulseSession.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
 import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
+import * as EntityFieldHistory from '../../models/EntityFieldHistory.js';
 import {
   consumeAssessmentForClient,
   refundAssessmentForLicensee,
@@ -28,6 +29,7 @@ import {
   AUDIT_ACTIONS,
   listRecentAuditEvents,
   publicAuditEvent,
+  diffFields,
 } from '../../services/auditLog.js';
 import {
   brandUploadLimiter,
@@ -71,6 +73,7 @@ import {
   filterRowsForManagerScope,
   parseManagerIdsFromQuery,
   parseQueryBool,
+  DASHBOARD_MIN_SAMPLE_SIZE,
 } from '../../services/pulseDashboardScope.js';
 import {
   buildLikelihoodWhatThisMeansSignal,
@@ -1977,6 +1980,7 @@ export function registerPlatformOrgRoutes(router) {
         }
       }
     }
+    const beforeOrg = await Organization.getOrganization(req.params.id);
     const updated = await Organization.updateOrganizationClient(req.params.id, {
       name,
       settings: settingsPatch,
@@ -1994,7 +1998,15 @@ export function registerPlatformOrgRoutes(router) {
         console.error('Failed to create default pulse sessions on service enable:', e);
       }
     }
-    auditFromRequest(req)({
+    const diffPaths = [];
+    if (name !== undefined) diffPaths.push('name');
+    if (clientStatus !== undefined) diffPaths.push('client_status');
+    if (relationshipStatus !== undefined) diffPaths.push('relationship_status');
+    if (settingsPatch) {
+      for (const key of Object.keys(settingsPatch)) diffPaths.push(`settings.${key}`);
+    }
+    const fieldChanges = diffFields(beforeOrg, updated, diffPaths);
+    const auditRow = await auditFromRequest(req)({
       action: AUDIT_ACTIONS.ORG_UPDATE,
       targetType: 'organization',
       targetId: updated.id,
@@ -2005,8 +2017,19 @@ export function registerPlatformOrgRoutes(router) {
         settingsKeys: settingsPatch ? Object.keys(settingsPatch) : [],
         clientStatusChanged: clientStatus !== undefined,
         relationshipStatusChanged: relationshipStatus !== undefined,
+        fieldChanges,
       },
     });
+    if (Object.keys(fieldChanges).length > 0) {
+      await EntityFieldHistory.recordFieldChanges({
+        organizationId: updated.id,
+        entityType: 'organization',
+        entityId: updated.id,
+        changes: fieldChanges,
+        changedBy: req.user?.id || null,
+        auditEventId: auditRow?.id || null,
+      });
+    }
     res.json(updated);
   });
 
@@ -2462,14 +2485,30 @@ export function registerPlatformOrgRoutes(router) {
     }
     // Ensure a row exists; createDefaultForLicensee is a no-op if it does.
     await LicenseConfig.createDefaultForLicensee(org.id);
+    const beforeConfigRow = await LicenseConfig.getForOrganization(org.id);
     const updated = await LicenseConfig.updateForOrganization(org.id, patch);
-    auditFromRequest(req)({
+    const fieldChanges = diffFields(
+      LicenseConfig.publicLicenseConfig(beforeConfigRow) || {},
+      LicenseConfig.publicLicenseConfig(updated) || {},
+      Object.keys(patch)
+    );
+    const auditRow = await auditFromRequest(req)({
       action: AUDIT_ACTIONS.LICENCE_CONFIG_UPDATE,
       targetType: 'licence_config',
       targetId: org.id,
       targetOrganizationId: org.id,
-      metadata: { patchedFields: Object.keys(patch) },
+      metadata: { patchedFields: Object.keys(patch), fieldChanges },
     });
+    if (Object.keys(fieldChanges).length > 0) {
+      await EntityFieldHistory.recordFieldChanges({
+        organizationId: org.id,
+        entityType: 'licence_config',
+        entityId: org.id,
+        changes: fieldChanges,
+        changedBy: req.user?.id || null,
+        auditEventId: auditRow?.id || null,
+      });
+    }
     res.json({ licenseConfig: LicenseConfig.publicLicenseConfig(updated) });
   });
 
@@ -2488,11 +2527,130 @@ export function registerPlatformOrgRoutes(router) {
         limit,
         action,
       });
-      res.json({ events: rows.map(publicAuditEvent) });
+      // Attach still-live (not yet reverted) entity_field_history linkage so
+      // the frontend can render an "Undo" affordance without a second
+      // lookup per event.
+      const historyRows = await EntityFieldHistory.listHistoryForOrganization(org.id, {
+        limit: Math.max(limit, 100),
+      });
+      const revertibleByAuditEventId = new Map();
+      for (const h of historyRows) {
+        if (h.reverted_at || !h.audit_event_id) continue;
+        const list = revertibleByAuditEventId.get(h.audit_event_id) || [];
+        list.push({ id: h.id, fieldName: h.field_name });
+        revertibleByAuditEventId.set(h.audit_event_id, list);
+      }
+      const events = rows.map((row) => {
+        const pub = publicAuditEvent(row);
+        const revertibleFields = revertibleByAuditEventId.get(row.id);
+        if (revertibleFields) pub.revertibleFields = revertibleFields;
+        return pub;
+      });
+      res.json({ events });
     } catch (error) {
       next(error);
     }
   });
+
+  const ORG_FIELD_HISTORY_TO_UPDATE_KEY = {
+    name: 'name',
+    client_status: 'clientStatus',
+    relationship_status: 'relationshipStatus',
+  };
+
+  // Staff-only field-level revert: writes a history row's old_value back
+  // through the same model function that produced it, so the revert itself
+  // re-diffs and creates a fresh audit event + history row (never mutates
+  // history in place beyond the reverted_at/reverted_by lifecycle stamp).
+  router.post(
+    '/organizations/:id/field-history/:historyId/revert',
+    requirePlatformAdminRole,
+    async (req, res, next) => {
+      try {
+        // Field-level revert is platform-staff-only — these fields carry
+        // billing/contract weight — unlike requirePlatformAdminRole alone,
+        // which licensee admins also satisfy (see the licence-config PATCH
+        // route above for the same extra check).
+        if (req.workspaceOrganization?.kind !== 'platform') {
+          return res.status(403).json({ error: 'Only platform admins can revert this field' });
+        }
+        const org = await Organization.getOrganization(req.params.id);
+        if (!org) return res.status(404).json({ error: 'Organization not found' });
+        const historyRow = await EntityFieldHistory.getHistoryById(req.params.historyId);
+        if (!historyRow || String(historyRow.organization_id) !== String(org.id)) {
+          return res.status(404).json({ error: 'History entry not found' });
+        }
+        if (historyRow.reverted_at) {
+          return res.status(409).json({ error: 'This change was already reverted' });
+        }
+        const fieldName = historyRow.field_name;
+        const oldValue = historyRow.old_value ?? null;
+        let updatedEntityId;
+        let fieldChanges;
+        let auditRow;
+
+        if (historyRow.entity_type === 'organization') {
+          const beforeOrg = await Organization.getOrganization(org.id);
+          let updated;
+          if (fieldName.startsWith('settings.')) {
+            const key = fieldName.slice('settings.'.length);
+            updated = await Organization.updateOrganizationClient(org.id, { settings: { [key]: oldValue } });
+          } else if (ORG_FIELD_HISTORY_TO_UPDATE_KEY[fieldName]) {
+            updated = await Organization.updateOrganizationClient(org.id, {
+              [ORG_FIELD_HISTORY_TO_UPDATE_KEY[fieldName]]: oldValue,
+            });
+          } else {
+            return res.status(400).json({ error: 'This field cannot be reverted' });
+          }
+          if (!updated) return res.status(500).json({ error: 'Revert failed' });
+          updatedEntityId = updated.id;
+          fieldChanges = diffFields(beforeOrg, updated, [fieldName]);
+          auditRow = await auditFromRequest(req)({
+            action: AUDIT_ACTIONS.ENTITY_FIELD_REVERT,
+            targetType: 'organization',
+            targetId: updated.id,
+            targetOrganizationId: updated.id,
+            metadata: { fieldName, fieldChanges, revertOfId: historyRow.id },
+          });
+        } else if (historyRow.entity_type === 'licence_config') {
+          await LicenseConfig.createDefaultForLicensee(org.id);
+          const beforeConfigRow = await LicenseConfig.getForOrganization(org.id);
+          const updated = await LicenseConfig.updateForOrganization(org.id, { [fieldName]: oldValue });
+          updatedEntityId = org.id;
+          fieldChanges = diffFields(
+            LicenseConfig.publicLicenseConfig(beforeConfigRow) || {},
+            LicenseConfig.publicLicenseConfig(updated) || {},
+            [fieldName]
+          );
+          auditRow = await auditFromRequest(req)({
+            action: AUDIT_ACTIONS.ENTITY_FIELD_REVERT,
+            targetType: 'licence_config',
+            targetId: org.id,
+            targetOrganizationId: org.id,
+            metadata: { fieldName, fieldChanges, revertOfId: historyRow.id },
+          });
+        } else {
+          return res.status(400).json({ error: 'Unsupported entity type' });
+        }
+
+        if (Object.keys(fieldChanges).length > 0) {
+          await EntityFieldHistory.recordFieldChanges({
+            organizationId: org.id,
+            entityType: historyRow.entity_type,
+            entityId: updatedEntityId,
+            changes: fieldChanges,
+            changedBy: req.user?.id || null,
+            auditEventId: auditRow?.id || null,
+            revertOfId: historyRow.id,
+          });
+        }
+        await EntityFieldHistory.markReverted(historyRow.id, req.user?.id || null);
+        res.json({ ok: true });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   // Static prospect record captured at promotion time — see
   // services/prospectSnapshot.js. Separate from the live audit-events feed
@@ -2539,11 +2697,15 @@ export function registerPlatformOrgRoutes(router) {
     }
   });
 
-  // SUP-01 read-only support impersonation. Mints a short-lived JWT
-  // that authenticates as the licensee's first active admin but with a
-  // `supportImpersonation` flag so blockSupportWrites refuses any non-
-  // GET request. Audit-logged at mint time so we can always prove who
-  // looked at what.
+  // SUP-01 read-only impersonation. Works for both licensee and client
+  // orgs — the frontend currently only surfaces the trigger button for
+  // licensees plus (as of the admin "impersonate a client" feature)
+  // clients, but the endpoint itself has never been org-kind-specific.
+  // Mints a short-lived JWT that authenticates as the target org's first
+  // active admin but with a `supportImpersonation` flag, so requireAuth's
+  // write guard (middleware/auth.js) refuses any non-GET/HEAD/OPTIONS
+  // request no matter which router handles it. Audit-logged at mint time
+  // so we can always prove who looked at what.
   router.post('/organizations/:id/support-impersonate', requirePlatformAdminRole, async (req, res, next) => {
     if (req.workspaceOrganization?.kind !== 'platform') {
       return res.status(403).json({ error: 'Only platform admins can impersonate' });
@@ -2557,7 +2719,7 @@ export function registerPlatformOrgRoutes(router) {
       const target = (admins || []).find((u) => !u.deactivated_at && u.login_enabled !== false);
       if (!target) {
         return res.status(409).json({
-          error: 'No active admin user to impersonate. Create one or have the licensee invite an admin first.',
+          error: 'No active admin user to impersonate. Create one, or have an existing admin invite one first.',
         });
       }
       // Short window — long enough to investigate, too short to forget
@@ -3238,12 +3400,18 @@ export function registerPlatformOrgRoutes(router) {
       .map((r) => responseScoresOutOf40(r))
       .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
 
+    // Sample-size gate for every org/team-scoped score below (adoption,
+    // sponsorship, quadrant distribution). Prevents a narrow manager
+    // filter (e.g. down to a single manager) from exposing that small
+    // group's actual scores — see DASHBOARD_MIN_SAMPLE_SIZE.
+    const orgScoreSampleSizeMet = currentScored.length >= DASHBOARD_MIN_SAMPLE_SIZE;
+
     const adoptionScore =
-      currentScored.length > 0
+      orgScoreSampleSizeMet && currentScored.length > 0
         ? round1(currentScored.reduce((sum, s) => sum + s.adoption, 0) / currentScored.length)
         : null;
     const sponsorshipScore =
-      currentScored.length > 0
+      orgScoreSampleSizeMet && currentScored.length > 0
         ? round1(currentScored.reduce((sum, s) => sum + s.sponsorship, 0) / currentScored.length)
         : null;
 
@@ -3288,8 +3456,8 @@ export function registerPlatformOrgRoutes(router) {
     const quadrantPercents = calculateLargestRemainderPercentages(quadrantCounts);
     const quadrants = quadrantNames.map((name, idx) => ({
       name,
-      count: quadrantBuckets[name],
-      percent: quadrantPercents[idx],
+      count: orgScoreSampleSizeMet ? quadrantBuckets[name] : null,
+      percent: orgScoreSampleSizeMet ? quadrantPercents[idx] : null,
     }));
 
     const managerLoadCounts = {
@@ -3324,6 +3492,12 @@ export function registerPlatformOrgRoutes(router) {
 
     const employeeScoredRows = completedScoredRows.filter((entry) => entry.role !== 'admin');
     const managerScoredRows = completedScoredRows.filter((entry) => entry.role === 'admin');
+    // Same filter-down protection as orgScoreSampleSizeMet, but scoped to
+    // the employee/manager cohorts the dimension heatmap and perception-gap
+    // analysis compare against each other.
+    const dimensionsSampleSizeMet =
+      employeeScoredRows.length >= DASHBOARD_MIN_SAMPLE_SIZE
+      && managerScoredRows.length >= DASHBOARD_MIN_SAMPLE_SIZE;
     const averageFor = (values) => {
       if (!values.length) return null;
       return round1(values.reduce((sum, value) => sum + value, 0) / values.length);
@@ -3375,11 +3549,49 @@ export function registerPlatformOrgRoutes(router) {
       const employeeHighCount = employeeDimensionValues.filter((value) => value >= 4).length;
       const managerHighCount = managerDimensionValues.filter((value) => value >= 4).length;
 
+      // Below the sample-size floor, expose only structural fields
+      // (id/label/comparable/counts) — never the actual averages/gaps for
+      // what could be a tiny, re-identifiable group.
+      if (!dimensionsSampleSizeMet) {
+        return {
+          id: dimension.id,
+          label: dimension.employeeLabel,
+          managerLabel: dimension.managerLabel,
+          comparable,
+          sampleSizeMet: false,
+          employee: {
+            questionIds: dimension.employeeQuestions,
+            q1Avg: null,
+            q2Avg: null,
+            average: null,
+            count: employeeDimensionValues.length,
+            intraGap: null,
+            intraGapFlagged: false,
+          },
+          manager: {
+            questionIds: dimension.managerQuestions,
+            q1Avg: null,
+            q2Avg: null,
+            average: null,
+            count: managerDimensionValues.length,
+            intraGap: null,
+            intraGapFlagged: false,
+          },
+          perceptionGap: null,
+          perceptionGapFlagged: false,
+          energyAvg: null,
+          frictionAvg: null,
+          highEnergyPercent: null,
+          managerHighPercent: null,
+        };
+      }
+
       return {
         id: dimension.id,
         label: dimension.employeeLabel,
         managerLabel: dimension.managerLabel,
         comparable,
+        sampleSizeMet: true,
         employee: {
           questionIds: dimension.employeeQuestions,
           q1Avg: employeeQ1Avg,
@@ -3432,12 +3644,17 @@ export function registerPlatformOrgRoutes(router) {
       const managerScored = managerCompletedRows
         .map((row) => responseScoresOutOf40(row))
         .filter((s) => s.valid && s.adoption != null && s.sponsorship != null);
+      // This manager's adoption/sponsorship score is an average across
+      // their direct reports (employees) — with too few of them it stops
+      // being an aggregate and starts being individually identifiable, so
+      // it's gated the same way as the org-wide and dimension breakdowns.
+      const managerTeamSampleSizeMet = managerScored.length >= DASHBOARD_MIN_SAMPLE_SIZE;
       const managerAdoption =
-        managerScored.length > 0
+        managerTeamSampleSizeMet && managerScored.length > 0
           ? round1(managerScored.reduce((sum, s) => sum + s.adoption, 0) / managerScored.length)
           : null;
       const managerSponsorship =
-        managerScored.length > 0
+        managerTeamSampleSizeMet && managerScored.length > 0
           ? round1(managerScored.reduce((sum, s) => sum + s.sponsorship, 0) / managerScored.length)
           : null;
       const managerQuadrant =
@@ -3466,6 +3683,7 @@ export function registerPlatformOrgRoutes(router) {
         adoptionScore: managerAdoption,
         sponsorshipScore: managerSponsorship,
         quadrant: managerQuadrant,
+        sampleSizeMet: managerTeamSampleSizeMet,
         managerLoadBand: loadBand,
         trend: [],
       };
@@ -3813,12 +4031,20 @@ export function registerPlatformOrgRoutes(router) {
       },
       signals: sponsorshipConfig.aiSignalsEnabled ? sponsorshipSignals : null,
     };
+    // Below the sample-size floor every quadrant.percent is null (see
+    // orgScoreSampleSizeMet above) — without this guard, sorting by
+    // percent||0 would stably resolve to the first quadrant name every
+    // time and leak a spurious "modal quadrant" label into score-card
+    // fallback text for a group that was supposed to be suppressed.
     const currentQuadrantForScoreCards =
       adoptionScore != null && sponsorshipScore != null
         ? quadrantLabel(adoptionScore, sponsorshipScore)
-        : [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || null;
-    const modalQuadrantForScoreCards =
-      [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || null;
+        : orgScoreSampleSizeMet
+          ? [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || null
+          : null;
+    const modalQuadrantForScoreCards = orgScoreSampleSizeMet
+      ? [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || null
+      : null;
     const scoreCardSignals = buildTopScoreCardSignals({
       clientName: org.name,
       adoptionScore,
@@ -3842,10 +4068,19 @@ export function registerPlatformOrgRoutes(router) {
     const launchStatusLabel = launchVerdict === 'cleared' ? 'Cleared to Launch' : 'Not Cleared';
     const likelihoodSignal = buildLikelihoodWhatThisMeansSignal({
       currentQuadrant: currentQuadrantForScoreCards,
-      optimalPct: quadrants.find((entry) => entry.name === 'Optimal')?.percent || 0,
-      motivatedLostPct: quadrants.find((entry) => entry.name === 'Motivated but Lost')?.percent || 0,
-      capableWaryPct: quadrants.find((entry) => entry.name === 'Capable but Wary')?.percent || 0,
-      highRiskPct: quadrants.find((entry) => entry.name === 'High Risk')?.percent || 0,
+      // Pass null (not 0) when suppressed — buildLikelihoodWhatThisMeansSignal
+      // treats a genuine 0% as real data and narrates it, but treats
+      // non-finite (null/undefined) as "no distribution" and falls back
+      // instead. Coercing suppressed values to 0 here would have produced a
+      // misleading "0% of respondents..." narrative for a tiny, gated group.
+      optimalPct: orgScoreSampleSizeMet ? quadrants.find((entry) => entry.name === 'Optimal')?.percent : null,
+      motivatedLostPct: orgScoreSampleSizeMet
+        ? quadrants.find((entry) => entry.name === 'Motivated but Lost')?.percent
+        : null,
+      capableWaryPct: orgScoreSampleSizeMet
+        ? quadrants.find((entry) => entry.name === 'Capable but Wary')?.percent
+        : null,
+      highRiskPct: orgScoreSampleSizeMet ? quadrants.find((entry) => entry.name === 'High Risk')?.percent : null,
       launchStatus: launchStatusLabel,
     });
     const quadrantSignal = buildQuadrantExplanationSignal({
@@ -3915,33 +4150,43 @@ export function registerPlatformOrgRoutes(router) {
     const aiRenderDeadlineMs = readPositiveIntEnv('CLAUDE_SUMMARY_RENDER_DEADLINE_MS', 350);
     let soWhat = soWhatFallback;
     let soWhatStatus = 'fallback';
-    const soWhatAttempt = await runWithDeadline(
-      () => generatePulseSoWhatSummary({
-        orgName: org.name,
-        completedTotal,
-        adoptionScore,
-        sponsorshipScore,
-        threshold: READINESS_THRESHOLD,
-        optimalPercent: optimalQuadrant?.percent || 0,
-        highRiskPercent: highRiskQuadrant?.percent || 0,
-        overloadedPercent: overloadedBand?.percent || 0,
-        alertTitles: prioritizedAlerts.alerts.map((alert) => alert.title),
-      }),
-      aiRenderDeadlineMs
-    );
-    if (soWhatAttempt.value) {
-      soWhat = soWhatAttempt.value;
-      soWhatStatus = 'ready';
-    } else if (soWhatAttempt.timedOut) {
-      soWhatStatus = 'timeout';
-    } else if (soWhatAttempt.error) {
-      soWhatStatus = 'unavailable';
+    // Skip the AI narrative entirely below the sample-size floor — don't
+    // even send the org a prompt built from a suppressed group's numbers.
+    // generatePulseSoWhatSummary's own clampPercent() would otherwise turn
+    // a null/suppressed optimalPercent/highRiskPercent into a literal 0,
+    // handing the model a specific (and misleading) figure to narrate.
+    if (!orgScoreSampleSizeMet) {
+      soWhatStatus = 'suppressed';
+    } else {
+      const soWhatAttempt = await runWithDeadline(
+        () => generatePulseSoWhatSummary({
+          orgName: org.name,
+          completedTotal,
+          adoptionScore,
+          sponsorshipScore,
+          threshold: READINESS_THRESHOLD,
+          optimalPercent: optimalQuadrant?.percent || 0,
+          highRiskPercent: highRiskQuadrant?.percent || 0,
+          overloadedPercent: overloadedBand?.percent || 0,
+          alertTitles: prioritizedAlerts.alerts.map((alert) => alert.title),
+        }),
+        aiRenderDeadlineMs
+      );
+      if (soWhatAttempt.value) {
+        soWhat = soWhatAttempt.value;
+        soWhatStatus = 'ready';
+      } else if (soWhatAttempt.timedOut) {
+        soWhatStatus = 'timeout';
+      } else if (soWhatAttempt.error) {
+        soWhatStatus = 'unavailable';
+      }
     }
 
     const perceptionGapMinSamples = PERCEPTION_GAP_ANALYSIS_MIN_SAMPLES;
-    const perceptionGapSampleSizeMet =
-      employeeScoredRows.length >= perceptionGapMinSamples
-      && managerScoredRows.length >= perceptionGapMinSamples;
+    // Same employee/manager cohort gate as dimensionsSampleSizeMet above —
+    // reused directly so this can never drift out of sync with what
+    // `dimensions` itself already suppresses.
+    const perceptionGapSampleSizeMet = dimensionsSampleSizeMet;
     const perceptionGapFlaggedItems = perceptionGapSampleSizeMet
       ? buildPerceptionGapFlaggedItems({
         dimensions,
@@ -3992,23 +4237,29 @@ export function registerPlatformOrgRoutes(router) {
       text: perceptionGapText,
     };
 
-    const executiveSummary = buildExecutiveSummaryContent({
-      adoptionScore,
-      sponsorshipScore,
-      sponsorshipDelta,
-      threshold: READINESS_THRESHOLD,
-      optimalPercent: optimalQuadrant?.percent || 0,
-      highRiskPercent: highRiskQuadrant?.percent || 0,
-      overloadedPercent: overloadedBand?.percent || 0,
-      criticalLoadPercent: managerLoad.bands
-        .filter((band) => band.name === 'At Capacity' || band.name === 'Overloaded')
-        .reduce((sum, band) => sum + (band.percent || 0), 0),
-      interventionRequired:
-        (sponsorshipScore != null && sponsorshipScore < READINESS_THRESHOLD)
-        || ((overloadedBand?.percent || 0) > 10)
-        || ((optimalQuadrant?.percent || 0) < 25),
-      completedTotal,
-    });
+    // buildExecutiveSummaryContent always renders full narrative text
+    // (percentages, scenario prose) with no internal "insufficient data"
+    // handling — below the sample-size floor, skip calling it rather than
+    // let it narrate a suppressed group's numbers as if they were real.
+    const executiveSummary = orgScoreSampleSizeMet
+      ? buildExecutiveSummaryContent({
+        adoptionScore,
+        sponsorshipScore,
+        sponsorshipDelta,
+        threshold: READINESS_THRESHOLD,
+        optimalPercent: optimalQuadrant?.percent || 0,
+        highRiskPercent: highRiskQuadrant?.percent || 0,
+        overloadedPercent: overloadedBand?.percent || 0,
+        criticalLoadPercent: managerLoad.bands
+          .filter((band) => band.name === 'At Capacity' || band.name === 'Overloaded')
+          .reduce((sum, band) => sum + (band.percent || 0), 0),
+        interventionRequired:
+          (sponsorshipScore != null && sponsorshipScore < READINESS_THRESHOLD)
+          || ((overloadedBand?.percent || 0) > 10)
+          || ((optimalQuadrant?.percent || 0) < 25),
+        completedTotal,
+      })
+      : { sampleSizeMet: false, minSampleSize: DASHBOARD_MIN_SAMPLE_SIZE };
 
     schedulePulseAlertNotifications({
       clientOrgId: org.id,
@@ -4017,9 +4268,7 @@ export function registerPlatformOrgRoutes(router) {
     });
 
     const employeeRowsWithManagerTag = completedEmployeeRows.filter((row) => row.manager_invite_id).length;
-    const managersWithComparableTeamSize = byManager.filter(
-      (row) => (row.directReportCompletedCount || 0) >= 5
-    ).length;
+    const managersWithComparableTeamSize = byManager.filter((row) => row.sampleSizeMet).length;
     const teamSuppressedManagerCount = Math.max(0, byManager.length - managersWithComparableTeamSize);
 
     res.json({
@@ -4053,6 +4302,16 @@ export function registerPlatformOrgRoutes(router) {
         threshold: READINESS_THRESHOLD,
         averaging: 'pooled_completed_respondents',
       },
+      // Minimum respondent count required before any score/quadrant/
+      // dimension breakdown is populated for a given scope — see
+      // DASHBOARD_MIN_SAMPLE_SIZE. orgSampleSizeMet gates kpis.adoptionScore/
+      // sponsorshipScore, quadrants, executiveSummary, and the AI "so what"
+      // narrative; dimensionsSampleSizeMet gates the dimensions heatmap and
+      // perceptionGapAnalysis; each byManager row carries its own
+      // sampleSizeMet for that manager's team.
+      minSampleSize: DASHBOARD_MIN_SAMPLE_SIZE,
+      orgSampleSizeMet: orgScoreSampleSizeMet,
+      dimensionsSampleSizeMet,
       quadrants,
       managerLoad,
       dimensions,

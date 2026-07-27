@@ -642,10 +642,14 @@ export default function ClientTaskDetailPanel({
   }
 
   async function confirmDeleteTask() {
-    if (!taskId || !window.confirm('Delete this task and all comments?')) return;
+    if (
+      !taskId ||
+      !window.confirm('Delete this task? It can be restored from "Recently deleted" for 30 days.')
+    )
+      return;
     try {
       await api.delete(`/api/platform/organizations/${orgId}/tasks/${taskId}`);
-      showToast('Task deleted.', { variant: 'success' });
+      showToast('Task deleted. You can restore it from "Recently deleted" for 30 days.', { variant: 'success' });
       onTaskDeleted?.(taskId);
       onTasksChanged?.();
       onClose();

@@ -12,6 +12,13 @@ export function isLicenseeUser(user) {
   return Boolean(user && user.organizationKind === 'licensee');
 }
 
+// Outlier platform staff only — narrower than isWorkspaceUser, which also
+// includes licensee admins. Use this to gate actions that must never be
+// available to a licensee (e.g. reverting a billing/contract field).
+export function isPlatformStaffUser(user) {
+  return Boolean(user && user.organizationKind === 'platform');
+}
+
 // Enterprise-tier client org users get self-service access to their own
 // slice of the /platform/clients/:orgId workspace (Dashboard/Users/Tasks/
 // Rhythm Engine) — see usePlatformClientAccess below. This is distinct

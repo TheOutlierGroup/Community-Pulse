@@ -86,6 +86,7 @@ export const AUDIT_ACTIONS = Object.freeze({
   CONTACT_CREATE: 'contact.create',
   CONTACT_UPDATE: 'contact.update',
   CONTACT_DELETE: 'contact.delete',
+  CONTACT_RESTORE: 'contact.restore',
   CONTACT_IMPORT: 'contact.import',
   CUSTOM_FILTER_CREATE: 'custom_filter.create',
   CUSTOM_FILTER_UPDATE: 'custom_filter.update',
@@ -105,7 +106,45 @@ export const AUDIT_ACTIONS = Object.freeze({
   CLIENT_CONTACT_CREATE: 'client_contact.create',
   CLIENT_CONTACT_UPDATE: 'client_contact.update',
   CLIENT_CONTACT_DELETE: 'client_contact.delete',
+
+  CLIENT_WORK_TASK_CREATE: 'client_work_task.create',
+  CLIENT_WORK_TASK_UPDATE: 'client_work_task.update',
+  CLIENT_WORK_TASK_DELETE: 'client_work_task.delete',
+  CLIENT_WORK_TASK_RESTORE: 'client_work_task.restore',
+  CLIENT_PROJECT_MILESTONE_RESTORE: 'client_project.milestone.restore',
+  CLIENT_PROJECT_FILE_RESTORE: 'client_project.file.restore',
+  CRM_CONTACT_RESTORE: 'crm.contact.restore',
+  CLIENT_CONTACT_RESTORE: 'client_contact.restore',
+  ENTITY_FIELD_REVERT: 'entity_field.revert',
+  UNDO_PURGE_SWEEP: 'undo.purge.sweep',
 });
+
+function getFieldValue(obj, path) {
+  if (!obj || typeof obj !== 'object') return undefined;
+  return path
+    .split('.')
+    .reduce((acc, key) => (acc && typeof acc === 'object' ? acc[key] : undefined), obj);
+}
+
+/**
+ * Diff-capture helper for the undo feature: compares `before`/`after`
+ * snapshots at the given field paths (dot notation for nested values, e.g.
+ * 'settings.groupLevels') and returns only the ones that actually changed,
+ * as `{ path: { from, to } }`. Used both to enrich audit_events.metadata
+ * with real values (not just field names) and to build entity_field_history
+ * rows for staff-only field-level revert.
+ */
+export function diffFields(before, after, fieldPaths) {
+  const changes = {};
+  for (const path of fieldPaths) {
+    const from = getFieldValue(before, path);
+    const to = getFieldValue(after, path);
+    if (JSON.stringify(from ?? null) !== JSON.stringify(to ?? null)) {
+      changes[path] = { from: from ?? null, to: to ?? null };
+    }
+  }
+  return changes;
+}
 
 function normalizeText(value, fallback = null) {
   if (value == null) return fallback;

@@ -12,8 +12,9 @@ import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-ki
 import api from '../services/api.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
+import ModalDialog from '../components/shared/ModalDialog.jsx';
 import { useAuth } from '../components/shared/Auth.jsx';
-import { Check, ClipboardList, Plus, X } from 'lucide-react';
+import { Check, ClipboardList, Plus, RotateCcw, X } from 'lucide-react';
 import {
   buildColumnItems,
   COLUMN_IDS,
@@ -52,6 +53,10 @@ export default function PlatformClientTasks() {
   const [composerAssignedTo, setComposerAssignedTo] = useState('');
   const [composerDueDate, setComposerDueDate] = useState('');
   const [composerTag, setComposerTag] = useState('');
+  const [deletedModalOpen, setDeletedModalOpen] = useState(false);
+  const [deletedTasks, setDeletedTasks] = useState([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState(null);
 
   const tasksRef = useRef(tasks);
   const columnItemsRef = useRef(columnItems);
@@ -347,6 +352,37 @@ export default function PlatformClientTasks() {
 
   const activeTask = activeId ? tasksById[activeId] : null;
 
+  const openDeletedModal = useCallback(async () => {
+    setDeletedModalOpen(true);
+    setDeletedLoading(true);
+    try {
+      const { data } = await api.get(`/api/platform/organizations/${orgId}/tasks/deleted`);
+      setDeletedTasks(data.tasks || []);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not load recently deleted tasks.', { variant: 'error' });
+      setDeletedTasks([]);
+    } finally {
+      setDeletedLoading(false);
+    }
+  }, [orgId, showToast]);
+
+  const restoreDeletedTask = useCallback(
+    async (taskId) => {
+      setRestoringId(taskId);
+      try {
+        await api.post(`/api/platform/organizations/${orgId}/tasks/${taskId}/restore`);
+        setDeletedTasks((prev) => prev.filter((t) => String(t.id) !== String(taskId)));
+        showToast('Task restored.', { variant: 'success' });
+        await loadTasks();
+      } catch (err) {
+        showToast(err.response?.data?.error || 'Could not restore task.', { variant: 'error' });
+      } finally {
+        setRestoringId(null);
+      }
+    },
+    [orgId, showToast, loadTasks]
+  );
+
   return (
     <>
       <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
@@ -356,6 +392,10 @@ export default function PlatformClientTasks() {
           <ClipboardList size={28} strokeWidth={1.75} aria-hidden />
           Tasks
         </h1>
+        <button type="button" className="btn btn-ghost" onClick={openDeletedModal}>
+          <RotateCcw size={16} strokeWidth={2} aria-hidden style={{ marginRight: '0.4rem' }} />
+          Recently deleted
+        </button>
       </div>
 
       <DndContext
@@ -525,6 +565,51 @@ export default function PlatformClientTasks() {
           />
         </Suspense>
       )}
+
+      <ModalDialog
+        open={deletedModalOpen}
+        title="Recently deleted"
+        titleId="recently-deleted-tasks-title"
+        onClose={() => setDeletedModalOpen(false)}
+      >
+        {deletedLoading ? (
+          <p>Loading…</p>
+        ) : deletedTasks.length === 0 ? (
+          <p>No recently deleted tasks. Deleted tasks stay recoverable here for 30 days.</p>
+        ) : (
+          <ul className="task-board__list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {deletedTasks.map((t) => (
+              <li
+                key={t.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  padding: '0.6rem 0',
+                  borderBottom: '1px solid var(--border-color, #e5e7eb)',
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 500 }}>{t.title}</div>
+                  <div style={{ fontSize: '0.85rem', opacity: 0.7 }}>
+                    Deleted {t.deletedAt ? new Date(t.deletedAt).toLocaleDateString() : ''}
+                    {t.deletedBy ? ` by ${[t.deletedBy.firstName, t.deletedBy.lastName].filter(Boolean).join(' ') || t.deletedBy.email}` : ''}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={restoringId === t.id}
+                  onClick={() => restoreDeletedTask(t.id)}
+                >
+                  {restoringId === t.id ? 'Restoring…' : 'Restore'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ModalDialog>
 
     </>
   );

@@ -107,18 +107,51 @@ router.delete('/organizations/:orgId/project/milestones/:milestoneId', async (re
     if (!await ClientProject.milestoneBelongsToProject(loaded.project.id, req.params.milestoneId)) {
       return res.status(404).json({ error: 'Milestone not found.' });
     }
-    await ClientProject.deleteMilestone(loaded.project.id, req.params.milestoneId);
+    const deleted = await ClientProject.deleteMilestone(loaded.project.id, req.params.milestoneId, req.user.id);
+    if (!deleted) return res.status(404).json({ error: 'Milestone not found.' });
     auditFromRequest(req)({
       action: AUDIT_ACTIONS.CLIENT_PROJECT_MILESTONE_DELETE,
       targetType: 'organization',
       targetId: loaded.org.id,
       targetOrganizationId: loaded.org.id,
-      metadata: {},
+      metadata: { title: deleted.title },
     });
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to delete milestone.' });
+  }
+});
+
+router.get('/organizations/:orgId/project/milestones/deleted', async (req, res) => {
+  try {
+    const loaded = await loadProjectOr404(req, res);
+    if (!loaded) return;
+    const milestones = await ClientProject.listDeletedMilestones(loaded.project.id);
+    res.json({ milestones });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load recently deleted milestones.' });
+  }
+});
+
+router.post('/organizations/:orgId/project/milestones/:milestoneId/restore', async (req, res) => {
+  try {
+    const loaded = await loadProjectOr404(req, res);
+    if (!loaded) return;
+    const milestone = await ClientProject.restoreMilestone(loaded.project.id, req.params.milestoneId);
+    if (!milestone) return res.status(404).json({ error: 'Deleted milestone not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CLIENT_PROJECT_MILESTONE_RESTORE,
+      targetType: 'organization',
+      targetId: loaded.org.id,
+      targetOrganizationId: loaded.org.id,
+      metadata: { title: milestone.title },
+    });
+    res.json({ milestone });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to restore milestone.' });
   }
 });
 
@@ -168,25 +201,53 @@ router.delete('/organizations/:orgId/project/files/:fileId', async (req, res) =>
   try {
     const loaded = await loadProjectOr404(req, res);
     if (!loaded) return;
-    const file = await ClientProject.getFile(loaded.project.id, req.params.fileId);
-    if (!file) return res.status(404).json({ error: 'File not found.' });
-    await ClientProject.deleteFileRecord(loaded.project.id, req.params.fileId);
-    try {
-      await fs.promises.unlink(projectFilePath(file.filename));
-    } catch {
-      /* ignore */
-    }
+    // Soft-delete: file stays on disk until the purge sweep hard-deletes it,
+    // so restore is a true undo.
+    const deleted = await ClientProject.deleteFileRecord(loaded.project.id, req.params.fileId, req.user.id);
+    if (!deleted) return res.status(404).json({ error: 'File not found.' });
     auditFromRequest(req)({
       action: AUDIT_ACTIONS.CLIENT_PROJECT_FILE_DELETE,
       targetType: 'organization',
       targetId: loaded.org.id,
       targetOrganizationId: loaded.org.id,
-      metadata: { name: file.original_name },
+      metadata: { name: deleted.original_name },
     });
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to delete file.' });
+  }
+});
+
+router.get('/organizations/:orgId/project/files/deleted', async (req, res) => {
+  try {
+    const loaded = await loadProjectOr404(req, res);
+    if (!loaded) return;
+    const files = await ClientProject.listDeletedFiles(loaded.project.id);
+    res.json({ files });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load recently deleted files.' });
+  }
+});
+
+router.post('/organizations/:orgId/project/files/:fileId/restore', async (req, res) => {
+  try {
+    const loaded = await loadProjectOr404(req, res);
+    if (!loaded) return;
+    const file = await ClientProject.restoreFileRecord(loaded.project.id, req.params.fileId);
+    if (!file) return res.status(404).json({ error: 'Deleted file not found.' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.CLIENT_PROJECT_FILE_RESTORE,
+      targetType: 'organization',
+      targetId: loaded.org.id,
+      targetOrganizationId: loaded.org.id,
+      metadata: { name: file.original_name },
+    });
+    res.json({ file });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to restore file.' });
   }
 });
 

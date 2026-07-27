@@ -1,5 +1,6 @@
 import { query } from '../config/database.js';
 import { businessUnitsForEnabledServices, enabledServicesFromOrganizationSettings } from '../services/clientServices.js';
+import { undoPurgeAfter } from '../services/undoConfig.js';
 
 // A contact's relationship status is its own field, independent of whatever
 // Prospect/Client it's linked to (see migration 074) — same vocabulary as
@@ -30,7 +31,7 @@ function pushProtectedMerge(sets, values, index, newlyProtected) {
 
 export async function listContacts(organisationId) {
   const { rows } = await query(
-    `SELECT * FROM crm_contacts WHERE crm_organisation_id = $1 ORDER BY created_date ASC, contact_id ASC`,
+    `SELECT * FROM crm_contacts WHERE crm_organisation_id = $1 AND deleted_at IS NULL ORDER BY created_date ASC, contact_id ASC`,
     [organisationId],
   );
   return rows;
@@ -38,7 +39,7 @@ export async function listContacts(organisationId) {
 
 export async function getContact(contactId, organisationId) {
   const { rows } = await query(
-    `SELECT * FROM crm_contacts WHERE contact_id = $1 AND crm_organisation_id = $2`,
+    `SELECT * FROM crm_contacts WHERE contact_id = $1 AND crm_organisation_id = $2 AND deleted_at IS NULL`,
     [contactId, organisationId],
   );
   return rows[0] || null;
@@ -92,17 +93,23 @@ export async function updateContact(contactId, organisationId, data) {
   return rows[0] || null;
 }
 
-export async function deleteContact(contactId, organisationId) {
-  await query(
-    `DELETE FROM crm_contacts WHERE contact_id = $1 AND crm_organisation_id = $2`,
-    [contactId, organisationId],
+export async function deleteContact(contactId, organisationId, deletedByUserId = null) {
+  const { rows } = await query(
+    `UPDATE crm_contacts
+     SET deleted_at = NOW(), deleted_by = $3, purge_after = $4
+     WHERE contact_id = $1 AND crm_organisation_id = $2 AND deleted_at IS NULL
+     RETURNING *`,
+    [contactId, organisationId, deletedByUserId, undoPurgeAfter()],
   );
-  await query(`UPDATE crm_organisations SET updated_at = NOW() WHERE organisation_id = $1`, [organisationId]);
+  if (rows[0]) {
+    await query(`UPDATE crm_organisations SET updated_at = NOW() WHERE organisation_id = $1`, [organisationId]);
+  }
+  return rows[0] || null;
 }
 
 export async function contactBelongsToOrg(organisationId, contactId) {
   const { rows } = await query(
-    `SELECT 1 FROM crm_contacts WHERE contact_id = $1 AND crm_organisation_id = $2`,
+    `SELECT 1 FROM crm_contacts WHERE contact_id = $1 AND crm_organisation_id = $2 AND deleted_at IS NULL`,
     [contactId, organisationId],
   );
   return rows.length > 0;
@@ -112,7 +119,7 @@ export async function contactBelongsToOrg(organisationId, contactId) {
 
 export async function listContactsForClient(clientOrganizationId) {
   const { rows } = await query(
-    `SELECT * FROM crm_contacts WHERE client_organization_id = $1 ORDER BY created_date ASC, contact_id ASC`,
+    `SELECT * FROM crm_contacts WHERE client_organization_id = $1 AND deleted_at IS NULL ORDER BY created_date ASC, contact_id ASC`,
     [clientOrganizationId],
   );
   return rows;
@@ -120,7 +127,7 @@ export async function listContactsForClient(clientOrganizationId) {
 
 export async function getContactForClient(contactId, clientOrganizationId) {
   const { rows } = await query(
-    `SELECT * FROM crm_contacts WHERE contact_id = $1 AND client_organization_id = $2`,
+    `SELECT * FROM crm_contacts WHERE contact_id = $1 AND client_organization_id = $2 AND deleted_at IS NULL`,
     [contactId, clientOrganizationId],
   );
   return rows[0] || null;
@@ -171,16 +178,41 @@ export async function updateContactForClient(contactId, clientOrganizationId, da
   return rows[0] || null;
 }
 
-export async function deleteContactForClient(contactId, clientOrganizationId) {
-  await query(
-    `DELETE FROM crm_contacts WHERE contact_id = $1 AND client_organization_id = $2`,
+export async function deleteContactForClient(contactId, clientOrganizationId, deletedByUserId = null) {
+  const { rows } = await query(
+    `UPDATE crm_contacts
+     SET deleted_at = NOW(), deleted_by = $3, purge_after = $4
+     WHERE contact_id = $1 AND client_organization_id = $2 AND deleted_at IS NULL
+     RETURNING *`,
+    [contactId, clientOrganizationId, deletedByUserId, undoPurgeAfter()],
+  );
+  return rows[0] || null;
+}
+
+export async function restoreContactForClient(contactId, clientOrganizationId) {
+  const { rows } = await query(
+    `UPDATE crm_contacts
+     SET deleted_at = NULL, deleted_by = NULL, purge_after = NULL
+     WHERE contact_id = $1 AND client_organization_id = $2 AND deleted_at IS NOT NULL
+     RETURNING *`,
     [contactId, clientOrganizationId],
   );
+  return rows[0] || null;
+}
+
+export async function listDeletedContactsForClient(clientOrganizationId) {
+  const { rows } = await query(
+    `SELECT * FROM crm_contacts
+     WHERE client_organization_id = $1 AND deleted_at IS NOT NULL
+     ORDER BY deleted_at DESC`,
+    [clientOrganizationId],
+  );
+  return rows;
 }
 
 export async function contactBelongsToClientOrg(clientOrganizationId, contactId) {
   const { rows } = await query(
-    `SELECT 1 FROM crm_contacts WHERE contact_id = $1 AND client_organization_id = $2`,
+    `SELECT 1 FROM crm_contacts WHERE contact_id = $1 AND client_organization_id = $2 AND deleted_at IS NULL`,
     [contactId, clientOrganizationId],
   );
   return rows.length > 0;
@@ -192,7 +224,7 @@ export async function contactBelongsToClientOrg(clientOrganizationId, contactId)
 // contacts survive their linked Prospect/Client being deleted.
 
 export async function listAllContacts(platformOrgId, { search, linkType, businessUnit } = {}) {
-  const conditions = ['c.platform_org_id = $1'];
+  const conditions = ['c.platform_org_id = $1', 'c.deleted_at IS NULL'];
   const values = [platformOrgId];
   let i = 2;
 
@@ -246,7 +278,7 @@ export async function listAllContacts(platformOrgId, { search, linkType, busines
 
 export async function getContactGlobal(platformOrgId, contactId) {
   const { rows } = await query(
-    `SELECT * FROM crm_contacts WHERE contact_id = $1 AND platform_org_id = $2`,
+    `SELECT * FROM crm_contacts WHERE contact_id = $1 AND platform_org_id = $2 AND deleted_at IS NULL`,
     [contactId, platformOrgId],
   );
   return rows[0] || null;
@@ -310,9 +342,51 @@ export async function updateContactGlobal(platformOrgId, contactId, data) {
   return rows[0] || null;
 }
 
-export async function deleteContactGlobal(platformOrgId, contactId) {
-  await query(
-    `DELETE FROM crm_contacts WHERE contact_id = $1 AND platform_org_id = $2`,
+export async function deleteContactGlobal(platformOrgId, contactId, deletedByUserId = null) {
+  const { rows } = await query(
+    `UPDATE crm_contacts
+     SET deleted_at = NOW(), deleted_by = $3, purge_after = $4
+     WHERE contact_id = $1 AND platform_org_id = $2 AND deleted_at IS NULL
+     RETURNING *`,
+    [contactId, platformOrgId, deletedByUserId, undoPurgeAfter()],
+  );
+  return rows[0] || null;
+}
+
+export async function restoreContactGlobal(platformOrgId, contactId) {
+  const { rows } = await query(
+    `UPDATE crm_contacts
+     SET deleted_at = NULL, deleted_by = NULL, purge_after = NULL
+     WHERE contact_id = $1 AND platform_org_id = $2 AND deleted_at IS NOT NULL
+     RETURNING *`,
     [contactId, platformOrgId],
   );
+  return rows[0] || null;
+}
+
+export async function listDeletedContactsGlobal(platformOrgId) {
+  const { rows } = await query(
+    `SELECT * FROM crm_contacts
+     WHERE platform_org_id = $1 AND deleted_at IS NOT NULL
+     ORDER BY deleted_at DESC`,
+    [platformOrgId],
+  );
+  return rows;
+}
+
+// ── Purge sweep (backend/src/services/undoPurge.js) ────────────────────────
+
+export async function findContactsDueForPurge(now = new Date()) {
+  const { rows } = await query(
+    `SELECT contact_id, platform_org_id, client_organization_id, contact_firstname, contact_lastname
+     FROM crm_contacts
+     WHERE deleted_at IS NOT NULL AND purge_after IS NOT NULL AND purge_after <= $1`,
+    [now.toISOString()],
+  );
+  return rows;
+}
+
+export async function hardDeleteContact(contactId) {
+  const { rowCount } = await query(`DELETE FROM crm_contacts WHERE contact_id = $1`, [contactId]);
+  return rowCount > 0;
 }

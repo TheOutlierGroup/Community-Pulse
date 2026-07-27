@@ -69,6 +69,7 @@ export default function PlatformClientAccount() {
   const isWorkspace = isWorkspaceUser(user);
   const isSelfService = isEnterpriseClientSelfUser(user);
   const isLicenseeOrg = org.kind === 'licensee';
+  const isClientOrg = org.kind === 'client';
   // A standalone "Enterprise" client (no Practitioner parent) carries its
   // own Rhythm Engine licence directly, same panel as a Practitioner uses
   // for itself — a plain client with no Rhythm Engine service never shows
@@ -361,13 +362,14 @@ export default function PlatformClientAccount() {
       {isEnterpriseClient && isSelfService && user?.role === 'admin' && (
         <LicenseConfigPanel orgId={orgId} licenseConfig={licenseConfig} selfServiceView />
       )}
-      {isLicenseeOrg && isPlatformAdmin && (
+      {(isLicenseeOrg || isClientOrg) && isPlatformAdmin && (
         <>
           <div className="card" style={{ marginBottom: '1.5rem' }}>
             <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>Support tools</h2>
             <p className="muted" style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>
-              Read-only impersonation lets you view this licensee's CRM exactly as their admin sees it.
-              Writes are disabled. Sessions last 30 minutes and are audit-logged.
+              Read-only impersonation lets you view this {isLicenseeOrg ? 'licensee' : 'client'}&apos;s
+              workspace exactly as their admin sees it. Writes are disabled. Sessions last 30 minutes;
+              the start of every session (and any write it attempts) is audit-logged.
             </p>
             <button
               type="button"
