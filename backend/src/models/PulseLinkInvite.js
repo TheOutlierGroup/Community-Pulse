@@ -215,8 +215,38 @@ export async function inviteHasCompletedSurvey(inviteId) {
   return Boolean(rows[0]);
 }
 
+// PT-02: how long a freshly-sent survey link stays redeemable. Long
+// enough to outlast any realistic wave (a link that dies mid-survey is a
+// support ticket and a lost response), short enough that a forwarded
+// email is not a permanent credential. Re-sending mints a new token and
+// restarts the window, so this is a ceiling, not a deadline.
+const DEFAULT_LINK_TOKEN_TTL_DAYS = 90;
+
+export function pulseLinkTokenTtlDays() {
+  const raw = Number.parseInt(String(process.env.PULSE_LINK_TOKEN_TTL_DAYS || ''), 10);
+  if (!Number.isInteger(raw) || raw <= 0) return DEFAULT_LINK_TOKEN_TTL_DAYS;
+  // Bounded so a typo can't reinstate an effectively immortal link.
+  return Math.min(raw, 365);
+}
+
+/**
+ * PT-02: fail closed on expiry.
+ *
+ * A token with no expires_at is refused rather than treated as
+ * non-expiring. Migration 081 backfills every row that holds a token and
+ * rotateTokenAndMarkSent always sets one, so this cannot reject a
+ * legitimate link today — the point is that a future code path which
+ * writes a token_hash without an expiry produces a dead link instead of
+ * silently minting another permanent one.
+ */
 export async function findByTokenHash(tokenHash) {
-  const { rows } = await query(`SELECT * FROM pulse_link_invites WHERE token_hash = $1`, [tokenHash]);
+  const { rows } = await query(
+    `SELECT * FROM pulse_link_invites
+     WHERE token_hash = $1
+       AND expires_at IS NOT NULL
+       AND expires_at > NOW()`,
+    [tokenHash]
+  );
   return rows[0] || null;
 }
 
@@ -388,14 +418,18 @@ export async function rotateTokenAndMarkSent(inviteId, organizationId) {
   await PulseLinkResponse.deleteIncompleteForInvite(inviteId);
   const raw = randomUUID();
   const tokenHash = hashInviteToken(raw);
+  // PT-02: the single point where a survey link token is issued, so the
+  // single point that needs to stamp its expiry. Re-sending restarts the
+  // window, which is what makes a bounded TTL workable operationally.
   const { rows } = await query(
     `UPDATE pulse_link_invites SET
        token_hash = $3,
        last_invited_at = NOW(),
+       expires_at = NOW() + ($4::int * INTERVAL '1 day'),
        updated_at = NOW()
      WHERE id = $1 AND organization_id = $2
      RETURNING *`,
-    [inviteId, organizationId, tokenHash]
+    [inviteId, organizationId, tokenHash, pulseLinkTokenTtlDays()]
   );
   if (!rows[0]) return null;
   return { row: rows[0], rawToken: raw };
