@@ -11,6 +11,7 @@ import { sidebarBrandTargetForRoute } from './layoutRouteTarget.js';
 import outlierLogo from '../../images/outlier-logo.png';
 import rhythmEngineLogo from '../../images/rhythm-engine-logo.png';
 import { useAuth } from './Auth.jsx';
+import { prefersRhythmEngineBrand } from './rhythmEngineBranding.js';
 import { IS_RHYTHM_ENGINE_SURFACE } from '../../config/appSurface.js';
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'pulse_sidebar_collapsed';
@@ -39,12 +40,19 @@ export default function Layout({ children, user, onLogout, hideHeader = false, n
   }, [sidebarCollapsed]);
 
   // INF-06: white-label chrome when the user is on a licensee workspace
-  // or on a downstream client of one. `brand.logoUrl` falls back to the
-  // bundled Outlier logo when the licensee hasn't uploaded one yet — or to
-  // the Rhythm Engine logo when this is the standalone Rhythm Engine
-  // surface (a licensee's own upload still takes priority over both).
-  const brandLogoSrc = brand?.logoUrl || (IS_RHYTHM_ENGINE_SURFACE ? rhythmEngineLogo : outlierLogo);
-  const brandLabel = brand?.displayName || (IS_RHYTHM_ENGINE_SURFACE ? 'Rhythm Engine' : 'Outlier');
+  // or on a downstream client of one. A licensee's own uploaded logo
+  // always wins; this only decides the fallback.
+  //
+  // BRAND-01: that fallback is now Rhythm Engine — not only on the
+  // standalone Rhythm Engine build, but for any Practitioner or
+  // Enterprise-tier user. Both work inside the platform build, so both
+  // were previously shown Outlier's internal branding despite Rhythm
+  // Engine being the only product they use.
+  const useRhythmEngineBrand = prefersRhythmEngineBrand(user, {
+    isRhythmEngineSurface: IS_RHYTHM_ENGINE_SURFACE,
+  });
+  const brandLogoSrc = brand?.logoUrl || (useRhythmEngineBrand ? rhythmEngineLogo : outlierLogo);
+  const brandLabel = brand?.displayName || (useRhythmEngineBrand ? 'Rhythm Engine' : 'Outlier');
 
   if (hideHeader) {
     return (

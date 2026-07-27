@@ -5,7 +5,7 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import SurveyQuestionStep from '../components/employee/SurveyQuestionStep.jsx';
 import Step5Reflection from '../components/employee/Step5Reflection.jsx';
-import outlierLogo from '../images/outlier-logo.png';
+import rhythmEngineLogo from '../images/rhythm-engine-logo.png';
 import { normalizePulseStage } from '../utils/pulseStage.js';
 
 const EXPIRED_OR_INVALID_LINK_RE = /invalid or expired link/i;
@@ -203,8 +203,8 @@ export default function PublicPulse() {
       <Layout user={null} onLogout={logout} hideHeader>
         <div className="login-hero" style={loginHeroBelowLogo}>
           <img
-            src={brand?.logoUrl || outlierLogo}
-            alt={brand?.displayName || 'Outlier'}
+            src={brand?.logoUrl || rhythmEngineLogo}
+            alt={brand?.displayName || 'Rhythm Engine'}
             className="login-logo"
             width={PUBLIC_PULSE_LOGO.width}
             height={PUBLIC_PULSE_LOGO.height}
@@ -236,8 +236,8 @@ export default function PublicPulse() {
       <Layout user={null} onLogout={logout} hideHeader>
         <div className="login-hero" style={loginHeroBelowLogo}>
           <img
-            src={brand?.logoUrl || outlierLogo}
-            alt={brand?.displayName || 'Outlier'}
+            src={brand?.logoUrl || rhythmEngineLogo}
+            alt={brand?.displayName || 'Rhythm Engine'}
             className="login-logo"
             width={PUBLIC_PULSE_LOGO.width}
             height={PUBLIC_PULSE_LOGO.height}
@@ -255,7 +255,7 @@ export default function PublicPulse() {
               color: 'var(--text-primary, #292524)',
             }}
           >
-            Sorry — this link has expired. Contact the Outlier team for a new link.
+            Sorry — this link has expired. Contact your project lead for a new link.
           </p>
         </div>
       </Layout>
@@ -266,8 +266,8 @@ export default function PublicPulse() {
     <Layout user={null} onLogout={logout} hideHeader>
       <div className="login-hero" style={loginHeroBelowLogo}>
         <img
-          src={brand?.logoUrl || outlierLogo}
-          alt={brand?.displayName || 'Outlier'}
+          src={brand?.logoUrl || rhythmEngineLogo}
+          alt={brand?.displayName || 'Rhythm Engine'}
           className="login-logo"
           width={PUBLIC_PULSE_LOGO.width}
           height={PUBLIC_PULSE_LOGO.height}

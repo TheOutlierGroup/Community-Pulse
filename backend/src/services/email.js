@@ -8,6 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Same CID in HTML and attachment so clients don't need to fetch a public URL. */
 const OUTLIER_LOGO_CONTENT_ID = 'outlier-logo';
+const RHYTHM_ENGINE_LOGO_CONTENT_ID = 'rhythm-engine-logo';
 const CLIENT_LOGO_CONTENT_ID = 'client-logo';
 
 const DEFAULT_FROM = 'Rhythm Engine <noreply@employeepulse.app>';
@@ -137,22 +138,22 @@ function ensureInviteCtaButton(bodyHtml) {
 }
 
 /** Public HTTPS URL fallback when the logo file is not on disk (e.g. minimal backend-only deploy). */
-function resolvePulseEmailLogoUrl() {
+function resolvePulseEmailLogoUrl(filename = 'outlier-logo.png') {
   const custom = String(process.env.PULSE_EMAIL_LOGO_URL || '').trim();
   if (custom) return custom;
   const raw = process.env.APP_URL || String(process.env.FRONTEND_ORIGIN || '').split(',')[0].trim();
   if (!raw) return null;
   const base = raw.replace(/\/$/, '');
-  return `${base}/brand/outlier-logo.png`;
+  return `${base}/brand/${filename}`;
 }
 
 /**
  * Prefer inline CID attachment (reliable in email clients). Fall back to absolute URL only if no file found.
  * @returns {{ logoBlock: string, attachments: object[] | undefined }}
  */
-function buildOutlierEmailLogoParts() {
-  const distLogo = path.join(__dirname, '../../../frontend/dist/brand/outlier-logo.png');
-  const publicLogo = path.join(__dirname, '../../../frontend/public/brand/outlier-logo.png');
+function buildBundledEmailLogoParts({ filename, contentId, alt }) {
+  const distLogo = path.join(__dirname, `../../../frontend/dist/brand/${filename}`);
+  const publicLogo = path.join(__dirname, `../../../frontend/public/brand/${filename}`);
   const logoPath = fs.existsSync(distLogo) ? distLogo : fs.existsSync(publicLogo) ? publicLogo : null;
 
   let imgSrc = null;
@@ -161,27 +162,50 @@ function buildOutlierEmailLogoParts() {
   if (logoPath) {
     // Resend rejects filesystem paths on `path` (requires http/https). Inline via base64 `content`.
     const content = fs.readFileSync(logoPath).toString('base64');
-    imgSrc = `cid:${OUTLIER_LOGO_CONTENT_ID}`;
+    imgSrc = `cid:${contentId}`;
     attachments = [
       {
-        filename: 'outlier-logo.png',
+        filename,
         content,
         contentType: 'image/png',
-        contentId: OUTLIER_LOGO_CONTENT_ID,
+        contentId,
       },
     ];
   } else {
-    const url = resolvePulseEmailLogoUrl();
+    const url = resolvePulseEmailLogoUrl(filename);
     if (url) imgSrc = url;
   }
 
   const logoBlock = imgSrc
     ? `<div style="text-align: center; margin: 0 0 1.5rem;">
-        <img src="${escapeHtmlAttr(imgSrc)}" alt="Outlier" width="160" height="48" style="display: inline-block; border: 0; outline: none; max-width: 180px; width: 160px; height: auto;" />
+        <img src="${escapeHtmlAttr(imgSrc)}" alt="${escapeHtmlAttr(alt)}" width="160" height="48" style="display: inline-block; border: 0; outline: none; max-width: 180px; width: 160px; height: auto;" />
       </div>`
     : '';
 
   return { logoBlock, attachments };
+}
+
+/** Outlier-account emails (password reset, platform/licensee welcome). */
+function buildOutlierEmailLogoParts() {
+  return buildBundledEmailLogoParts({
+    filename: 'outlier-logo.png',
+    contentId: OUTLIER_LOGO_CONTENT_ID,
+    alt: 'Outlier',
+  });
+}
+
+/**
+ * BRAND-01: survey invitations are a Rhythm Engine communication sent to a
+ * client's employees, not an Outlier account email, so they fall back to
+ * the Rhythm Engine mark rather than Outlier's. The client's own uploaded
+ * logo still takes priority when one is on file.
+ */
+function buildRhythmEngineEmailLogoParts() {
+  return buildBundledEmailLogoParts({
+    filename: 'rhythm-engine-logo.png',
+    contentId: RHYTHM_ENGINE_LOGO_CONTENT_ID,
+    alt: 'Rhythm Engine',
+  });
 }
 
 function contentTypeForImageFilename(filename) {
@@ -193,11 +217,11 @@ function contentTypeForImageFilename(filename) {
   return 'image/png';
 }
 
-function buildClientEmailLogoParts(clientLogoFilename, clientLogoAlt) {
+function buildClientEmailLogoParts(clientLogoFilename, clientLogoAlt, fallback = buildOutlierEmailLogoParts) {
   const safeFilename = String(clientLogoFilename || '').trim();
-  if (!safeFilename) return buildOutlierEmailLogoParts();
+  if (!safeFilename) return fallback();
   const logoPath = orgLogoFilePath(safeFilename);
-  if (!fs.existsSync(logoPath)) return buildOutlierEmailLogoParts();
+  if (!fs.existsSync(logoPath)) return fallback();
 
   const content = fs.readFileSync(logoPath).toString('base64');
   const alt = String(clientLogoAlt || 'Client')
@@ -296,9 +320,14 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     { escapeValues: true }
   );
   const renderedBodyWithButton = ensureInviteCtaButton(renderedBodyHtml);
+  // BRAND-01: a survey invitation is a Rhythm Engine communication to a
+  // client's employees, so when the client has not uploaded their own
+  // logo it falls back to the Rhythm Engine mark — not Outlier's, which
+  // is reserved for Outlier account emails (password reset, welcome).
   const { logoBlock, attachments } = buildClientEmailLogoParts(
     options?.clientLogoFilename,
-    options?.clientLogoAlt || orgPlain
+    options?.clientLogoAlt || orgPlain,
+    buildRhythmEngineEmailLogoParts
   );
   const { error } = await resend.emails.send({
     from: getResendFromAddress(),

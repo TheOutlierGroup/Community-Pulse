@@ -18,18 +18,23 @@ import { resolveBrandForOrganization } from './licenseeBrand.js';
 const execFileAsync = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OUTLIER_LOGO_PATH = path.resolve(__dirname, '../assets/outlier-logo.png');
+// BRAND-01: reports are a Rhythm Engine artefact and are routinely
+// delivered by Practitioners to their own clients, so the default mark on
+// the cover is the Rhythm Engine logo, not Outlier's. A licensee that has
+// uploaded its own white-label logo still displaces this (see
+// coverLogoStack in reportDocxBuilder.js).
+const DEFAULT_REPORT_LOGO_PATH = path.resolve(__dirname, '../assets/rhythm-engine-logo.png');
 
-let cachedOutlierLogoBuffer;
-async function loadOutlierLogoBuffer() {
-  if (cachedOutlierLogoBuffer !== undefined) return cachedOutlierLogoBuffer;
+let cachedDefaultLogoBuffer;
+async function loadDefaultReportLogoBuffer() {
+  if (cachedDefaultLogoBuffer !== undefined) return cachedDefaultLogoBuffer;
   try {
-    cachedOutlierLogoBuffer = await fs.readFile(OUTLIER_LOGO_PATH);
+    cachedDefaultLogoBuffer = await fs.readFile(DEFAULT_REPORT_LOGO_PATH);
   } catch (error) {
-    console.error('Failed to load Outlier brand logo for report:', error);
-    cachedOutlierLogoBuffer = null;
+    console.error('Failed to load Rhythm Engine brand logo for report:', error);
+    cachedDefaultLogoBuffer = null;
   }
-  return cachedOutlierLogoBuffer;
+  return cachedDefaultLogoBuffer;
 }
 
 async function loadCompanyLogoBuffer(organization) {
@@ -143,8 +148,8 @@ export async function generateReport({
   try {
     const signals = await generateReportSignals(reportData, context);
     const brand = await resolveReportBrand(organization);
-    const [outlierLogoBuffer, companyLogoBuffer] = await Promise.all([
-      loadOutlierLogoBuffer(),
+    const [defaultLogoBuffer, companyLogoBuffer] = await Promise.all([
+      loadDefaultReportLogoBuffer(),
       loadCompanyLogoBuffer(organization),
     ]);
     const docxBuffer = await buildReportDocx({
@@ -152,7 +157,7 @@ export async function generateReport({
       signals,
       context,
       brand,
-      outlierLogoBuffer,
+      defaultLogoBuffer,
       companyLogoBuffer,
     });
 
