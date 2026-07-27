@@ -312,7 +312,24 @@ function fallbackSessionNameForLink(stage) {
  * Personal invite links must resolve to a session that matches the invite stage.
  * This keeps pre/mid/post responses aligned with the same timepoint buckets used by dashboards.
  */
-export async function resolveSessionForPulseLink(organizationId, audience = 'staff', stage = PULSE_STAGE_PRE) {
+/**
+ * PT-06: `allowCreate` gates the provisioning fallback at the bottom of
+ * this function.
+ *
+ * The public survey routes call this on unauthenticated requests, so the
+ * fallback let a link holder cause pulse_sessions rows to be written as
+ * a side effect of opening a survey — an unauthenticated write primitive,
+ * and the same complaint as RED-017 (checkpoints appearing that nobody
+ * created), only reachable from outside the trust boundary. Admin callers
+ * still provision on demand; public callers get null and a clean "no
+ * survey open" response.
+ */
+export async function resolveSessionForPulseLink(
+  organizationId,
+  audience = 'staff',
+  stage = PULSE_STAGE_PRE,
+  { allowCreate = true } = {}
+) {
   const normalizedStage = normalizePulseStage(stage);
   const expectedPurpose = stagePurposeForLink(normalizedStage);
 
@@ -332,6 +349,8 @@ export async function resolveSessionForPulseLink(organizationId, audience = 'sta
     const linkSession = await getLinkInviteTemplateSession(organizationId, audience);
     if (linkSession) return linkSession;
   }
+
+  if (!allowCreate) return null;
 
   return createSession(
     organizationId,

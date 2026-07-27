@@ -45,9 +45,17 @@ export function requireAuth(req, res, next) {
   }
   (async () => {
     try {
-      const active = await User.isUserActive(decoded.sub);
-      if (!active) {
+      const authState = await User.getAuthStateForUser(decoded.sub);
+      if (!authState) {
         return res.status(401).json({ error: 'Account is no longer active' });
+      }
+      // PT-05: role, organizationId, organizationKind and mfaVerifiedAt
+      // below are all read from the token, which lives for 7 days by
+      // default. Without this check a demotion, org move, MFA change or
+      // password reset left every already-issued token running on the
+      // privileges it was minted with until it expired on its own.
+      if (sessionRevoked(authState.sessionsInvalidatedAt, decoded.iat)) {
+        return res.status(401).json({ error: 'Session is no longer valid. Please sign in again.' });
       }
       req.user = {
         id: decoded.sub,
@@ -92,6 +100,31 @@ export function requireAuth(req, res, next) {
       next(e);
     }
   })();
+}
+
+/**
+ * PT-05: has this token been revoked by a later privilege change?
+ *
+ * `iat` is whole seconds, while sessions_invalidated_at carries
+ * milliseconds, so a token minted in the same second as the invalidation
+ * that caused it — the ordinary "change your password, get a fresh
+ * token" flow — would otherwise floor to just before the stamp and log
+ * the user straight back out. The one-second grace covers that rounding.
+ * The cost is that a token issued in the second before a revocation
+ * survives it, which is not a meaningful window for an attacker who
+ * would already need the token.
+ *
+ * Exported as a pure predicate so the boundary cases are testable
+ * without a database.
+ */
+export function sessionRevoked(sessionsInvalidatedAt, issuedAtSeconds) {
+  if (!sessionsInvalidatedAt) return false;
+  const invalidatedMs = new Date(sessionsInvalidatedAt).getTime();
+  if (!Number.isFinite(invalidatedMs)) return false;
+  // A token with no iat predates any stamp we can compare against, so
+  // treat it as revoked rather than trusting it.
+  if (!Number.isFinite(issuedAtSeconds)) return true;
+  return issuedAtSeconds * 1000 + 1000 < invalidatedMs;
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
