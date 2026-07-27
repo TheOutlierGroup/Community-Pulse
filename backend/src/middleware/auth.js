@@ -101,13 +101,70 @@ export function isImpersonationBlockedWrite(user, method) {
   return Boolean(user?.supportImpersonation) && !SAFE_METHODS.has(method);
 }
 
+// PT-04: single source of truth for "is admin MFA satisfied for this
+// request". Previously each admin gate re-implemented (or, more often,
+// silently omitted) this check — requireAdmin had it, every gate on the
+// /api/platform surface did not, so MFA_ENFORCE_ADMIN protected the
+// client-org routes and nothing else. Keep every admin gate routed
+// through here so the next one added can't quietly skip it.
+export function adminMfaEnforced() {
+  return String(process.env.MFA_ENFORCE_ADMIN || 'true').trim().toLowerCase() !== 'false';
+}
+
+// Unconditional form, for gates that already enforced MFA before PT-04
+// (requireAdmin, on the client-org /api/admin and /api/analytics
+// surfaces). Left as-is so this change never weakens an existing check.
+export function adminMfaSatisfied(user) {
+  if (!adminMfaEnforced()) return true;
+  return Boolean(user?.mfaVerifiedAt);
+}
+
+function callerOrganizationKind(req) {
+  // Prefer the DB-fresh org resolved by requireWorkspaceUser /
+  // requirePlatformOnlyUser upstream; fall back to the JWT claim for
+  // gates that run without one.
+  return (
+    req?.workspaceOrganization?.kind
+    || req?.platformOrganization?.kind
+    || req?.user?.organizationKind
+    || null
+  );
+}
+
+/**
+ * PT-04, scoped form — for the /api/platform gates that were role-only
+ * until now.
+ *
+ * MFA_ENFORCE_ADMIN is documented as forcing TOTP for *platform* admins
+ * (Outlier staff). That scoping matters here and is not incidental:
+ * staffRoutes, apiKeyRoutes, announcementRoutes, businessUnitRoutes,
+ * quizRoutes and webhookRoutes are all mounted on platformRouter BEFORE
+ * requirePlatformOnlyUser, so a licensee (Practitioner) admin reaches
+ * them too. Enforcing MFA on that population would lock paying customers
+ * out of their own workspace on deploy — a much larger blast radius than
+ * the gap being closed, and a separate product decision.
+ *
+ * So: enforce for platform-org admins, leave licensee admins as they were.
+ */
+export function platformAdminMfaSatisfied(req) {
+  if (!adminMfaEnforced()) return true;
+  if (callerOrganizationKind(req) !== 'platform') return true;
+  return Boolean(req?.user?.mfaVerifiedAt);
+}
+
+// Actionable on purpose: a platform admin who has never enrolled is
+// locked out of the whole platform surface by this gate, and the way
+// out (enrol, then re-authenticate so the claim is minted) is not
+// guessable from a bare "MFA required".
+const MFA_REQUIRED_ERROR =
+  'Multi-factor authentication is required for admin actions. Set it up under Account → Security, then sign in again.';
+
 export function requireAdmin(req, res, next) {
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ error: 'Admin only' });
   }
-  const enforceAdminMfa = String(process.env.MFA_ENFORCE_ADMIN || 'true').trim().toLowerCase() !== 'false';
-  if (enforceAdminMfa && !req.user?.mfaVerifiedAt) {
-    return res.status(403).json({ error: 'MFA required for admin actions' });
+  if (!adminMfaSatisfied(req.user)) {
+    return res.status(403).json({ error: MFA_REQUIRED_ERROR, mfaRequired: true });
   }
   next();
 }
@@ -133,6 +190,9 @@ export async function requirePlatformAdmin(req, res, next) {
     }
     if (req.user?.role !== 'admin') {
       return res.status(403).json({ error: 'Admin only' });
+    }
+    if (!platformAdminMfaSatisfied(req)) {
+      return res.status(403).json({ error: MFA_REQUIRED_ERROR, mfaRequired: true });
     }
     req.platformOrganization = org;
     next();
@@ -190,15 +250,24 @@ export async function requireWorkspaceUser(req, res, next) {
 }
 
 /**
- * Lightweight admin-role gate for routes that already have workspace/org
- * scoping upstream. Call AFTER requireAuth (and usually after
- * requireWorkspaceUser / requirePlatformOnlyUser) — this only checks
- * `role === 'admin'`. Use requirePlatformAdmin if you need to assert
- * "platform org + admin role + MFA" in one go.
+ * Admin gate for routes that already have workspace/org scoping upstream.
+ * Call AFTER requireAuth (and usually after requireWorkspaceUser /
+ * requirePlatformOnlyUser) — this asserts `role === 'admin'` plus admin
+ * MFA, but does NOT re-check the org kind. Use requirePlatformAdmin when
+ * you also need "the caller's org is platform-kind" asserted in one go.
+ *
+ * PT-04: this is the gate the whole /api/platform surface runs on, so the
+ * MFA check has to live here. It previously checked the role alone, which
+ * meant MFA_ENFORCE_ADMIN protected /api/admin and /api/analytics — the
+ * client-org surfaces — while org creation, licence config, staff
+ * management, API keys, webhooks and the GDPR endpoints were role-only.
  */
 export function requirePlatformAdminRole(req, res, next) {
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ error: 'Admin only' });
+  }
+  if (!platformAdminMfaSatisfied(req)) {
+    return res.status(403).json({ error: MFA_REQUIRED_ERROR, mfaRequired: true });
   }
   next();
 }

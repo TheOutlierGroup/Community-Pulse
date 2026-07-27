@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query } from '../../config/database.js';
 import { requireBodyFields } from '../../middleware/validation.js';
+import { requirePlatformAdminRole } from '../../middleware/auth.js';
 import * as PrivacyRequest from '../../models/PrivacyRequest.js';
 import { assertClientOrganizationPlatformForUser } from './shared.js';
 import { logAuditEvent, listRecentAuditEvents } from '../../services/auditLog.js';
@@ -13,12 +14,11 @@ import { anonymizeClosedProjectIdentifiers } from '../../services/retentionPolic
 
 const router = Router();
 
-function requirePlatformAdmin(req, res, next) {
-  if (req.user?.role !== 'admin') {
-    return res.status(403).json({ error: 'Admin only' });
-  }
-  return next();
-}
+// PT-04: was a local role-only copy of the admin gate, which left the
+// GDPR deletion/export endpoints outside MFA enforcement even when
+// MFA_ENFORCE_ADMIN was on. Use the shared gate so this surface tracks
+// every future change to the admin contract.
+const requirePlatformAdmin = requirePlatformAdminRole;
 
 async function safeLogAudit(event) {
   try {

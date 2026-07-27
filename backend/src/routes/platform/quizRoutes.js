@@ -3,12 +3,23 @@ import * as Quiz from '../../models/Quiz.js';
 import { getCampaign } from '../../models/Campaign.js';
 import { parseSubmittedAt } from '../../services/quizImport.js';
 import { auditFromRequest, AUDIT_ACTIONS } from '../../services/auditLog.js';
+import { platformAdminMfaSatisfied } from '../../middleware/auth.js';
 
 const router = Router();
 
 function orgId(req) { return req.user.organizationId; }
+// Guard-style (returns a boolean) rather than middleware, to match how the
+// handlers in this file are written. PT-04: previously role-only, so quiz
+// writes sat outside MFA enforcement like the rest of the platform surface.
 function requireAdmin(req, res) {
   if (req.user?.role !== 'admin') { res.status(403).json({ error: 'Only admins can manage quizzes.' }); return false; }
+  if (!platformAdminMfaSatisfied(req)) {
+    res.status(403).json({
+      error: 'Multi-factor authentication is required for admin actions. Set it up under Account → Security, then sign in again.',
+      mfaRequired: true,
+    });
+    return false;
+  }
   return true;
 }
 
