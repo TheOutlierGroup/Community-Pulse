@@ -13,6 +13,13 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Also pinned in .node-version and both package.json engines fields;
+      # set here too since it's the highest-precedence of the three and
+      # the one Render's dashboard shows directly. Without this the host's
+      # own default was six major versions ahead of every other place the
+      # runtime is documented, and free to change between deploys.
+      - key: NODE_VERSION
+        value: "20"
       - key: APP_SURFACE
         value: crm
       - key: VITE_APP_SURFACE
@@ -72,6 +79,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: "20"
       - key: APP_SURFACE
         value: pulse
       - key: VITE_APP_SURFACE
@@ -127,6 +136,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: "20"
       - key: PRIVACY_MAINTENANCE_URL
         sync: false
       - key: PRIVACY_MAINTENANCE_SECRET

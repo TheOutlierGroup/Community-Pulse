@@ -54,6 +54,10 @@ export function requireAuth(req, res, next) {
       // default. Without this check a demotion, org move, MFA change or
       // password reset left every already-issued token running on the
       // privileges it was minted with until it expired on its own.
+      // getAuthStateForUser folds in the user's organization's own
+      // member_sessions_invalidated_at too, so a change to organizationKind
+      // itself — not just which org a user belongs to — revokes every
+      // member's tokens the same way.
       if (sessionRevoked(authState.sessionsInvalidatedAt, decoded.iat)) {
         return res.status(401).json({ error: 'Session is no longer valid. Please sign in again.' });
       }
