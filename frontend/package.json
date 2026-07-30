@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "node --test",
     "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "verify:surface-bundles": "node scripts/verify-surface-bundles.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

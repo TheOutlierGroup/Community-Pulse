@@ -5,6 +5,16 @@ import { ToastProvider } from './components/shared/ToastProvider.jsx';
 import { IS_RHYTHM_ENGINE_SURFACE } from './config/appSurface.js';
 import { lazyWithReload } from './utils/lazyWithReload.js';
 
+// BRAND-02: this file is only ever bundled for the crm/all surfaces —
+// main.jsx sends the pulse build to AppRhythmEngine.jsx instead, at the
+// module level, so CRM-only pages are never in its build output. The
+// IS_RHYTHM_ENGINE_SURFACE checks below are therefore dead when this file
+// does run, kept only so this stays the source of truth for "what does
+// the pulse surface render." If you add or change a route that is NOT
+// gated by IS_RHYTHM_ENGINE_SURFACE (i.e. one visible on both surfaces),
+// mirror it in AppRhythmEngine.jsx too — that file is a hand-kept subset,
+// not derived from this one.
+
 const Login = lazy(() => import('./pages/Login.jsx'));
 const RhythmEngineLanding = lazy(() => import('./pages/RhythmEngineLanding.jsx'));
 const RhythmEngineSsoExchange = lazy(() => import('./pages/RhythmEngineSsoExchange.jsx'));
