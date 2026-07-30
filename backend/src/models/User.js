@@ -226,14 +226,24 @@ export async function isUserActive(userId) {
  * PT-05: everything requireAuth needs to re-validate per request, in the
  * one round trip it was already making for isUserActive.
  *
+ * Also folds in the user's organization's member_sessions_invalidated_at
+ * via GREATEST, so a token is rejected if either the user's own
+ * privileges changed (role, login, password, MFA, deactivation) or their
+ * organization's kind did — organizationKind is baked into the token
+ * exactly like role is, so it needs the same revocation coverage.
+ * GREATEST ignores NULL operands in Postgres (only NULL if both are), so
+ * this is a no-op fold-in when neither has ever been stamped. LEFT JOIN
+ * because organization_id is nullable.
+ *
  * Returns null when the account can no longer authenticate at all, so the
  * caller keeps a single "reject" branch for deactivation and revocation.
  */
 export async function getAuthStateForUser(userId) {
   const { rows } = await query(
-    `SELECT sessions_invalidated_at
-     FROM users
-     WHERE id = $1 AND deactivated_at IS NULL AND login_enabled = true`,
+    `SELECT GREATEST(u.sessions_invalidated_at, o.member_sessions_invalidated_at) AS sessions_invalidated_at
+     FROM users u
+     LEFT JOIN organizations o ON o.id = u.organization_id
+     WHERE u.id = $1 AND u.deactivated_at IS NULL AND u.login_enabled = true`,
     [userId]
   );
   if (!rows.length) return null;

@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
@@ -48,7 +48,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -57,6 +57,13 @@ jobs:
 
       - name: Run frontend tests
         run: npm test
+
+      # BRAND-02: the Rhythm Engine build must never bundle Outlier's CRM
+      # admin pages (see AppRhythmEngine.jsx). Builds both surfaces and
+      # inspects the actual output, the same way the original defect was
+      # found — a source-text check can't see this class of regression.
+      - name: Verify Rhythm Engine build excludes CRM pages
+        run: npm run verify:surface-bundles
 
       # PT-07: critical rather than high, unlike the backend, for one
       # known reason: xlsx carries a high advisory with no fix on the npm
@@ -80,7 +87,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 

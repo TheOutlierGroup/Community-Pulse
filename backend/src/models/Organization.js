@@ -201,6 +201,44 @@ export async function updateOrganizationSettings(id, settings) {
   return rows[0] || null;
 }
 
+/**
+ * Revokes every session issued to a member of this organization before
+ * now, mirroring User.invalidateSessionsForUser at the organization
+ * level. organizationKind is baked into the sign-in token exactly like
+ * role is, so a change to it needs the same revocation coverage —
+ * getAuthStateForUser folds this into the same comparison it already
+ * makes against the user's own sessions_invalidated_at.
+ */
+export async function invalidateMemberSessions(organizationId) {
+  const { rows } = await query(
+    `UPDATE organizations SET member_sessions_invalidated_at = NOW() WHERE id = $1 RETURNING id`,
+    [organizationId]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * The supported way to change an existing organization's kind. No current
+ * route calls this — createOrganization sets kind once, and orgRoutes.js
+ * explicitly refuses to change it afterward — but if that ever needs to
+ * happen (a future endpoint, an operator fixing bad data), going through
+ * this rather than a hand-written UPDATE is what stamps the revocation
+ * below. Without it, every member of the organization would keep a token
+ * carrying the old kind until it expired on its own.
+ */
+export async function updateOrganizationKind(id, kind) {
+  const { rows } = await query(
+    `UPDATE organizations
+     SET kind = $2,
+         member_sessions_invalidated_at = NOW(),
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [id, kind]
+  );
+  return rows[0] || null;
+}
+
 export async function setProspectSnapshot(id, snapshot) {
   const { rows } = await query(
     `UPDATE organizations SET prospect_snapshot = $2::jsonb WHERE id = $1 RETURNING *`,

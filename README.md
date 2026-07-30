@@ -38,7 +38,9 @@ Outlier uses this codebase (also mirrored as **Community Pulse**) to support **c
 
 ## Stack (for orientation)
 
-Node.js (Express), PostgreSQL, React (Vite). This README describes **what the product is**; environment and deployment details live in `backend/.env.example`, `build.sh`, and `render.yaml` for teams who run or ship it.
+Node.js 20 (Express), PostgreSQL, React (Vite). This README describes **what the product is**; environment and deployment details live in `backend/.env.example`, `build.sh`, and `render.yaml` for teams who run or ship it.
+
+The Node version is pinned in `.node-version` (repo root) and in both `backend/package.json` and `frontend/package.json`'s `engines` field — match it locally (`nvm use`, `fnm use`, etc.) rather than whatever your machine or a host defaults to.
 
 ---
 
