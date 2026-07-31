@@ -2143,24 +2143,52 @@ export default function PlatformClientPulse() {
                     </tr>
                   </thead>
                   <tbody>
-                    {dashboard.sponsorshipAnalysis.section5.rows.map((row) => (
-                      <tr key={row.managerId}>
-                        <td style={{ textAlign: 'left', fontWeight: 600 }}>{row.teamName}</td>
-                        <td>{row.responses || 0}</td>
-                        <td>
-                          <span className={`pulse-sa-chain-pill ${chainStatePillClass(row.chainState)}`}>
-                            {row.chainState}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`pulse-sa-load-text ${loadBandTextClassName(row.loadBand)}`}>
-                            {row.loadBand}
-                          </span>
-                        </td>
-                        <td>{formatScore(row.receivedAvg)}</td>
-                        <td>{formatScore(row.capacityAvg)}</td>
-                      </tr>
-                    ))}
+                    {dashboard.sponsorshipAnalysis.section5.rows.map((row) => {
+                      // A null chainState means this team fell below the
+                      // anonymity floor (see orgRoutes.js teamRows) — name
+                      // and response count still show, matching the
+                      // Team-Level Breakdown's own suppressed rows, but the
+                      // pill/text cells need to read as protected rather
+                      // than as a rendering gap: an empty coloured pill
+                      // looks broken, not intentional.
+                      const suppressed = row.chainState == null;
+                      return (
+                        <tr key={row.managerId}>
+                          <td style={{ textAlign: 'left', fontWeight: 600 }}>{row.teamName}</td>
+                          <td>{row.responses || 0}</td>
+                          <td>
+                            {suppressed ? (
+                              <span
+                                className="pulse-sa-chain-pill pulse-sa-chain-pill--suppressed"
+                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to protect individual anonymity.`}
+                              >
+                                Protected
+                              </span>
+                            ) : (
+                              <span className={`pulse-sa-chain-pill ${chainStatePillClass(row.chainState)}`}>
+                                {row.chainState}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {suppressed ? (
+                              <span
+                                className="pulse-sa-load-text pulse-sa-load-text--suppressed"
+                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to protect individual anonymity.`}
+                              >
+                                Protected
+                              </span>
+                            ) : (
+                              <span className={`pulse-sa-load-text ${loadBandTextClassName(row.loadBand)}`}>
+                                {row.loadBand}
+                              </span>
+                            )}
+                          </td>
+                          <td>{formatScore(row.receivedAvg)}</td>
+                          <td>{formatScore(row.capacityAvg)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

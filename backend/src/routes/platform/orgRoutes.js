@@ -3663,13 +3663,21 @@ export function registerPlatformOrgRoutes(router) {
           ? quadrantLabel(managerAdoption, managerSponsorship)
           : null;
 
+      // managerLoadBand is the lead manager's own self-report answer (see
+      // managerSelfMetrics below, sourced from the same
+      // sponsorshipLoadScore), so on a suppressed row it identifies one
+      // person outright — same reasoning as adoption/sponsorship/quadrant
+      // just above, and the same reasoning reportDataAssembler.js already
+      // applies to manager_load_band in the report's team table (PT-01).
       let loadBand = null;
-      const managerSelfRow = completedRows.find(
-        (row) => !row?.user_id && row?.role === 'admin' && row?.invite_id === manager.id
-      );
-      if (managerSelfRow) {
-        const selfScore = responseScoresOutOf40(managerSelfRow);
-        loadBand = selfScore.valid ? selfScore.managerLoadBand || null : null;
+      if (managerTeamSampleSizeMet) {
+        const managerSelfRow = completedRows.find(
+          (row) => !row?.user_id && row?.role === 'admin' && row?.invite_id === manager.id
+        );
+        if (managerSelfRow) {
+          const selfScore = responseScoresOutOf40(managerSelfRow);
+          loadBand = selfScore.valid ? selfScore.managerLoadBand || null : null;
+        }
       }
 
       return {
@@ -3816,10 +3824,21 @@ export function registerPlatformOrgRoutes(router) {
       const key = `${row.loadBand}::${row.chainState}`;
       matrixCountMap.set(key, (matrixCountMap.get(key) || 0) + 1);
     }
+    // Aggregated across every manager org-wide, so a legitimate aggregate
+    // regardless of team size — but with very few managers overall (not
+    // per-team; see managerTeamSampleSizeMet above for that), a per-cell
+    // count is small enough to identify a specific manager, exactly the
+    // reasoning reportDataAssembler.js already applies to its equivalent
+    // load_chain_matrix via managerSampleSizeMet. className stays populated
+    // even when suppressed — it's a function of the axis position
+    // (loadBand/chainState), not of the count, so it carries no data.
+    const managerCohortSampleSizeMet = managerRespondentCount >= DASHBOARD_MIN_SAMPLE_SIZE;
     const crossMatrixRows = matrixRowOrder.map((loadBand) => ({
       loadBand,
       cells: matrixColOrder.map((chainState) => {
-        const count = matrixCountMap.get(`${loadBand}::${chainState}`) || 0;
+        const count = managerCohortSampleSizeMet
+          ? matrixCountMap.get(`${loadBand}::${chainState}`) || 0
+          : null;
         return {
           chainState,
           count,
@@ -3839,6 +3858,25 @@ export function registerPlatformOrgRoutes(router) {
     }, {});
     const teamRows = Object.entries(managerMetricsByManagerId).map(([managerId, items]) => {
       const manager = managerInviteMap.get(managerId) || {};
+      // managerBreakdown carries sampleSizeMet (byManager, above) — check
+      // it before computing anything else, since every field below is
+      // disclosive at this same per-team floor: chainState and loadBand
+      // are derived from the same manager self-report fields
+      // (sponsorshipReceivedScore/sponsorshipCapacityScore/sponsorshipLoadScore)
+      // that manager_load_band comes from, which PT-01 already treats as
+      // identifying a single person on a suppressed row in the report's
+      // team table. This is that same data, same reasoning, on the live
+      // dashboard's Section 4 instead.
+      const managerBreakdown = byManager.find((row) => row.managerId === managerId) || null;
+      const sampleSizeMet = managerBreakdown?.sampleSizeMet ?? false;
+      const fallbackTeamName = manager.displayName || manager.email || managerId;
+      const teamName = teamNameFromGroupValues(manager.groupValues, fallbackTeamName);
+      const responses = managerBreakdown?.directReportCompletedCount || 0;
+
+      if (!sampleSizeMet) {
+        return { teamName, managerId, responses, chainState: null, loadBand: null, receivedAvg: null, capacityAvg: null };
+      }
+
       const chainTally = {};
       const loadTally = {};
       for (const item of items) {
@@ -3859,17 +3897,8 @@ export function registerPlatformOrgRoutes(router) {
       const capacityAvg1to5 = round1(
         items.reduce((sum, item) => sum + item.capacityScore / 4, 0) / items.length
       );
-      const managerBreakdown = byManager.find((row) => row.managerId === managerId) || null;
-      const fallbackTeamName = manager.displayName || manager.email || managerId;
-      return {
-        teamName: teamNameFromGroupValues(manager.groupValues, fallbackTeamName),
-        managerId,
-        responses: managerBreakdown?.directReportCompletedCount || 0,
-        chainState,
-        loadBand,
-        receivedAvg: receivedAvg1to5,
-        capacityAvg: capacityAvg1to5,
-      };
+
+      return { teamName, managerId, responses, chainState, loadBand, receivedAvg: receivedAvg1to5, capacityAvg: capacityAvg1to5 };
     });
     const sortedTeamRows = [...teamRows].sort((a, b) => {
       const chainDiff = chainSeverityRank(b.chainState) - chainSeverityRank(a.chainState);
@@ -3928,6 +3957,18 @@ export function registerPlatformOrgRoutes(router) {
       verdictBody = "Your management layer is receiving credible backing from senior leadership — but they don't yet have the capacity to carry that support down to their teams. That's not sustainable without more resilience at the manager level.";
     }
 
+    // A suppressed team's row carries chainState: null (see teamRows
+    // above) — teamChainBreakdownSignal's own state comparisons already
+    // skip a null row (it can't match 'Sponsorship Failed at Both Levels'
+    // or become highestUrgencyTeam), but it would still land in teamList
+    // by name with 'Unknown' state, which is exactly the outcome the
+    // suppression is meant to prevent: the AI-written banner is prose,
+    // not a table, so a named-but-blanked team can still get quoted or
+    // singled out in a sentence. Filtering here, not in
+    // teamChainBreakdownSignal, keeps that function ignorant of
+    // suppression policy and keeps the policy in one place with the rest
+    // of this gate.
+    const sampleSizeMetTeamRows = sortedTeamRows.filter((row) => row.chainState != null);
     const sponsorshipSignals = buildSponsorshipSectionSignals({
       header: {
         clientName: org.name,
@@ -3944,7 +3985,10 @@ export function registerPlatformOrgRoutes(router) {
       load: { bands: loadBandsV3 },
       chain: { states: chainStates },
       crossMatrix: { rows: crossMatrixRows },
-      teams: { rows: sortedTeamRows, shownRows: teamRowsLimited },
+      teams: {
+        rows: sampleSizeMetTeamRows,
+        shownRows: teamRowsLimited.filter((row) => row.chainState != null),
+      },
     });
     const sponsorshipAnalysis = {
       verdict: {

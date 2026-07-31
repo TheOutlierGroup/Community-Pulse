@@ -287,6 +287,71 @@ test('sponsorship section signals are derived from computed metrics', () => {
   assert.equal(signals.teams.promptContext.highestUrgencyTeam, 'Sales & Revenue');
 });
 
+test('team chain breakdown signal has no defence of its own against a suppressed row', () => {
+  // teamChainBreakdownSignal's own comparisons (row.chainState ===
+  // 'Sponsorship Failed at Both Levels', etc.) naturally skip a null
+  // chainState — but teamList maps every row unconditionally, falling
+  // back to 'Unknown' per *field*, not per row, so a suppressed team's
+  // NAME still lands in the string the AI prompt is built from. This is
+  // exactly why orgRoutes.js filters chainState: null rows out of
+  // teams.rows/shownRows before calling buildSponsorshipSectionSignals at
+  // all, rather than relying on this function to notice — pinned here so
+  // that assumption can't quietly stop being true.
+  const signals = buildSponsorshipSectionSignals({
+    header: { clientName: 'Pancake Factory', stage: 'pre', threshold: 28, managerCount: 3 },
+    subScores: {
+      received: { avg: 13.2, threshold: 14 },
+      capacity: { avg: 11.8, threshold: 14 },
+    },
+    load: { bands: [] },
+    chain: { states: [] },
+    crossMatrix: { rows: [] },
+    teams: {
+      rows: [
+        { teamName: 'Wynn Delacroix', chainState: null, loadBand: null, receivedAvg: null, capacityAvg: null },
+      ],
+      shownRows: [
+        { teamName: 'Wynn Delacroix', chainState: null, loadBand: null, receivedAvg: null, capacityAvg: null },
+      ],
+    },
+  });
+  assert.ok(signals.teams.promptContext.teamList.includes('Wynn Delacroix'));
+});
+
+test('orgRoutes-style pre-filtering keeps a suppressed team out of the team signal entirely', () => {
+  // The other half of the contract: once the caller filters to
+  // chainState != null (what orgRoutes.js actually does — see teamRows /
+  // sampleSizeMetTeamRows), a suppressed team must not be named,
+  // highest-urgency, or counted anywhere in the signal, matching the live
+  // verification against Peter Panker's Pancake Factory (Wynn Delacroix,
+  // 2 reports; Jerome Okafor, 3 reports — both below the floor of 5).
+  const allRows = [
+    { teamName: 'Wynn Delacroix', chainState: null, loadBand: null, receivedAvg: null, capacityAvg: null },
+    { teamName: 'Jerome Okafor', chainState: null, loadBand: null, receivedAvg: null, capacityAvg: null },
+    { teamName: 'Large Team', chainState: 'Sponsorship Failed at Both Levels', loadBand: 'Overloaded', receivedAvg: 2.5, capacityAvg: 2.4 },
+  ];
+  const sampleSizeMetRows = allRows.filter((row) => row.chainState != null);
+  const signals = buildSponsorshipSectionSignals({
+    header: { clientName: 'Pancake Factory', stage: 'pre', threshold: 28, managerCount: 3 },
+    subScores: {
+      received: { avg: 13.2, threshold: 14 },
+      capacity: { avg: 11.8, threshold: 14 },
+    },
+    load: { bands: [] },
+    chain: { states: [] },
+    crossMatrix: { rows: [] },
+    teams: { rows: sampleSizeMetRows, shownRows: sampleSizeMetRows },
+  });
+  assert.ok(!signals.teams.text.includes('Wynn Delacroix'));
+  assert.ok(!signals.teams.text.includes('Jerome Okafor'));
+  assert.ok(!signals.teams.promptContext.teamList.includes('Wynn Delacroix'));
+  assert.ok(!signals.teams.promptContext.teamList.includes('Jerome Okafor'));
+  assert.ok(signals.teams.promptContext.teamList.includes('Large Team'));
+  assert.equal(signals.teams.promptContext.highestUrgencyTeam, 'Large Team');
+  assert.equal(signals.teams.promptContext.totalTeams, 1);
+  assert.equal(signals.teams.promptContext.teamsShown, 1);
+});
+
 test('sponsorship sub-score insight compares Received vs Capacity, not the combined score', () => {
   // Regression: received (13.7) fails its own 14-point threshold while capacity
   // (14.6) clears it. The combined 0-40 score (28.3) clears 28, but the insight

@@ -6051,6 +6051,18 @@ input[type='range'] {
   color: var(--pulse-on-red);
 }
 
+/* Anonymity-floor suppression, not a severity state — deliberately
+   neutral so it reads as "protected" rather than as another band on the
+   same red/amber/green scale as the real values. Matches the existing
+   neutral badge convention (crm.css .badge-planning/.badge-archived). */
+.pulse-sa-chain-pill--suppressed {
+  background: var(--surface2);
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: help;
+}
+
 .pulse-sa-load-text {
   font-family: var(--pulse-font-mono);
   font-size: 13px;
@@ -6062,6 +6074,11 @@ input[type='range'] {
 .pulse-sa-load-text--overloaded {
   color: var(--pulse-red);
   font-weight: 700;
+}
+.pulse-sa-load-text--suppressed {
+  color: var(--muted);
+  font-style: italic;
+  cursor: help;
 }
 
 .pulse-prototype-tabs {
