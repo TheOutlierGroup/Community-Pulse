@@ -344,6 +344,65 @@ router.post('/mfa/verify', requireAuth, requireBodyFields(['code']), async (req,
   res.json({ ok: true, mfaEnabled: true });
 });
 
+/**
+ * Step-up re-verification. Protected admin actions only accept a
+ * verification made within MFA_REVERIFY_MINUTES (see mfaVerificationState
+ * in middleware/auth.js); once that window lapses, the gates answer 403
+ * with `mfaReverifyRequired` and the app posts a fresh code here to get a
+ * token carrying a new mfaVerifiedAt. Recovery codes are accepted so an
+ * admin who has lost their authenticator mid-session is not stranded.
+ */
+router.post('/mfa/reverify', authLimiter, requireAuth, requireBodyFields(['code']), async (req, res) => {
+  const full = await User.findUserByIdWithOrg(req.user.id);
+  if (!full || full.deactivated_at || !full.login_enabled) {
+    return res.status(401).json({ error: 'Account is no longer active' });
+  }
+  if (!full.mfa_enabled || !full.mfa_secret) {
+    return res.status(400).json({ error: 'MFA is not enabled for this account' });
+  }
+  const code = String(req.body.code || '').trim();
+  const validTotp = verifyTotpCode(code, full.mfa_secret);
+  const recoveryCodeHashes = Array.isArray(full.mfa_recovery_codes) ? full.mfa_recovery_codes : [];
+  const { consumed, remainingCodeHashes } = consumeRecoveryCode(code, recoveryCodeHashes);
+  if (!validTotp && !consumed) {
+    await logAuditEvent({
+      actor: req.user,
+      action: 'auth.mfa_reverify',
+      targetType: 'user',
+      targetId: req.user.id,
+      targetOrganizationId: req.user.organizationId,
+      result: 'invalid_code',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    return res.status(401).json({ error: 'Invalid MFA code' });
+  }
+  if (consumed) {
+    await User.replaceMfaRecoveryCodeHashes(full.id, remainingCodeHashes);
+  }
+  await User.updateLastMfaVerifiedAt(full.id);
+  // Re-minted from the DB rather than the old token so a role or org
+  // change since sign-in cannot be carried forward by a re-verification.
+  const token = signToken({
+    sub: full.id,
+    role: full.role,
+    organizationId: full.organization_id,
+    organizationKind: full.organization_kind,
+    mfaVerifiedAt: new Date().toISOString(),
+  });
+  await logAuditEvent({
+    actor: req.user,
+    action: 'auth.mfa_reverify',
+    targetType: 'user',
+    targetId: req.user.id,
+    targetOrganizationId: req.user.organizationId,
+    result: 'ok',
+    ipAddress: req.ip,
+    userAgent: req.get('user-agent'),
+  });
+  res.json({ token, user: publicUser(full) });
+});
+
 router.post('/mfa/disable', requireAuth, requireBodyFields(['code']), async (req, res) => {
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ error: 'Admin only' });

@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './components/shared/Auth.jsx';
 import { ToastProvider } from './components/shared/ToastProvider.jsx';
+import MfaReverifyProvider from './components/shared/MfaReverifyProvider.jsx';
 import { IS_RHYTHM_ENGINE_SURFACE } from './config/appSurface.js';
 import { lazyWithReload } from './utils/lazyWithReload.js';
 
@@ -67,63 +68,65 @@ export default function App() {
   return (
     <ToastProvider>
       <AuthProvider>
-        <Suspense fallback={null}>
-          <Routes>
-            <Route path="/" element={publicEntry} />
-            <Route path="/login" element={publicEntry} />
-            <Route path="/status" element={<PublicStatus />} />
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/forgot-password" element={<ForgotPassword />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/reset-password/:token" element={<ResetPassword />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/invite" element={<InviteAccept />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/invite/:token" element={<InviteAccept />} />}
-            <Route path="/sso/exchange" element={<RhythmEngineSsoExchange />} />
-            <Route path="/rhythm-engine" element={<EmployeeRhythmEngine />} />
-            <Route path="/rhythm-engine/:stage" element={<EmployeeRhythmEngine />} />
-            <Route path="/rhythm-engine/link/:token" element={<PublicRhythmEngine />} />
-            <Route path="/rhythm-engine/:stage/link/:token" element={<PublicRhythmEngine />} />
-            <Route path="/pulse" element={<Navigate to="/rhythm-engine" replace />} />
-            <Route path="/pulse/link/:token" element={<PublicRhythmEngine />} />
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform" element={<PlatformHome />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/tasks" element={<PlatformTasks />} />}
-            <Route path="/platform/clients/:orgId" element={<PlatformClientLayout />}>
-              {!IS_RHYTHM_ENGINE_SURFACE && <Route index element={<PlatformClientOverview />} />}
-              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="users" element={<PlatformClientUsers />} />}
-              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="tasks" element={<PlatformClientTasks />} />}
-              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="projects" element={<PlatformClientProjects />} />}
-              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="activity" element={<PlatformClientActivity />} />}
-              <Route path="rhythm-engine" element={<PlatformClientRhythmEngineShell />}>
-                <Route index element={<PlatformClientRhythmEngine />} />
-                <Route path="users" element={<PlatformRhythmEngineInviteUsers />} />
-                <Route path="settings" element={<PlatformRhythmEngineSettings />} />
+        <MfaReverifyProvider>
+          <Suspense fallback={null}>
+            <Routes>
+              <Route path="/" element={publicEntry} />
+              <Route path="/login" element={publicEntry} />
+              <Route path="/status" element={<PublicStatus />} />
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/forgot-password" element={<ForgotPassword />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/reset-password/:token" element={<ResetPassword />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/invite" element={<InviteAccept />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/invite/:token" element={<InviteAccept />} />}
+              <Route path="/sso/exchange" element={<RhythmEngineSsoExchange />} />
+              <Route path="/rhythm-engine" element={<EmployeeRhythmEngine />} />
+              <Route path="/rhythm-engine/:stage" element={<EmployeeRhythmEngine />} />
+              <Route path="/rhythm-engine/link/:token" element={<PublicRhythmEngine />} />
+              <Route path="/rhythm-engine/:stage/link/:token" element={<PublicRhythmEngine />} />
+              <Route path="/pulse" element={<Navigate to="/rhythm-engine" replace />} />
+              <Route path="/pulse/link/:token" element={<PublicRhythmEngine />} />
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform" element={<PlatformHome />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/tasks" element={<PlatformTasks />} />}
+              <Route path="/platform/clients/:orgId" element={<PlatformClientLayout />}>
+                {!IS_RHYTHM_ENGINE_SURFACE && <Route index element={<PlatformClientOverview />} />}
+                {!IS_RHYTHM_ENGINE_SURFACE && <Route path="users" element={<PlatformClientUsers />} />}
+                {!IS_RHYTHM_ENGINE_SURFACE && <Route path="tasks" element={<PlatformClientTasks />} />}
+                {!IS_RHYTHM_ENGINE_SURFACE && <Route path="projects" element={<PlatformClientProjects />} />}
+                {!IS_RHYTHM_ENGINE_SURFACE && <Route path="activity" element={<PlatformClientActivity />} />}
+                <Route path="rhythm-engine" element={<PlatformClientRhythmEngineShell />}>
+                  <Route index element={<PlatformClientRhythmEngine />} />
+                  <Route path="users" element={<PlatformRhythmEngineInviteUsers />} />
+                  <Route path="settings" element={<PlatformRhythmEngineSettings />} />
+                </Route>
+                <Route path="pulse/*" element={<Navigate to="rhythm-engine" replace />} />
+                {!IS_RHYTHM_ENGINE_SURFACE && <Route path="account" element={<PlatformClientAccount />} />}
+                {!IS_RHYTHM_ENGINE_SURFACE && <Route path="my-account" element={<AccountPage standalone={false} />} />}
               </Route>
-              <Route path="pulse/*" element={<Navigate to="rhythm-engine" replace />} />
-              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="account" element={<PlatformClientAccount />} />}
-              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="my-account" element={<AccountPage standalone={false} />} />}
-            </Route>
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/clients" element={<PlatformClients />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/users" element={<PlatformUsers />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/settings" element={<PlatformSettings />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm" element={<Navigate to="/platform/crm/organisations" replace />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/organisations" element={<PlatformOrganisations />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/campaigns" element={<PlatformCampaigns />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/campaigns/:id" element={<PlatformCampaignDetail />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/contacts" element={<PlatformContacts />} />}
-            {!IS_RHYTHM_ENGINE_SURFACE && (
-              <Route path="/platform/crm/organisations/:id" element={<PlatformProspectLayout />}>
-                <Route index element={<PlatformProspectDashboard />} />
-                <Route path="tasks" element={<PlatformProspectTasks />} />
-                <Route path="opportunity" element={<PlatformProspectOpportunity />} />
-                <Route path="configurations" element={<PlatformProspectConfigurations />} />
-                <Route path="activity" element={<PlatformProspectActivity />} />
-              </Route>
-            )}
-            <Route path="/account" element={<AccountPage />} />
-            <Route path="/settings" element={<Navigate to="/account" replace />} />
-            <Route path="/client" element={<ClientHome />} />
-            <Route path="/admin" element={<AdminHome />} />
-            <Route path="/admin/sessions/:id" element={<AdminSession />} />
-          </Routes>
-        </Suspense>
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/clients" element={<PlatformClients />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/users" element={<PlatformUsers />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/settings" element={<PlatformSettings />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm" element={<Navigate to="/platform/crm/organisations" replace />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/crm/organisations" element={<PlatformOrganisations />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/campaigns" element={<PlatformCampaigns />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/campaigns/:id" element={<PlatformCampaignDetail />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/contacts" element={<PlatformContacts />} />}
+              {!IS_RHYTHM_ENGINE_SURFACE && (
+                <Route path="/platform/crm/organisations/:id" element={<PlatformProspectLayout />}>
+                  <Route index element={<PlatformProspectDashboard />} />
+                  <Route path="tasks" element={<PlatformProspectTasks />} />
+                  <Route path="opportunity" element={<PlatformProspectOpportunity />} />
+                  <Route path="configurations" element={<PlatformProspectConfigurations />} />
+                  <Route path="activity" element={<PlatformProspectActivity />} />
+                </Route>
+              )}
+              <Route path="/account" element={<AccountPage />} />
+              <Route path="/settings" element={<Navigate to="/account" replace />} />
+              <Route path="/client" element={<ClientHome />} />
+              <Route path="/admin" element={<AdminHome />} />
+              <Route path="/admin/sessions/:id" element={<AdminSession />} />
+            </Routes>
+          </Suspense>
+        </MfaReverifyProvider>
       </AuthProvider>
     </ToastProvider>
   );

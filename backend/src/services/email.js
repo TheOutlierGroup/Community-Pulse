@@ -358,6 +358,75 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
   }
 }
 
+/**
+ * Invitation to join an organisation. Unlike sendPlatformWelcomeEmail this
+ * carries the /invite/:token accept link — the invited person's account is
+ * created when they accept, not when the invite is raised.
+ *
+ * @param {string} to             — invited email address
+ * @param {string} displayName    — invited person's name, may be blank
+ * @param {string} inviteUrl      — absolute /invite/:token URL
+ * @param {string} organizationName — org they are being invited into
+ * @param {number} expiresInDays  — how long the accept link stays valid
+ */
+export async function sendOrganizationInviteEmail(
+  to,
+  displayName,
+  inviteUrl,
+  organizationName,
+  expiresInDays = 14
+) {
+  const resend = requireResend();
+  const name = String(displayName || '').trim();
+  const greetingHtml = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const orgPlain = organizationName ? String(organizationName).trim() : 'your organisation';
+  const orgLabelHtml = escapeHtml(orgPlain);
+  const { logoBlock, attachments } = buildOutlierEmailLogoParts();
+  const safeInvite = String(inviteUrl || '');
+  const days = Number.isFinite(expiresInDays) ? Math.max(1, Math.round(expiresInDays)) : 14;
+  const { error } = await resend.emails.send({
+    from: getResendFromAddress(),
+    to,
+    subject: `You have been invited to ${orgPlain.replace(/[\r\n]+/g, ' ').slice(0, 120)}`,
+    ...(attachments ? { attachments } : {}),
+    html: `
+      <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 2rem 0;">
+        ${logoBlock}
+        <h2 style="margin: 0 0 1rem;">You have been invited</h2>
+        <p style="color: #555; line-height: 1.6;">
+          ${greetingHtml}
+        </p>
+        <p style="color: #555; line-height: 1.6;">
+          You have been invited to join <strong>${orgLabelHtml}</strong>.
+          Use <strong>Accept invitation</strong> below to set your password and
+          finish creating your account. This link expires in ${days} days.
+        </p>
+        <a href="${escapeHtmlAttr(safeInvite)}"
+           style="display: inline-block; margin: 1.5rem 0; padding: 0.75rem 1.5rem;
+                  background: #ffcc80; color: #1c1917; font-weight: 600;
+                  text-decoration: none; border-radius: 8px;">
+          Accept invitation
+        </a>
+        <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
+          If the button does not work, copy the URL:<br />
+          <span style="word-break: break-all;">${escapeHtml(safeInvite)}</span>
+        </p>
+      </div>
+    `,
+  });
+
+  if (error) {
+    console.error('Resend organisation invite error:', error);
+    const detail =
+      error && typeof error.message === 'string'
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error);
+    throw new Error(detail || 'Failed to send invitation email');
+  }
+}
+
 const PLATFORM_WELCOME_TOKEN_DAYS = 7;
 
 /**

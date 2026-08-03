@@ -38,9 +38,16 @@ function base32FromHex(secretHex) {
   return output;
 }
 
+// Shown as the account name inside the user's authenticator app. The old
+// default was "Employee Pulse", an internal name that never appears
+// anywhere else in the product. Existing enrolments keep whatever label
+// they were created with — authenticator apps store it at enrol time — so
+// this only affects new enrolments.
+const DEFAULT_MFA_ISSUER = 'Outlier Pulse';
+
 function normalizeIssuer(value) {
-  const raw = String(value || process.env.MFA_ISSUER || 'Employee Pulse').trim();
-  return raw || 'Employee Pulse';
+  const raw = String(value || process.env.MFA_ISSUER || DEFAULT_MFA_ISSUER).trim();
+  return raw || DEFAULT_MFA_ISSUER;
 }
 
 function accountLabel(email) {

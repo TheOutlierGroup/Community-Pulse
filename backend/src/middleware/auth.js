@@ -148,12 +148,44 @@ export function adminMfaEnforced() {
   return String(process.env.MFA_ENFORCE_ADMIN || 'true').trim().toLowerCase() !== 'false';
 }
 
+// How long a single multi-factor verification stays good for. Until this
+// existed, mfaVerifiedAt was stamped once at login and then rode the JWT
+// for its whole 7-day life, so "MFA is enforced" only ever meant "MFA was
+// done at some point this week" — a walked-away session kept full admin
+// privileges. Set MFA_REVERIFY_MINUTES to 0 to disable the window.
+const DEFAULT_MFA_REVERIFY_MINUTES = 30;
+
+export function mfaReverifyWindowMs() {
+  const raw = String(process.env.MFA_REVERIFY_MINUTES ?? '').trim();
+  if (!raw) return DEFAULT_MFA_REVERIFY_MINUTES * 60 * 1000;
+  const minutes = Number(raw);
+  if (!Number.isFinite(minutes) || minutes < 0) {
+    return DEFAULT_MFA_REVERIFY_MINUTES * 60 * 1000;
+  }
+  return minutes * 60 * 1000;
+}
+
+/**
+ * Distinguishes "verified recently enough" from "verified, but too long
+ * ago". Callers need the difference: a lapsed window is fixed by entering
+ * a fresh code (step-up), whereas a missing claim means the account has
+ * never enrolled and has to sign in again.
+ */
+export function mfaVerificationState(mfaVerifiedAt) {
+  if (!mfaVerifiedAt) return 'absent';
+  const windowMs = mfaReverifyWindowMs();
+  if (windowMs === 0) return 'fresh';
+  const verifiedAtMs = new Date(mfaVerifiedAt).getTime();
+  if (!Number.isFinite(verifiedAtMs)) return 'absent';
+  return Date.now() - verifiedAtMs <= windowMs ? 'fresh' : 'stale';
+}
+
 // Unconditional form, for gates that already enforced MFA before PT-04
 // (requireAdmin, on the client-org /api/admin and /api/analytics
-// surfaces). Left as-is so this change never weakens an existing check.
+// surfaces).
 export function adminMfaSatisfied(user) {
   if (!adminMfaEnforced()) return true;
-  return Boolean(user?.mfaVerifiedAt);
+  return mfaVerificationState(user?.mfaVerifiedAt) === 'fresh';
 }
 
 function callerOrganizationKind(req) {
@@ -186,22 +218,38 @@ function callerOrganizationKind(req) {
 export function platformAdminMfaSatisfied(req) {
   if (!adminMfaEnforced()) return true;
   if (callerOrganizationKind(req) !== 'platform') return true;
-  return Boolean(req?.user?.mfaVerifiedAt);
+  return mfaVerificationState(req?.user?.mfaVerifiedAt) === 'fresh';
 }
 
 // Actionable on purpose: a platform admin who has never enrolled is
 // locked out of the whole platform surface by this gate, and the way
 // out (enrol, then re-authenticate so the claim is minted) is not
 // guessable from a bare "MFA required".
-const MFA_REQUIRED_ERROR =
+export const MFA_REQUIRED_ERROR =
   'Multi-factor authentication is required for admin actions. Set it up under Account → Security, then sign in again.';
+
+const MFA_REVERIFY_ERROR =
+  'Your verification has expired. Enter a code from your authenticator app to continue.';
+
+/**
+ * The 403 body for a failed MFA gate. A lapsed window carries
+ * `mfaReverifyRequired` so the app can prompt for a fresh code and retry
+ * the action, rather than sending an enrolled admin off to set MFA up
+ * again — which the generic message would otherwise tell them to do.
+ */
+export function mfaFailureBody(user) {
+  if (mfaVerificationState(user?.mfaVerifiedAt) === 'stale') {
+    return { error: MFA_REVERIFY_ERROR, mfaRequired: true, mfaReverifyRequired: true };
+  }
+  return { error: MFA_REQUIRED_ERROR, mfaRequired: true };
+}
 
 export function requireAdmin(req, res, next) {
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ error: 'Admin only' });
   }
   if (!adminMfaSatisfied(req.user)) {
-    return res.status(403).json({ error: MFA_REQUIRED_ERROR, mfaRequired: true });
+    return res.status(403).json(mfaFailureBody(req.user));
   }
   next();
 }
@@ -229,7 +277,7 @@ export async function requirePlatformAdmin(req, res, next) {
       return res.status(403).json({ error: 'Admin only' });
     }
     if (!platformAdminMfaSatisfied(req)) {
-      return res.status(403).json({ error: MFA_REQUIRED_ERROR, mfaRequired: true });
+      return res.status(403).json(mfaFailureBody(req.user));
     }
     req.platformOrganization = org;
     next();
@@ -304,7 +352,7 @@ export function requirePlatformAdminRole(req, res, next) {
     return res.status(403).json({ error: 'Admin only' });
   }
   if (!platformAdminMfaSatisfied(req)) {
-    return res.status(403).json({ error: MFA_REQUIRED_ERROR, mfaRequired: true });
+    return res.status(403).json(mfaFailureBody(req.user));
   }
   next();
 }

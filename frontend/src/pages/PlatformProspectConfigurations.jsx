@@ -387,7 +387,7 @@ export default function PlatformProspectConfigurations() {
         onClose={() => setPromoteModalOpen(false)}
         onCreated={handlePromoted}
         isLicensee={isLicensee}
-        canCreateLicensees={!isLicensee}
+        canCreateLicensees={!isLicensee && user?.role === 'admin'}
         title="Promote to Client"
         submitLabel="Create client"
         helperText={`Promoting "${org.organisation_name}" from Prospects. Review the prefilled details before creating the client — lead status, relationship status, website, phone, lead origin, and expected close date will be preserved in the new client's Recent Activity log.`}
