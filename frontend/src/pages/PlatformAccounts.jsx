@@ -7,6 +7,7 @@ import { usePlatformAccess } from '../hooks/usePlatformAccess.js';
 import { useDocumentTitle, DEFAULT_TAB } from '../hooks/useDocumentTitle.js';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
+import { normalizeWebsiteValue } from '../utils/websiteInput.js';
 import '../styles/crm.css';
 
 function ContactRow({ contact, onDelete }) {
@@ -98,7 +99,7 @@ export default function PlatformAccounts() {
     if (!form.name.trim()) { setFormError('Name is required.'); return; }
     setBusy(true); setFormError('');
     try {
-      await api.post('/api/platform/accounts', form);
+      await api.post('/api/platform/accounts', { ...form, website: normalizeWebsiteValue(form.website) });
       showToast('Account created.', 'success');
       setCreateOpen(false);
       setForm({ name: '', website: '', industry: '', notes: '' });
@@ -266,7 +267,7 @@ export default function PlatformAccounts() {
               </div>
               <div className="field">
                 <label htmlFor="acc-website">Website</label>
-                <input id="acc-website" type="url" value={form.website} onChange={(e) => setForm((p) => ({ ...p, website: e.target.value }))} />
+                <input id="acc-website" type="text" inputMode="url" placeholder="acme.com.au" value={form.website} onChange={(e) => setForm((p) => ({ ...p, website: e.target.value }))} />
               </div>
               {formError && <p className="error">{formError}</p>}
               <div className="modal-dialog__actions">

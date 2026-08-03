@@ -1684,6 +1684,18 @@ export function registerPlatformOrgRoutes(router) {
       }
     }
 
+      // Checked here, before any row is written. The duplicate-admin check
+      // used to sit after createOrganization, so a clash returned 409 with
+      // the organisation already persisted and no admin attached to it —
+      // and each retry of the same form left behind another orphan (slugs
+      // auto-suffix on collision, so identical names never stopped it).
+      if (adminEmail && String(adminEmail).trim()) {
+        const existingAdmin = await User.findUserByEmail(String(adminEmail).trim());
+        if (existingAdmin) {
+          return res.status(409).json({ error: 'A user with this email already exists' });
+        }
+      }
+
       const initialSettings = {};
       if (addrRaw != null && String(addrRaw).trim()) {
       initialSettings.companyAddress = String(addrRaw).trim();
@@ -1752,10 +1764,6 @@ export function registerPlatformOrgRoutes(router) {
       }
     }
       if (adminEmail && String(adminEmail).trim()) {
-      const existing = await User.findUserByEmail(adminEmail);
-      if (existing) {
-        return res.status(409).json({ error: 'A user with this email already exists' });
-      }
       let sendWelcomeEmail = parseMultipartBool(req.body.sendWelcomeEmail);
       let enableLogin = parseMultipartBool(req.body.enableLogin);
       if (isLicenseeRequester) {

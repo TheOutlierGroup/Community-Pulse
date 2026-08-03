@@ -156,7 +156,12 @@ function describeMetadata(event) {
  * org; licensee admins see their own org and any owned client). Polls
  * once on mount; refresh button reloads on demand.
  */
-export default function RecentActivityPanel({ orgId, style, resourcePath = '/api/platform/organizations' }) {
+export default function RecentActivityPanel({
+  orgId,
+  style,
+  resourcePath = '/api/platform/organizations',
+  onReverted,
+}) {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -225,6 +230,11 @@ export default function RecentActivityPanel({ orgId, style, resourcePath = '/api
     try {
       await api.post(`${resourcePath}/${orgId}/field-history/${historyId}/revert`);
       await reload();
+      // The revert writes to the organisation record the surrounding layout
+      // is holding, so tell the parent to refetch too. Without this the
+      // reverted field kept showing its old value on every other tab until
+      // the whole page was reloaded.
+      if (onReverted) await onReverted();
     } catch (e) {
       setError(e?.response?.data?.error || 'Could not revert this field.');
     } finally {
