@@ -9,6 +9,7 @@ import { useToast } from '../components/shared/ToastProvider.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import AuthenticatedBlobImage from '../components/platform/AuthenticatedBlobImage.jsx';
 import { BUSINESS_UNITS, LEAD_STATUSES, LEAD_STATUS_BADGE, BUSINESS_UNIT_CUSTOM_FIELDS, businessUnitBadgeClass } from '../config/crmConstants.js';
+import { normalizeWebsiteValue } from '../utils/websiteInput.js';
 import '../styles/crm.css';
 
 function fmtDate(d) {
@@ -136,7 +137,10 @@ export default function PlatformOrganisations() {
     if (!form.organisation_name.trim()) { setFormError('Organisation name is required.'); return; }
     setBusy(true); setFormError('');
     try {
-      const { data } = await api.post('/api/platform/crm/organisations', form);
+      const { data } = await api.post('/api/platform/crm/organisations', {
+        ...form,
+        website: normalizeWebsiteValue(form.website),
+      });
       const created = data.organisation;
       showToast('Organisation created.', { variant: 'success' });
       setCreateOpen(false);
@@ -318,7 +322,7 @@ export default function PlatformOrganisations() {
               </div>
               <div className="field">
                 <label htmlFor="org-website">Website</label>
-                <input id="org-website" type="url" value={form.website} onChange={(e) => setForm((p) => ({ ...p, website: e.target.value }))} />
+                <input id="org-website" type="text" inputMode="url" placeholder="acme.com.au" value={form.website} onChange={(e) => setForm((p) => ({ ...p, website: e.target.value }))} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="field">

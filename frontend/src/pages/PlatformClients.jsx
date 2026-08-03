@@ -89,7 +89,10 @@ export default function PlatformClients() {
   const [serviceFilter, setServiceFilter] = useState('');
 
   const isLicensee = isLicenseeUser(user);
-  const canCreateLicensees = !isLicensee;
+  // Practitioner/Enterprise provisioning is an Admin-only commercial
+  // decision, so Platform tier gets the plain client form (see
+  // requireClientCreateAccess in backend/src/routes/platform/orgRoutes.js).
+  const canCreateLicensees = !isLicensee && user?.role === 'admin';
 
   const loadOrgs = useCallback(async () => {
     const { data } = await api.get('/api/platform/organizations');

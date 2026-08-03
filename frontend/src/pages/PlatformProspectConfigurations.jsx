@@ -9,6 +9,7 @@ import NewClientModal from '../components/platform/NewClientModal.jsx';
 import { isLicenseeUser } from '../hooks/usePlatformAccess.js';
 import { RELATIONSHIP_STATUS_OPTIONS, normalizeRelationshipStatus } from './platformClientUtils.js';
 import { serviceIdForBusinessUnit } from '../utils/prospectPromotion.js';
+import { normalizeWebsiteValue } from '../utils/websiteInput.js';
 import { BUSINESS_UNITS, LEAD_STATUSES, BUSINESS_UNIT_CUSTOM_FIELDS } from '../config/crmConstants.js';
 
 function ownerLabel(u) {
@@ -84,6 +85,7 @@ export default function PlatformProspectConfigurations() {
       const payload = {
         ...editForm,
         last_contact_at: editForm.last_contact_at ? new Date(editForm.last_contact_at).toISOString() : '',
+        website: normalizeWebsiteValue(editForm.website),
       };
       await api.patch(`/api/platform/crm/organisations/${orgId}`, payload);
       await refreshOrg();
@@ -221,7 +223,7 @@ export default function PlatformProspectConfigurations() {
             </div>
             <div className="field">
               <label>Website</label>
-              <input type="url" value={editForm.website} onChange={(e) => setEditForm((p) => ({ ...p, website: e.target.value }))} />
+              <input type="text" inputMode="url" placeholder="acme.com.au" value={editForm.website} onChange={(e) => setEditForm((p) => ({ ...p, website: e.target.value }))} />
             </div>
             <div className="field">
               <label>Phone</label>
@@ -385,7 +387,7 @@ export default function PlatformProspectConfigurations() {
         onClose={() => setPromoteModalOpen(false)}
         onCreated={handlePromoted}
         isLicensee={isLicensee}
-        canCreateLicensees={!isLicensee}
+        canCreateLicensees={!isLicensee && user?.role === 'admin'}
         title="Promote to Client"
         submitLabel="Create client"
         helperText={`Promoting "${org.organisation_name}" from Prospects. Review the prefilled details before creating the client — lead status, relationship status, website, phone, lead origin, and expected close date will be preserved in the new client's Recent Activity log.`}

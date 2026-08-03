@@ -20,6 +20,7 @@ import {
   listSessionResponses,
   RESPONSE_MODE_EMPLOYEE_ONLY,
 } from '../services/pulseDataContract.js';
+import { sendOrganizationInvite, orgInviteExpiryDate } from '../services/orgInvite.js';
 
 export function createAdminRoutes({
   authMiddleware = requireAuth,
@@ -32,6 +33,7 @@ export function createAdminRoutes({
   responseModeEmployeeOnly = RESPONSE_MODE_EMPLOYEE_ONLY,
   consumeAssessmentForClientFn = consumeAssessmentForClient,
   refundAssessmentForLicenseeFn = refundAssessmentForLicensee,
+  sendOrganizationInviteFn = sendOrganizationInvite,
 } = {}) {
   const router = Router();
 
@@ -144,7 +146,7 @@ export function createAdminRoutes({
 
   router.post('/invites', requireBodyFields(['email']), async (req, res) => {
   const token = randomUUID();
-  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
+  const expiresAt = orgInviteExpiryDate();
   const invite = await inviteModel.createInvite({
     email: req.body.email,
     token,
@@ -154,6 +156,16 @@ export function createAdminRoutes({
     firstName: req.body.firstName,
     lastName: req.body.lastName,
   });
+  // Same gap as the platform-side invite route: the invite was raised and
+  // the link handed back to the caller, but nothing was ever emailed to
+  // the person being invited.
+  const inviteEmailSent = await sendOrganizationInviteFn({
+    email: invite.email,
+    firstName: req.body.firstName,
+    lastName: req.body.lastName,
+    token,
+    organizationName: req.clientOrganization?.name,
+  });
   res.status(201).json({
     invite: {
       id: invite.id,
@@ -162,6 +174,7 @@ export function createAdminRoutes({
       token,
     },
     inviteUrl: `/invite/${token}`,
+    inviteEmailSent,
   });
   });
 

@@ -440,7 +440,7 @@ export default function AccountPage({ standalone = true }) {
     if (!Array.isArray(mfaRecoveryCodes) || mfaRecoveryCodes.length === 0) return;
     const timestamp = new Date().toISOString();
     const lines = [
-      'Employee Pulse MFA recovery keys',
+      'Outlier Pulse MFA recovery keys',
       `Generated: ${timestamp}`,
       `Account: ${user.email}`,
       '',

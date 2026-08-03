@@ -31,6 +31,19 @@ test('buildTotpUri includes issuer, account, and base32 secret', () => {
   assert.match(uri, /secret=AERUKZ4JVPG66AJDIVTYTK6N54ASGRLH/);
 });
 
+test('buildTotpUri falls back to the product issuer, not the old internal name', () => {
+  const previous = process.env.MFA_ISSUER;
+  delete process.env.MFA_ISSUER;
+  try {
+    const uri = buildTotpUri('0123456789abcdef0123456789abcdef01234567', { email: 'admin@example.com' });
+    assert.match(uri, /issuer=Outlier\+Pulse/);
+    assert.doesNotMatch(uri, /Employee\+Pulse/);
+  } finally {
+    if (previous === undefined) delete process.env.MFA_ISSUER;
+    else process.env.MFA_ISSUER = previous;
+  }
+});
+
 test('recovery code can be consumed exactly once', () => {
   const { codes, codeHashes } = generateRecoveryCodes(2);
   const firstCode = codes[0];

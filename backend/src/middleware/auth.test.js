@@ -7,6 +7,8 @@ import {
   requireAdmin,
   requireAuth,
   isImpersonationBlockedWrite,
+  mfaVerificationState,
+  mfaReverifyWindowMs,
 } from './auth.js';
 import { authLimiter } from '../routes/auth.js';
 
@@ -174,3 +176,87 @@ test('requireAdmin enforces MFA claim by default', async () => {
   assert.equal(allowed.status, 200);
 });
 
+
+test('mfaVerificationState expires a verification once the window lapses', () => {
+  const previous = process.env.MFA_REVERIFY_MINUTES;
+  process.env.MFA_REVERIFY_MINUTES = '30';
+  try {
+    assert.equal(mfaVerificationState(null), 'absent');
+    assert.equal(mfaVerificationState('not-a-date'), 'absent');
+    assert.equal(mfaVerificationState(new Date().toISOString()), 'fresh');
+    assert.equal(
+      mfaVerificationState(new Date(Date.now() - 29 * 60 * 1000).toISOString()),
+      'fresh'
+    );
+    assert.equal(
+      mfaVerificationState(new Date(Date.now() - 31 * 60 * 1000).toISOString()),
+      'stale'
+    );
+  } finally {
+    if (previous === undefined) delete process.env.MFA_REVERIFY_MINUTES;
+    else process.env.MFA_REVERIFY_MINUTES = previous;
+  }
+});
+
+test('MFA_REVERIFY_MINUTES=0 keeps a verification valid for the token lifetime', () => {
+  const previous = process.env.MFA_REVERIFY_MINUTES;
+  process.env.MFA_REVERIFY_MINUTES = '0';
+  try {
+    assert.equal(mfaReverifyWindowMs(), 0);
+    const longAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString();
+    assert.equal(mfaVerificationState(longAgo), 'fresh');
+  } finally {
+    if (previous === undefined) delete process.env.MFA_REVERIFY_MINUTES;
+    else process.env.MFA_REVERIFY_MINUTES = previous;
+  }
+});
+
+test('a blank or invalid MFA_REVERIFY_MINUTES falls back to the 30 minute default', () => {
+  const previous = process.env.MFA_REVERIFY_MINUTES;
+  try {
+    delete process.env.MFA_REVERIFY_MINUTES;
+    assert.equal(mfaReverifyWindowMs(), 30 * 60 * 1000);
+    process.env.MFA_REVERIFY_MINUTES = 'soon';
+    assert.equal(mfaReverifyWindowMs(), 30 * 60 * 1000);
+    process.env.MFA_REVERIFY_MINUTES = '-5';
+    assert.equal(mfaReverifyWindowMs(), 30 * 60 * 1000);
+  } finally {
+    if (previous === undefined) delete process.env.MFA_REVERIFY_MINUTES;
+    else process.env.MFA_REVERIFY_MINUTES = previous;
+  }
+});
+
+test('requireAdmin rejects a verification that has aged out, and says it is re-verifiable', async () => {
+  const previous = process.env.MFA_REVERIFY_MINUTES;
+  process.env.MFA_REVERIFY_MINUTES = '30';
+  try {
+    const app = express();
+    app.use(express.json());
+    app.get('/admin', (req, _res, next) => {
+      req.user = { role: 'admin', mfaVerifiedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString() };
+      next();
+    }, requireAdmin, (_req, res) => res.json({ ok: true }));
+
+    const res = await runRequest(app, { path: '/admin' });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.mfaRequired, true);
+    assert.equal(res.body.mfaReverifyRequired, true);
+  } finally {
+    if (previous === undefined) delete process.env.MFA_REVERIFY_MINUTES;
+    else process.env.MFA_REVERIFY_MINUTES = previous;
+  }
+});
+
+test('a never-verified admin is told to enrol, not to re-verify', async () => {
+  const app = express();
+  app.use(express.json());
+  app.get('/admin', (req, _res, next) => {
+    req.user = { role: 'admin', mfaVerifiedAt: null };
+    next();
+  }, requireAdmin, (_req, res) => res.json({ ok: true }));
+
+  const res = await runRequest(app, { path: '/admin' });
+  assert.equal(res.status, 403);
+  assert.equal(res.body.mfaRequired, true);
+  assert.equal(res.body.mfaReverifyRequired, undefined);
+});

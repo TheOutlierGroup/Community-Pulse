@@ -41,6 +41,8 @@ import {
 import {
   signToken,
   requirePlatformAdminRole as sharedRequirePlatformAdminRole,
+  platformAdminMfaSatisfied,
+  mfaFailureBody,
 } from '../../middleware/auth.js';
 import {
   isResendConfigured,
@@ -50,6 +52,7 @@ import {
   sendLicenseeWelcomeEmail,
   sendPulseInviteEmail,
 } from '../../services/email.js';
+import { sendOrganizationInvite, orgInviteExpiryDate } from '../../services/orgInvite.js';
 import {
   classifyQuadrant,
   classifySponsorshipChainState,
@@ -993,6 +996,22 @@ function resolvePulseAppBaseUrl() {
   return raw ? raw.replace(/\/$/, '') : '';
 }
 
+/**
+ * Who may create a client organisation, as a pure predicate.
+ *
+ * Platform tier is included because promoting a won prospect goes through
+ * the create-client route — a Platform-tier user who owns the opportunity
+ * could otherwise work it all the way to Won and hit "Admin only" at the
+ * last step. Licensee-org callers are unchanged at admin-only, and the two
+ * commercial escalations the route can also perform (provisioning a
+ * Practitioner tenant, attaching an Enterprise licence) stay admin-only and
+ * are checked separately against the request body.
+ */
+export function canCreateClientOrganization(requesterOrgKind, role) {
+  if (requesterOrgKind === 'platform') return role === 'admin' || role === 'platform';
+  return role === 'admin';
+}
+
 const CLIENT_FIRST_ADMIN_WELCOME_RESET_MS = 7 * 24 * 60 * 60 * 1000;
 const CLIENT_STATUSES = new Set([
   'client-current',
@@ -1372,6 +1391,17 @@ export function registerPlatformOrgRoutes(router) {
     }
   };
 
+  /** See canCreateClientOrganization above for why Platform tier is in. */
+  const requireClientCreateAccess = (req, res, next) => {
+    if (!canCreateClientOrganization(req.workspaceOrganization?.kind, req.user?.role)) {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    if (!platformAdminMfaSatisfied(req)) {
+      return res.status(403).json(mfaFailureBody(req.user));
+    }
+    next();
+  };
+
   router.get('/organizations', async (req, res) => {
     const requesterOrg = req.workspaceOrganization;
     if (requesterOrg?.kind === 'licensee') {
@@ -1623,7 +1653,7 @@ export function registerPlatformOrgRoutes(router) {
     });
   });
 
-  router.post('/organizations', requirePlatformAdminRole, handleOrgLogoPlatformUpload, async (req, res) => {
+  router.post('/organizations', requireClientCreateAccess, handleOrgLogoPlatformUpload, async (req, res) => {
     try {
       const name = req.body.name;
       if (!name || !String(name).trim()) {
@@ -1664,6 +1694,14 @@ export function registerPlatformOrgRoutes(router) {
         requestedServiceIds.includes(CLIENT_SERVICE_LICENSEE) &&
         allowedServiceIds.has(CLIENT_SERVICE_LICENSEE)
       ) {
+        // Standing up a Practitioner tenant is a commercial decision, not
+        // part of working an opportunity — Platform tier can create plain
+        // clients here but not this.
+        if (req.user?.role !== 'admin') {
+          return res.status(403).json({
+            error: 'Only an Admin can set a client up as a Rhythm Engine Practitioner.',
+          });
+        }
         createdKind = 'licensee';
         parentOrganizationId = platformOrg?.id || null;
       }
@@ -1683,6 +1721,32 @@ export function registerPlatformOrgRoutes(router) {
         });
       }
     }
+
+      // Checked here, before any row is written. The duplicate-admin check
+      // used to sit after createOrganization, so a clash returned 409 with
+      // the organisation already persisted and no admin attached to it —
+      // and each retry of the same form left behind another orphan (slugs
+      // auto-suffix on collision, so identical names never stopped it).
+      if (adminEmail && String(adminEmail).trim()) {
+        const existingAdmin = await User.findUserByEmail(String(adminEmail).trim());
+        if (existingAdmin) {
+          return res.status(409).json({ error: 'A user with this email already exists' });
+        }
+      }
+
+      // Attaching an Enterprise licence is the other commercial escalation
+      // Platform tier does not get. Refused up front for the same reason as
+      // the check above — never half-create the organisation first.
+      if (
+        createdKind === 'client'
+        && !isLicenseeRequester
+        && parseMultipartBool(req.body.enterpriseLicence)
+        && req.user?.role !== 'admin'
+      ) {
+        return res.status(403).json({
+          error: 'Only an Admin can attach an Enterprise licence. Create the client without one and ask an Admin to add it.',
+        });
+      }
 
       const initialSettings = {};
       if (addrRaw != null && String(addrRaw).trim()) {
@@ -1752,10 +1816,6 @@ export function registerPlatformOrgRoutes(router) {
       }
     }
       if (adminEmail && String(adminEmail).trim()) {
-      const existing = await User.findUserByEmail(adminEmail);
-      if (existing) {
-        return res.status(409).json({ error: 'A user with this email already exists' });
-      }
       let sendWelcomeEmail = parseMultipartBool(req.body.sendWelcomeEmail);
       let enableLogin = parseMultipartBool(req.body.enableLogin);
       if (isLicenseeRequester) {
@@ -2284,7 +2344,7 @@ export function registerPlatformOrgRoutes(router) {
       });
     }
     const token = randomUUID();
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
+    const expiresAt = orgInviteExpiryDate();
     const invite = await Invite.createInvite({
       email: emailNorm,
       token,
@@ -2293,6 +2353,23 @@ export function registerPlatformOrgRoutes(router) {
       invitedRole,
       firstName,
       lastName,
+    });
+    // The invite used to be raised and then handed back as a link in a
+    // toast, so nothing ever reached the invited person's inbox. The link
+    // is still returned as a fallback for when Resend isn't configured.
+    const inviteEmailSent = await sendOrganizationInvite({
+      email: emailNorm,
+      firstName,
+      lastName,
+      token,
+      organizationName: org.name,
+    });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.USER_INVITE_SEND,
+      targetType: 'invite',
+      targetId: String(invite.id),
+      targetOrganizationId: org.id,
+      metadata: { invitedRole, email: emailNorm, inviteEmailSent },
     });
     res.status(201).json({
       invite: {
@@ -2304,6 +2381,7 @@ export function registerPlatformOrgRoutes(router) {
         lastName: invite.last_name ?? '',
       },
       inviteUrl: `/invite/${token}`,
+      inviteEmailSent,
     });
   });
 

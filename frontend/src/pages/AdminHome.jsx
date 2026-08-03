@@ -17,6 +17,7 @@ export default function AdminHome() {
   const [inviteFirstName, setInviteFirstName] = useState('');
   const [inviteLastName, setInviteLastName] = useState('');
   const [inviteLink, setInviteLink] = useState('');
+  const [inviteEmailed, setInviteEmailed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -86,6 +87,7 @@ export default function AdminHome() {
     setBusy(true);
     setError('');
     setInviteLink('');
+    setInviteEmailed(false);
     try {
       const { data } = await api.post('/api/admin/invites', {
         email: inviteEmail,
@@ -94,6 +96,7 @@ export default function AdminHome() {
       });
       const base = window.location.origin;
       setInviteLink(`${base}${data.inviteUrl}`);
+      setInviteEmailed(Boolean(data.inviteEmailSent));
       setInviteEmail('');
       setInviteFirstName('');
       setInviteLastName('');
@@ -196,7 +199,10 @@ export default function AdminHome() {
         </form>
         {inviteLink && (
           <p style={{ marginTop: '1rem', wordBreak: 'break-all' }}>
-            Share: <a href={inviteLink}>{inviteLink}</a>
+            {inviteEmailed
+              ? 'Invitation emailed. You can also share the link directly: '
+              : 'Invitation could not be emailed — share this link instead: '}
+            <a href={inviteLink}>{inviteLink}</a>
           </p>
         )}
       </div>

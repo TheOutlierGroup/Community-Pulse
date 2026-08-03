@@ -119,12 +119,14 @@ export default function PlatformClientUsers() {
         }
       } else if (data?.createdWithoutInvite) {
         showToast(`User created for ${invitedTo}.`, { variant: 'success' });
+      } else if (data?.inviteEmailSent) {
+        showToast(`Invitation sent to ${invitedTo}.`, { variant: 'success' });
       } else {
         const fullInvite = `${window.location.origin}${data.inviteUrl}`;
-        showToast(`Invite link for ${invitedTo}:\n\n${fullInvite}`, {
-          variant: 'success',
-          durationMs: 20000,
-        });
+        showToast(
+          `Invitation could not be emailed — check RESEND_API_KEY and CRM_APP_URL. Share this link with ${invitedTo} instead:\n\n${fullInvite}`,
+          { variant: 'success', durationMs: 20000 }
+        );
       }
       await loadUsers();
       closeInviteModal();
