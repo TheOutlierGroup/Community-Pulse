@@ -50,6 +50,14 @@ export const authLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
+// Pure so the "carry the CRM session's MFA state across the handoff, but
+// re-check it against the account's current status" decision (see
+// migration 085) is directly testable without a database.
+export function mfaVerifiedAtForHandoffExchange(user, consumedTokenRow) {
+  if (!user?.mfa_enabled) return null;
+  return consumedTokenRow?.mfa_verified_at || null;
+}
+
 function publicUser(u) {
   const enabledServices = deriveEnabledServices(u);
   return {
@@ -680,6 +688,11 @@ router.post(
       role: user.role,
       organizationId: user.organization_id,
       organizationKind: user.organization_kind,
+      // Carries the CRM session's MFA verification state across the
+      // handoff (see migration 085) instead of dropping it -- the
+      // exchanged session starts in exactly the state the CRM session
+      // was already in.
+      mfaVerifiedAt: mfaVerifiedAtForHandoffExchange(user, consumed),
     });
 
     res.json({

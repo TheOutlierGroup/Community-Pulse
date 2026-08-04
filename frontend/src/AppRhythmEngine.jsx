@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './components/shared/Auth.jsx';
 import { ToastProvider } from './components/shared/ToastProvider.jsx';
+import MfaReverifyProvider from './components/shared/MfaReverifyProvider.jsx';
 import { lazyWithReload } from './utils/lazyWithReload.js';
 
 /**
@@ -54,33 +55,35 @@ export default function AppRhythmEngine() {
   return (
     <ToastProvider>
       <AuthProvider>
-        <Suspense fallback={null}>
-          <Routes>
-            <Route path="/" element={<RhythmEngineLanding />} />
-            <Route path="/login" element={<RhythmEngineLanding />} />
-            <Route path="/status" element={<PublicStatus />} />
-            <Route path="/sso/exchange" element={<RhythmEngineSsoExchange />} />
-            <Route path="/rhythm-engine" element={<EmployeeRhythmEngine />} />
-            <Route path="/rhythm-engine/:stage" element={<EmployeeRhythmEngine />} />
-            <Route path="/rhythm-engine/link/:token" element={<PublicRhythmEngine />} />
-            <Route path="/rhythm-engine/:stage/link/:token" element={<PublicRhythmEngine />} />
-            <Route path="/pulse" element={<Navigate to="/rhythm-engine" replace />} />
-            <Route path="/pulse/link/:token" element={<PublicRhythmEngine />} />
-            <Route path="/platform/clients/:orgId" element={<PlatformClientLayout />}>
-              <Route path="rhythm-engine" element={<PlatformClientRhythmEngineShell />}>
-                <Route index element={<PlatformClientRhythmEngine />} />
-                <Route path="users" element={<PlatformRhythmEngineInviteUsers />} />
-                <Route path="settings" element={<PlatformRhythmEngineSettings />} />
+        <MfaReverifyProvider>
+          <Suspense fallback={null}>
+            <Routes>
+              <Route path="/" element={<RhythmEngineLanding />} />
+              <Route path="/login" element={<RhythmEngineLanding />} />
+              <Route path="/status" element={<PublicStatus />} />
+              <Route path="/sso/exchange" element={<RhythmEngineSsoExchange />} />
+              <Route path="/rhythm-engine" element={<EmployeeRhythmEngine />} />
+              <Route path="/rhythm-engine/:stage" element={<EmployeeRhythmEngine />} />
+              <Route path="/rhythm-engine/link/:token" element={<PublicRhythmEngine />} />
+              <Route path="/rhythm-engine/:stage/link/:token" element={<PublicRhythmEngine />} />
+              <Route path="/pulse" element={<Navigate to="/rhythm-engine" replace />} />
+              <Route path="/pulse/link/:token" element={<PublicRhythmEngine />} />
+              <Route path="/platform/clients/:orgId" element={<PlatformClientLayout />}>
+                <Route path="rhythm-engine" element={<PlatformClientRhythmEngineShell />}>
+                  <Route index element={<PlatformClientRhythmEngine />} />
+                  <Route path="users" element={<PlatformRhythmEngineInviteUsers />} />
+                  <Route path="settings" element={<PlatformRhythmEngineSettings />} />
+                </Route>
+                <Route path="pulse/*" element={<Navigate to="rhythm-engine" replace />} />
               </Route>
-              <Route path="pulse/*" element={<Navigate to="rhythm-engine" replace />} />
-            </Route>
-            <Route path="/account" element={<AccountPage />} />
-            <Route path="/settings" element={<Navigate to="/account" replace />} />
-            <Route path="/client" element={<ClientHome />} />
-            <Route path="/admin" element={<AdminHome />} />
-            <Route path="/admin/sessions/:id" element={<AdminSession />} />
-          </Routes>
-        </Suspense>
+              <Route path="/account" element={<AccountPage />} />
+              <Route path="/settings" element={<Navigate to="/account" replace />} />
+              <Route path="/client" element={<ClientHome />} />
+              <Route path="/admin" element={<AdminHome />} />
+              <Route path="/admin/sessions/:id" element={<AdminSession />} />
+            </Routes>
+          </Suspense>
+        </MfaReverifyProvider>
       </AuthProvider>
     </ToastProvider>
   );
