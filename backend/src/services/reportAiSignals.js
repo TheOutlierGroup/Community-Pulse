@@ -24,13 +24,28 @@ function teamsFallbackText(reportData) {
     (t) => t.adoption_status === 'LOW' && t.sponsorship_status === 'LOW',
   );
   if (belowBoth.length === 0 && belowAdoption === 0 && belowSponsorship === 0) {
-    return `All ${teams.length} teams sit above the 28/40 readiness threshold on both Adoption and Sponsorship — uniform launch conditions across the org.`;
+    return `All ${teams.length} teams sit above the 28/40 readiness threshold on both Adoption and Sponsorship, giving uniform launch conditions across the org.`;
   }
   const worst = belowBoth[0]
     || teams.slice().sort((a, b) => (a.adoption_score ?? 0) + (a.sponsorship_score ?? 0)
       - ((b.adoption_score ?? 0) + (b.sponsorship_score ?? 0)))[0];
   const worstName = worst?.name ? ` (notably ${worst.name})` : '';
   return `${belowBoth.length} of ${teams.length} teams fall below the readiness threshold on both Adoption and Sponsorship${worstName}; ${belowAdoption} are below on Adoption and ${belowSponsorship} on Sponsorship overall. Sequence enablement against this list rather than treating the org as uniform.`;
+}
+
+const HOUSE_STYLE_RULES = `- Write in Australian English (e.g. "organisation", "programme", "recognise").
+- Never use an em dash (—). Use a comma, colon, or a new sentence instead.`;
+
+// Belt-and-suspenders on top of HOUSE_STYLE_RULES above: an instruction is
+// not a guarantee, and EXE-05's "no em dashes" requirement applies to
+// whatever text actually lands in the delivered report, not to how well
+// the model followed the prompt. " – " keeps the parenthetical-aside
+// reading a stray em dash was standing in for; a bare "—" (no surrounding
+// space, unlikely from prose but cheap to cover) collapses to "-".
+function stripEmDashes(text) {
+  return String(text || '')
+    .replace(/\s+—\s+/g, ' – ')
+    .replace(/—/g, '-');
 }
 
 const SECTION_SYSTEM_PROMPT = `You are a specialist change management analyst writing a signal commentary for a section of a confidential client report.
@@ -40,18 +55,20 @@ Rules:
 - Lead with the most important finding.
 - Name specific data points where possible.
 - End with one clear implication.
-- Respond with prose only.`;
+- Respond with prose only.
+${HOUSE_STYLE_RULES}`;
 
 // Dedicated system prompt for the report's "Executive Overview" signal
 // box. The section-level prompt above is too short and reads as a sound
 // bite; the executive summary needs to do the strategic interpretation
 // the rest of the report leaves to the reader.
-const EXECUTIVE_SYSTEM_PROMPT = `Generate an executive summary based on the data in this report. Write for a C-suite audience and focus on the 'so what' — the key insights, implications, and strategic meaning behind the data. Your summary must include:
+const EXECUTIVE_SYSTEM_PROMPT = `Generate an executive summary based on the data in this report. Write for a C-suite audience and focus on the 'so what': the key insights, implications, and strategic meaning behind the data. Your summary must include:
 - A clear statement on whether the initiative is 'cleared for launch' or not, based on the evidence.
-- A high-level interpretation of the 'messy middle' — summarising the major management, operational, or performance dynamics revealed in the data.
+- A high-level interpretation of the 'messy middle': summarising the major management, operational, or performance dynamics revealed in the data.
 - A concise overview of the 'next steps' section, highlighting only the actions that matter most at an executive level.
 The tone should be concise, outcome-focused, and aligned with how an executive summary is typically written.
-Respond with prose only.`;
+Respond with prose only.
+${HOUSE_STYLE_RULES}`;
 
 async function callClaude({ apiKey, instruction, payload, systemPrompt = SECTION_SYSTEM_PROMPT, maxTokens = 300 }) {
   const controller = new AbortController();
@@ -83,7 +100,7 @@ async function callClaude({ apiKey, instruction, payload, systemPrompt = SECTION
     }
     const data = await response.json();
     const text = data?.content?.find?.((item) => item.type === 'text')?.text || '';
-    return String(text).trim();
+    return stripEmDashes(String(text).trim());
   } finally {
     clearTimeout(timeout);
   }

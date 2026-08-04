@@ -61,8 +61,9 @@ import {
   getSurveyCopyForAudience,
   scoreBandForSponsorshipLoad,
   scoreResponseFromSteps,
-  SPONSORSHIP_LOAD_BAND_DEFAULTS,
-  SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD,
+  sponsorshipConfigFromOrgSettings,
+  sponsorshipLoadBandOrder,
+  sponsorshipChainStateOrder,
 } from '../../services/pulseEngine.js';
 import {
   assertClientOrganizationPlatformForUser,
@@ -294,49 +295,6 @@ function buildExecutiveSummaryContent({
     scenarios,
     basedOnResponsesText: `Based on ${completedTotal || 0} responses · Threshold ${threshold}/40`,
   };
-}
-
-function sponsorshipConfigFromOrgSettings(settings) {
-  const source =
-    settings?.sponsorshipAnalysisConfig && typeof settings.sponsorshipAnalysisConfig === 'object'
-      ? settings.sponsorshipAnalysisConfig
-      : {};
-  const receivedThreshold = Number(source.receivedThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD);
-  const capacityThreshold = Number(source.capacityThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD);
-  const boundaries =
-    source.loadBandBoundaries && typeof source.loadBandBoundaries === 'object'
-      ? source.loadBandBoundaries
-      : {};
-  const loadBandBoundaries = {
-    sustainableMin: Number(boundaries.sustainableMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.sustainableMin),
-    stretchedMin: Number(boundaries.stretchedMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.stretchedMin),
-    atCapacityMin: Number(boundaries.atCapacityMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.atCapacityMin),
-  };
-  const teamTableDisplayLimit = Number(source.teamTableDisplayLimit ?? 50);
-  const aiSignalsEnabled = source.aiSignalsEnabled !== false;
-  return {
-    receivedThreshold,
-    capacityThreshold,
-    loadBandBoundaries,
-    teamTableDisplayLimit:
-      Number.isInteger(teamTableDisplayLimit) && teamTableDisplayLimit > 0
-        ? teamTableDisplayLimit
-        : 50,
-    aiSignalsEnabled,
-  };
-}
-
-function sponsorshipLoadBandOrder() {
-  return ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
-}
-
-function sponsorshipChainStateOrder() {
-  return [
-    'Chain Functioning',
-    'Breaking at Manager Level',
-    'Managers Resilient, Under-Supported',
-    'Sponsorship Failed at Both Levels',
-  ];
 }
 
 function chainSeverityRank(chainState) {

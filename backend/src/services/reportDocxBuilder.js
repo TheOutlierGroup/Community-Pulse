@@ -84,7 +84,7 @@ async function repairTocField(docxBuffer) {
 
   const tocSdtPattern = /<w:sdt>\s*<w:sdtPr><w:alias w:val="Contents"\/><\/w:sdtPr>\s*<w:sdtContent>[\s\S]*?<\/w:sdtContent>\s*<\/w:sdt>/g;
 
-  const placeholder = 'Page numbers populate when this report is opened in Microsoft Word — right-click here and choose "Update Field" if the table below is empty.';
+  const placeholder = 'Page numbers populate when this report is opened in Microsoft Word – right-click here and choose "Update Field" if the table below is empty.';
   const replacement = (
     '<w:p>'
     + '<w:pPr><w:spacing w:after="200"/></w:pPr>'
@@ -112,7 +112,7 @@ async function repairTocField(docxBuffer) {
 // - Box and card backgrounds use light pastels (NEVER grey) so the
 //   exported document reads as a designed artefact, not a spreadsheet.
 const COLOUR = {
-  // Primary ink — used for every piece of body, heading and label text.
+  // Primary ink – used for every piece of body, heading and label text.
   text: '1F1C2E',
 
   // Brand block colour for solid-fill panels (verdict band, contact
@@ -135,7 +135,7 @@ const COLOUR = {
   scoreRedBg: 'F4CCCC',
   scoreInfoBg: 'CFE2F3',
 
-  // Alerts — pastel BG, deep border/title text, ink body for readability
+  // Alerts – pastel BG, deep border/title text, ink body for readability
   alertCriticalBg: 'F4CCCC',
   alertCriticalBorder: 'C00000',
   alertWarningBg: 'FFF2CC',
@@ -145,12 +145,12 @@ const COLOUR = {
   alertPositiveBg: 'E2EFDA',
   alertPositiveBorder: '548235',
 
-  // Signal callout boxes — cream fill, accent border/title
+  // Signal callout boxes – cream fill, accent border/title
   signalBg: 'FFF8E1',
   signalBorderBlue: '1F3864',
   signalBorderOrange: 'E69138',
 
-  // Next-steps cards — soft cream/sand backgrounds, ink text.
+  // Next-steps cards – soft cream/sand backgrounds, ink text.
   nextStepBg: 'FFF8E1',
   nextStepAccent: 'E69138',
 
@@ -160,7 +160,7 @@ const COLOUR = {
   rowStripe: 'FAF6EC',
   white: 'FFFFFF',
 
-  // Quadrant matrix — match dashboard quadrant colour coding.
+  // Quadrant matrix – match dashboard quadrant colour coding.
   quadOptimalBg: '1E855D',
   quadMotivatedBg: 'CC4E0F',
   quadHighRiskBg: 'E52235',
@@ -168,20 +168,20 @@ const COLOUR = {
   quadOnDark: 'FFFFFF',
   quadOnAmber: '000000',
 
-  // Verdict header band — navy block with white description text
+  // Verdict header band – navy block with white description text
   verdictBg: '1F3864',
   verdictPassText: '548235',
   verdictFailText: 'C00000',
   verdictDescText: 'FFFFFF',
   verdictLabelText: 'FFFFFF',
 
-  // Sponsorship chain matrix — pastel cells with ink text
+  // Sponsorship chain matrix – pastel cells with ink text
   chainGreen: 'D9EAD3',
   chainAmber: 'FFF2CC',
   chainOrange: 'FFF2CC',
   chainRed: 'F4CCCC',
 
-  // Manager load bands — pastel cell BGs, status-colored percent
+  // Manager load bands – pastel cell BGs, status-colored percent
   loadSustainable: 'D9EAD3',
   loadStretched: 'FFF2CC',
   loadAtCapacity: 'FCE4D6',
@@ -269,7 +269,7 @@ function metricRow(label, value) {
             width: { size: 70, type: WidthType.PERCENTAGE },
             borders: { top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE },
             children: [new Paragraph({
-              children: [new TextRun({ text: String(value ?? '—'), font: FONT.body, size: 21, color: COLOUR.text })],
+              children: [new TextRun({ text: String(value ?? '–'), font: FONT.body, size: 21, color: COLOUR.text })],
             })],
           }),
         ],
@@ -311,7 +311,7 @@ function styledCell(text, opts = {}) {
   const cellOpts = {
     children: [new Paragraph({
       alignment,
-      children: [new TextRun({ text: String(text ?? '—'), font, size, bold, color })],
+      children: [new TextRun({ text: String(text ?? '–'), font, size, bold, color })],
     })],
   };
   if (shading) cellOpts.shading = { type: ShadingType.CLEAR, color: 'auto', fill: shading };
@@ -640,7 +640,7 @@ function alertBlock(severity, title, description) {
         children: [
           new Paragraph({
             children: [
-              new TextRun({ text: `${severity} — `, font: FONT.heading, size: 20, bold: true, color: COLOUR.text }),
+              new TextRun({ text: `${severity} – `, font: FONT.heading, size: 20, bold: true, color: COLOUR.text }),
               new TextRun({ text: title.toUpperCase(), font: FONT.heading, size: 20, bold: true, color: COLOUR.text }),
             ],
             spacing: { after: 50 },
@@ -905,7 +905,7 @@ function teamBreakdownTable(teams) {
     // PT-01: a team held back by the sample-size floor says so, rather
     // than showing an em-dash that reads like missing data.
     const suppressed = team.sample_size_met === false;
-    const withheld = suppressed ? 'Insufficient data' : '—';
+    const withheld = suppressed ? 'Insufficient data' : '–';
     const adoptionText = team.adoption_score != null
       ? `${team.adoption_score} / 40 (${team.adoption_status})`
       : withheld;
@@ -987,17 +987,17 @@ function cohortSuppressionNote(min, cohort) {
 }
 
 function dimensionStatusText(avg) {
-  if (avg == null) return '—';
+  if (avg == null) return '–';
   if (avg >= 3.5) return 'Above threshold';
   if (avg >= 3.0) return 'Manageable but worth monitoring';
-  return 'Below threshold — requires intervention';
+  return 'Below threshold – requires intervention';
 }
 
 /**
  * INF-07 cover-page brand override. If the report's organization sits
  * under a licensee, the licensee's brand displaces Outlier's navy on the
  * cover (logo, primary heading colour, "Prepared by …" line). The body
- * styling is unchanged — keeps the report layout consistent across
+ * styling is unchanged – keeps the report layout consistent across
  * tenants while making attribution visible.
  */
 const HEX_RE = /^#?[0-9a-f]{6}$/i;
@@ -1083,11 +1083,11 @@ export async function buildReportDocx({
   // alone, so they follow that cohort's floor rather than the report-wide
   // response minimum.
   const employeeSuppressed = reportData.dimensions?.employee_sample_size_met === false;
-  const employeeWithheld = employeeSuppressed ? 'Insufficient data' : '—';
+  const employeeWithheld = employeeSuppressed ? 'Insufficient data' : '–';
 
   const dimTableRows = (dims, sectionLabel) =>
     dims.map((d) => [
-      { _styled: true, text: `${d.id} — ${d.label}`, bold: true },
+      { _styled: true, text: `${d.id} – ${d.label}`, bold: true },
       sectionLabel,
       { _styled: true, text: d.avg == null ? employeeWithheld : `${d.avg} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
       d.avg == null && employeeSuppressed ? '' : dimensionStatusText(d.avg),
@@ -1101,7 +1101,7 @@ export async function buildReportDocx({
 
   // BRAND-01: the contact line used to fall back to Outlier's own email
   // and website, which put Outlier's details on every report where the
-  // client had no report_contact set — including reports a Practitioner
+  // client had no report_contact set – including reports a Practitioner
   // delivers under their own brand. Falls back to the Practitioner's
   // configured support details instead, and is omitted entirely when
   // there is nothing to show rather than inventing an address.
@@ -1115,16 +1115,16 @@ export async function buildReportDocx({
   })();
 
   // PT-01: the whole Manager Overview section averages over the manager
-  // cohort alone, so it stands or falls on that cohort's size — not on
+  // cohort alone, so it stands or falls on that cohort's size – not on
   // the org-wide response count that gates the report as a whole.
   const managerSuppressed = reportData.manager?.sample_size_met === false;
   const minSample = reportData.suppression?.min_sample_size ?? 5;
-  const managerWithheld = managerSuppressed ? 'Insufficient data' : '—';
+  const managerWithheld = managerSuppressed ? 'Insufficient data' : '–';
 
   const mgrDimTableRows = reportData.dimensions.manager.map((d) => {
     const section = d.id.startsWith('1') ? 'Received' : 'Capacity';
     return [
-      { _styled: true, text: `${d.id} — ${d.managerLabel}`, bold: true },
+      { _styled: true, text: `${d.id} – ${d.managerLabel}`, bold: true },
       section,
       { _styled: true, text: d.avg == null ? managerWithheld : `${d.avg} / 5.0`, bold: true, color: dimensionScoreColour(d.avg), shading: dimensionScoreBg(d.avg), alignment: AlignmentType.CENTER },
       d.avg == null && managerSuppressed ? '' : dimensionStatusText(d.avg),
@@ -1213,7 +1213,7 @@ export async function buildReportDocx({
   });
 
   const responseRateText = reportData.totals.response_rate != null
-    ? ` (${reportData.totals.response_rate}% response rate — ${reportData.totals.responses} of ${reportData.totals.invited} invited)`
+    ? ` (${reportData.totals.response_rate}% response rate – ${reportData.totals.responses} of ${reportData.totals.invited} invited)`
     : '';
 
   const doc = new Document({
@@ -1280,7 +1280,7 @@ export async function buildReportDocx({
           
           spacer(300),
           new Paragraph({
-            children: [new TextRun({ text: 'CONFIDENTIAL — FOR AUTHORISED RECIPIENTS ONLY', font: FONT.heading, size: 20, bold: true, color: COLOUR.scoreRed })],
+            children: [new TextRun({ text: 'CONFIDENTIAL – FOR AUTHORISED RECIPIENTS ONLY', font: FONT.heading, size: 20, bold: true, color: COLOUR.scoreRed })],
           }),
 
           // ── Table of Contents ─────────────────────────────────────────
@@ -1292,7 +1292,7 @@ export async function buildReportDocx({
           // ── Executive Summary ─────────────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),
           h1('Executive Summary'),
-          body(`This report presents the results of the Change Readiness Assessment conducted for ${reportData.org.name}. The assessment was completed by ${reportData.totals.responses} respondents across ${reportData.totals.teams_in_scope || 'multiple teams'}. The findings below reflect the ${stageLabel.toLowerCase()} baseline and should be read as diagnostic intelligence ahead of programme launch — not as a verdict on the organisation's capability.`),
+          body(`This report presents the results of the Change Readiness Assessment conducted for ${reportData.org.name}. The assessment was completed by ${reportData.totals.responses} respondents across ${reportData.totals.teams_in_scope || 'multiple teams'}. The findings below reflect the ${stageLabel.toLowerCase()} baseline and should be read as diagnostic intelligence ahead of programme launch – not as a verdict on the organisation's capability.`),
           spacer(100),
           h2('Overall Readiness Verdict'),
           verdictBox(reportData.readiness.verdict, reportData.readiness.quadrant_label),
@@ -1307,7 +1307,9 @@ export async function buildReportDocx({
           body(`The Sponsorship Credibility score of ${reportData.readiness.sponsorship_score}/40 ${reportData.readiness.sponsorship_status === 'HIGH' ? 'meets' : 'falls below'} the 28-point threshold. ${reportData.readiness.sponsorship_status === 'LOW' ? 'Employees and managers do not currently experience senior leaders as visibly modelling the change, communicating with sufficient honesty about its challenges, or creating the psychological safety needed to raise concerns.' : 'Employees and managers perceive leadership as credibly sponsoring the change.'}`),
           spacer(100),
           h2('Readiness Quadrant'),
-          body('The quadrant classification combines both scores to produce a single strategic position.'),
+          body(
+            `Adoption Readiness ${reportData.readiness.adoption_score}/40 · Sponsorship Credibility ${reportData.readiness.sponsorship_score}/40. The quadrant classification below combines both scores to produce a single strategic position.`
+          ),
           quadrantMatrix(reportData.readiness.quadrant),
           spacer(160),
           h2('Summary of Key Findings'),
@@ -1325,7 +1327,7 @@ export async function buildReportDocx({
             reportData.readiness.adoption_score, 40, reportData.readiness.adoption_status,
           ),
           spacer(160),
-          h2('Dimension Breakdown — Adoption'),
+          h2('Dimension Breakdown – Adoption'),
           body('Adoption Readiness is composed of four dimensions, each scored on a 2–10 scale (the sum of two questions per dimension), normalised here to a 1.0–5.0 average for comparability.'),
           styledTable(
             ['Dimension', 'Section', 'Avg Score', 'Status'],
@@ -1350,7 +1352,7 @@ export async function buildReportDocx({
             reportData.readiness.sponsorship_score, 40, reportData.readiness.sponsorship_status,
           ),
           spacer(160),
-          h2('Dimension Breakdown — Sponsorship'),
+          h2('Dimension Breakdown – Sponsorship'),
           styledTable(
             ['Dimension', 'Section', 'Avg Score', 'Status'],
             dimTableRows(sponsorshipDims, 'Sponsorship'),
@@ -1393,10 +1395,10 @@ export async function buildReportDocx({
                 h3('Sponsorship Sub-Score Overview'),
                 scoreCardPair(
                   'Sponsorship Received',
-                  reportData.manager.sponsorship_received_avg ?? '—', 20,
+                  reportData.manager.sponsorship_received_avg ?? '–', 20,
                   (reportData.manager.sponsorship_received_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
                   'Sponsorship Capacity',
-                  reportData.manager.sponsorship_capacity_avg ?? '—', 20,
+                  reportData.manager.sponsorship_capacity_avg ?? '–', 20,
                   (reportData.manager.sponsorship_capacity_avg ?? 0) >= 14 ? 'HIGH' : 'LOW',
                 ),
                 spacer(160),

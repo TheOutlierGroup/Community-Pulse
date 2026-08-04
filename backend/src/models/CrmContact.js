@@ -223,7 +223,47 @@ export async function contactBelongsToClientOrg(clientOrganizationId, contactId)
 // scoped to the workspace (platform_org_id) rather than any one org, so
 // contacts survive their linked Prospect/Client being deleted.
 
-export async function listAllContacts(platformOrgId, { search, linkType, businessUnit } = {}) {
+// D-015: whether a contact falls inside a Basic-tier user's tagged
+// Business Units, mirroring the same rule used for Clients (crmOrgRoutes.js
+// via resolveBasicTierBusinessUnitScope): visible if its linked Prospect's
+// own business_unit tag is allowed, or if its linked Client has an enabled
+// service that maps into an allowed unit (organizationVisibleToBusinessUnits's
+// mapping, applied here directly since a contact can link to either kind of
+// org). A contact linked to neither isn't tied to any org's confidential
+// data, so it's visible regardless of scope -- same as an admin/platform
+// caller (allowedBusinessUnits === null) always is.
+export function contactVisibleToBusinessUnits(context, allowedBusinessUnits) {
+  if (!Array.isArray(allowedBusinessUnits)) return true;
+  if (!context) return false;
+  if (allowedBusinessUnits.length === 0) return false;
+  const allowed = new Set(allowedBusinessUnits);
+  if (!context.crm_organisation_id && !context.client_organization_id) return true;
+  if (context.crm_organisation_id && allowed.has(context.prospect_business_unit)) return true;
+  if (context.client_organization_id) {
+    const clientBUs = businessUnitsForEnabledServices(
+      enabledServicesFromOrganizationSettings(context.client_settings)
+    );
+    if (clientBUs.some((bu) => allowed.has(bu))) return true;
+  }
+  return false;
+}
+
+/** Business-Unit context for a single contact, for the same scope check listAllContacts applies to its list. */
+export async function getContactBusinessUnitContext(platformOrgId, contactId) {
+  const { rows } = await query(
+    `SELECT c.crm_organisation_id, c.client_organization_id,
+            po.business_unit AS prospect_business_unit,
+            co.settings AS client_settings
+       FROM crm_contacts c
+       LEFT JOIN crm_organisations po ON po.organisation_id = c.crm_organisation_id
+       LEFT JOIN organizations co ON co.id = c.client_organization_id
+      WHERE c.contact_id = $1 AND c.platform_org_id = $2 AND c.deleted_at IS NULL`,
+    [contactId, platformOrgId],
+  );
+  return rows[0] || null;
+}
+
+export async function listAllContacts(platformOrgId, { search, linkType, businessUnit, allowedBusinessUnits = null } = {}) {
   const conditions = ['c.platform_org_id = $1', 'c.deleted_at IS NULL'];
   const values = [platformOrgId];
   let i = 2;
@@ -268,12 +308,16 @@ export async function listAllContacts(platformOrgId, { search, linkType, busines
   // mapping used to scope Basic-tier platform users to Business Units), so
   // the "linked to" badge can still carry a BU accent colour. Not used for
   // filtering; the businessUnit query param only matches Prospects.
-  return rows.map(({ client_settings, ...row }) => ({
+  const withDerivedBu = rows.map((row) => ({
     ...row,
-    client_business_unit: client_settings
-      ? businessUnitsForEnabledServices(enabledServicesFromOrganizationSettings(client_settings))[0] || null
+    client_business_unit: row.client_settings
+      ? businessUnitsForEnabledServices(enabledServicesFromOrganizationSettings(row.client_settings))[0] || null
       : null,
   }));
+  const scoped = Array.isArray(allowedBusinessUnits)
+    ? withDerivedBu.filter((row) => contactVisibleToBusinessUnits(row, allowedBusinessUnits))
+    : withDerivedBu;
+  return scoped.map(({ client_settings, ...row }) => row);
 }
 
 export async function getContactGlobal(platformOrgId, contactId) {

@@ -251,3 +251,58 @@ test('assembleReportData falls back to manager display name when group_level_val
   assert.equal(out.teams.length, 1);
   assert.equal(out.teams[0].name, 'Mike');
 });
+
+// D-008/D-016/D-017: the dashboard resolves an org's own
+// sponsorshipAnalysisConfig overrides before classifying load bands and
+// chain states; the report used to ignore organization.settings entirely
+// and always use the platform defaults, so a customised org's report and
+// live dashboard silently disagreed on the exact same manager responses.
+test('assembleReportData applies an org\'s own sponsorshipAnalysisConfig overrides, not just the platform defaults', async () => {
+  // Five managers answering MQ15/MQ16 = 4 each -> sponsorshipLoadScore = 8.
+  // Platform default loadBandBoundaries.sustainableMin is 8, so 8 lands in
+  // Sustainable. A per-org override raising sustainableMin to 9 should
+  // reclassify the same responses into Stretched instead.
+  const managerRows = Array.from({ length: 5 }, () => makeRow({ role: 'admin', value: 4 }));
+
+  function buildAssembler() {
+    return createAssembleReportData({
+      reportMinResponses: 1,
+      reportStageMap: { pre: 'pre', mid: 'during', post: 'completed' },
+      pulseSessionModel: {
+        async listSessionsForOrg() {
+          return [{ id: 'preA', session_purpose: 'pre_project' }];
+        },
+      },
+      listSessionResponsesFn: async () => ({ rows: managerRows }),
+      userModel: {
+        async countActiveUsersByRoleForOrg() {
+          return { employee: 0, admin: 5 };
+        },
+      },
+      pulseLinkInviteModel: {
+        async listInviteRowsForOrg() {
+          return [];
+        },
+      },
+    });
+  }
+
+  const defaultOut = await buildAssembler()({
+    organization: { id: 'org-1', name: 'Client A' },
+    stage: 'pre',
+  });
+  const bandCount = (out, name) => out.manager.load_distribution.find((row) => row.name === name)?.count;
+  assert.equal(bandCount(defaultOut, 'Sustainable'), 5);
+  assert.equal(bandCount(defaultOut, 'Stretched'), 0);
+
+  const overriddenOut = await buildAssembler()({
+    organization: {
+      id: 'org-1',
+      name: 'Client A',
+      settings: { sponsorshipAnalysisConfig: { loadBandBoundaries: { sustainableMin: 9 } } },
+    },
+    stage: 'pre',
+  });
+  assert.equal(bandCount(overriddenOut, 'Sustainable'), 0);
+  assert.equal(bandCount(overriddenOut, 'Stretched'), 5);
+});

@@ -296,7 +296,7 @@ export default function PlatformPulseSettings() {
             disabled={pulseTimepointBusy}
           >
             <Plus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
-            New During checkpoint
+            New &lsquo;During&rsquo; Checkpoint
           </button>
         </div>
       </div>
@@ -524,9 +524,8 @@ export default function PlatformPulseSettings() {
           <p style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
             <TriangleAlert size={20} strokeWidth={2} aria-hidden style={{ flexShrink: 0, marginTop: '0.15rem' }} />
             <span>
-              This opens a fresh During checkpoint and consumes one assessment against this client&rsquo;s licence.
-              Existing checkpoints and their responses are kept. Recipients for this new checkpoint will need to be
-              invited separately under Users.
+              This opens a fresh During checkpoint. Existing checkpoints and their responses are kept. Recipients
+              for this new checkpoint will need to be invited separately under Users.
             </span>
           </p>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.8rem' }}>

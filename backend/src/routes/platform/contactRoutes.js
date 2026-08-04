@@ -2,7 +2,7 @@ import { Router } from 'express';
 import * as CrmContact from '../../models/CrmContact.js';
 import { organisationBelongsToOrg } from '../../models/CrmOrganisation.js';
 import { auditFromRequest, AUDIT_ACTIONS } from '../../services/auditLog.js';
-import { assertClientOrganizationPlatformForUser } from './shared.js';
+import { assertClientOrganizationPlatformForUser, resolveBasicTierBusinessUnitScope } from './shared.js';
 import { importContacts } from '../../services/contactImport.js';
 
 const router = Router();
@@ -26,12 +26,28 @@ async function assertLinksBelongToWorkspace(req, data) {
   return null;
 }
 
+// D-015: this global Contacts list had no Business Unit scoping at all --
+// every contact in the platform org was returned to any authenticated
+// workspace user regardless of tier, with the businessUnit filter param
+// only ever narrowing the view, never enforcing a boundary. Basic tier is
+// scoped everywhere else (Clients, Prospects); this brings Contacts in
+// line with that same rule.
+async function assertContactVisibleToRequester(req, contactId) {
+  const scope = await resolveBasicTierBusinessUnitScope(req.user);
+  if (scope === null) return true;
+  const context = await CrmContact.getContactBusinessUnitContext(orgId(req), contactId);
+  return CrmContact.contactVisibleToBusinessUnits(context, scope);
+}
+
 router.get('/contacts', async (req, res) => {
   try {
+    const scope = await resolveBasicTierBusinessUnitScope(req.user);
+    if (scope !== null && scope.length === 0) return res.json({ contacts: [] });
     const contacts = await CrmContact.listAllContacts(orgId(req), {
       search: req.query.search,
       linkType: req.query.linkType,
       businessUnit: req.query.businessUnit,
+      allowedBusinessUnits: scope,
     });
     res.json({ contacts });
   } catch (e) {
@@ -89,6 +105,9 @@ router.patch('/contacts/:id', async (req, res) => {
   try {
     const existing = await CrmContact.getContactGlobal(orgId(req), req.params.id);
     if (!existing) return res.status(404).json({ error: 'Contact not found.' });
+    if (!(await assertContactVisibleToRequester(req, req.params.id))) {
+      return res.status(404).json({ error: 'Contact not found.' });
+    }
     const linkError = await assertLinksBelongToWorkspace(req, req.body);
     if (linkError) return res.status(400).json({ error: linkError });
 
@@ -111,6 +130,9 @@ router.delete('/contacts/:id', async (req, res) => {
   try {
     const existing = await CrmContact.getContactGlobal(orgId(req), req.params.id);
     if (!existing) return res.status(404).json({ error: 'Contact not found.' });
+    if (!(await assertContactVisibleToRequester(req, req.params.id))) {
+      return res.status(404).json({ error: 'Contact not found.' });
+    }
     await CrmContact.deleteContactGlobal(orgId(req), req.params.id, req.user.id);
     auditFromRequest(req)({
       action: AUDIT_ACTIONS.CONTACT_DELETE,

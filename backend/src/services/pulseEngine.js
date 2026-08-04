@@ -8,6 +8,62 @@ export const SPONSORSHIP_LOAD_BAND_DEFAULTS = {
   atCapacityMin: 4,
 };
 
+/**
+ * Resolves an org's own Sponsorship Analysis overrides (received/capacity
+ * thresholds, load-band boundaries) against the platform defaults above.
+ *
+ * D-008/D-016/D-017: this used to be defined only inside orgRoutes.js's
+ * dashboard route and threaded through to classifySponsorshipChainState /
+ * scoreBandForSponsorshipLoad there, while reportDataAssembler.js called
+ * those same two functions with no config at all -- always the hardcoded
+ * defaults. For any org that had actually customised these values, the
+ * downloaded report and the live dashboard silently classified the exact
+ * same manager responses into different load bands and chain states.
+ * Single source of truth now, imported by both.
+ */
+export function sponsorshipConfigFromOrgSettings(settings) {
+  const source =
+    settings?.sponsorshipAnalysisConfig && typeof settings.sponsorshipAnalysisConfig === 'object'
+      ? settings.sponsorshipAnalysisConfig
+      : {};
+  const receivedThreshold = Number(source.receivedThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD);
+  const capacityThreshold = Number(source.capacityThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD);
+  const boundaries =
+    source.loadBandBoundaries && typeof source.loadBandBoundaries === 'object'
+      ? source.loadBandBoundaries
+      : {};
+  const loadBandBoundaries = {
+    sustainableMin: Number(boundaries.sustainableMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.sustainableMin),
+    stretchedMin: Number(boundaries.stretchedMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.stretchedMin),
+    atCapacityMin: Number(boundaries.atCapacityMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.atCapacityMin),
+  };
+  const teamTableDisplayLimit = Number(source.teamTableDisplayLimit ?? 50);
+  const aiSignalsEnabled = source.aiSignalsEnabled !== false;
+  return {
+    receivedThreshold,
+    capacityThreshold,
+    loadBandBoundaries,
+    teamTableDisplayLimit:
+      Number.isInteger(teamTableDisplayLimit) && teamTableDisplayLimit > 0
+        ? teamTableDisplayLimit
+        : 50,
+    aiSignalsEnabled,
+  };
+}
+
+export function sponsorshipLoadBandOrder() {
+  return ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
+}
+
+export function sponsorshipChainStateOrder() {
+  return [
+    'Chain Functioning',
+    'Breaking at Manager Level',
+    'Managers Resilient, Under-Supported',
+    'Sponsorship Failed at Both Levels',
+  ];
+}
+
 const DIMENSIONS = [
   {
     id: '1A',

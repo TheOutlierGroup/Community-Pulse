@@ -8,7 +8,7 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
 import { parseRecipientCsv } from '../utils/pulseInviteCsv.js';
-import { Bold, Italic, Link2, List, ListOrdered, Mail, Trash2, Upload, UserPlus } from 'lucide-react';
+import { Bold, Download, Italic, Link2, List, ListOrdered, Mail, Trash2, Upload, UserPlus } from 'lucide-react';
 
 /** Minimum gap between each send request to stay under typical email API rate limits (e.g. Resend ~2 rps). */
 const BULK_SEND_INTERVAL_MS = 700;
@@ -360,6 +360,7 @@ export default function PlatformPulseInviteUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyImport, setBusyImport] = useState(false);
+  const [templateDownloadBusy, setTemplateDownloadBusy] = useState(false);
   const [dueDate, setDueDate] = useState('');
   const [dueDateSaving, setDueDateSaving] = useState(false);
   const [copyingFromPre, setCopyingFromPre] = useState(false);
@@ -627,6 +628,45 @@ export default function PlatformPulseInviteUsers() {
   function openCsvPicker() {
     if (busyImport || bulkSending || copyingFromPre) return;
     fileInputRef.current?.click();
+  }
+
+  // D-009: this used to only be reachable from Client Configurations, one
+  // level removed from the Import CSV button it's meant to precede — moved
+  // here so download-template-then-import-it is a single-page loop.
+  async function downloadUserImportTemplate() {
+    if (configuredGroupLabels.length === 0) {
+      showToast('Set the group levels for this client in Rhythm Engine settings before downloading the template.', {
+        variant: 'error',
+      });
+      return;
+    }
+    setTemplateDownloadBusy(true);
+    try {
+      const response = await api.post(
+        `/api/platform/organizations/${orgId}/user-import-template`,
+        {
+          groupLevels: configuredGroupLabels.length,
+          groupLevelLabels: configuredGroupLabels,
+        },
+        { responseType: 'blob' }
+      );
+      const fallbackName = `client-${orgId}-user-import-template.csv`;
+      const disposition = String(response.headers?.['content-disposition'] || '');
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match?.[1] || fallbackName;
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
+      const anchor = document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not download template.', { variant: 'error' });
+    } finally {
+      setTemplateDownloadBusy(false);
+    }
   }
 
   function exportRecipientsCsv() {
@@ -1405,6 +1445,16 @@ export default function PlatformPulseInviteUsers() {
               }}
             />
           </label>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ margin: 0 }}
+            onClick={downloadUserImportTemplate}
+            disabled={templateDownloadBusy || busyImport || bulkSending || copyingFromPre}
+          >
+            <Download size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
+            {templateDownloadBusy ? 'Downloading…' : 'Download CSV template'}
+          </button>
           <button
             type="button"
             className="btn btn-primary"

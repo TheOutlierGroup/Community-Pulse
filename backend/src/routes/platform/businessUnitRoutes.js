@@ -1,8 +1,22 @@
 import { Router } from 'express';
 import * as BusinessUnit from '../../models/BusinessUnit.js';
 import { requirePlatformAdminRole } from '../../middleware/auth.js';
+import { resolveBasicTierBusinessUnitScope } from './shared.js';
 
 const router = Router();
+
+// D-014: this list/detail/members surface was readable by any authenticated
+// workspace user regardless of tier, so a Basic-tier user (scoped to
+// specific Business Units everywhere else -- Clients, Prospects, Contacts)
+// could see every Business Unit's name and staff roster here, including
+// ones outside their assigned tags. Basic tier is now scoped to the same
+// user_business_units tags used everywhere else, matched by name -- the
+// mechanism this codebase already uses to tie the two systems together
+// (see migration 068's comment on user_business_units).
+async function basicTierAllowedBuNames(user) {
+  const scope = await resolveBasicTierBusinessUnitScope(user);
+  return scope === null ? null : new Set(scope);
+}
 
 function publicBu(row) {
   return {
@@ -35,7 +49,11 @@ router.get('/', async (req, res, next) => {
   try {
     const orgId = req.workspaceOrganization.id;
     const includeInactive = req.query.includeInactive === 'true';
-    const units = await BusinessUnit.listBusinessUnits(orgId, { includeInactive });
+    let units = await BusinessUnit.listBusinessUnits(orgId, { includeInactive });
+    const allowedNames = await basicTierAllowedBuNames(req.user);
+    if (allowedNames !== null) {
+      units = units.filter((u) => allowedNames.has(u.name));
+    }
     res.json({ businessUnits: units.map(publicBu) });
   } catch (e) { next(e); }
 });
@@ -60,6 +78,8 @@ router.get('/:buId', async (req, res, next) => {
   try {
     const bu = await BusinessUnit.getBusinessUnit(req.params.buId);
     if (!bu || bu.organization_id !== req.workspaceOrganization.id) return res.status(404).json({ error: 'Not found' });
+    const allowedNames = await basicTierAllowedBuNames(req.user);
+    if (allowedNames !== null && !allowedNames.has(bu.name)) return res.status(404).json({ error: 'Not found' });
     res.json({ businessUnit: publicBu(bu) });
   } catch (e) { next(e); }
 });
@@ -94,6 +114,8 @@ router.get('/:buId/members', async (req, res, next) => {
   try {
     const bu = await BusinessUnit.getBusinessUnit(req.params.buId);
     if (!bu || bu.organization_id !== req.workspaceOrganization.id) return res.status(404).json({ error: 'Not found' });
+    const allowedNames = await basicTierAllowedBuNames(req.user);
+    if (allowedNames !== null && !allowedNames.has(bu.name)) return res.status(404).json({ error: 'Not found' });
     const members = await BusinessUnit.listMembers(req.params.buId);
     res.json({ members: members.map(publicMember) });
   } catch (e) { next(e); }

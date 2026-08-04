@@ -1,14 +1,30 @@
 # Render Blueprint — adjust names and regions as needed.
 # Docs: https://render.com/docs/blueprint-spec
+#
+# pulse-crm-web and pulse-app-web run on Render's Docker runtime, not the
+# native Node buildpack build.sh used to target — see the Dockerfile's own
+# header comment for why (PDF report export needs a LibreOffice binary the
+# native runtime's build step has no way to install). Render auto-forwards
+# a service's env vars into the Docker build as build ARGs when the
+# Dockerfile declares a matching-named ARG; this is what makes
+# VITE_APP_SURFACE (and friends) below still select the right frontend
+# bundle per service without any Docker-specific config beyond the
+# dockerfilePath/dockerContext fields. CONFIRM THIS ACTUALLY HAPPENS on the
+# first deploy of each service — if pulse-app-web's build ends up with a
+# CRM bundle (or vice versa), that reopens BRAND-02: see the Dockerfile
+# comment and frontend/src/AppRhythmEngine.jsx's header for what to check.
+# pulse-retention-sweep does not touch report generation and is left on the
+# native Node runtime deliberately — no reason to carry this migration's
+# risk onto a job that was already working.
 
 services:
   - type: web
     name: pulse-crm-web
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: starter
     rootDir: .
-    buildCommand: chmod +x build.sh && ./build.sh
-    startCommand: cd backend && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -69,11 +85,11 @@ services:
 
   - type: web
     name: pulse-app-web
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: starter
     rootDir: .
-    buildCommand: chmod +x build.sh && ./build.sh
-    startCommand: cd backend && npm start
     healthCheckPath: /api/health
     # Omit `disk:` if this service has no persistent volume; session exports should be created via CRM.
     envVars:

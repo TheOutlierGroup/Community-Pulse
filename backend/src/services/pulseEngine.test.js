@@ -5,6 +5,7 @@ import {
   computeSurveyScores,
   getQuestionsForAudience,
   getSurveyCopyForAudience,
+  sponsorshipConfigFromOrgSettings,
 } from './pulseEngine.js';
 
 function answersWith(prefix, values) {
@@ -338,4 +339,31 @@ test('scoring parity holds across stages for same answers', () => {
   assert.equal(mid.adoption, post.adoption);
   assert.equal(pre.sponsorship, mid.sponsorship);
   assert.equal(mid.sponsorship, post.sponsorship);
+});
+
+test('sponsorshipConfigFromOrgSettings falls back to platform defaults with no override', () => {
+  const config = sponsorshipConfigFromOrgSettings(null);
+  assert.equal(config.receivedThreshold, 14);
+  assert.equal(config.capacityThreshold, 14);
+  assert.deepEqual(config.loadBandBoundaries, { sustainableMin: 8, stretchedMin: 6, atCapacityMin: 4 });
+  assert.equal(config.teamTableDisplayLimit, 50);
+  assert.equal(config.aiSignalsEnabled, true);
+});
+
+test('sponsorshipConfigFromOrgSettings applies a partial override without losing the rest of the defaults', () => {
+  // D-008/D-016/D-017: this is the single resolution function both the
+  // live dashboard and the DOCX report call now -- previously the report
+  // called neither, always using the pulseEngine.js hardcoded defaults
+  // even for an org with real overrides configured.
+  const config = sponsorshipConfigFromOrgSettings({
+    sponsorshipAnalysisConfig: {
+      receivedThreshold: 16,
+      loadBandBoundaries: { sustainableMin: 9 },
+      aiSignalsEnabled: false,
+    },
+  });
+  assert.equal(config.receivedThreshold, 16);
+  assert.equal(config.capacityThreshold, 14); // untouched default
+  assert.deepEqual(config.loadBandBoundaries, { sustainableMin: 9, stretchedMin: 6, atCapacityMin: 4 });
+  assert.equal(config.aiSignalsEnabled, false);
 });

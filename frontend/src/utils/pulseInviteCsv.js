@@ -81,6 +81,8 @@ export function parseRecipientCsv(text, options = {}) {
   let start = 0;
   let colEmail = -1;
   let colName = -1;
+  let colFirstName = -1;
+  let colLastName = -1;
   let colRole = -1;
   let colManagerFlag = -1;
   let colManagerId = -1;
@@ -90,10 +92,29 @@ export function parseRecipientCsv(text, options = {}) {
     start = 1;
     colEmail = headerLower.indexOf('email');
     if (colEmail < 0) colEmail = headerLower.indexOf('email address');
+    if (colEmail < 0) colEmail = headerLower.indexOf('work email');
+    if (colEmail < 0) colEmail = headerLower.indexOf('email id');
+    if (colEmail < 0) colEmail = headerLower.indexOf('e mail');
     colName = headerLower.indexOf('name');
     if (colName < 0) colName = headerLower.indexOf('display name');
     if (colName < 0) colName = headerLower.indexOf('employee preferred first name');
     if (colName < 0) colName = headerLower.indexOf('preferred first name');
+    if (colName < 0) colName = headerLower.indexOf('full name');
+    if (colName < 0) colName = headerLower.indexOf('employee name');
+    if (colName < 0) colName = headerLower.indexOf('preferred name');
+    // No single "name" column recognised — a lot of real HR exports (and
+    // REA-03's own four-tier fixture) split it into separate first/last
+    // name columns instead. Without this, colName stayed -1 for every row
+    // and the em.split('@')[0] fallback below silently substituted the
+    // email's local part as the name for the entire import.
+    if (colName < 0) {
+      colFirstName = headerLower.indexOf('first name');
+      if (colFirstName < 0) colFirstName = headerLower.indexOf('given name');
+      if (colFirstName < 0) colFirstName = headerLower.indexOf('preferred first name');
+      colLastName = headerLower.indexOf('last name');
+      if (colLastName < 0) colLastName = headerLower.indexOf('surname');
+      if (colLastName < 0) colLastName = headerLower.indexOf('family name');
+    }
     colRole = headerLower.indexOf('role');
     if (colRole < 0) colRole = headerLower.indexOf('survey_role');
     if (colRole < 0) colRole = headerLower.indexOf('survey role');
@@ -120,7 +141,13 @@ export function parseRecipientCsv(text, options = {}) {
 
     if (hasHeader) {
       email = colEmail >= 0 ? cells[colEmail] || '' : '';
-      name = colName >= 0 ? cells[colName] || '' : '';
+      if (colName >= 0) {
+        name = cells[colName] || '';
+      } else if (colFirstName >= 0 || colLastName >= 0) {
+        const firstName = colFirstName >= 0 ? cells[colFirstName] || '' : '';
+        const lastName = colLastName >= 0 ? cells[colLastName] || '' : '';
+        name = [firstName, lastName].map((part) => part.trim()).filter(Boolean).join(' ');
+      }
       roleRaw = colRole >= 0 ? cells[colRole] : undefined;
       managerFlagRaw = colManagerFlag >= 0 ? cells[colManagerFlag] : undefined;
       managerIdRaw = colManagerId >= 0 ? cells[colManagerId] : undefined;
