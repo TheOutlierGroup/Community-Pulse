@@ -10,7 +10,7 @@ function parseTtlMs() {
   return Math.min(raw, 10 * 60 * 1000);
 }
 
-export async function createPulseHandoffToken({ userId, organizationId }) {
+export async function createPulseHandoffToken({ userId, organizationId, mfaVerifiedAt = null }) {
   const rawToken = randomBytes(32).toString('base64url');
   const tokenHash = hashInviteToken(rawToken);
   const expiresAt = new Date(Date.now() + parseTtlMs());
@@ -20,6 +20,7 @@ export async function createPulseHandoffToken({ userId, organizationId }) {
     organizationId,
     audience: 'pulse',
     expiresAt,
+    mfaVerifiedAt,
   });
   return { token: rawToken, expiresAt };
 }

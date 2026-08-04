@@ -6,12 +6,13 @@ export async function createToken({
   organizationId,
   audience = 'pulse',
   expiresAt,
+  mfaVerifiedAt = null,
 }) {
   const { rows } = await query(
-    `INSERT INTO pulse_handoff_tokens (token_hash, user_id, organization_id, audience, expires_at)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO pulse_handoff_tokens (token_hash, user_id, organization_id, audience, expires_at, mfa_verified_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [tokenHash, userId, organizationId, audience, expiresAt]
+    [tokenHash, userId, organizationId, audience, expiresAt, mfaVerifiedAt]
   );
   return rows[0] || null;
 }

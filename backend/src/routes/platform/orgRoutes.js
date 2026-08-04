@@ -4519,9 +4519,14 @@ export function registerPlatformOrgRoutes(router) {
       return res.status(500).json({ error: 'Set PULSE_APP_URL or APP_URL to issue Rhythm Engine links' });
     }
 
+    // Carries the caller's current MFA verification state across the
+    // handoff so the Rhythm Engine session starts in the same state the
+    // CRM session was already in -- fresh stays fresh, stale stays
+    // stale, absent stays absent. See migration 085.
     const handoff = await createPulseHandoffToken({
       userId: req.user.id,
       organizationId: org.id,
+      mfaVerifiedAt: req.user.mfaVerifiedAt || null,
     });
     const url = `${pulseBaseUrl}/sso/exchange?handoff=${encodeURIComponent(handoff.token)}&orgId=${encodeURIComponent(org.id)}`;
     res.json({
