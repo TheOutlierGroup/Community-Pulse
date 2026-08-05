@@ -54,6 +54,34 @@ test('generateReportSignals returns deterministic fallback copy without Anthropi
   }
 });
 
+// EXE-05: "Australian English with no em dashes" is a hard requirement on
+// the delivered report. The system prompt now instructs the model not to
+// use one, but an instruction is not a guarantee -- this proves the
+// belt-and-suspenders sanitisation strips one even when the model (or, as
+// here, a stubbed response standing in for it) ignores that instruction.
+test('generateReportSignals strips em dashes from AI-returned text even if the model ignores the style rule', async () => {
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  const prevFetch = global.fetch;
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      content: [{ type: 'text', text: 'Adoption is strong — sponsorship is the gap — intervene there first.' }],
+    }),
+  });
+  try {
+    const out = await generateReportSignals(buildReportData());
+    for (const value of [out.executive, out.adoption, out.sponsorship, out.managerLoad, out.chain, out.teams]) {
+      assert.doesNotMatch(value, /—/, `expected no em dash in: ${value}`);
+    }
+    assert.match(out.executive, /Adoption is strong – sponsorship is the gap – intervene there first\./);
+  } finally {
+    process.env.ANTHROPIC_API_KEY = prevKey;
+    global.fetch = prevFetch;
+  }
+});
+
 test('generateReportSignals falls back when AI API calls fail', async () => {
   const prevKey = process.env.ANTHROPIC_API_KEY;
   const prevFetch = global.fetch;

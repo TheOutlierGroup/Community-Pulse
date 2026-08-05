@@ -142,3 +142,57 @@ test('parseRecipientCsv treats "faulse" manager flag as staff', () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0].role, 'staff');
 });
+
+// D-010: a CSV with separate First Name / Last Name columns (common in real
+// HR exports, and the fixture used for REA-03) had no recognised "name"
+// column at all, so colName stayed -1 for every row and the
+// em.split('@')[0] fallback silently substituted the email's local part as
+// everyone's name.
+test('parseRecipientCsv combines separate First Name and Last Name columns', () => {
+  const csv = [
+    'First Name,Last Name,Email Address,Manager (Yes/No)',
+    'Jane,Doe,jane.doe@example.com,No',
+  ].join('\n');
+
+  const rows = parseRecipientCsv(csv);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'Jane Doe');
+  assert.equal(rows[0].email, 'jane.doe@example.com');
+});
+
+test('parseRecipientCsv falls back to the email prefix only when no name column exists at all', () => {
+  const csv = [
+    'Email Address,Manager (Yes/No)',
+    'jane.doe@example.com,No',
+  ].join('\n');
+
+  const rows = parseRecipientCsv(csv);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'jane.doe');
+});
+
+test('parseRecipientCsv handles a First Name column with no Last Name column', () => {
+  const csv = [
+    'First Name,Email',
+    'Madonna,madonna@example.com',
+  ].join('\n');
+
+  const rows = parseRecipientCsv(csv);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'Madonna');
+});
+
+test('parseRecipientCsv recognizes the server-generated template header verbatim', () => {
+  // Mirrors buildClientUserImportTemplateCsv's fixed header order in
+  // backend/src/routes/platform/orgRoutes.js.
+  const csv = [
+    'employee preferred first name,email address,employent type (FT/PT/Casual),Manager (Yes/No),Manager Email,birth year,Length of Service,Primary Work Location,Business Unit,Division,Team',
+    'Jane Doe,jane.doe@example.com,FT,No,john.manager@example.com,1990,2 years,Sydney,Sales,APAC,Team A',
+  ].join('\n');
+
+  const rows = parseRecipientCsv(csv, { groupLabels: ['Business Unit', 'Division', 'Team'] });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'Jane Doe');
+  assert.equal(rows[0].email, 'jane.doe@example.com');
+  assert.deepEqual(rows[0].groupValues, ['Sales', 'APAC', 'Team A']);
+});

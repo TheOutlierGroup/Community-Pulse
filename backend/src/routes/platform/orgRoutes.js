@@ -61,8 +61,9 @@ import {
   getSurveyCopyForAudience,
   scoreBandForSponsorshipLoad,
   scoreResponseFromSteps,
-  SPONSORSHIP_LOAD_BAND_DEFAULTS,
-  SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD,
+  sponsorshipConfigFromOrgSettings,
+  sponsorshipLoadBandOrder,
+  sponsorshipChainStateOrder,
 } from '../../services/pulseEngine.js';
 import {
   assertClientOrganizationPlatformForUser,
@@ -294,49 +295,6 @@ function buildExecutiveSummaryContent({
     scenarios,
     basedOnResponsesText: `Based on ${completedTotal || 0} responses · Threshold ${threshold}/40`,
   };
-}
-
-function sponsorshipConfigFromOrgSettings(settings) {
-  const source =
-    settings?.sponsorshipAnalysisConfig && typeof settings.sponsorshipAnalysisConfig === 'object'
-      ? settings.sponsorshipAnalysisConfig
-      : {};
-  const receivedThreshold = Number(source.receivedThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD);
-  const capacityThreshold = Number(source.capacityThreshold ?? SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD);
-  const boundaries =
-    source.loadBandBoundaries && typeof source.loadBandBoundaries === 'object'
-      ? source.loadBandBoundaries
-      : {};
-  const loadBandBoundaries = {
-    sustainableMin: Number(boundaries.sustainableMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.sustainableMin),
-    stretchedMin: Number(boundaries.stretchedMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.stretchedMin),
-    atCapacityMin: Number(boundaries.atCapacityMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.atCapacityMin),
-  };
-  const teamTableDisplayLimit = Number(source.teamTableDisplayLimit ?? 50);
-  const aiSignalsEnabled = source.aiSignalsEnabled !== false;
-  return {
-    receivedThreshold,
-    capacityThreshold,
-    loadBandBoundaries,
-    teamTableDisplayLimit:
-      Number.isInteger(teamTableDisplayLimit) && teamTableDisplayLimit > 0
-        ? teamTableDisplayLimit
-        : 50,
-    aiSignalsEnabled,
-  };
-}
-
-function sponsorshipLoadBandOrder() {
-  return ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
-}
-
-function sponsorshipChainStateOrder() {
-  return [
-    'Chain Functioning',
-    'Breaking at Manager Level',
-    'Managers Resilient, Under-Supported',
-    'Sponsorship Failed at Both Levels',
-  ];
 }
 
 function chainSeverityRank(chainState) {
@@ -1094,6 +1052,11 @@ function pulseInviteDueDatesFromSettings(settings) {
   return out;
 }
 
+// Returns null when this org hasn't explicitly set a due date for this
+// scope -- callers that display/edit the value (the Users page's due-date
+// field) need that distinction preserved, so the default used when
+// actually sending an invite email lives in sendPulseInviteEmail instead
+// (see D-020's comment there), not here.
 function pulseInviteDueDateForScope(settings, timepointPhase, duringSessionId) {
   const scopeKey = pulseInviteScopeKey(timepointPhase, duringSessionId);
   if (!scopeKey) return null;
@@ -2613,16 +2576,31 @@ export function registerPlatformOrgRoutes(router) {
         limit: Math.max(limit, 100),
       });
       const revertibleByAuditEventId = new Map();
+      // D-022: reverting a field wrote a fresh audit event for the revert
+      // itself but gave the frontend no way to mark the *original* event as
+      // undone, so that entry looked identical whether or not someone had
+      // acted on it -- the only visible change was a brand new row appearing
+      // at the top of the feed, easy to miss and easy to mistake for an
+      // unrelated action.
+      const revertedByAuditEventId = new Map();
       for (const h of historyRows) {
-        if (h.reverted_at || !h.audit_event_id) continue;
-        const list = revertibleByAuditEventId.get(h.audit_event_id) || [];
-        list.push({ id: h.id, fieldName: h.field_name });
-        revertibleByAuditEventId.set(h.audit_event_id, list);
+        if (!h.audit_event_id) continue;
+        if (h.reverted_at) {
+          const list = revertedByAuditEventId.get(h.audit_event_id) || [];
+          list.push({ id: h.id, fieldName: h.field_name, revertedAt: h.reverted_at });
+          revertedByAuditEventId.set(h.audit_event_id, list);
+        } else {
+          const list = revertibleByAuditEventId.get(h.audit_event_id) || [];
+          list.push({ id: h.id, fieldName: h.field_name });
+          revertibleByAuditEventId.set(h.audit_event_id, list);
+        }
       }
       const events = rows.map((row) => {
         const pub = publicAuditEvent(row);
         const revertibleFields = revertibleByAuditEventId.get(row.id);
         if (revertibleFields) pub.revertibleFields = revertibleFields;
+        const revertedFields = revertedByAuditEventId.get(row.id);
+        if (revertedFields) pub.revertedFields = revertedFields;
         return pub;
       });
       res.json({ events });
@@ -4839,6 +4817,7 @@ export function registerPlatformOrgRoutes(router) {
         subjectTemplate: subject,
         bodyTemplateHtml: bodyHtml,
         dueDate,
+        contactInfo: org.report_contact,
         clientLogoFilename: org.company_logo_filename,
         clientLogoAlt: org.name,
       });
@@ -5230,6 +5209,7 @@ export function registerPlatformOrgRoutes(router) {
         subjectTemplate: template.subject,
         bodyTemplateHtml: template.bodyHtml,
         dueDate,
+        contactInfo: org.report_contact,
         clientLogoFilename: org.company_logo_filename,
         clientLogoAlt: org.name,
       });

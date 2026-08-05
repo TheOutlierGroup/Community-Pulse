@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import JSZip from 'jszip';
 import { buildReportDocx } from './reportDocxBuilder.js';
+
+async function extractDocxText(buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  const xml = await zip.file('word/document.xml').async('string');
+  return xml
+    .replace(/<w:p(?:\s[^>]*)?>/g, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
 
 function makeReportData({ includeMatrix = true } = {}) {
   const matrix = includeMatrix
@@ -123,4 +135,46 @@ test('buildReportDocx skips team-level breakdown when teams field is missing', a
   const buffer = await buildReportDocx({ reportData, signals });
   assert.ok(Buffer.isBuffer(buffer));
   assert.ok(buffer.length > 500);
+});
+
+// D-008 (REA-02 notes): a downloaded report showed Word's "unreadable
+// content" recovery prompt. XML 1.0 treats most C0 control characters as
+// illegal even escaped, so one slipping into any TextRun (most plausibly
+// via AI-generated commentary, the least constrained text source feeding
+// this builder) corrupts the whole document, not just that run.
+test('buildReportDocx strips illegal XML control characters from AI-generated text and still produces a valid document', async () => {
+  const dirtySignals = {
+    ...signals,
+    executive: 'Adoption is on track.\x0BSponsorship needs work.\x1F',
+  };
+  const buffer = await buildReportDocx({ reportData: makeReportData(), signals: dirtySignals });
+  assert.ok(Buffer.isBuffer(buffer));
+  const text = await extractDocxText(buffer);
+  // eslint-disable-next-line no-control-regex
+  assert.doesNotMatch(text, /[\x00-\x08\x0B\x0C\x0E-\x1F]/);
+  assert.match(text, /Adoption is on track\.\s*Sponsorship needs work\./);
+});
+
+// D-017: the Readiness Quadrant page showed the quadrant classification
+// (label, description, active-cell marker) but never the adoption/
+// sponsorship scores that produced it -- readable earlier in the report,
+// on "Key Scores at a Glance", but not next to the quadrant grid itself.
+test('buildReportDocx shows the adoption and sponsorship scores next to the Readiness Quadrant', async () => {
+  const buffer = await buildReportDocx({ reportData: makeReportData(), signals });
+  const text = await extractDocxText(buffer);
+  const quadrantIndex = text.indexOf('Readiness Quadrant');
+  assert.ok(quadrantIndex >= 0, 'expected a Readiness Quadrant heading');
+  const nearby = text.slice(quadrantIndex, quadrantIndex + 400);
+  assert.match(nearby, /31\/40/, 'expected the adoption score near the quadrant heading');
+  assert.match(nearby, /30\/40/, 'expected the sponsorship score near the quadrant heading');
+});
+
+// D-017: EXE-05's passing bar is explicit -- "Australian English with no
+// em dashes" -- and reportDocxBuilder.js used to use one as body-copy
+// punctuation, a heading separator, and a blank-cell placeholder glyph
+// throughout the document.
+test('buildReportDocx never emits an em dash anywhere in the document', async () => {
+  const buffer = await buildReportDocx({ reportData: makeReportData(), signals });
+  const text = await extractDocxText(buffer);
+  assert.doesNotMatch(text, /—/);
 });

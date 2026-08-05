@@ -56,6 +56,7 @@ const ACTION_LABELS = {
   'client_contact.create': 'Contact added',
   'client_contact.update': 'Contact updated',
   'client_contact.delete': 'Contact removed',
+  'entity_field.revert': 'Field reverted',
 };
 
 function describeAction(action) {
@@ -286,6 +287,7 @@ export default function RecentActivityPanel({
           {events.map((event) => {
             const detail = describeMetadata(event);
             const canRevert = isPlatformStaffUser(user) && Array.isArray(event.revertibleFields) && event.revertibleFields.length > 0;
+            const revertedFields = Array.isArray(event.revertedFields) ? event.revertedFields : [];
             return (
               <li
                 key={event.id}
@@ -311,6 +313,22 @@ export default function RecentActivityPanel({
                       ({event.result})
                     </span>
                   ) : null}
+                  {revertedFields.length > 0 && (
+                    <span
+                      style={{
+                        marginLeft: '0.5rem',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: '#15803d',
+                        background: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        borderRadius: 4,
+                        padding: '0.05rem 0.4rem',
+                      }}
+                    >
+                      Undone: {revertedFields.map((f) => f.fieldName).join(', ')}
+                    </span>
+                  )}
                   {canRevert && (
                     <span style={{ marginLeft: '0.5rem', display: 'inline-flex', gap: '0.3rem', flexWrap: 'wrap' }}>
                       {event.revertibleFields.map((f) => (

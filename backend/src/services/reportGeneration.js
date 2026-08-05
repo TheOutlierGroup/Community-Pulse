@@ -98,18 +98,50 @@ async function resolveReportBrand(organization) {
   }
 }
 
+// D-017: PDF export previously shelled out to `libreoffice` with no
+// per-call profile isolation and a 20s timeout, and any failure (most
+// commonly: the binary isn't installed at all -- see the Dockerfile) rode
+// an uncaught error straight to the client as an opaque 500.
+//
+// -env:UserInstallation gives each conversion its own scratch profile
+// directory rather than sharing LibreOffice's default one. Without this,
+// two report generations landing on the same instance at once can hit a
+// profile lock and fail unpredictably -- the same failure mode the docx
+// skill's soffice.py helper works around for the same reason.
 async function convertDocxToPdf(docxPath) {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pulse-report-'));
+  const profileDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pulse-report-profile-'));
   try {
-    await execFileAsync('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', outDir, docxPath], {
-      timeout: 20000,
-    });
+    try {
+      await execFileAsync(
+        'soffice',
+        [
+          `-env:UserInstallation=file://${profileDir}`,
+          '--headless',
+          '--convert-to',
+          'pdf',
+          '--outdir',
+          outDir,
+          docxPath,
+        ],
+        { timeout: 45000 }
+      );
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        throw new Error('PDF conversion is unavailable on this server (LibreOffice is not installed).');
+      }
+      throw new Error(`PDF conversion failed: ${error?.message || 'unknown error'}`);
+    }
     const pdfName = `${path.basename(docxPath, '.docx')}.pdf`;
     const pdfPath = path.join(outDir, pdfName);
-    const pdfBytes = await fs.readFile(pdfPath);
-    return pdfBytes;
+    try {
+      return await fs.readFile(pdfPath);
+    } catch {
+      throw new Error('PDF conversion did not produce an output file.');
+    }
   } finally {
     await fs.rm(outDir, { recursive: true, force: true });
+    await fs.rm(profileDir, { recursive: true, force: true });
   }
 }
 

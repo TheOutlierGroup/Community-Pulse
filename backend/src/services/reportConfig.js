@@ -19,24 +19,24 @@ export const REPORT_CHAIN_STATE_STRATEGY = 'compute_on_read';
 
 export const NEXT_STEPS_STATIC_BLOCKS = {
   'Sponsorship Architecture Review': [
-    'Senior Leadership Sponsorship Diagnostic — half-day facilitated session with programme sponsors.',
-    'Sponsorship Behaviour Design — co-create visible sponsorship commitments for the programme lifecycle.',
-    'Sponsorship Pulse — run a lightweight sponsorship check every 4 weeks.'
+    'Senior Leadership Sponsorship Diagnostic – half-day facilitated session with programme sponsors.',
+    'Sponsorship Behaviour Design – co-create visible sponsorship commitments for the programme lifecycle.',
+    'Sponsorship Pulse – run a lightweight sponsorship check every 4 weeks.'
   ],
   'Manager Enablement Programme': [
-    'Manager Readiness Bootcamp — targeted practical change-leadership session for manager cohort.',
-    'Peer Learning Circles — monthly manager forums for live challenge-solving and safe escalation.',
-    'Executive Air Cover Protocol — define manager decision rights and escalation boundaries.'
+    'Manager Readiness Bootcamp – targeted practical change-leadership session for manager cohort.',
+    'Peer Learning Circles – monthly manager forums for live challenge-solving and safe escalation.',
+    'Executive Air Cover Protocol – define manager decision rights and escalation boundaries.'
   ],
   'Change Portfolio Review': [
-    'Change Portfolio Mapping — inventory all active initiatives and identify overlap.',
-    'Load Reduction Planning — remove or sequence initiatives to reduce delivery conflict.',
-    'Launch Sequencing Workshop — agree explicit stop/start criteria pre-launch.'
+    'Change Portfolio Mapping – inventory all active initiatives and identify overlap.',
+    'Load Reduction Planning – remove or sequence initiatives to reduce delivery conflict.',
+    'Launch Sequencing Workshop – agree explicit stop/start criteria pre-launch.'
   ],
   'Mid-Change Assessment': [
-    'Mid-Change Survey — redeploy the same instrument 4-8 weeks post-launch.',
-    'Delta Analysis Report — compare pre vs mid movements across scores and risk states.',
-    'Intervention Re-prioritisation — re-order support actions based on live movement.'
+    'Mid-Change Survey – redeploy the same instrument 4-8 weeks post-launch.',
+    'Delta Analysis Report – compare pre vs mid movements across scores and risk states.',
+    'Intervention Re-prioritisation – re-order support actions based on live movement.'
   ],
 };
 

@@ -9,6 +9,7 @@ import {
   classifySponsorshipChainState,
   scoreBandForSponsorshipLoad,
   scoreResponseFromSteps,
+  sponsorshipConfigFromOrgSettings,
 } from './pulseEngine.js';
 import { calculateLargestRemainderPercentages } from './pulseDashboardMetrics.js';
 import { REPORT_MIN_RESPONSES, REPORT_STAGE_MAP } from './reportConfig.js';
@@ -146,6 +147,15 @@ export function createAssembleReportData({
     const dimensionsEmployee = summarizeDimensions(scoredRows, 'staff', minSampleSize);
     const dimensionsManager = summarizeDimensions(scoredRows, 'manager', minSampleSize);
 
+    // D-008/D-016/D-017: this org's own Sponsorship Analysis overrides,
+    // not just the platform defaults -- the live dashboard already
+    // resolves and applies these (see sponsorshipConfigFromOrgSettings's
+    // doc comment in pulseEngine.js). Without this, a report for an org
+    // with customised thresholds/boundaries classified the exact same
+    // manager responses into different load bands and chain states than
+    // the dashboard did.
+    const sponsorshipConfig = sponsorshipConfigFromOrgSettings(organization.settings);
+
     const managerLoadBands = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
     const managerLoadCounts = Object.fromEntries(managerLoadBands.map((band) => [band, 0]));
     const chainStateNames = [
@@ -161,8 +171,11 @@ export function createAssembleReportData({
     const received = entry.scored.sponsorshipReceivedScore;
     const capacity = entry.scored.sponsorshipCapacityScore;
     const load = entry.scored.sponsorshipLoadScore;
-    const loadBand = scoreBandForSponsorshipLoad(load);
-    const chainState = classifySponsorshipChainState(received, capacity);
+    const loadBand = scoreBandForSponsorshipLoad(load, sponsorshipConfig.loadBandBoundaries);
+    const chainState = classifySponsorshipChainState(received, capacity, {
+      receivedThreshold: sponsorshipConfig.receivedThreshold,
+      capacityThreshold: sponsorshipConfig.capacityThreshold,
+    });
     managerLoadCounts[loadBand] += 1;
     chainCounts[chainState] += 1;
     const key = `${loadBand}::${chainState}`;
@@ -274,7 +287,7 @@ export function createAssembleReportData({
           ? team.managerSelf?.scored?.sponsorshipLoadScore ?? null
           : null;
         const managerLoadBand = managerLoadScore != null
-          ? scoreBandForSponsorshipLoad(managerLoadScore)
+          ? scoreBandForSponsorshipLoad(managerLoadScore, sponsorshipConfig.loadBandBoundaries)
           : null;
         return {
           name: team.name,

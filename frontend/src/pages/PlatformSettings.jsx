@@ -1124,12 +1124,18 @@ export default function PlatformSettings() {
                     </div>
                   </div>
                 ) : (
-                  <EmailTemplateRichEditor
-                    value={defaultWelcomeTemplates[role]?.bodyHtml || '<p></p>'}
-                    onChange={(nextBodyHtml) => updateDefaultWelcomeTemplateField(role, nextBodyHtml)}
-                    disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates[role]}
-                    placeholder="Write welcome page copy. This appears on the first survey screen."
-                  />
+                  <>
+                    <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.85rem' }}>
+                      The survey page already shows a &lsquo;Welcome&rsquo; heading above this text,
+                      so there is no need to repeat it here. Optional placeholder: <code>{'{{clientname}}'}</code>
+                    </p>
+                    <EmailTemplateRichEditor
+                      value={defaultWelcomeTemplates[role]?.bodyHtml || '<p></p>'}
+                      onChange={(nextBodyHtml) => updateDefaultWelcomeTemplateField(role, nextBodyHtml)}
+                      disabled={loadingDefaultWelcomeTemplates || savingDefaultWelcomeTemplates[role]}
+                      placeholder="Write welcome page copy. This appears on the first survey screen."
+                    />
+                  </>
                 )}
               </div>
               <button

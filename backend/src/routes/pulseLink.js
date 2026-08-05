@@ -159,6 +159,15 @@ function getLinkToken(req) {
     };
   }
 
+  // D-021: the welcome-template editor advertises {{clientname}} as a usable
+  // token (and substitutes it in the admin's own preview), but nothing ever
+  // resolved it for a real respondent -- the token rendered on the page
+  // exactly as typed, unresolved and literal.
+  function applyWelcomeTemplatePlaceholders(bodyHtml, organization) {
+    const clientName = String(organization?.name || '').trim();
+    return String(bodyHtml || '').replace(/\{\{\s*clientname\s*\}\}/gi, clientName);
+  }
+
   async function resolveSurveyCopyWithTemplate(invite, audience, stage) {
     const baseCopy = getSurveyCopyForAudienceFn(audience, stage);
     let platformSettings = null;
@@ -174,7 +183,7 @@ function getLinkToken(req) {
     );
     return {
       ...baseCopy,
-      welcomeHtml: surveyStart.bodyHtml,
+      welcomeHtml: applyWelcomeTemplatePlaceholders(surveyStart.bodyHtml, invite),
     };
   }
 
