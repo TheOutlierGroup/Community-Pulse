@@ -567,13 +567,6 @@ const chainMatrixQuadOrder = [
   },
 ];
 
-function managerChainStatus(quadrant) {
-  if (quadrant === 'Optimal') return 'Chain Functioning';
-  if (quadrant === 'Motivated but Lost') return 'Resilient, Under-supported';
-  if (quadrant === 'Capable but Wary') return 'At-Risk Leadership';
-  return 'Failed at Both Levels';
-}
-
 function chainStatePillClass(state) {
   const s = String(state || '').trim();
   if (s === 'Chain Functioning') return 'cp-fn';
@@ -899,15 +892,25 @@ export default function PlatformClientPulse() {
     const midpoint = Math.ceil(dimensionHeatmapRows.length / 2);
     return [dimensionHeatmapRows.slice(0, midpoint), dimensionHeatmapRows.slice(midpoint)];
   }, [dimensionHeatmapRows]);
+  // D-08: this used to derive counts from managerBreakdownRows -- the
+  // per-team breakdown, which nulls out a manager's loadBand when their
+  // OWN team falls below the 5-respondent anonymity floor. Those
+  // suppressed managers still counted toward the total, just toward no
+  // band, so the four percentages stopped summing to 100%. Section 2 is a
+  // cohort-wide aggregate across every manager respondent, not a
+  // team-level breakdown, so the floor shouldn't touch it at all -- the
+  // backend already computes this correctly (unsuppressed, same source as
+  // the section's own insight text) and sends it as section2.bands.
   const managerLoadDistribution = useMemo(() => {
-    const total = managerBreakdownRows.length;
     const bands = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
+    const backendBands = Array.isArray(dashboard?.sponsorshipAnalysis?.section2?.bands)
+      ? dashboard.sponsorshipAnalysis.section2.bands
+      : [];
     return bands.map((band) => {
-      const count = managerBreakdownRows.filter((row) => String(row?.managerLoadBand || '').trim() === band).length;
-      const percent = total > 0 ? (count / total) * 100 : 0;
-      return { band, count, percent };
+      const row = backendBands.find((b) => b.name === band);
+      return { band, count: Number(row?.count || 0), percent: Number(row?.percent || 0) };
     });
-  }, [managerBreakdownRows]);
+  }, [dashboard?.sponsorshipAnalysis?.section2?.bands]);
   const criticalLoadPercent = managerLoadDistribution
     .filter((item) => item.band === 'At Capacity' || item.band === 'Overloaded')
     .reduce((sum, item) => sum + item.percent, 0);
@@ -926,32 +929,23 @@ export default function PlatformClientPulse() {
   const sponsorshipExecutiveSignal = interventionRequired
     ? 'Managers are absorbing pressure from both directions and need targeted sponsorship support.'
     : 'Sponsorship coverage is broadly holding; continue monitoring manager load pressure.';
+  // D-08: same issue as managerLoadDistribution above -- this used to
+  // count from managerBreakdownRows filtered to sampleSizeMet rows, so
+  // both the numerator AND denominator excluded managers suppressed at
+  // the team level, which is a different sample-size check (their own
+  // team's direct-report count) from anything about the manager cohort
+  // itself. Section 3 is the same cohort-wide aggregate as Section 2, so
+  // it reads from the backend's unsuppressed section3.states instead,
+  // matched onto chainMatrixQuadOrder's backendName.
   const chainStatusDistribution = useMemo(() => {
-    const statuses = [
-      'Chain Functioning',
-      'Resilient, Under-supported',
-      'At-Risk Leadership',
-      'Failed at Both Levels',
-    ];
-    // Exclude suppressed managers (insufficient team sample size) rather
-    // than let a null quadrant fall through managerChainStatus's default
-    // and get miscounted as "Failed at Both Levels".
-    const eligibleRows = managerBreakdownRows.filter((row) => row?.sampleSizeMet !== false && row?.quadrant);
-    const total = eligibleRows.length;
-    const counts = eligibleRows.reduce((acc, row) => {
-      const status = managerChainStatus(String(row?.quadrant || '').trim());
-      acc[status] = (acc[status] || 0) + 1;
-      return acc;
-    }, {});
-    return statuses.map((status) => {
-      const count = counts[status] || 0;
-      return {
-        status,
-        count,
-        percent: total > 0 ? (count / total) * 100 : 0,
-      };
+    const backendStates = Array.isArray(dashboard?.sponsorshipAnalysis?.section3?.states)
+      ? dashboard.sponsorshipAnalysis.section3.states
+      : [];
+    return chainMatrixQuadOrder.map((quad) => {
+      const row = backendStates.find((s) => s.name === quad.backendName);
+      return { status: quad.status, count: Number(row?.count || 0), percent: Number(row?.percent || 0) };
     });
-  }, [managerBreakdownRows]);
+  }, [dashboard?.sponsorshipAnalysis?.section3?.states]);
   const groupLevelLabels = useMemo(() => {
     const labels = Array.isArray(org?.settings?.groupLevelLabels) ? org.settings.groupLevelLabels : [];
     return labels.map((value) => String(value || '').trim()).filter(Boolean);
