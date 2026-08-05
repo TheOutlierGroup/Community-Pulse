@@ -221,7 +221,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                 <>
                   <div className="sidebar-nav-label" aria-label="Client name">
                     <Building2 size={20} strokeWidth={1.75} aria-hidden />
-                    {pulseClientName || 'Client'}
+                    <span className="sidebar-nav-label__text">{pulseClientName || 'Client'}</span>
                   </div>
                   <section className="sidebar-pulse-timepoint" aria-label="Rhythm Engine point in time">
                     <div className="sidebar-pulse-timepoint__head">

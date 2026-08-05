@@ -1554,8 +1554,10 @@ export default function PlatformPulseInviteUsers() {
           ) : (
             <>
               <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.5 }}>
-                Create a full test dataset for this survey timepoint. This will add users and mark survey answers as
-                completed for each generated user.
+                Create a full test dataset for this survey timepoint only ({inviteTimepointText}).
+                This will add users and mark survey answers as completed for each generated user. To see Trend
+                Analysis or cross-stage divergence flags, switch the timepoint above and repeat this for each stage
+                you want data for: generating it once does not carry across Pre, During and Post.
               </p>
               <div className="field">
                 <label htmlFor="pulse-test-data-staff-count">Number of staff</label>
@@ -1846,6 +1848,10 @@ export default function PlatformPulseInviteUsers() {
             {welcomeTemplateEditorMode === 'edit' ? (
               <div className="field">
                 <label>Body</label>
+                <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.85rem' }}>
+                  The survey page already shows a &lsquo;Welcome&rsquo; heading above this text,
+                  so there is no need to repeat it here.
+                </p>
                 <EmailTemplateRichEditor
                   value={editingWelcomeTemplateBodyHtml}
                   onChange={setEditingWelcomeTemplateBodyHtml}
@@ -2208,7 +2214,7 @@ export default function PlatformPulseInviteUsers() {
           <p className="muted">Loading…</p>
         ) : (
           <div className="table-wrap" style={{ marginTop: '0.75rem' }}>
-            <table className="admin-table">
+            <table className="admin-table pulse-recipients-table">
               <thead>
                 <tr>
                   <th scope="col">Email</th>

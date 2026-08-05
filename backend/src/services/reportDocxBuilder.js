@@ -18,6 +18,37 @@ import {
 import JSZip from 'jszip';
 import { NEXT_STEPS_STATIC_BLOCKS, NEXT_STEPS_DEFAULT_ORDER } from './reportConfig.js';
 
+// D-008 (REA-02 notes): "Word found unreadable content" on a downloaded
+// report. XML 1.0 (what .docx's word/document.xml is) treats most C0
+// control characters as illegal even when escaped -- one slipping into
+// any TextRun's text corrupts the whole document, not just that run.
+// AI-generated commentary is the least constrained text source feeding
+// this builder (org names, team names, etc. come from data entry with
+// tighter validation), so it's the most likely place for a stray one to
+// turn up, but this is applied to every string this builder receives
+// rather than betting on where.
+// eslint-disable-next-line no-control-regex
+const XML_ILLEGAL_CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
+
+function sanitizeForXmlText(value) {
+  return value.replace(XML_ILLEGAL_CONTROL_CHARS, '');
+}
+
+function deepSanitizeStrings(value, seen = new WeakSet()) {
+  if (typeof value === 'string') return sanitizeForXmlText(value);
+  if (value === null || typeof value !== 'object') return value;
+  if (seen.has(value)) return value;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => deepSanitizeStrings(item, seen));
+  }
+  const out = {};
+  for (const [key, entry] of Object.entries(value)) {
+    out[key] = deepSanitizeStrings(entry, seen);
+  }
+  return out;
+}
+
 const THEME_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">
   <a:themeElements>
@@ -1069,13 +1100,15 @@ function brandPreparedByParagraph(brand, coverColor) {
 }
 
 export async function buildReportDocx({
-  reportData,
-  signals,
+  reportData: rawReportData,
+  signals: rawSignals,
   context = {},
   brand = null,
   defaultLogoBuffer = null,
   companyLogoBuffer = null,
 }) {
+  const reportData = deepSanitizeStrings(rawReportData);
+  const signals = deepSanitizeStrings(rawSignals);
   const adoptionDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('1'));
   const sponsorshipDims = reportData.dimensions.employee.filter((d) => d.id.startsWith('2'));
 

@@ -137,6 +137,24 @@ test('buildReportDocx skips team-level breakdown when teams field is missing', a
   assert.ok(buffer.length > 500);
 });
 
+// D-008 (REA-02 notes): a downloaded report showed Word's "unreadable
+// content" recovery prompt. XML 1.0 treats most C0 control characters as
+// illegal even escaped, so one slipping into any TextRun (most plausibly
+// via AI-generated commentary, the least constrained text source feeding
+// this builder) corrupts the whole document, not just that run.
+test('buildReportDocx strips illegal XML control characters from AI-generated text and still produces a valid document', async () => {
+  const dirtySignals = {
+    ...signals,
+    executive: 'Adoption is on track.\x0BSponsorship needs work.\x1F',
+  };
+  const buffer = await buildReportDocx({ reportData: makeReportData(), signals: dirtySignals });
+  assert.ok(Buffer.isBuffer(buffer));
+  const text = await extractDocxText(buffer);
+  // eslint-disable-next-line no-control-regex
+  assert.doesNotMatch(text, /[\x00-\x08\x0B\x0C\x0E-\x1F]/);
+  assert.match(text, /Adoption is on track\.\s*Sponsorship needs work\./);
+});
+
 // D-017: the Readiness Quadrant page showed the quadrant classification
 // (label, description, active-cell marker) but never the adoption/
 // sponsorship scores that produced it -- readable earlier in the report,

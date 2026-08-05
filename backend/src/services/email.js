@@ -72,12 +72,27 @@ function applyTemplatePlaceholders(template, replacements, { escapeValues = fals
   return out;
 }
 
-function formatDueDateForEmail(value) {
+// D-020: with no due date configured for this org/timepoint,
+// {{dueDate}} substituted to an empty string, so the sent email read
+// "your response is needed by ." with nothing after "by". This only
+// covers the email itself -- pulseInviteDueDateForScope (orgRoutes.js)
+// still returns null when nothing's configured, since the Users page's
+// due-date field needs to show "not set" rather than a phantom value
+// that silently drifts a day every time someone looks at it.
+const PULSE_INVITE_DEFAULT_DUE_DATE_DAYS = 3;
+
+function defaultPulseInviteDueDate() {
+  return new Date(Date.now() + PULSE_INVITE_DEFAULT_DUE_DATE_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+export function formatDueDateForEmail(value) {
   const raw = String(value || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return '';
-  const iso = `${raw}T00:00:00.000Z`;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : defaultPulseInviteDueDate();
+  const iso = `${dateOnly}T00:00:00.000Z`;
   const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return raw;
+  if (Number.isNaN(parsed.getTime())) return dateOnly;
   return parsed.toLocaleDateString('en-AU', {
     day: 'numeric',
     month: 'short',
@@ -85,6 +100,14 @@ function formatDueDateForEmail(value) {
   });
 }
 
+// D-020: the default template had no equivalent of {{link}}/{{name}} for
+// "who do I ask about this" -- a custom template's own hand-typed
+// "[NAME/EMAIL]" placeholder was never going to resolve on its own, since
+// nothing recognised that token, but the underlying gap was that there
+// was no real, working token available even for someone editing the
+// template fresh. {{contactInfo}} now resolves through
+// sendPulseInviteEmail's templateReplacements, backed by the org's own
+// report_contact where one is configured.
 export function getPulseInviteDefaultTemplate(audience, organizationName) {
   const role = audience === 'manager' ? 'manager' : 'staff';
   const orgPlain = organizationName ? String(organizationName).trim() : 'your organization';
@@ -92,6 +115,12 @@ export function getPulseInviteDefaultTemplate(audience, organizationName) {
     role === 'manager'
       ? `Rhythm Engine manager questionnaire — ${orgPlain}`
       : `Rhythm Engine questionnaire — ${orgPlain}`;
+  const contactParagraph = `
+        <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
+          It should take no more than 5 minutes to complete, and your response is needed by {{dueDate}}.
+          If you have any questions, please contact {{contactInfo}}.
+        </p>
+      `;
   const bodyHtml =
     role === 'manager'
       ? `
@@ -106,6 +135,7 @@ export function getPulseInviteDefaultTemplate(audience, organizationName) {
             Open Rhythm Engine
           </a>
         </p>
+        ${contactParagraph}
       `
       : `
         <p style="color: #555; line-height: 1.6;">Hi {{name}},</p>
@@ -119,6 +149,7 @@ export function getPulseInviteDefaultTemplate(audience, organizationName) {
             Open Rhythm Engine
           </a>
         </p>
+        ${contactParagraph}
       `;
   return {
     subject,
@@ -296,6 +327,9 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
   const dueDateRaw = String(options?.dueDate || '').trim();
   const dueDateFormatted = formatDueDateForEmail(dueDateRaw);
   const clientName = orgPlain;
+  // D-020: never renders empty -- "please contact ." reads as broken as
+  // a literal unresolved [NAME/EMAIL] placeholder did.
+  const contactInfo = String(options?.contactInfo || '').trim() || 'your Outlier Group representative';
   const templateReplacements = {
     name: name || 'there',
     link: safePulseUrl,
@@ -303,6 +337,8 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     clientname: clientName,
     dueDate: dueDateFormatted || dueDateRaw,
     duedate: dueDateFormatted || dueDateRaw,
+    contactInfo,
+    contactinfo: contactInfo,
   };
   const subjectPlain = applyTemplatePlaceholders(
     subjectTemplate,

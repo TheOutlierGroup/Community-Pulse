@@ -565,6 +565,21 @@ a:hover {
   user-select: text;
 }
 
+.sidebar-nav-label svg {
+  flex-shrink: 0;
+}
+
+/* D-018: a client name with no spaces (common for single-word company
+   names) is one unbreakable run of text, so ordinary word-wrap left it
+   overflowing past the sidebar's edge instead of wrapping onto a new
+   line. min-width: 0 lets this flex item shrink below its content size
+   so overflow-wrap can actually kick in and break the word. */
+.sidebar-nav-label__text {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 .sidebar-pulse-timepoint {
   display: flex;
   flex-direction: column;
@@ -4723,6 +4738,17 @@ input[type='range'] {
   color: var(--pulse-text);
   font-family: var(--pulse-font-ui);
   margin: 0 0 1rem;
+}
+
+/* D-023: at the base .admin-table font-size (0.9rem), this table's
+   narrower columns (role, manager yes/no, group values, link status)
+   wrapped their header and cell text onto multiple lines even though the
+   values themselves are short -- a smaller size lets most of them sit on
+   one line again. */
+.pulse-recipients-table th,
+.pulse-recipients-table td {
+  font-size: 0.78rem;
+  padding: 0.5rem 0.4rem;
 }
 
 .pulse-platform-header {
