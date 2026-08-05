@@ -46,12 +46,21 @@ export const LICENSEE_DOWNSTREAM_SERVICE_CATALOG = [
 // Maps the granular client service catalog onto the coarser Business Unit
 // vocabulary crm_organisations (Prospects) and user_business_units use, so a
 // Basic-tier platform user's BU tags can also scope which Clients they see.
-// CLIENT_SERVICE_OTHER and CLIENT_SERVICE_PROJECT_RESOURCES have no BU
-// equivalent and are intentionally left unmapped (invisible to BU-scoped
-// Basic users unless the client also has a mapped service).
+//
+// D-014: CLIENT_SERVICE_OTHER and CLIENT_SERVICE_PROJECT_RESOURCES were
+// previously left unmapped here, which meant "Outlier Core" -- despite
+// being a real, assignable BU tag (and the default business_unit for a
+// new Prospect, see CrmOrganisation.js) -- had no client service that
+// could ever map into it. A Basic-tier user scoped only to "Outlier Core"
+// could never see any client through this mechanism, and clients whose
+// only service was Project Resources were invisible to every BU tag.
+// Other/Project Resources are the general, unspecialised services, so
+// they map to Outlier Core, the general/default BU.
 const CLIENT_SERVICE_TO_BUSINESS_UNIT = {
   [CLIENT_SERVICE_PULSE]: 'Rhythm Engine',
   [CLIENT_SERVICE_LICENSEE]: 'Rhythm Engine',
+  [CLIENT_SERVICE_OTHER]: 'Outlier Core',
+  [CLIENT_SERVICE_PROJECT_RESOURCES]: 'Outlier Core',
   [CLIENT_SERVICE_HUMAN_AI]: 'AI-Human Workforce Design',
   [CLIENT_SERVICE_ADOPTION_ACCELERATOR]: 'Adoption Accelerator',
   [CLIENT_SERVICE_OG_SKATE_AUDIT]: 'Outlier Skate',
