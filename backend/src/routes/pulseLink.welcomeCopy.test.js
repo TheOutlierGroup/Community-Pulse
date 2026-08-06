@@ -4,20 +4,21 @@ import express from 'express';
 import { createPulseLinkRoutes } from './pulseLink.js';
 import { hashInviteToken } from '../security/inviteToken.js';
 
-// D-021: the welcome-template editor advertises {{clientname}} as a usable
-// token and substitutes it in the admin's own preview, but the public
-// survey link served the token back to respondents completely unresolved
-// -- literally, verbatim, in the page they land on.
+// D-021: the welcome-template editor advertises {{clientname}} and {{name}}
+// as usable tokens and substitutes them in the admin's own preview, but the
+// public survey link served the tokens back to respondents completely
+// unresolved -- literally, verbatim, in the page they land on.
 
 const RAW_TOKEN = 'welcome-copy-token';
 
-function buildRouter({ orgName, welcomeBodyHtml }) {
+function buildRouter({ orgName, welcomeBodyHtml, displayName }) {
   const invite = {
     id: 'invite-1',
     organization_id: 'org-1',
     token_hash: hashInviteToken(RAW_TOKEN),
     survey_role: 'staff',
     timepoint_phase: 'pre',
+    display_name: displayName,
   };
   return createPulseLinkRoutes({
     organizationModel: {
@@ -77,4 +78,27 @@ test('D-021: {{clientname}} substitution is case-insensitive and handles missing
   const res = await request(router, `/api/pulse-link/themes?token=${RAW_TOKEN}`);
   assert.equal(res.status, 200);
   assert.doesNotMatch(res.body.copy.welcomeHtml, /\{\{\s*clientname\s*\}\}/i);
+});
+
+test('D-021: {{name}} in a welcome template resolves to the respondent\'s own invite name', async () => {
+  const router = buildRouter({
+    orgName: 'Acme Co',
+    welcomeBodyHtml: '<p>Welcome {{name}}!</p>',
+    displayName: 'Jordan',
+  });
+  const res = await request(router, `/api/pulse-link/themes?token=${RAW_TOKEN}`);
+  assert.equal(res.status, 200);
+  assert.match(res.body.copy.welcomeHtml, /Welcome Jordan!/);
+  assert.doesNotMatch(res.body.copy.welcomeHtml, /\{\{\s*name\s*\}\}/i);
+});
+
+test('D-021: {{name}} falls back to a real greeting, not blank, when the invite has no display name', async () => {
+  const router = buildRouter({
+    orgName: 'Acme Co',
+    welcomeBodyHtml: '<p>Welcome {{name}}!</p>',
+    displayName: '',
+  });
+  const res = await request(router, `/api/pulse-link/themes?token=${RAW_TOKEN}`);
+  assert.equal(res.status, 200);
+  assert.match(res.body.copy.welcomeHtml, /Welcome there!/);
 });

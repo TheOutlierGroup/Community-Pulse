@@ -304,7 +304,7 @@ test('pulse-link themes falls back to built-in survey copy when no templates exi
   assert.equal(response.status, 200);
   assert.equal(
     response.body.copy?.welcomeHtml,
-    '<p>Before this change starts, we want to understand how ready the organisation is. Your honest responses are anonymous and help identify where support is needed.</p><p>Your answers help leaders understand what’s working and what might need attention.</p>'
+    '<p>Welcome there!</p><p>Change can look many ways: from implementing a new payroll system to reorganising how a team collaborates, or even refining a single workflow to cut out unnecessary steps. As we move through this journey, it’s important that we hear from everyone; and as a manager, your perspective on how change is landing across your team is especially valuable.</p><p>There are no right or wrong answers – your honest perspective is what matters most.</p>'
   );
 });
 
