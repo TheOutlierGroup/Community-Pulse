@@ -62,16 +62,10 @@ function defaultTemplateForAudience(audience) {
   };
 }
 
-function defaultWelcomeTemplateForAudience(audience) {
-  if (audience === 'manager') {
-    return {
-      bodyHtml:
-        '<p>You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.</p><p>Your perspective as a manager helps leaders see what’s working and what might need attention.</p>',
-    };
-  }
+function defaultWelcomeTemplateForAudience() {
   return {
     bodyHtml:
-      '<p>You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.</p><p>Your answers help leaders understand what’s working and what might need attention.</p>',
+      '<p>Welcome {{name}}!</p><p>Change can look many ways: from implementing a new payroll system to reorganising how a team collaborates, or even refining a single workflow to cut out unnecessary steps. As we move through this journey, it’s important that we hear from everyone; and as a manager, your perspective on how change is landing across your team is especially valuable.</p><p>There are no right or wrong answers – your honest perspective is what matters most.</p>',
   };
 }
 
@@ -1402,6 +1396,7 @@ export default function PlatformPulseInviteUsers() {
     duedate: formatDueDatePreview(dueDate) || dueDate || '',
   });
   const previewWelcomeBodyHtml = applyTemplatePlaceholders(editingWelcomeTemplateBodyHtml, {
+    name: previewName,
     clientName: String(org?.name || ''),
     clientname: String(org?.name || ''),
   });
@@ -1848,10 +1843,6 @@ export default function PlatformPulseInviteUsers() {
             {welcomeTemplateEditorMode === 'edit' ? (
               <div className="field">
                 <label>Body</label>
-                <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.85rem' }}>
-                  The survey page already shows a &lsquo;Welcome&rsquo; heading above this text,
-                  so there is no need to repeat it here.
-                </p>
                 <EmailTemplateRichEditor
                   value={editingWelcomeTemplateBodyHtml}
                   onChange={setEditingWelcomeTemplateBodyHtml}
@@ -1869,7 +1860,7 @@ export default function PlatformPulseInviteUsers() {
               </div>
             )}
             <p className="muted" style={{ margin: '0.45rem 0 0.75rem' }}>
-              Optional placeholder: <code>{'{{clientname}}'}</code>
+              Optional placeholders: <code>{'{{name}}'}</code>, <code>{'{{clientname}}'}</code>
             </p>
             <div className="modal-dialog__actions">
               <button

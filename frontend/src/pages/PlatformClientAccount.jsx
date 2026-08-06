@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
@@ -42,22 +42,6 @@ function readCompanyAddress(settings) {
   return v == null ? '' : String(v);
 }
 
-function readGroupLevels(settings) {
-  const parsed = readClientSettings(settings);
-  if (!parsed) return '';
-  const asNumber = Number.parseInt(String(parsed.groupLevels ?? ''), 10);
-  if (!Number.isInteger(asNumber) || asNumber < 1 || asNumber > 5) return '';
-  return String(asNumber);
-}
-
-function readGroupLevelLabels(settings) {
-  const parsed = readClientSettings(settings);
-  if (!parsed || !Array.isArray(parsed.groupLevelLabels)) return [];
-  return parsed.groupLevelLabels
-    .slice(0, 5)
-    .map((label) => String(label ?? ''));
-}
-
 export default function PlatformClientAccount() {
   const { org, orgId, refreshOrg, licenseConfig, clientLogoUrl, bumpClientLogo } =
     useOutletContext();
@@ -95,10 +79,6 @@ export default function PlatformClientAccount() {
   const [selectedServices, setSelectedServices] = useState(() =>
     normalizeServices(org.settings).filter((id) => id !== CLIENT_SERVICE_LICENSEE)
   );
-  // Group levels are configured in Rhythm Engine settings now — read only
-  // here, just to gate the CSV import template download below.
-  const groupLevels = useMemo(() => readGroupLevels(org.settings), [org.settings]);
-  const groupLevelLabels = useMemo(() => readGroupLevelLabels(org.settings), [org.settings]);
   const [otherServiceDisplayValue, setOtherServiceDisplayValue] = useState('');
   const [clientPortalTier, setClientPortalTier] = useState(() => org.settings?.clientPortalTier === 'enterprise' ? 'enterprise' : 'standard');
   const [busy, setBusy] = useState(false);
@@ -279,47 +259,6 @@ export default function PlatformClientAccount() {
       setError(err.response?.data?.error || 'Could not delete client.');
       setDeleting(false);
       setShowDeleteConfirm(false);
-    }
-  }
-
-  async function downloadUserImportTemplate() {
-    const pulseEnabled = selectedServices.includes(CLIENT_SERVICE_PULSE);
-    const parsedGroupLevels = pulseEnabled ? Number.parseInt(groupLevels, 10) : null;
-    if (!pulseEnabled || !Number.isInteger(parsedGroupLevels)) {
-      setError('Set the group levels for this client in Rhythm Engine settings before downloading the template.');
-      return;
-    }
-    const normalizedGroupLevelLabels = groupLevelLabels
-      .slice(0, parsedGroupLevels)
-      .map((label) => String(label || '').trim());
-    if (normalizedGroupLevelLabels.some((label) => !label)) {
-      setError('Every group level needs a label — set them in Rhythm Engine settings before downloading the template.');
-      return;
-    }
-    setError('');
-    try {
-      const response = await api.post(
-        `/api/platform/organizations/${orgId}/user-import-template`,
-        {
-          groupLevels: parsedGroupLevels,
-          groupLevelLabels: normalizedGroupLevelLabels,
-        },
-        { responseType: 'blob' }
-      );
-      const fallbackName = `client-${orgId}-user-import-template.csv`;
-      const disposition = String(response.headers?.['content-disposition'] || '');
-      const match = disposition.match(/filename="?([^"]+)"?/i);
-      const filename = match?.[1] || fallbackName;
-      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
-      const anchor = document.createElement('a');
-      anchor.href = blobUrl;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Could not download template.');
     }
   }
 
@@ -549,17 +488,6 @@ export default function PlatformClientAccount() {
             <button type="submit" className="btn btn-ghost" disabled={busy} style={{ marginTop: '0.9rem' }}>
               Save services
             </button>
-            {selectedServices.includes(CLIENT_SERVICE_PULSE) ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                style={{ marginTop: '0.65rem', marginLeft: '0.5rem' }}
-                onClick={downloadUserImportTemplate}
-              >
-                Download CSV template
-              </button>
-            ) : null}
           </form>
 
         </div>

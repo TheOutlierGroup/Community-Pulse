@@ -1848,23 +1848,6 @@ input[type='range'] {
   margin: 0 0 1.1rem;
 }
 
-.step5-reflection .reflection-box {
-  margin-top: 0;
-}
-
-.step5-closing {
-  margin-bottom: 0;
-  line-height: 1.55;
-}
-
-.reflection-box {
-  margin-top: 1.5rem;
-  padding: 1.25rem;
-  border-radius: var(--radius);
-  background: rgba(var(--accent-rgb), 0.12);
-  border: 1px solid rgba(var(--accent-rgb), 0.35);
-}
-
 .admin-table {
   width: 100%;
   border-collapse: collapse;

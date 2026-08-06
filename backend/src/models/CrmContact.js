@@ -282,10 +282,6 @@ export async function listAllContacts(platformOrgId, { search, linkType, busines
   } else if (linkType === 'unlinked') {
     conditions.push('c.crm_organisation_id IS NULL AND c.client_organization_id IS NULL');
   }
-  if (businessUnit) {
-    conditions.push(`po.business_unit = $${i++}`);
-    values.push(businessUnit);
-  }
 
   const { rows } = await query(
     `SELECT c.*,
@@ -304,20 +300,31 @@ export async function listAllContacts(platformOrgId, { search, linkType, busines
     values,
   );
   // Clients don't have a first-class business_unit column like Prospects —
-  // derive a display-only one from their enabled service catalog (same
-  // mapping used to scope Basic-tier platform users to Business Units), so
-  // the "linked to" badge can still carry a BU accent colour. Not used for
-  // filtering; the businessUnit query param only matches Prospects.
-  const withDerivedBu = rows.map((row) => ({
-    ...row,
-    client_business_unit: row.client_settings
-      ? businessUnitsForEnabledServices(enabledServicesFromOrganizationSettings(row.client_settings))[0] || null
-      : null,
-  }));
+  // derive their BUs from their enabled service catalog (same mapping used
+  // to scope Basic-tier platform users to Business Units). client_business_unit
+  // (singular) is kept for the "linked to" badge's accent colour;
+  // client_business_units (plural, the full set) is what D-015's businessUnit
+  // filter matches against, so a client with several services matching one
+  // of them still surfaces here rather than only ever matching Prospects.
+  const withDerivedBu = rows.map((row) => {
+    const clientBUs = row.client_settings
+      ? businessUnitsForEnabledServices(enabledServicesFromOrganizationSettings(row.client_settings))
+      : [];
+    return {
+      ...row,
+      client_business_unit: clientBUs[0] || null,
+      client_business_units: clientBUs,
+    };
+  });
   const scoped = Array.isArray(allowedBusinessUnits)
     ? withDerivedBu.filter((row) => contactVisibleToBusinessUnits(row, allowedBusinessUnits))
     : withDerivedBu;
-  return scoped.map(({ client_settings, ...row }) => row);
+  const filtered = businessUnit
+    ? scoped.filter(
+        (row) => row.prospect_business_unit === businessUnit || row.client_business_units.includes(businessUnit)
+      )
+    : scoped;
+  return filtered.map(({ client_settings, client_business_units, ...row }) => row);
 }
 
 export async function getContactGlobal(platformOrgId, contactId) {

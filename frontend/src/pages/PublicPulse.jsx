@@ -291,7 +291,6 @@ export default function PublicPulse() {
             >
               Rhythm Engine questionnaire
             </p>
-            <h1 style={{ margin: '0 0 1rem' }}>Welcome</h1>
             {surveyCopy?.welcomeHtml ? (
               <div
                 className="muted"

@@ -2,13 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CLIENT_SERVICE_OTHER,
+  CLIENT_SERVICE_PROJECT_RESOURCES,
   CLIENT_SERVICE_PULSE,
+  businessUnitsForEnabledServices,
   clientServiceCatalogFromPlatformSettings,
   enabledServicesFromOrganizationSettings,
   normalizeClientServiceCatalog,
   normalizeClientServiceIds,
   normalizeOrganizationSettings,
   organizationHasService,
+  organizationVisibleToBusinessUnits,
 } from './clientServices.js';
 
 test('normalizeOrganizationSettings handles object, json string, and invalid input', () => {
@@ -86,5 +89,32 @@ test('clientServiceCatalogFromPlatformSettings falls back to defaults', () => {
     { id: 'rhythm-engine-licensee', name: 'Rhythm Engine Licensee' },
     { id: 'other', name: 'Other' },
   ]);
+});
+
+// D-014: Other and Project Resources had no Business Unit mapping at all,
+// so "Outlier Core" -- a real, assignable BU tag, and the default
+// business_unit for a new Prospect -- had no client service that could
+// ever map into it. A Basic-tier user scoped only to Outlier Core could
+// never see any client through this mechanism, and a client whose only
+// service was Project Resources was invisible to every BU tag.
+test('Other and Project Resources map to Outlier Core', () => {
+  assert.deepEqual(businessUnitsForEnabledServices([CLIENT_SERVICE_OTHER]), ['Outlier Core']);
+  assert.deepEqual(businessUnitsForEnabledServices([CLIENT_SERVICE_PROJECT_RESOURCES]), ['Outlier Core']);
+});
+
+test('a client whose only service is Project Resources is visible to an Outlier Core scoped user', () => {
+  const settings = { services: [CLIENT_SERVICE_PROJECT_RESOURCES] };
+  assert.equal(organizationVisibleToBusinessUnits(settings, ['Outlier Core']), true);
+  assert.equal(organizationVisibleToBusinessUnits(settings, ['Rhythm Engine']), false);
+});
+
+// A client with multiple services is fully visible (not partially hidden)
+// as soon as any one of them maps into the caller's scope -- the caller
+// shouldn't need every service to match to see the client at all.
+test('a client with multiple services is visible on a single matching service', () => {
+  const settings = { services: [CLIENT_SERVICE_PULSE, CLIENT_SERVICE_PROJECT_RESOURCES] };
+  assert.equal(organizationVisibleToBusinessUnits(settings, ['Rhythm Engine']), true);
+  assert.equal(organizationVisibleToBusinessUnits(settings, ['Outlier Core']), true);
+  assert.equal(organizationVisibleToBusinessUnits(settings, ['ET Inc']), false);
 });
 

@@ -115,16 +115,10 @@ function getLinkToken(req) {
     return templates;
   }
 
-  function pulseSurveyStartFallbackTemplate(audience, stage) {
-    const role = audience === 'manager' ? 'manager' : 'staff';
-    const defaultCopy = getSurveyCopyForAudienceFn(role, stage);
-    const intro = String(defaultCopy?.intro || '').trim();
-    const context = role === 'manager'
-      ? 'Your perspective as a manager helps leaders see what’s working and what might need attention.'
-      : 'Your answers help leaders understand what’s working and what might need attention.';
-    const bodyHtml = `<p>${intro || 'You’ve been invited to share a short, honest view of how work feels day to day. Most people finish in about five to ten minutes.'}</p><p>${context}</p>`;
+  function pulseSurveyStartFallbackTemplate() {
     return {
-      bodyHtml,
+      bodyHtml:
+        '<p>Welcome {{name}}!</p><p>Change can look many ways: from implementing a new payroll system to reorganising how a team collaborates, or even refining a single workflow to cut out unnecessary steps. As we move through this journey, it’s important that we hear from everyone; and as a manager, your perspective on how change is landing across your team is especially valuable.</p><p>There are no right or wrong answers – your honest perspective is what matters most.</p>',
     };
   }
 
@@ -159,16 +153,23 @@ function getLinkToken(req) {
     };
   }
 
-  // D-021: the welcome-template editor advertises {{clientname}} as a usable
-  // token (and substitutes it in the admin's own preview), but nothing ever
-  // resolved it for a real respondent -- the token rendered on the page
-  // exactly as typed, unresolved and literal.
-  function applyWelcomeTemplatePlaceholders(bodyHtml, organization) {
+  // D-021: the welcome-template editor advertises {{name}} and {{clientname}}
+  // as usable tokens (and substitutes them in the admin's own preview), but
+  // nothing ever resolved them for a real respondent -- the tokens rendered
+  // on the page exactly as typed, unresolved and literal. {{name}} resolves
+  // to the respondent's own invite -- each public survey link is minted
+  // per-recipient (see PulseLinkInvite.display_name, set from the CSV
+  // import), so this is available even though the survey itself stays
+  // anonymous past this point.
+  function applyWelcomeTemplatePlaceholders(bodyHtml, organization, respondentInvite) {
     const clientName = String(organization?.name || '').trim();
-    return String(bodyHtml || '').replace(/\{\{\s*clientname\s*\}\}/gi, clientName);
+    const respondentName = String(respondentInvite?.display_name || '').trim() || 'there';
+    return String(bodyHtml || '')
+      .replace(/\{\{\s*clientname\s*\}\}/gi, clientName)
+      .replace(/\{\{\s*name\s*\}\}/gi, respondentName);
   }
 
-  async function resolveSurveyCopyWithTemplate(invite, audience, stage) {
+  async function resolveSurveyCopyWithTemplate(organization, audience, stage, respondentInvite = null) {
     const baseCopy = getSurveyCopyForAudienceFn(audience, stage);
     let platformSettings = null;
     if (typeof organizationModel.getFirstOrganizationByKind === 'function') {
@@ -176,14 +177,14 @@ function getLinkToken(req) {
       platformSettings = platformOrg?.settings || null;
     }
     const surveyStart = pulseSurveyStartTemplateFromSettings(
-      invite?.settings || {},
+      organization?.settings || {},
       audience,
       stage,
       platformSettings
     );
     return {
       ...baseCopy,
-      welcomeHtml: applyWelcomeTemplatePlaceholders(surveyStart.bodyHtml, invite),
+      welcomeHtml: applyWelcomeTemplatePlaceholders(surveyStart.bodyHtml, organization, respondentInvite),
     };
   }
 
@@ -311,7 +312,7 @@ function getLinkToken(req) {
     const questions = getQuestionsForAudienceFn(audience, stage);
     let copy = getSurveyCopyForAudienceFn(audience, stage);
     try {
-      copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage);
+      copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage, req.pulseLinkInvite);
     } catch (error) {
       console.error('Could not resolve survey copy template:', error);
     }
@@ -369,7 +370,7 @@ function sessionJsonForLink(session) {
     if (!capCheck.ok) {
       return res.status(403).json(capCheck.body);
     }
-    const copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage);
+    const copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage, req.pulseLinkInvite);
     let brand = null;
     try {
       // INF-06: respondents see the licensee's brand on white-labeled
@@ -416,7 +417,7 @@ function sessionJsonForLink(session) {
       await pulseLinkResponseModel.markSurveyStarted(req.pulseLinkInvite.id, session.id);
       row = await pulseLinkResponseModel.getResponse(req.pulseLinkInvite.id, session.id);
     }
-    const copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage);
+    const copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage, req.pulseLinkInvite);
     res.json({
       session: sessionJsonForLink(session),
       stage,
