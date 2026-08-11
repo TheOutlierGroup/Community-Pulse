@@ -108,6 +108,24 @@ async function resolveReportBrand(organization) {
 // two report generations landing on the same instance at once can hit a
 // profile lock and fail unpredictably -- the same failure mode the docx
 // skill's soffice.py helper works around for the same reason.
+const PDF_MAGIC = Buffer.from('%PDF-');
+// "We can't open this file" on a downloaded report: soffice killed by the
+// timeout (or crashed/OOM'd) mid-write still leaves a partial file behind
+// on disk, and `--convert-to` can also exit 0 having written a truncated
+// PDF for a document it choked on. Either way execFileAsync doesn't throw
+// and fs.readFile happily returns whatever bytes exist, so a broken file
+// sailed straight through to report status 'complete' and was served as
+// a normal download. Validate the shape actually looks like a complete
+// PDF before trusting it, so a bad conversion fails the generation (report
+// status 'failed', visible and re-triable) instead of silently shipping
+// corruption.
+export function looksLikeCompletePdf(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 1024) return false;
+  if (!buffer.subarray(0, 5).equals(PDF_MAGIC)) return false;
+  const tail = buffer.subarray(Math.max(0, buffer.length - 1024)).toString('latin1');
+  return tail.includes('%%EOF');
+}
+
 async function convertDocxToPdf(docxPath) {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pulse-report-'));
   const profileDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pulse-report-profile-'));
@@ -134,11 +152,16 @@ async function convertDocxToPdf(docxPath) {
     }
     const pdfName = `${path.basename(docxPath, '.docx')}.pdf`;
     const pdfPath = path.join(outDir, pdfName);
+    let pdfBuffer;
     try {
-      return await fs.readFile(pdfPath);
+      pdfBuffer = await fs.readFile(pdfPath);
     } catch {
       throw new Error('PDF conversion did not produce an output file.');
     }
+    if (!looksLikeCompletePdf(pdfBuffer)) {
+      throw new Error('PDF conversion produced an incomplete or invalid file.');
+    }
+    return pdfBuffer;
   } finally {
     await fs.rm(outDir, { recursive: true, force: true });
     await fs.rm(profileDir, { recursive: true, force: true });
