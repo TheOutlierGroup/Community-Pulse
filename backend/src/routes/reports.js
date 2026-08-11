@@ -5,7 +5,7 @@ import { requireAuth } from '../middleware/auth.js';
 import * as GeneratedReport from '../models/GeneratedReport.js';
 import { resolveReportOrganizationForUser } from '../services/reportAuth.js';
 import { validateReportRequest } from '../services/reportInput.js';
-import { generateReport } from '../services/reportGeneration.js';
+import { generateReport, looksLikeCompletePdf } from '../services/reportGeneration.js';
 import { createReportDownloadToken, verifyReportDownloadToken } from '../services/reportDownloadToken.js';
 
 export function createReportsRoutes({
@@ -17,6 +17,8 @@ export function createReportsRoutes({
   createReportDownloadTokenFn = createReportDownloadToken,
   verifyReportDownloadTokenFn = verifyReportDownloadToken,
   fileExistsFn = fs.existsSync,
+  readFileFn = fs.readFileSync,
+  looksLikeCompletePdfFn = looksLikeCompletePdf,
   basenameFn = path.basename,
 } = {}) {
   const router = Router();
@@ -155,6 +157,27 @@ export function createReportsRoutes({
     }
     if (!fileExistsFn(report.file_path)) {
       return res.status(404).json({ error: 'Report file not found' });
+    }
+    // A report generated before the PDF-validation fix (or by a
+    // conversion that has since started failing outright -- e.g.
+    // LibreOffice missing from this deploy) can still be sitting in the
+    // database as status 'complete' with a truncated or invalid file on
+    // disk: that check only runs at generation time, not on every later
+    // download of an already-completed report. Re-validate PDFs here too,
+    // so a stale broken file surfaces as a clear, actionable error instead
+    // of downloading and then failing to open in the viewer.
+    if (report.format === 'pdf') {
+      let pdfBuffer;
+      try {
+        pdfBuffer = readFileFn(report.file_path);
+      } catch {
+        return res.status(404).json({ error: 'Report file not found' });
+      }
+      if (!looksLikeCompletePdfFn(pdfBuffer)) {
+        return res.status(422).json({
+          error: 'This PDF was not generated correctly and cannot be opened. Please regenerate the report.',
+        });
+      }
     }
     const filename = basenameFn(report.file_path);
     return res.download(report.file_path, filename);
