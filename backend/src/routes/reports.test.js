@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { createReportsRoutes } from './reports.js';
 
 function auth(req, _res, next) {
@@ -251,4 +254,97 @@ test('GET /api/reports/download/:id enforces expiration and file presence', asyn
   const missing = await request(app2, { path: '/api/reports/download/report-1?token=ok' });
   assert.equal(missing.status, 404);
   assert.match(missing.body.error, /file not found/i);
+});
+
+// A PDF report generated before the generation-time validation existed
+// (or by a conversion that fails outright now, e.g. LibreOffice missing
+// from the deploy) can still sit in the database as status 'complete'
+// with a broken file on disk -- that check only runs once, at generation.
+// Re-validate on every download so a stale broken file gives a clear
+// error instead of downloading and then failing to open in the viewer.
+test('GET /api/reports/download/:id rejects a PDF report whose file is invalid', async () => {
+  const router = createReportsRoutes({
+    authMiddleware: auth,
+    verifyReportDownloadTokenFn: () => ({ reportId: 'report-1', userId: 'user-1', organizationId: 'org-1' }),
+    generatedReportModel: {
+      async getGeneratedReportById() {
+        return {
+          id: 'report-1',
+          status: 'complete',
+          organization_id: 'org-1',
+          format: 'pdf',
+          file_path: '/tmp/report.pdf',
+          expires_at: new Date(Date.now() + 1000).toISOString(),
+        };
+      },
+    },
+    resolveReportOrganizationForUserFn: async () => ({ ok: true, organization: { id: 'org-1' } }),
+    fileExistsFn: () => true,
+    readFileFn: () => Buffer.from('not a real pdf'),
+    looksLikeCompletePdfFn: () => false,
+  });
+  const app = appWithRouter(router);
+  const res = await request(app, { path: '/api/reports/download/report-1?token=ok' });
+  assert.equal(res.status, 422);
+  assert.match(res.body.error, /regenerate/i);
+});
+
+test('GET /api/reports/download/:id serves a valid PDF report and skips validation for docx', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reports-download-test-'));
+  const pdfPath = path.join(tmpDir, 'report.pdf');
+  const docxPath = path.join(tmpDir, 'report.docx');
+  fs.writeFileSync(pdfPath, Buffer.from(`%PDF-1.7\n${'x'.repeat(2000)}\n%%EOF\n`));
+  fs.writeFileSync(docxPath, Buffer.from('irrelevant'));
+
+  try {
+    const pdfRouter = createReportsRoutes({
+      authMiddleware: auth,
+      verifyReportDownloadTokenFn: () => ({ reportId: 'report-1', userId: 'user-1', organizationId: 'org-1' }),
+      generatedReportModel: {
+        async getGeneratedReportById() {
+          return {
+            id: 'report-1',
+            status: 'complete',
+            organization_id: 'org-1',
+            format: 'pdf',
+            file_path: pdfPath,
+            expires_at: new Date(Date.now() + 1000).toISOString(),
+          };
+        },
+      },
+      resolveReportOrganizationForUserFn: async () => ({ ok: true, organization: { id: 'org-1' } }),
+    });
+    const pdfApp = appWithRouter(pdfRouter);
+    const pdfRes = await request(pdfApp, { path: '/api/reports/download/report-1?token=ok' });
+    assert.equal(pdfRes.status, 200);
+
+    let readFileCalled = false;
+    const docxRouter = createReportsRoutes({
+      authMiddleware: auth,
+      verifyReportDownloadTokenFn: () => ({ reportId: 'report-1', userId: 'user-1', organizationId: 'org-1' }),
+      generatedReportModel: {
+        async getGeneratedReportById() {
+          return {
+            id: 'report-1',
+            status: 'complete',
+            organization_id: 'org-1',
+            format: 'docx',
+            file_path: docxPath,
+            expires_at: new Date(Date.now() + 1000).toISOString(),
+          };
+        },
+      },
+      resolveReportOrganizationForUserFn: async () => ({ ok: true, organization: { id: 'org-1' } }),
+      readFileFn: (...args) => {
+        readFileCalled = true;
+        return fs.readFileSync(...args);
+      },
+    });
+    const docxApp = appWithRouter(docxRouter);
+    const docxRes = await request(docxApp, { path: '/api/reports/download/report-1?token=ok' });
+    assert.equal(docxRes.status, 200);
+    assert.equal(readFileCalled, false, 'docx downloads should not be run through PDF validation');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
