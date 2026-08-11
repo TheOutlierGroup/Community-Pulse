@@ -1038,8 +1038,25 @@ function brandCoverColor(brand) {
   return raw.replace(/^#/, '').toUpperCase();
 }
 
+// D-017: docx v9's ImageRun requires an explicit `type` ("jpg" | "png" |
+// "gif" | "bmp") to name and declare the embedded media part correctly.
+// Without one, `type` was `undefined` at runtime, so the library wrote
+// the logo out as word/media/<hash>.undefined -- an extension
+// [Content_Types].xml has no Default entry for, which is exactly the
+// "unreadable content" class of corruption Word prompts to repair on
+// open. Every real report embeds at least the default Rhythm Engine
+// logo, so this hit every download, not just ones with a company logo.
+function detectImageType(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 4) return null;
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'png';
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpg';
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'gif';
+  if (buffer[0] === 0x42 && buffer[1] === 0x4d) return 'bmp';
+  return null;
+}
+
 function isUsableLogoBuffer(buffer) {
-  return Buffer.isBuffer(buffer) && buffer.length > 0;
+  return Buffer.isBuffer(buffer) && buffer.length > 0 && detectImageType(buffer) != null;
 }
 
 function logoParagraph(buffer, { width = 180, height = 56, after = 120 } = {}) {
@@ -1051,6 +1068,7 @@ function logoParagraph(buffer, { width = 180, height = 56, after = 120 } = {}) {
       children: [
         new ImageRun({
           data: buffer,
+          type: detectImageType(buffer),
           transformation: { width, height },
         }),
       ],

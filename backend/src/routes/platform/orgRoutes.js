@@ -4068,8 +4068,16 @@ export function registerPlatformOrgRoutes(router) {
         teamTableDisplayLimit: sponsorshipConfig.teamTableDisplayLimit,
         aiSignalsEnabled: sponsorshipConfig.aiSignalsEnabled,
       },
+      // D-024: the Manager View header's "Avg Adoption Score" / "Avg
+      // Sponsorship Score" tiles read the same org-wide kpis.adoptionScore/
+      // sponsorshipScore the Organisation View uses, directly under a
+      // banner claiming "Scores on this page reflect manager responses
+      // only" -- exposing the actual manager-cohort averages here so the
+      // frontend can show what the banner already promises.
       cohort: {
         managerRespondentCount,
+        managerAdoptionAvg,
+        managerSponsorshipAvg,
       },
       section1: {
         cardLabel: 'AVG SCORE OVERVIEW · MANAGER COHORT ONLY',
