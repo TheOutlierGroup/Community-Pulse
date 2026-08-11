@@ -178,3 +178,53 @@ test('buildReportDocx never emits an em dash anywhere in the document', async ()
   const text = await extractDocxText(buffer);
   assert.doesNotMatch(text, /—/);
 });
+
+const PNG_MAGIC_BUFFER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+const JPEG_MAGIC_BUFFER = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]);
+const UNRECOGNISED_BUFFER = Buffer.from('not an image', 'utf8');
+
+async function docxMediaEntries(buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  return Object.keys(zip.files).filter((name) => name.startsWith('word/media/') && !name.endsWith('/'));
+}
+
+// D-008/D-017 (REA-02): every real report embeds at least the default
+// Rhythm Engine logo, so this hit every download, not just ones with a
+// company logo. docx v9's ImageRun needs an explicit `type` to name and
+// declare the embedded media part -- without one, `type` was `undefined`
+// at runtime, and the library wrote the logo out as
+// word/media/<hash>.undefined, an extension [Content_Types].xml has no
+// Default entry for. That's exactly the "unreadable content" class of
+// corruption Word prompts to repair on open.
+test('buildReportDocx names an embedded logo by its real image type, not "undefined"', async () => {
+  const buffer = await buildReportDocx({
+    reportData: makeReportData(),
+    signals,
+    defaultLogoBuffer: PNG_MAGIC_BUFFER,
+  });
+  const media = await docxMediaEntries(buffer);
+  assert.equal(media.length, 1);
+  assert.match(media[0], /\.png$/);
+  assert.doesNotMatch(media[0], /undefined/);
+});
+
+test('buildReportDocx detects a JPEG logo correctly', async () => {
+  const buffer = await buildReportDocx({
+    reportData: makeReportData(),
+    signals,
+    defaultLogoBuffer: JPEG_MAGIC_BUFFER,
+  });
+  const media = await docxMediaEntries(buffer);
+  assert.equal(media.length, 1);
+  assert.match(media[0], /\.jpg$/);
+});
+
+test('buildReportDocx omits a logo it cannot identify instead of corrupting the document', async () => {
+  const buffer = await buildReportDocx({
+    reportData: makeReportData(),
+    signals,
+    defaultLogoBuffer: UNRECOGNISED_BUFFER,
+  });
+  const media = await docxMediaEntries(buffer);
+  assert.equal(media.length, 0);
+});
