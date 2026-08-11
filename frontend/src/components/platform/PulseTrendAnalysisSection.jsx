@@ -642,22 +642,29 @@ export default function PulseTrendAnalysisSection({
       <article className="card pulse-trend-card">
         <p className="pulse-trend-card__label">Section 9 - Cross-Stage Divergence Flags</p>
         <TrendMeasure copy={TREND_MEASURE_COPY.section9} />
-        {divergenceFlags.length > 0 ? (
-          <div className="table-wrap">
-            <table className="pulse-trend-table">
-              <thead>
-                <tr>
-                  <th>Dimension</th>
-                  <th>Survey</th>
-                  <th>Transition</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Delta</th>
-                  <th>Direction</th>
-                </tr>
-              </thead>
-              <tbody>
-                {divergenceFlags.map((flag) => (
+        {/* D-019: this used to swap the whole table out for a single muted,
+            italic sentence when there were no flags to show -- easy to miss
+            entirely next to the other sections' charts and tables, and easy
+            to mistake for the section not rendering at all. The table shell
+            (headers included) now always renders; an empty result shows as
+            an explicit blank row inside it rather than a different element
+            replacing it, so the section visibly exists either way. */}
+        <div className="table-wrap">
+          <table className="pulse-trend-table">
+            <thead>
+              <tr>
+                <th>Dimension</th>
+                <th>Survey</th>
+                <th>Transition</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Delta</th>
+                <th>Direction</th>
+              </tr>
+            </thead>
+            <tbody>
+              {divergenceFlags.length > 0 ? (
+                divergenceFlags.map((flag) => (
                   <tr key={flag.key}>
                     <td>{DIMENSION_LABELS[flag.dimensionId] || flag.dimensionId}</td>
                     <td>{flag.survey}</td>
@@ -667,15 +674,17 @@ export default function PulseTrendAnalysisSection({
                     <td>{formatDelta(flag.delta)}</td>
                     <td>{flag.delta > 0 ? '↑ Improved' : '↓ Declined'}</td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="muted" style={{ marginBottom: 0, fontStyle: 'italic' }}>
-            No cross-stage divergence flags at this stage. Score movements across all dimensions are within expected variation (±1.0 point).
-          </p>
-        )}
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ fontStyle: 'italic', textAlign: 'center' }}>
+                    No cross-stage divergence flags at this stage. Score movements across all dimensions are within expected variation (±1.0 point).
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
         {divergenceFlags.length > 0 ? (
           <p className="pulse-trend-card__signal">
             {section9Signal
