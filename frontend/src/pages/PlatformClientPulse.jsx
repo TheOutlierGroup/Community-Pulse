@@ -1301,10 +1301,21 @@ export default function PlatformClientPulse() {
   const topCardInvitedEmployees = managerFocusedTopCard ? (kpis.invitedManagers ?? 0) : (kpis.invitedEmployees ?? 0);
   const topCardManagerResponses = kpis.completedManagers ?? 0;
   const topCardInvitedManagers = kpis.invitedManagers ?? 0;
-  const topCardAdoptionScore = kpis.adoptionScore;
-  const topCardSponsorshipScore = kpis.sponsorshipScore;
-  const topCardAdoptionDelta = kpis.adoptionDelta;
-  const topCardSponsorshipDelta = kpis.sponsorshipDelta;
+  // D-024: these tiles only ever render in Manager View (see
+  // showTopSummaryScoreKpis below), directly under a banner promising
+  // "Scores on this page reflect manager responses only" -- but they read
+  // kpis.adoptionScore/sponsorshipScore, the same org-wide figures the
+  // Organisation View uses, so a manager cohort with a very different
+  // profile from the wider org still showed identical numbers here. No
+  // manager-cohort equivalent of the wave-over-wave delta exists yet, so
+  // that's left blank rather than paired with a now-correct score.
+  const managerCohort = dashboard?.sponsorshipAnalysis?.cohort || {};
+  const topCardAdoptionScore = managerFocusedTopCard ? managerCohort.managerAdoptionAvg ?? null : kpis.adoptionScore;
+  const topCardSponsorshipScore = managerFocusedTopCard
+    ? managerCohort.managerSponsorshipAvg ?? null
+    : kpis.sponsorshipScore;
+  const topCardAdoptionDelta = managerFocusedTopCard ? null : kpis.adoptionDelta;
+  const topCardSponsorshipDelta = managerFocusedTopCard ? null : kpis.sponsorshipDelta;
   useEffect(() => {
     const previous = document.title;
     const client = String(org?.name ?? '').trim() || 'Client';
