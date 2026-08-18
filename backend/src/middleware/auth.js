@@ -439,3 +439,24 @@ export async function requireEnterpriseClientSelf(req, res, next) {
     next(e);
   }
 }
+
+// Mirror image of requireEnterpriseClientSelf, for the legacy Guided-tier
+// surfaces (/api/admin, /api/analytics/sessions/:id): an Enterprise-tier
+// client manages sessions through the Rhythm Engine self-service workspace
+// (platformEnterpriseSelfRouter.js) instead, which reads/writes the exact
+// same pulse_sessions rows through different validation and audit logging.
+// Without this, an Enterprise admin's token could still call these routes
+// directly and mutate session state through a second, disconnected path.
+export async function requireNonEnterprisePortalTier(req, res, next) {
+  try {
+    const org = req.clientOrganization || (await Organization.getOrganization(req.user.organizationId));
+    if (org && organizationHasEnterprisePortalTier(org.settings)) {
+      return res.status(403).json({
+        error: 'Enterprise-tier clients manage Rhythm Engine sessions through their own self-service workspace.',
+      });
+    }
+    next();
+  } catch (e) {
+    next(e);
+  }
+}

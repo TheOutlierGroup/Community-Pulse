@@ -13,9 +13,20 @@ export default function ClientHome() {
     if (!loading && !user) navigate('/');
     else if (user && user.organizationKind !== 'client') navigate(getPostLoginPath(user));
     else if (user && user.role !== 'admin') navigate(getPostLoginPath(user));
+    // Enterprise-tier clients get their own self-service workspace at
+    // /platform/clients/:orgId — this legacy Guided-tier dashboard (and
+    // its "Open Rhythm Engine admin" link into the old /admin session
+    // manager) is a second, disconnected surface for the same data.
+    else if (user && user.clientPortalTier === 'enterprise') navigate(getPostLoginPath(user));
   }, [user, loading, navigate]);
 
-  if (loading || !user || user.organizationKind !== 'client' || user.role !== 'admin') {
+  if (
+    loading ||
+    !user ||
+    user.organizationKind !== 'client' ||
+    user.role !== 'admin' ||
+    user.clientPortalTier === 'enterprise'
+  ) {
     return null;
   }
 

@@ -4,6 +4,7 @@ import {
   requireAdmin,
   requireClientOrganization,
   requireClientPulseService,
+  requireNonEnterprisePortalTier,
 } from '../middleware/auth.js';
 import * as PulseSession from '../models/PulseSession.js';
 import * as ActionPlan from '../models/ActionPlan.js';
@@ -21,6 +22,7 @@ export function createAnalyticsRoutes({
   adminMiddleware = requireAdmin,
   clientOrgMiddleware = requireClientOrganization,
   pulseServiceMiddleware = requireClientPulseService,
+  nonEnterprisePortalTierMiddleware = requireNonEnterprisePortalTier,
   pulseSessionModel = PulseSession,
   actionPlanModel = ActionPlan,
   aggregateSessionResponsesFn = aggregateSessionResponses,
@@ -31,7 +33,13 @@ export function createAnalyticsRoutes({
 } = {}) {
   const router = Router();
 
-  router.use(authMiddleware, adminMiddleware, clientOrgMiddleware, pulseServiceMiddleware);
+  router.use(
+    authMiddleware,
+    adminMiddleware,
+    clientOrgMiddleware,
+    pulseServiceMiddleware,
+    nonEnterprisePortalTierMiddleware
+  );
 
   router.get('/sessions/:id', async (req, res) => {
   const session = await pulseSessionModel.getSessionById(

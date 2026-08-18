@@ -42,10 +42,18 @@ export default function AdminHome() {
     else if (user && user.role === 'admin' && !userHasService(user, CLIENT_SERVICE_PULSE)) {
       navigate('/client');
     }
+    // Enterprise-tier clients manage sessions through their own
+    // /platform/clients/:orgId/rhythm-engine workspace, not this legacy
+    // Guided-tier admin page — without this, an Enterprise admin could
+    // still reach /admin directly and see two disconnected session
+    // management surfaces for the same organisation.
+    else if (user && user.role === 'admin' && user.clientPortalTier === 'enterprise') {
+      navigate(`/platform/clients/${user.organizationId}`);
+    }
   }, [user, loading, navigate]);
 
   useEffect(() => {
-    if (user?.role === 'admin') load();
+    if (user?.role === 'admin' && user.clientPortalTier !== 'enterprise') load();
   }, [user]);
 
   useEffect(() => {
@@ -131,7 +139,8 @@ export default function AdminHome() {
     !user ||
     user.role !== 'admin' ||
     user.organizationKind !== 'client' ||
-    !userHasService(user, CLIENT_SERVICE_PULSE)
+    !userHasService(user, CLIENT_SERVICE_PULSE) ||
+    user.clientPortalTier === 'enterprise'
   ) {
     return null;
   }

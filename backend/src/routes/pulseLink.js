@@ -58,15 +58,21 @@ function getLinkToken(req) {
     return true;
   }
 
+  // POV-09: timepoint_phase on pulse_link_invites is stored as the
+  // *internal* value ('pre' | 'during' | 'completed' — see the
+  // pulse_link_invites_timepoint_phase_check constraint), not the external
+  // stage name ('pre' | 'mid' | 'post') that pulseInviteScopeKey in
+  // orgRoutes.js uses when saving a due date. Comparing invite.timepoint_phase
+  // against 'post'/'mid' here never matched, so a due date set for a During
+  // or Post wave was silently never enforced — the survey stayed open past
+  // its configured due date. timepoint_instance_key already stores exactly
+  // the scope key the write side saves under ('pre', 'post', or
+  // 'session:<id>' — see inviteInstanceKeyForScope in PulseLinkInvite.js),
+  // so read it directly instead of re-deriving it from the wrong field.
   function pulseInviteDueDateScopeKey(invite) {
     if (!invite) return null;
-    if (invite.timepoint_phase === 'pre') return 'pre';
-    if (invite.timepoint_phase === 'post') return 'post';
-    if (invite.timepoint_phase === 'mid') {
-      const key = String(invite.timepoint_instance_key || '').trim();
-      return key || null;
-    }
-    return null;
+    const key = String(invite.timepoint_instance_key || '').trim();
+    return key || null;
   }
 
   function pulseInviteDueDateForInvite(settings, invite) {
