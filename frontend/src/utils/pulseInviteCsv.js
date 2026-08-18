@@ -97,6 +97,7 @@ export function parseRecipientCsv(text, options = {}) {
     if (colEmail < 0) colEmail = headerLower.indexOf('e mail');
     colName = headerLower.indexOf('name');
     if (colName < 0) colName = headerLower.indexOf('display name');
+    if (colName < 0) colName = headerLower.indexOf('employee full name');
     if (colName < 0) colName = headerLower.indexOf('employee preferred first name');
     if (colName < 0) colName = headerLower.indexOf('preferred first name');
     if (colName < 0) colName = headerLower.indexOf('full name');

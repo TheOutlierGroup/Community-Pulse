@@ -36,11 +36,16 @@ export default function AdminSession() {
       if (user) navigate(getPostLoginPath(user));
     } else if (!userHasService(user, CLIENT_SERVICE_PULSE)) {
       navigate('/client');
+    } else if (user.clientPortalTier === 'enterprise') {
+      // Enterprise-tier clients analyse sessions through their own
+      // /platform/clients/:orgId/rhythm-engine workspace, not this legacy
+      // Guided-tier analytics page.
+      navigate(getPostLoginPath(user));
     }
   }, [user, loading, navigate]);
 
   useEffect(() => {
-    if (user?.role === 'admin' && user?.organizationKind === 'client' && id) load();
+    if (user?.role === 'admin' && user?.organizationKind === 'client' && user.clientPortalTier !== 'enterprise' && id) load();
   }, [user, id]);
 
   async function generatePlan() {
@@ -86,7 +91,8 @@ export default function AdminSession() {
     !user ||
     user.role !== 'admin' ||
     user.organizationKind !== 'client' ||
-    !userHasService(user, CLIENT_SERVICE_PULSE)
+    !userHasService(user, CLIENT_SERVICE_PULSE) ||
+    user.clientPortalTier === 'enterprise'
   ) {
     return null;
   }

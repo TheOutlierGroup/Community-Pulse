@@ -20,13 +20,14 @@ import {
   Handshake,
   BookUser,
   Megaphone,
+  Eye,
 } from 'lucide-react';
 import {
   CLIENT_SERVICE_PULSE,
   hasService,
   userHasService,
 } from '../../utils/clientServices.js';
-import api from '../../services/api.js';
+import api, { setAuthToken } from '../../services/api.js';
 import { rhythmEngineAppBaseUrl } from '../../config/appSurface.js';
 import { isWorkspaceUser, isLicenseeUser, isEnterpriseClientSelfUser } from '../../hooks/usePlatformAccess.js';
 import AuthenticatedBlobImage from '../platform/AuthenticatedBlobImage.jsx';
@@ -69,11 +70,19 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const location = useLocation();
   const [pulseLaunching, setPulseLaunching] = useState(false);
   const [pulseLaunchError, setPulseLaunchError] = useState('');
+  const [supportSessionBusy, setSupportSessionBusy] = useState(false);
+  const [supportSessionError, setSupportSessionError] = useState('');
   const isWorkspace = isWorkspaceUser(user);
   const isLicensee = isLicenseeUser(user);
   const isEnterpriseClientSelf = isEnterpriseClientSelfUser(user);
+  const isPlatformAdmin = user?.organizationKind === 'platform' && user?.role === 'admin';
   const platformClientOrgId =
     (isWorkspace || isEnterpriseClientSelf) && params.orgId ? params.orgId : null;
+  const viewedOrgKind = navContext?.clientOrganization?.kind;
+  const canStartSupportSession =
+    isPlatformAdmin
+    && Boolean(platformClientOrgId)
+    && (viewedOrgKind === 'client' || viewedOrgKind === 'licensee');
   const platformProspectId =
     isWorkspace && params.id && location.pathname.startsWith('/platform/crm/organisations/')
       ? params.id
@@ -197,6 +206,28 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
       setPulseLaunchError(e.response?.data?.error || 'Could not open Rhythm Engine right now.');
     } finally {
       setPulseLaunching(false);
+    }
+  }
+
+  async function startSupportSession() {
+    if (!platformClientOrgId || supportSessionBusy) return;
+    setSupportSessionBusy(true);
+    setSupportSessionError('');
+    try {
+      const { data } = await api.post(`/api/platform/organizations/${platformClientOrgId}/support-impersonate`);
+      if (data?.token) {
+        // Stash the original admin token so we can drop back out of the
+        // impersonation session without logging out and back in.
+        const previous = sessionStorage.getItem('pulse_token');
+        if (previous) sessionStorage.setItem('pulse_token__pre_impersonate', previous);
+        setAuthToken(data.token);
+        sessionStorage.setItem('pulse_support_impersonation', '1');
+        sessionStorage.setItem('pulse_support_impersonation_org_id', platformClientOrgId);
+        window.location.assign('/platform');
+      }
+    } catch (e) {
+      setSupportSessionError(e.response?.data?.error || 'Could not start support session.');
+      setSupportSessionBusy(false);
     }
   }
 
@@ -481,7 +512,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
               </NavLink>
             </>
           )}
-          {user.organizationKind === 'client' && user.role === 'admin' && (
+          {user.organizationKind === 'client' && user.role === 'admin' && !isEnterpriseClientSelf && (
             <>
               <NavLink to="/client" className={sidebarLinkClass} end>
                 <LayoutDashboard size={20} strokeWidth={1.75} aria-hidden />
@@ -502,9 +533,24 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         </nav>
         {!isPlatformPulseRoute && (
           <div className="sidebar-footer">
-            <NavLink to={myAccountHref} className={sidebarLinkClass}>
+            {canStartSupportSession && (
+              <>
+                <button
+                  type="button"
+                  className="sidebar-nav-link sidebar-nav-link--button"
+                  onClick={startSupportSession}
+                  disabled={supportSessionBusy}
+                  title="Read-only impersonation: view this organisation exactly as their admin sees it. Writes are disabled and the session is audit-logged."
+                >
+                  <Eye size={20} strokeWidth={1.75} aria-hidden />
+                  {supportSessionBusy ? 'Starting support session…' : 'Start read-only support session'}
+                </button>
+                {supportSessionError && <p className="error sidebar-nav-error">{supportSessionError}</p>}
+              </>
+            )}
+            <NavLink to={myAccountHref} className={sidebarLinkClass} title={myAccountLabel}>
               {myAccountAvatar}
-              {myAccountLabel}
+              <span className="sidebar-nav-link__label">{myAccountLabel}</span>
             </NavLink>
             <button
               type="button"

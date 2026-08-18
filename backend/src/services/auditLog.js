@@ -17,6 +17,8 @@ export const AUDIT_ACTIONS = Object.freeze({
   USER_INVITE_RESEND: 'user.invite.resend',
   USER_UPDATE: 'user.update',
   USER_DEACTIVATE: 'user.deactivate',
+  USER_REACTIVATE: 'user.reactivate',
+  USER_PURGE: 'user.purge',
   USER_PASSWORD_RESET_BY_ADMIN: 'user.password_reset_by_admin',
 
   LICENCE_CONFIG_UPDATE: 'licence.config.update',
@@ -289,6 +291,7 @@ export async function listRecentAuditEvents({
   action = null,
   targetId = null,
   targetType = null,
+  excludeActions = null,
 }) {
   const cappedLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 100;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
@@ -311,6 +314,11 @@ export async function listRecentAuditEvents({
   if (targetType) {
     where += ` AND target_type = $${idx++}`;
     params.push(targetType);
+  }
+  const excluded = Array.isArray(excludeActions) ? excludeActions.filter(Boolean) : [];
+  if (excluded.length > 0) {
+    where += ` AND action <> ALL($${idx++}::text[])`;
+    params.push(excluded);
   }
 
   const { rows } = await query(

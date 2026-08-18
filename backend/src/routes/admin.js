@@ -5,6 +5,7 @@ import {
   requireAdmin,
   requireClientOrganization,
   requireClientPulseService,
+  requireNonEnterprisePortalTier,
 } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
 import * as PulseSession from '../models/PulseSession.js';
@@ -27,6 +28,7 @@ export function createAdminRoutes({
   adminMiddleware = requireAdmin,
   clientOrgMiddleware = requireClientOrganization,
   pulseServiceMiddleware = requireClientPulseService,
+  nonEnterprisePortalTierMiddleware = requireNonEnterprisePortalTier,
   pulseSessionModel = PulseSession,
   inviteModel = Invite,
   listSessionResponsesFn = listSessionResponses,
@@ -37,7 +39,13 @@ export function createAdminRoutes({
 } = {}) {
   const router = Router();
 
-  router.use(authMiddleware, adminMiddleware, clientOrgMiddleware, pulseServiceMiddleware);
+  router.use(
+    authMiddleware,
+    adminMiddleware,
+    clientOrgMiddleware,
+    pulseServiceMiddleware,
+    nonEnterprisePortalTierMiddleware
+  );
 
   router.get('/overview', async (req, res) => {
     const sessions = await pulseSessionModel.listSessionsForOrg(req.user.organizationId);

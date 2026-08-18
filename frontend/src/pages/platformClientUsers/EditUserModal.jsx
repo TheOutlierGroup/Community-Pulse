@@ -23,6 +23,7 @@ export default function EditUserModal({
   editLoginEnabled,
   setEditLoginEnabled,
   canRemoveAccess,
+  canReturnAccess,
   removeAccessStep,
   setRemoveAccessStep,
   onClose,
@@ -30,14 +31,22 @@ export default function EditUserModal({
   onSetPassword,
   onResendWelcomeEmail,
   onConfirmRemoveAccess,
+  onConfirmReturnAccess,
 }) {
   if (!editUser) return null;
 
   return (
     <ModalDialog open={Boolean(editUser)} title="Edit user" titleId="edit-client-user-title" onClose={onClose}>
-      <p className="muted" style={{ marginTop: '0.35rem', marginBottom: '1rem' }}>
-        Update profile and role. Optionally set a new password for this account.
-      </p>
+      {editUser.deactivatedAt ? (
+        <p className="muted" style={{ marginTop: '0.35rem', marginBottom: '1rem' }}>
+          <strong>This user's access has been removed.</strong> They cannot sign in. Return their access below,
+          or update their details ready for when they do.
+        </p>
+      ) : (
+        <p className="muted" style={{ marginTop: '0.35rem', marginBottom: '1rem' }}>
+          Update profile and role. Optionally set a new password for this account.
+        </p>
+      )}
       {error ? <p className="error" style={{ marginBottom: '1rem' }}>{error}</p> : null}
       <form onSubmit={onSave}>
           <fieldset className="modal-dialog__fieldset">
@@ -191,6 +200,21 @@ export default function EditUserModal({
           setStep={setRemoveAccessStep}
           onConfirm={onConfirmRemoveAccess}
           introText="Remove this user from the organization and block sign-in. Their profile and history stay in the database."
+        />
+      ) : null}
+      {canReturnAccess ? (
+        <RemoveAccessConfirm
+          busy={busy}
+          step={removeAccessStep}
+          setStep={setRemoveAccessStep}
+          onConfirm={onConfirmReturnAccess}
+          introText="Restore this user's access so they can sign in again."
+          confirmText="They will be able to sign in again immediately. Continue?"
+          actionLabel="Return access"
+          busyLabel="Restoring…"
+          confirmLabel="Yes, return access"
+          actionButtonClassName="btn-secondary"
+          confirmButtonClassName="btn-primary"
         />
       ) : null}
     </ModalDialog>

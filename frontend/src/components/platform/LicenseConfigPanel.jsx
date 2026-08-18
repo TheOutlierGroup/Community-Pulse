@@ -9,27 +9,6 @@ function defaultReconciliationMonth() {
   return `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
 }
 
-function formatEventDate(iso) {
-  if (!iso) return '';
-  const dt = new Date(iso);
-  if (Number.isNaN(dt.getTime())) return '';
-  return dt.toLocaleString(undefined, {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-const SOURCE_LABELS = {
-  platform_during_checkpoint: 'Platform during-checkpoint',
-  client_admin_session: 'Client admin session',
-  platform_session_create: 'Platform session create',
-  manual_override: 'Manual override',
-  manual_refund: 'Refund',
-};
-
 const LICENSE_TIER_OPTIONS = [
   { id: 'practitioner', label: 'Practitioner' },
   { id: 'enterprise_mid', label: 'Enterprise (Mid)' },
@@ -69,8 +48,6 @@ export default function LicenseConfigPanel({
   const [supportUrl, setSupportUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [events, setEvents] = useState([]);
-  const [eventsBusy, setEventsBusy] = useState(false);
   const [reconciliationMonth, setReconciliationMonth] = useState(defaultReconciliationMonth());
   const [reconciliationBusy, setReconciliationBusy] = useState(false);
 
@@ -91,26 +68,6 @@ export default function LicenseConfigPanel({
     const remaining = Math.max(includedNum - consumedNum, 0);
     return `${remaining} of ${includedNum} assessments remaining (${consumedNum} consumed)`;
   }, [isUnlimited, includedNum, consumedNum]);
-
-  useEffect(() => {
-    if (!orgId) return;
-    let cancelled = false;
-    setEventsBusy(true);
-    api
-      .get(`/api/platform/organizations/${orgId}/assessment-consumption`)
-      .then(({ data }) => {
-        if (!cancelled) setEvents(Array.isArray(data?.events) ? data.events : []);
-      })
-      .catch(() => {
-        // 403/404 is fine — only platform admins viewing licensee orgs see events.
-      })
-      .finally(() => {
-        if (!cancelled) setEventsBusy(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId, licenseConfig?.assessmentsConsumed]);
 
   useEffect(() => {
     // A <select> whose bound value doesn't match any <option> silently
@@ -227,6 +184,10 @@ export default function LicenseConfigPanel({
       <p className="muted" style={{ marginTop: '-0.25rem' }}>
         Commercial guardrails for this {isPractitioner ? 'Rhythm Engine Practitioner' : 'Enterprise Rhythm Engine client'}.
         Only Outlier platform admins can edit these.
+        {!isPractitioner && (
+          <> An Enterprise licence tier also gives this client&rsquo;s own admins/employees self-service
+          portal access (Dashboard, Users, Tasks, Rhythm Engine) — the two are kept in sync automatically.</>
+        )}
       </p>
       {error && <p className="error" style={{ marginBottom: '0.75rem' }}>{error}</p>}
       <div style={{ marginBottom: '1rem' }}>
@@ -530,43 +491,6 @@ export default function LicenseConfigPanel({
             {reconciliationBusy ? 'Preparing…' : 'Download CSV'}
           </button>
         </div>
-        <h3 style={{ margin: '0 0 0.5rem', fontSize: '0.95rem' }}>Recent assessment opens</h3>
-        {eventsBusy && <p className="muted" style={{ margin: 0 }}>Loading…</p>}
-        {!eventsBusy && events.length === 0 && (
-          <p className="muted" style={{ margin: 0 }}>
-            No assessments have been opened against this licence yet.
-          </p>
-        )}
-        {!eventsBusy && events.length > 0 && (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {events.slice(0, 10).map((event) => (
-              <li
-                key={event.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: '0.75rem',
-                  padding: '0.4rem 0',
-                  borderBottom: '1px solid rgba(0,0,0,0.06)',
-                  fontSize: '0.85rem',
-                }}
-              >
-                <span>
-                  <strong>
-                    {event.assessmentsCharged > 0
-                      ? `+${event.assessmentsCharged}`
-                      : event.assessmentsCharged}
-                  </strong>{' '}
-                  · {event.clientOrganizationName || 'Unknown client'}
-                  <span className="muted" style={{ marginLeft: '0.5rem' }}>
-                    {SOURCE_LABELS[event.source] || event.source}
-                  </span>
-                </span>
-                <span className="muted">{formatEventDate(event.createdAt)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
     </div>
   );

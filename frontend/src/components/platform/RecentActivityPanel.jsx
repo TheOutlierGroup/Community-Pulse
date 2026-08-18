@@ -13,6 +13,8 @@ const ACTION_LABELS = {
   'user.invite.resend': 'Invite resent',
   'user.update': 'User updated',
   'user.deactivate': 'User deactivated',
+  'user.reactivate': 'User access reinstated',
+  'user.purge': 'User permanently deleted',
   'user.password_reset_by_admin': 'Password reset by admin',
   'licence.config.update': 'Licence configuration updated',
   'licence.expiry.sweep': 'Licence expiry sweep run',
@@ -136,6 +138,7 @@ function describeMetadata(event) {
   if (m.kind) bits.push(m.kind);
   if (m.businessUnit) bits.push(m.businessUnit);
   if (m.excerpt) bits.push(`"${m.excerpt}"`);
+  if (m.clientOrganizationName) bits.push(m.clientOrganizationName);
   const fieldChangeDetail = describeFieldChanges(m.fieldChanges);
   if (fieldChangeDetail) {
     bits.push(fieldChangeDetail);
@@ -192,13 +195,14 @@ export default function RecentActivityPanel({
     try {
       const { data } = await api.get(`${resourcePath}/${orgId}/audit-events?limit=${EXPORT_LIMIT}`);
       const rows = Array.isArray(data?.events) ? data.events : [];
-      const headers = ['Action', 'Detail', 'Result', 'Timestamp'];
+      const headers = ['Action', 'Detail', 'By', 'Result', 'Timestamp'];
       const lines = [headers.map(csvEscape).join(',')];
       for (const event of rows) {
         lines.push(
           [
             describeAction(event.action),
             describeMetadata(event) || '',
+            event.actorLabel || '',
             event.result || 'ok',
             formatDate(event.occurredAt),
           ]
@@ -346,8 +350,12 @@ export default function RecentActivityPanel({
                     </span>
                   )}
                 </span>
-                <span className="muted" style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
-                  {formatDate(event.occurredAt)}
+                <span
+                  className="muted"
+                  style={{ fontSize: '0.75rem', whiteSpace: 'nowrap', textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.1rem' }}
+                >
+                  <span>{formatDate(event.occurredAt)}</span>
+                  {event.actorLabel ? <span>by {event.actorLabel}</span> : null}
                 </span>
               </li>
             );

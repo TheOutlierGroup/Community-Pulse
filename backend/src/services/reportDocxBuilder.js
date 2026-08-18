@@ -12,6 +12,7 @@ import {
   TableOfContents,
   TableRow,
   TextRun,
+  VerticalAlign,
   WidthType,
   convertInchesToTwip,
 } from 'docx';
@@ -1059,11 +1060,11 @@ function isUsableLogoBuffer(buffer) {
   return Buffer.isBuffer(buffer) && buffer.length > 0 && detectImageType(buffer) != null;
 }
 
-function logoParagraph(buffer, { width = 180, height = 56, after = 120 } = {}) {
+function logoParagraph(buffer, { width = 180, height = 56, after = 120, alignment = AlignmentType.CENTER } = {}) {
   if (!isUsableLogoBuffer(buffer)) return null;
   try {
     return new Paragraph({
-      alignment: AlignmentType.CENTER,
+      alignment,
       spacing: { after },
       children: [
         new ImageRun({
@@ -1079,20 +1080,70 @@ function logoParagraph(buffer, { width = 180, height = 56, after = 120 } = {}) {
   }
 }
 
+const LOGO_ROW_BORDERS = {
+  top: BORDER_NONE, bottom: BORDER_NONE, left: BORDER_NONE, right: BORDER_NONE,
+};
+
 /**
- * Cover page logo lock-up. The Rhythm Engine (or licensee) brand logo always
- * sits at the top; the client's own company logo (when uploaded) is
- * stacked below it so the report visually identifies "for whom" as well
- * as "by whom" before the title even appears.
+ * Cover page logo lock-up. The client's own company logo (when uploaded)
+ * sits left-aligned, and the Rhythm Engine (or licensee) brand logo sits
+ * right-aligned on the same line, so the report visually identifies "for
+ * whom" and "by whom" side by side rather than stacked as two separate,
+ * centered lines. Falls back to a single centered logo when only one of
+ * the two is present.
  */
 function coverLogoStack({ defaultLogoBuffer, brandLogoBuffer, companyLogoBuffer }) {
-  const paragraphs = [];
   // Prefer the licensee brand logo when one is configured, otherwise
   // fall back to the Rhythm Engine mark. BRAND-01: this used to fall back
   // to Outlier's logo, which put Outlier branding on reports Practitioners
   // hand to their own clients.
   const topLogo = isUsableLogoBuffer(brandLogoBuffer) ? brandLogoBuffer : defaultLogoBuffer;
-  const top = logoParagraph(topLogo, { width: 200, height: 60, after: companyLogoBuffer ? 120 : 240 });
+  const topUsable = isUsableLogoBuffer(topLogo);
+  const companyUsable = isUsableLogoBuffer(companyLogoBuffer);
+
+  if (topUsable && companyUsable) {
+    try {
+      const companyCell = logoParagraph(companyLogoBuffer, {
+        width: 150, height: 50, after: 0, alignment: AlignmentType.LEFT,
+      });
+      const brandCell = logoParagraph(topLogo, {
+        width: 170, height: 51, after: 0, alignment: AlignmentType.RIGHT,
+      });
+      if (companyCell && brandCell) {
+        return [
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            borders: { ...LOGO_ROW_BORDERS, insideHorizontal: BORDER_NONE, insideVertical: BORDER_NONE },
+            rows: [
+              new TableRow({
+                children: [
+                  new TableCell({
+                    width: { size: 50, type: WidthType.PERCENTAGE },
+                    borders: LOGO_ROW_BORDERS,
+                    verticalAlign: VerticalAlign.CENTER,
+                    children: [companyCell],
+                  }),
+                  new TableCell({
+                    width: { size: 50, type: WidthType.PERCENTAGE },
+                    borders: LOGO_ROW_BORDERS,
+                    verticalAlign: VerticalAlign.CENTER,
+                    children: [brandCell],
+                  }),
+                ],
+              }),
+            ],
+          }),
+          spacer(240),
+        ];
+      }
+    } catch (error) {
+      console.error('Failed to build side-by-side logo lock-up in report:', error);
+      // fall through to the single-logo-per-line layout below
+    }
+  }
+
+  const paragraphs = [];
+  const top = logoParagraph(topLogo, { width: 200, height: 60, after: companyUsable ? 120 : 240 });
   if (top) paragraphs.push(top);
   const company = logoParagraph(companyLogoBuffer, { width: 180, height: 60, after: 240 });
   if (company) paragraphs.push(company);

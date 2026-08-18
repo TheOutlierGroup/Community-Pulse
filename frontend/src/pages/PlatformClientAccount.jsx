@@ -53,7 +53,6 @@ export default function PlatformClientAccount() {
   const isWorkspace = isWorkspaceUser(user);
   const isSelfService = isEnterpriseClientSelfUser(user);
   const isLicenseeOrg = org.kind === 'licensee';
-  const isClientOrg = org.kind === 'client';
   // A standalone "Enterprise" client (no Practitioner parent) carries its
   // own Rhythm Engine licence directly, same panel as a Practitioner uses
   // for itself — a plain client with no Rhythm Engine service never shows
@@ -226,7 +225,7 @@ export default function PlatformClientAccount() {
       bumpClientLogo();
       showToast('Client logo updated.', { variant: 'success' });
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not upload logo.');
+      showToast(err.response?.data?.error || 'Could not upload logo.', { variant: 'error' });
     } finally {
       setBusy(false);
     }
@@ -242,7 +241,7 @@ export default function PlatformClientAccount() {
       bumpClientLogo();
       showToast('Client logo removed.', { variant: 'success' });
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not remove logo.');
+      showToast(err.response?.data?.error || 'Could not remove logo.', { variant: 'error' });
     } finally {
       setBusy(false);
     }
@@ -300,44 +299,6 @@ export default function PlatformClientAccount() {
       )}
       {isEnterpriseClient && isSelfService && user?.role === 'admin' && (
         <LicenseConfigPanel orgId={orgId} licenseConfig={licenseConfig} selfServiceView />
-      )}
-      {(isLicenseeOrg || isClientOrg) && isPlatformAdmin && (
-        <>
-          <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <h2 className="platform-client-dashboard__h2" style={{ marginTop: 0 }}>Support tools</h2>
-            <p className="muted" style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>
-              Read-only impersonation lets you view this {isLicenseeOrg ? 'licensee' : 'client'}&apos;s
-              workspace exactly as their admin sees it. Writes are disabled. Sessions last 30 minutes;
-              the start of every session (and any write it attempts) is audit-logged.
-            </p>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={async () => {
-                try {
-                  const apiMod = await import('../services/api.js');
-                  const { data } = await apiMod.default.post(
-                    `/api/platform/organizations/${orgId}/support-impersonate`
-                  );
-                  if (data?.token) {
-                    // Stash the original admin token so we can drop back
-                    // out of the impersonation session without logging
-                    // out and back in.
-                    const previous = sessionStorage.getItem('pulse_token');
-                    if (previous) sessionStorage.setItem('pulse_token__pre_impersonate', previous);
-                    apiMod.setAuthToken(data.token);
-                    sessionStorage.setItem('pulse_support_impersonation', '1');
-                    window.location.assign('/platform');
-                  }
-                } catch (err) {
-                  alert(err?.response?.data?.error || 'Could not start support session.');
-                }
-              }}
-            >
-              Start read-only support session
-            </button>
-          </div>
-        </>
       )}
       <div className="platform-client-dashboard-grid">
         {isWorkspace && (
@@ -412,7 +373,7 @@ export default function PlatformClientAccount() {
             </button>
           </form>
 
-          {isPlatformAdmin && (
+          {isPlatformAdmin && !isEnterpriseClient && (
             <form
               onSubmit={saveClientPortalTier}
               style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}
@@ -430,7 +391,7 @@ export default function PlatformClientAccount() {
                   onChange={(e) => setClientPortalTier(e.target.value)}
                   disabled={busy}
                 >
-                  <option value="standard">Standard</option>
+                  <option value="standard">Guided</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
               </div>

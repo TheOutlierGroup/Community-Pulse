@@ -126,6 +126,7 @@ import {
   LICENSEE_DOWNSTREAM_SERVICE_CATALOG,
   LICENSEE_DOWNSTREAM_SERVICE_IDS,
   clientServiceCatalogFromPlatformSettings,
+  clientPortalTierFromOrganizationSettings,
   normalizeClientServiceCatalog,
   organizationHasService,
   organizationVisibleToBusinessUnits,
@@ -1289,9 +1290,15 @@ function csvEscape(value) {
   return `"${source.replace(/"/g, '""')}"`;
 }
 
+function actorDisplayLabel(user) {
+  if (!user) return null;
+  const name = [user.first_name, user.last_name].map((part) => String(part || '').trim()).filter(Boolean).join(' ');
+  return name || user.email || null;
+}
+
 function buildClientUserImportTemplateCsv(groupLevelLabels) {
   const fixedHeaders = [
-    'employee preferred first name',
+    'employee full name',
     'email address',
     'employent type (FT/PT/Casual)',
     'Manager (Yes/No)',
@@ -1757,6 +1764,19 @@ export function registerPlatformOrgRoutes(router) {
       } catch (e) {
         console.error('Failed to create licence_config row for Enterprise client:', e);
       }
+      // Portal access and licence tier used to be two separate choices —
+      // picking Enterprise here still left clientPortalTier at its
+      // 'standard' default, so the client's own admins/employees had no
+      // self-service Dashboard/Users/Tasks/Rhythm Engine access until a
+      // platform admin found and flipped the separate Portal access
+      // control after the fact. An Enterprise licence now carries
+      // Enterprise portal access with it.
+      try {
+        const updated = await Organization.updateOrganizationSettings(org.id, { clientPortalTier: 'enterprise' });
+        if (updated) org = updated;
+      } catch (e) {
+        console.error('Failed to set portal access tier for new Enterprise client:', e);
+      }
     }
       try {
       // Licensee orgs do not run pulse sessions themselves; their own
@@ -2098,6 +2118,7 @@ export function registerPlatformOrgRoutes(router) {
     const role = req.query.role;
     const users = await User.listUsersForOrg(req.params.id, {
       role: role === 'admin' || role === 'employee' ? role : undefined,
+      includeDeactivated: true,
       ...parsePagination(req.query),
     });
     res.json({ users: users.map(publicStaffUser) });
@@ -2551,6 +2572,35 @@ export function registerPlatformOrgRoutes(router) {
         auditEventId: auditRow?.id || null,
       });
     }
+    // Portal access and licence tier used to be two independently-set
+    // values for a standalone Enterprise client, so moving a client
+    // between Enterprise licence sizes (or off Enterprise entirely) never
+    // touched their self-service portal access — an admin had to remember
+    // to go flip the separate Portal access control too. Keep them merged:
+    // any Enterprise-family tier carries Enterprise portal access with it.
+    // Meaningless for licensee orgs (their own admins aren't gated by this
+    // flag), so scoped strictly to the standalone Enterprise client case.
+    if (isStandaloneEnterpriseClient && patch.licenseTier) {
+      const desiredPortalTier = patch.licenseTier.startsWith('enterprise') ? 'enterprise' : 'standard';
+      if (clientPortalTierFromOrganizationSettings(org.settings) !== desiredPortalTier) {
+        const updatedOrg = await Organization.updateOrganizationSettings(org.id, {
+          clientPortalTier: desiredPortalTier,
+        });
+        if (updatedOrg) {
+          const orgFieldChanges = diffFields(org, updatedOrg, ['settings.clientPortalTier']);
+          if (Object.keys(orgFieldChanges).length > 0) {
+            await EntityFieldHistory.recordFieldChanges({
+              organizationId: org.id,
+              entityType: 'organization',
+              entityId: org.id,
+              changes: orgFieldChanges,
+              changedBy: req.user?.id || null,
+              auditEventId: auditRow?.id || null,
+            });
+          }
+        }
+      }
+    }
     res.json({ licenseConfig: LicenseConfig.publicLicenseConfig(updated) });
   });
 
@@ -2568,6 +2618,12 @@ export function registerPlatformOrgRoutes(router) {
         organizationId: org.id,
         limit,
         action,
+        // Login attempts aren't a change anyone needs to review here (they
+        // still feed the licensee "last login" health metric, which reads
+        // audit_events directly) — surfacing every login/MFA prompt buried
+        // real activity, especially for admins who sign in several times a
+        // day.
+        excludeActions: action ? null : ['auth.login'],
       });
       // Attach still-live (not yet reverted) entity_field_history linkage so
       // the frontend can render an "Undo" affordance without a second
@@ -2595,12 +2651,23 @@ export function registerPlatformOrgRoutes(router) {
           revertibleByAuditEventId.set(h.audit_event_id, list);
         }
       }
+      // Read-only "who did this" label. publicAuditEvent already carries
+      // actorUserId, but that's a bare UUID — nothing rendered it, so every
+      // change in the feed looked anonymous. Resolved here rather than in
+      // publicAuditEvent itself, since that's a pure formatter with no DB
+      // access; batched per request instead of per row.
+      const actorIds = [...new Set(rows.map((row) => row.actor_user_id).filter(Boolean))];
+      const actors = await Promise.all(actorIds.map((id) => User.findUserById(id)));
+      const actorLabelById = new Map(
+        actors.filter(Boolean).map((u) => [String(u.id), actorDisplayLabel(u)])
+      );
       const events = rows.map((row) => {
         const pub = publicAuditEvent(row);
         const revertibleFields = revertibleByAuditEventId.get(row.id);
         if (revertibleFields) pub.revertibleFields = revertibleFields;
         const revertedFields = revertedByAuditEventId.get(row.id);
         if (revertedFields) pub.revertedFields = revertedFields;
+        if (pub.actorUserId) pub.actorLabel = actorLabelById.get(String(pub.actorUserId)) || null;
         return pub;
       });
       res.json({ events });

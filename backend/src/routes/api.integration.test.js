@@ -397,6 +397,59 @@ test('admin and analytics integration endpoints return scoped payloads', async (
   assert.equal(exported.body.filename, 'session-1-export.json');
 });
 
+test('admin and analytics routes reject Enterprise-tier client organisations', async () => {
+  function enterpriseAdminAuth(req, res, next) {
+    if (!req.headers.authorization) return res.status(401).json({ error: 'Unauthorized' });
+    req.user = { id: 'admin-1', role: 'admin', organizationId: 'org-enterprise' };
+    req.clientOrganization = {
+      kind: 'client',
+      settings: { services: ['pulse'], clientPortalTier: 'enterprise' },
+    };
+    next();
+  }
+  const pulseSessionModel = {
+    async listSessionsForOrg() {
+      return [];
+    },
+    async getSessionById(id) {
+      return { id, name: 'Wave 1', status: 'active', audience: 'staff' };
+    },
+  };
+  const app = buildApp();
+  app.use(
+    '/api/admin',
+    createAdminRoutes({
+      authMiddleware: enterpriseAdminAuth,
+      adminMiddleware: (_req, _res, next) => next(),
+      clientOrgMiddleware: (_req, _res, next) => next(),
+      pulseServiceMiddleware: (_req, _res, next) => next(),
+      pulseSessionModel,
+    })
+  );
+  app.use(
+    '/api/analytics',
+    createAnalyticsRoutes({
+      authMiddleware: enterpriseAdminAuth,
+      adminMiddleware: (_req, _res, next) => next(),
+      clientOrgMiddleware: (_req, _res, next) => next(),
+      pulseServiceMiddleware: (_req, _res, next) => next(),
+      pulseSessionModel,
+    })
+  );
+
+  const overview = await requestJson(app, {
+    path: '/api/admin/overview',
+    headers: { Authorization: 'Bearer admin' },
+  });
+  assert.equal(overview.status, 403);
+
+  const analytics = await requestJson(app, {
+    path: '/api/analytics/sessions/session-1',
+    headers: { Authorization: 'Bearer admin' },
+  });
+  assert.equal(analytics.status, 403);
+});
+
 test('admin route enforces tenant-aware session scope and unauthorized requests', async () => {
   let seenOrgId = null;
   const pulseSessionModel = {

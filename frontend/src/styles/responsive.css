@@ -551,6 +551,16 @@ a:hover {
   flex-shrink: 0;
 }
 
+/* The account label falls back to the user's email when no first name is
+   set (rare, but the email is one unbreakable run of text) - truncate
+   with an ellipsis instead of overflowing the sidebar. */
+.sidebar-nav-link__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-nav-label {
   display: flex;
   align-items: center;
@@ -634,6 +644,12 @@ a:hover {
 
 .sidebar-nav-link--logout {
   margin-top: 0.15rem;
+}
+
+.sidebar-nav-error {
+  margin: 0.15rem 0.75rem 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .platform-dash-card {
@@ -836,6 +852,20 @@ a:hover {
 .platform-users-table__row--clickable:focus-visible {
   outline: 2px solid var(--accent-dim);
   outline-offset: -2px;
+}
+
+.platform-users-table__row--deactivated {
+  opacity: 0.55;
+}
+
+.platform-users-table__row--deactivated:hover {
+  opacity: 0.8;
+}
+
+.platform-users-table__purge-btn {
+  padding: 0.3rem;
+  color: var(--danger);
+  line-height: 0;
 }
 
 .platform-scope-link {
@@ -2051,6 +2081,29 @@ input[type='range'] {
   color: var(--text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.toast__action {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 8px;
+  text-decoration: underline;
+  transition: background 0.12s ease;
+}
+
+.toast__action:hover {
+  background: var(--surface2);
+}
+
+.toast__action:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 
 .toast__close {
