@@ -133,6 +133,7 @@ export async function consumeAssessmentForClient(clientOrgOrId, options = {}) {
     targetOrganizationId: licensee.id,
     metadata: {
       clientOrganizationId: client.id,
+      clientOrganizationName: client.name || null,
       source,
       pulseSessionId,
     },
@@ -169,6 +170,7 @@ export async function refundAssessmentForLicensee({
     actorUserId,
     metadata,
   });
+  const clientOrg = clientOrganizationId ? await Organization.getOrganization(clientOrganizationId) : null;
   recordAuditEvent({
     actor: actorUserId ? { id: actorUserId, organizationId: clientOrganizationId } : null,
     action: AUDIT_ACTIONS.ASSESSMENT_REFUND,
@@ -177,6 +179,7 @@ export async function refundAssessmentForLicensee({
     targetOrganizationId: licenseeOrganizationId,
     metadata: {
       clientOrganizationId,
+      clientOrganizationName: clientOrg?.name || null,
       pulseSessionId,
       ...(metadata?.reason ? { reason: metadata.reason } : {}),
     },

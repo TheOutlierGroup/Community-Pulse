@@ -1290,6 +1290,12 @@ function csvEscape(value) {
   return `"${source.replace(/"/g, '""')}"`;
 }
 
+function actorDisplayLabel(user) {
+  if (!user) return null;
+  const name = [user.first_name, user.last_name].map((part) => String(part || '').trim()).filter(Boolean).join(' ');
+  return name || user.email || null;
+}
+
 function buildClientUserImportTemplateCsv(groupLevelLabels) {
   const fixedHeaders = [
     'employee full name',
@@ -2112,6 +2118,7 @@ export function registerPlatformOrgRoutes(router) {
     const role = req.query.role;
     const users = await User.listUsersForOrg(req.params.id, {
       role: role === 'admin' || role === 'employee' ? role : undefined,
+      includeDeactivated: true,
       ...parsePagination(req.query),
     });
     res.json({ users: users.map(publicStaffUser) });
@@ -2611,6 +2618,12 @@ export function registerPlatformOrgRoutes(router) {
         organizationId: org.id,
         limit,
         action,
+        // Login attempts aren't a change anyone needs to review here (they
+        // still feed the licensee "last login" health metric, which reads
+        // audit_events directly) — surfacing every login/MFA prompt buried
+        // real activity, especially for admins who sign in several times a
+        // day.
+        excludeActions: action ? null : ['auth.login'],
       });
       // Attach still-live (not yet reverted) entity_field_history linkage so
       // the frontend can render an "Undo" affordance without a second
@@ -2638,12 +2651,23 @@ export function registerPlatformOrgRoutes(router) {
           revertibleByAuditEventId.set(h.audit_event_id, list);
         }
       }
+      // Read-only "who did this" label. publicAuditEvent already carries
+      // actorUserId, but that's a bare UUID — nothing rendered it, so every
+      // change in the feed looked anonymous. Resolved here rather than in
+      // publicAuditEvent itself, since that's a pure formatter with no DB
+      // access; batched per request instead of per row.
+      const actorIds = [...new Set(rows.map((row) => row.actor_user_id).filter(Boolean))];
+      const actors = await Promise.all(actorIds.map((id) => User.findUserById(id)));
+      const actorLabelById = new Map(
+        actors.filter(Boolean).map((u) => [String(u.id), actorDisplayLabel(u)])
+      );
       const events = rows.map((row) => {
         const pub = publicAuditEvent(row);
         const revertibleFields = revertibleByAuditEventId.get(row.id);
         if (revertibleFields) pub.revertibleFields = revertibleFields;
         const revertedFields = revertedByAuditEventId.get(row.id);
         if (revertedFields) pub.revertedFields = revertedFields;
+        if (pub.actorUserId) pub.actorLabel = actorLabelById.get(String(pub.actorUserId)) || null;
         return pub;
       });
       res.json({ events });

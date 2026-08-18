@@ -465,21 +465,18 @@ export function registerPlatformStaffRoutes(router) {
     res.json({ user: { ...publicStaffUser(row), businessUnits } });
   });
 
-  router.delete('/users/:userId', async (req, res) => {
-    const { userId } = req.params;
-    if (userId === req.user.id) {
-      return res.status(400).json({ error: 'You cannot remove your own access' });
-    }
+  // Shared by deactivate/reactivate/purge: same "can this requester manage
+  // this target user" scoping, just applied to different target states
+  // (deactivateUserInOrg only finds an active row, reactivate/purge only a
+  // deactivated one — findUserById itself doesn't filter on that, so each
+  // caller checks target.deactivated_at itself).
+  async function resolveManageableTargetUser(req, userId) {
     const target = await User.findUserById(userId);
-    if (!target || target.deactivated_at) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (!target) return { error: { status: 404, body: { error: 'User not found' } } };
     const requesterOrg = await Organization.getOrganization(req.user.organizationId);
-    if (!requesterOrg) return res.status(403).json({ error: 'Forbidden' });
+    if (!requesterOrg) return { error: { status: 403, body: { error: 'Forbidden' } } };
     const targetOrg = await Organization.getOrganization(target.organization_id);
-    if (!targetOrg) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (!targetOrg) return { error: { status: 404, body: { error: 'User not found' } } };
     let allowed = false;
     if (requesterOrg.kind === 'platform') {
       allowed =
@@ -498,13 +495,75 @@ export function registerPlatformStaffRoutes(router) {
         target.organization_id === req.user.organizationId &&
         organizationHasEnterprisePortalTier(requesterOrg.settings);
     }
-    if (!allowed) {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!allowed) return { error: { status: 403, body: { error: 'Forbidden' } } };
+    return { target, targetOrg };
+  }
+
+  router.delete('/users/:userId', async (req, res) => {
+    const { userId } = req.params;
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot remove your own access' });
     }
+    const resolved = await resolveManageableTargetUser(req, userId);
+    if (resolved.error) return res.status(resolved.error.status).json(resolved.error.body);
+    const { target } = resolved;
+    if (target.deactivated_at) return res.status(404).json({ error: 'User not found' });
     const ok = await User.deactivateUserInOrg(userId, target.organization_id);
     if (!ok) return res.status(404).json({ error: 'User not found' });
     auditFromRequest(req)({
       action: AUDIT_ACTIONS.USER_DEACTIVATE,
+      targetType: 'user',
+      targetId: userId,
+      targetOrganizationId: target.organization_id,
+      metadata: { wasRole: target.role, wasEmail: target.email },
+    });
+    res.json({ ok: true });
+  });
+
+  // D-023: deactivated users used to just vanish — excluded from every
+  // listUsersForOrg query, with no route to bring one back short of
+  // re-inviting the same email address (which silently calls
+  // reactivateUserInOrg itself, see below, but isn't discoverable and
+  // requires knowing who to re-invite in the first place when the user
+  // wasn't even visible in the list).
+  router.post('/users/:userId/reactivate', async (req, res) => {
+    const { userId } = req.params;
+    const resolved = await resolveManageableTargetUser(req, userId);
+    if (resolved.error) return res.status(resolved.error.status).json(resolved.error.body);
+    const { target } = resolved;
+    if (!target.deactivated_at) return res.status(404).json({ error: 'User not found' });
+    const ok = await User.reactivateUserInOrg(userId, target.organization_id);
+    if (!ok) return res.status(404).json({ error: 'User not found' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.USER_REACTIVATE,
+      targetType: 'user',
+      targetId: userId,
+      targetOrganizationId: target.organization_id,
+      metadata: { role: target.role, email: target.email },
+    });
+    const row = await User.findUserById(userId);
+    res.json({ user: publicStaffUser(row) });
+  });
+
+  // Only reachable on an already-deactivated row (enforced both here and in
+  // purgeUserInOrg) — permanent deletion is a step past deactivation, not
+  // an alternative to it, matching the greyed-out-row-only affordance in
+  // the UI.
+  router.delete('/users/:userId/purge', async (req, res) => {
+    const { userId } = req.params;
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot delete your own access' });
+    }
+    const resolved = await resolveManageableTargetUser(req, userId);
+    if (resolved.error) return res.status(resolved.error.status).json(resolved.error.body);
+    const { target } = resolved;
+    if (!target.deactivated_at) {
+      return res.status(400).json({ error: 'Only a deactivated user can be permanently deleted' });
+    }
+    const ok = await User.purgeUserInOrg(userId, target.organization_id);
+    if (!ok) return res.status(404).json({ error: 'User not found' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.USER_PURGE,
       targetType: 'user',
       targetId: userId,
       targetOrganizationId: target.organization_id,
@@ -591,7 +650,9 @@ export function registerPlatformStaffRoutes(router) {
   // Admin-only export of user-management audit events (create/edit/role
   // change/BU-tag change/deactivate) — every USER_* action in AUDIT_ACTIONS
   // uses targetType 'user', so filtering on that alone gets exactly this set
-  // without a separate action allowlist to keep in sync.
+  // without a separate action allowlist to keep in sync. auth.login also
+  // targets 'user' but isn't a user-management action, so it's excluded
+  // explicitly rather than silently riding along.
   router.get('/users/audit-log/export', async (req, res, next) => {
     try {
       const rows = [];
@@ -601,6 +662,7 @@ export function registerPlatformStaffRoutes(router) {
         const page = await listRecentAuditEvents({
           organizationId: req.user.organizationId,
           targetType: 'user',
+          excludeActions: ['auth.login'],
           limit: pageSize,
           offset,
         });

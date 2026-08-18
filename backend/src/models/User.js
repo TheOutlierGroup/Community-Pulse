@@ -154,12 +154,18 @@ export async function countActiveUsersByRoleForOrg(organizationId) {
   return counts;
 }
 
-export async function listUsersForOrg(organizationId, { role, limit, offset } = {}) {
+export async function listUsersForOrg(organizationId, { role, limit, offset, includeDeactivated = false } = {}) {
   const cappedLimit =
     Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 200;
   const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
-  let sql = `SELECT id, email, role, organization_id, created_at, first_name, last_name, profile_avatar_filename, login_enabled
-             FROM users WHERE organization_id = $1 AND deactivated_at IS NULL`;
+  // Deactivated rows are included when asked for (the user-management list
+  // shows them greyed out so an admin can reinstate one), but a purged row
+  // is scrubbed and gone for good regardless — every other caller (email
+  // notifications, admin lists, exports) keeps the original active-only
+  // behaviour by not passing this.
+  let sql = `SELECT id, email, role, organization_id, created_at, first_name, last_name, profile_avatar_filename, login_enabled, deactivated_at
+             FROM users WHERE organization_id = $1 AND purged_at IS NULL`;
+  if (!includeDeactivated) sql += ` AND deactivated_at IS NULL`;
   const params = [organizationId];
   let idx = 2;
   if (role) {
@@ -281,6 +287,31 @@ export async function reactivateUserInOrg(userId, organizationId) {
     [userId, organizationId]
   );
   return rowCount > 0;
+}
+
+/**
+ * Permanently removes a user from view without a real row DELETE — see
+ * migration 086 for why (generated_reports.generated_by is ON DELETE
+ * RESTRICT, so a genuine delete would fail for any user who ever generated
+ * a report). Scrubs PII and frees the email (still UNIQUE) so the same
+ * address can be re-invited later as a fresh account. Only ever called on
+ * an already-deactivated row — the UI only offers this on greyed-out users
+ * — enforced here too since it's the one irreversible step.
+ */
+export async function purgeUserInOrg(userId, organizationId) {
+  const { rows } = await query(
+    `UPDATE users
+     SET email = 'deleted-user-' || id || '@deleted.invalid',
+         first_name = NULL,
+         last_name = NULL,
+         profile_avatar_filename = NULL,
+         login_enabled = false,
+         purged_at = NOW()
+     WHERE id = $1 AND organization_id = $2 AND deactivated_at IS NOT NULL AND purged_at IS NULL
+     RETURNING id`,
+    [userId, organizationId]
+  );
+  return rows.length > 0;
 }
 
 export async function getPasswordHashByUserId(userId) {

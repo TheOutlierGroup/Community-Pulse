@@ -5,6 +5,11 @@ export default function RemoveAccessConfirm({
   onConfirm,
   introText,
   confirmText = 'They will be signed out immediately and will no longer appear here. Continue?',
+  actionLabel = 'Remove access',
+  busyLabel = 'Removing…',
+  confirmLabel = 'Yes, remove access',
+  actionButtonClassName = 'btn-danger-ghost',
+  confirmButtonClassName = 'btn-danger',
 }) {
   return (
     <div
@@ -22,11 +27,11 @@ export default function RemoveAccessConfirm({
           </p>
           <button
             type="button"
-            className="btn btn-danger-ghost"
+            className={`btn ${actionButtonClassName}`}
             onClick={() => setStep(1)}
             disabled={busy}
           >
-            Remove access
+            {actionLabel}
           </button>
         </>
       ) : (
@@ -45,11 +50,11 @@ export default function RemoveAccessConfirm({
             </button>
             <button
               type="button"
-              className="btn btn-danger"
+              className={`btn ${confirmButtonClassName}`}
               onClick={onConfirm}
               disabled={busy}
             >
-              {busy ? 'Removing…' : 'Yes, remove access'}
+              {busy ? busyLabel : confirmLabel}
             </button>
           </div>
         </>

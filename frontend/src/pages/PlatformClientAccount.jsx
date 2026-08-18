@@ -225,7 +225,7 @@ export default function PlatformClientAccount() {
       bumpClientLogo();
       showToast('Client logo updated.', { variant: 'success' });
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not upload logo.');
+      showToast(err.response?.data?.error || 'Could not upload logo.', { variant: 'error' });
     } finally {
       setBusy(false);
     }
@@ -241,7 +241,7 @@ export default function PlatformClientAccount() {
       bumpClientLogo();
       showToast('Client logo removed.', { variant: 'success' });
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not remove logo.');
+      showToast(err.response?.data?.error || 'Could not remove logo.', { variant: 'error' });
     } finally {
       setBusy(false);
     }

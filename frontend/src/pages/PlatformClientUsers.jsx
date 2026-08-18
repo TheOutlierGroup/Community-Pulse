@@ -9,6 +9,7 @@ import UsersTable from './platformClientUsers/UsersTable.jsx';
 import InviteUserModal from './platformClientUsers/InviteUserModal.jsx';
 import EditUserModal from './platformClientUsers/EditUserModal.jsx';
 import { isEnterpriseClientSelfUser } from '../hooks/usePlatformAccess.js';
+import '../styles/crm.css';
 
 export default function PlatformClientUsers() {
   const { user } = useAuth();
@@ -222,7 +223,46 @@ export default function PlatformClientUsers() {
     }
   }
 
-  const canRemoveAccess = editUser && String(editUser.id) !== String(user?.id);
+  async function confirmReturnAccess() {
+    if (!editUser) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.post(`/api/platform/users/${editUser.id}/reactivate`);
+      await loadUsers();
+      closeEditModal();
+      showToast('Access reinstated.', { variant: 'success' });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not reinstate this user.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function purgeUser(u) {
+    if (!u) return;
+    if (
+      !window.confirm(
+        `Permanently delete ${u.email}? This cannot be undone — they will not be able to be reinstated, and their name and email will be scrubbed.`
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api.delete(`/api/platform/users/${u.id}/purge`);
+      await loadUsers();
+      showToast('User permanently deleted.', { variant: 'success' });
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not permanently delete this user.', { variant: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canRemoveAccess = editUser && String(editUser.id) !== String(user?.id) && !editUser.deactivatedAt;
+  const canReturnAccess = editUser && String(editUser.id) !== String(user?.id) && Boolean(editUser.deactivatedAt);
 
   return (
     <>
@@ -259,6 +299,7 @@ export default function PlatformClientUsers() {
         avatarListRev={avatarListRev}
         orgId={orgId}
         onOpenEdit={openEditModal}
+        onPurgeUser={purgeUser}
       />
 
       <InviteUserModal
@@ -300,6 +341,7 @@ export default function PlatformClientUsers() {
         editLoginEnabled={editLoginEnabled}
         setEditLoginEnabled={setEditLoginEnabled}
         canRemoveAccess={canRemoveAccess}
+        canReturnAccess={canReturnAccess}
         removeAccessStep={removeAccessStep}
         setRemoveAccessStep={setRemoveAccessStep}
         onClose={closeEditModal}
@@ -307,6 +349,7 @@ export default function PlatformClientUsers() {
         onSetPassword={setPasswordForEditUser}
         onResendWelcomeEmail={resendWelcomeEmailForEditUser}
         onConfirmRemoveAccess={confirmRemoveAccess}
+        onConfirmReturnAccess={confirmReturnAccess}
       />
     </>
   );

@@ -854,6 +854,20 @@ a:hover {
   outline-offset: -2px;
 }
 
+.platform-users-table__row--deactivated {
+  opacity: 0.55;
+}
+
+.platform-users-table__row--deactivated:hover {
+  opacity: 0.8;
+}
+
+.platform-users-table__purge-btn {
+  padding: 0.3rem;
+  color: var(--danger);
+  line-height: 0;
+}
+
 .platform-scope-link {
   border: none;
   background: transparent;

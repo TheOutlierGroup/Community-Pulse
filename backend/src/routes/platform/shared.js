@@ -72,6 +72,7 @@ export function publicStaffUser(row) {
     hasProfileAvatar: Boolean(row.profile_avatar_filename),
     createdAt: row.created_at,
     loginEnabled: row.login_enabled !== false,
+    deactivatedAt: row.deactivated_at || null,
   };
 }
 
