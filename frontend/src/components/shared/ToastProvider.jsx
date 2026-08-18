@@ -22,11 +22,16 @@ export function ToastProvider({ children }) {
       typeof options.durationMs === 'number' && options.durationMs > 0
         ? options.durationMs
         : DISMISS_MS;
+    const action =
+      options.action && typeof options.action.onClick === 'function' && options.action.label
+        ? { label: options.action.label, onClick: options.action.onClick }
+        : null;
     setToast({
       id: Date.now(),
       message,
       variant,
       durationMs,
+      action,
     });
   }, []);
 
@@ -53,6 +58,18 @@ export function ToastProvider({ children }) {
               )}
             </span>
             <p className="toast__message">{toast.message}</p>
+            {toast.action && (
+              <button
+                type="button"
+                className="toast__action"
+                onClick={() => {
+                  toast.action.onClick();
+                  dismiss();
+                }}
+              >
+                {toast.action.label}
+              </button>
+            )}
             <button
               type="button"
               className="toast__close"

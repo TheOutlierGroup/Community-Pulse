@@ -4,10 +4,12 @@ import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import Layout from '../components/shared/Layout.jsx';
 import Dashboard from '../components/admin/Dashboard.jsx';
+import { useToast } from '../components/shared/ToastProvider.jsx';
 import { CLIENT_SERVICE_PULSE, userHasService } from '../utils/postLogin.js';
 
 export default function AdminHome() {
   const { user, logout, loading } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const [overview, setOverview] = useState(null);
@@ -69,12 +71,29 @@ export default function AdminHome() {
     }
   }
 
-  async function setSessionStatus(id, status) {
+  async function setSessionStatus(id, status, { previousStatus, isUndo, sessionName } = {}) {
     setBusy(true);
     setError('');
     try {
       await api.patch(`/api/admin/sessions/${id}`, { status });
       await load();
+      if (isUndo) {
+        showToast(`${sessionName ? `${sessionName}: ` : ''}undone.`, { variant: 'success' });
+      } else {
+        showToast(
+          `${sessionName ? `${sessionName} ` : 'Session '}${status === 'active' ? 'activated' : 'closed'}.`,
+          {
+            variant: 'success',
+            durationMs: 10000,
+            action: previousStatus
+              ? {
+                  label: 'Undo',
+                  onClick: () => setSessionStatus(id, previousStatus, { isUndo: true, sessionName }),
+                }
+              : undefined,
+          }
+        );
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Update failed.');
     } finally {
@@ -237,7 +256,7 @@ export default function AdminHome() {
                           className="btn btn-ghost"
                           style={{ fontSize: '0.85rem', padding: '0.35rem 0.75rem' }}
                           disabled={busy}
-                          onClick={() => setSessionStatus(s.id, 'active')}
+                          onClick={() => setSessionStatus(s.id, 'active', { previousStatus: s.status, sessionName: s.name })}
                         >
                           Activate
                         </button>
@@ -248,7 +267,7 @@ export default function AdminHome() {
                           className="btn btn-ghost"
                           style={{ fontSize: '0.85rem', padding: '0.35rem 0.75rem' }}
                           disabled={busy}
-                          onClick={() => setSessionStatus(s.id, 'closed')}
+                          onClick={() => setSessionStatus(s.id, 'closed', { previousStatus: s.status, sessionName: s.name })}
                         >
                           Close
                         </button>

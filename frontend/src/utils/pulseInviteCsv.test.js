@@ -186,7 +186,7 @@ test('parseRecipientCsv recognizes the server-generated template header verbatim
   // Mirrors buildClientUserImportTemplateCsv's fixed header order in
   // backend/src/routes/platform/orgRoutes.js.
   const csv = [
-    'employee preferred first name,email address,employent type (FT/PT/Casual),Manager (Yes/No),Manager Email,birth year,Length of Service,Primary Work Location,Business Unit,Division,Team',
+    'employee full name,email address,employent type (FT/PT/Casual),Manager (Yes/No),Manager Email,birth year,Length of Service,Primary Work Location,Business Unit,Division,Team',
     'Jane Doe,jane.doe@example.com,FT,No,john.manager@example.com,1990,2 years,Sydney,Sales,APAC,Team A',
   ].join('\n');
 

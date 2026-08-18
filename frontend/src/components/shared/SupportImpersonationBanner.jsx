@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import api, { setAuthToken } from '../../services/api.js';
+import { exitSupportSessionUrl } from './supportImpersonation.js';
 
 /**
  * SUP-01 visual reminder when the current session is a read-only
  * support impersonation. Renders nothing in normal sessions. The
  * "Exit support session" button restores the previous admin token and
- * sends the user back to the platform home.
+ * sends the user back to the impersonated client's dashboard (falling
+ * back to the platform home if no client org was recorded).
  */
 export default function SupportImpersonationBanner() {
   const [active, setActive] = useState(false);
@@ -38,15 +40,17 @@ export default function SupportImpersonationBanner() {
         type="button"
         onClick={() => {
           const previous = sessionStorage.getItem('pulse_token__pre_impersonate');
+          const orgId = sessionStorage.getItem('pulse_support_impersonation_org_id');
           sessionStorage.removeItem('pulse_support_impersonation');
           sessionStorage.removeItem('pulse_token__pre_impersonate');
+          sessionStorage.removeItem('pulse_support_impersonation_org_id');
           if (previous) {
             setAuthToken(previous);
           } else {
             setAuthToken(null);
           }
           api.defaults.headers.common.Authorization = previous ? `Bearer ${previous}` : undefined;
-          window.location.assign('/platform');
+          window.location.assign(exitSupportSessionUrl(orgId));
         }}
         style={{
           background: '#fff',

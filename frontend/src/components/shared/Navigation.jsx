@@ -502,9 +502,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
         </nav>
         {!isPlatformPulseRoute && (
           <div className="sidebar-footer">
-            <NavLink to={myAccountHref} className={sidebarLinkClass}>
+            <NavLink to={myAccountHref} className={sidebarLinkClass} title={myAccountLabel}>
               {myAccountAvatar}
-              {myAccountLabel}
+              <span className="sidebar-nav-link__label">{myAccountLabel}</span>
             </NavLink>
             <button
               type="button"

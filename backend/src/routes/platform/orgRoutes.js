@@ -126,6 +126,7 @@ import {
   LICENSEE_DOWNSTREAM_SERVICE_CATALOG,
   LICENSEE_DOWNSTREAM_SERVICE_IDS,
   clientServiceCatalogFromPlatformSettings,
+  clientPortalTierFromOrganizationSettings,
   normalizeClientServiceCatalog,
   organizationHasService,
   organizationVisibleToBusinessUnits,
@@ -1291,7 +1292,7 @@ function csvEscape(value) {
 
 function buildClientUserImportTemplateCsv(groupLevelLabels) {
   const fixedHeaders = [
-    'employee preferred first name',
+    'employee full name',
     'email address',
     'employent type (FT/PT/Casual)',
     'Manager (Yes/No)',
@@ -1756,6 +1757,19 @@ export function registerPlatformOrgRoutes(router) {
         await LicenseConfig.createDefaultForLicensee(org.id, { tier: enterpriseTier });
       } catch (e) {
         console.error('Failed to create licence_config row for Enterprise client:', e);
+      }
+      // Portal access and licence tier used to be two separate choices —
+      // picking Enterprise here still left clientPortalTier at its
+      // 'standard' default, so the client's own admins/employees had no
+      // self-service Dashboard/Users/Tasks/Rhythm Engine access until a
+      // platform admin found and flipped the separate Portal access
+      // control after the fact. An Enterprise licence now carries
+      // Enterprise portal access with it.
+      try {
+        const updated = await Organization.updateOrganizationSettings(org.id, { clientPortalTier: 'enterprise' });
+        if (updated) org = updated;
+      } catch (e) {
+        console.error('Failed to set portal access tier for new Enterprise client:', e);
       }
     }
       try {
@@ -2550,6 +2564,35 @@ export function registerPlatformOrgRoutes(router) {
         changedBy: req.user?.id || null,
         auditEventId: auditRow?.id || null,
       });
+    }
+    // Portal access and licence tier used to be two independently-set
+    // values for a standalone Enterprise client, so moving a client
+    // between Enterprise licence sizes (or off Enterprise entirely) never
+    // touched their self-service portal access — an admin had to remember
+    // to go flip the separate Portal access control too. Keep them merged:
+    // any Enterprise-family tier carries Enterprise portal access with it.
+    // Meaningless for licensee orgs (their own admins aren't gated by this
+    // flag), so scoped strictly to the standalone Enterprise client case.
+    if (isStandaloneEnterpriseClient && patch.licenseTier) {
+      const desiredPortalTier = patch.licenseTier.startsWith('enterprise') ? 'enterprise' : 'standard';
+      if (clientPortalTierFromOrganizationSettings(org.settings) !== desiredPortalTier) {
+        const updatedOrg = await Organization.updateOrganizationSettings(org.id, {
+          clientPortalTier: desiredPortalTier,
+        });
+        if (updatedOrg) {
+          const orgFieldChanges = diffFields(org, updatedOrg, ['settings.clientPortalTier']);
+          if (Object.keys(orgFieldChanges).length > 0) {
+            await EntityFieldHistory.recordFieldChanges({
+              organizationId: org.id,
+              entityType: 'organization',
+              entityId: org.id,
+              changes: orgFieldChanges,
+              changedBy: req.user?.id || null,
+              auditEventId: auditRow?.id || null,
+            });
+          }
+        }
+      }
     }
     res.json({ licenseConfig: LicenseConfig.publicLicenseConfig(updated) });
   });

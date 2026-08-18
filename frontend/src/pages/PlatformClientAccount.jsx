@@ -327,6 +327,7 @@ export default function PlatformClientAccount() {
                     if (previous) sessionStorage.setItem('pulse_token__pre_impersonate', previous);
                     apiMod.setAuthToken(data.token);
                     sessionStorage.setItem('pulse_support_impersonation', '1');
+                    sessionStorage.setItem('pulse_support_impersonation_org_id', orgId);
                     window.location.assign('/platform');
                   }
                 } catch (err) {
@@ -412,7 +413,7 @@ export default function PlatformClientAccount() {
             </button>
           </form>
 
-          {isPlatformAdmin && (
+          {isPlatformAdmin && !isEnterpriseClient && (
             <form
               onSubmit={saveClientPortalTier}
               style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}
@@ -430,7 +431,7 @@ export default function PlatformClientAccount() {
                   onChange={(e) => setClientPortalTier(e.target.value)}
                   disabled={busy}
                 >
-                  <option value="standard">Standard</option>
+                  <option value="standard">Guided</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
               </div>

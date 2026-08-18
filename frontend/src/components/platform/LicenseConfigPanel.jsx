@@ -227,6 +227,10 @@ export default function LicenseConfigPanel({
       <p className="muted" style={{ marginTop: '-0.25rem' }}>
         Commercial guardrails for this {isPractitioner ? 'Rhythm Engine Practitioner' : 'Enterprise Rhythm Engine client'}.
         Only Outlier platform admins can edit these.
+        {!isPractitioner && (
+          <> An Enterprise licence tier also gives this client&rsquo;s own admins/employees self-service
+          portal access (Dashboard, Users, Tasks, Rhythm Engine) — the two are kept in sync automatically.</>
+        )}
       </p>
       {error && <p className="error" style={{ marginBottom: '0.75rem' }}>{error}</p>}
       <div style={{ marginBottom: '1rem' }}>
