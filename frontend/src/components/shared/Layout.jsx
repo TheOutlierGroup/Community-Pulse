@@ -12,7 +12,7 @@ import outlierLogo from '../../images/outlier-logo.png';
 import rhythmEngineLogo from '../../images/rhythm-engine-logo.png';
 import { useAuth } from './Auth.jsx';
 import { prefersRhythmEngineBrand } from './rhythmEngineBranding.js';
-import { IS_RHYTHM_ENGINE_SURFACE } from '../../config/appSurface.js';
+import { IS_RHYTHM_ENGINE_SURFACE, crmAppBaseUrl } from '../../config/appSurface.js';
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'pulse_sidebar_collapsed';
 
@@ -67,26 +67,47 @@ export default function Layout({ children, user, onLogout, hideHeader = false, n
       user,
       pathname: location.pathname,
       orgId: params.orgId,
+      isRhythmEngineSurface: IS_RHYTHM_ENGINE_SURFACE,
+      crmBaseUrl: crmAppBaseUrl(),
     });
+    // sidebarBrandTargetForRoute returns a full CRM URL (not an in-app
+    // path) when this build can't route the destination itself — a
+    // React Router Link can't cross origins, so that case needs a plain
+    // <a> instead.
+    const sidebarBrandIsExternal = /^https?:\/\//.test(sidebarBrandTarget);
+    const sidebarBrandImg = (
+      <img
+        src={brandLogoSrc}
+        alt=""
+        className="sidebar-brand-logo"
+        decoding="async"
+      />
+    );
 
     return (
       <div className={`app-shell app-shell--with-sidebar${sidebarCollapsed ? ' app-shell--sidebar-collapsed' : ''}`}>
         <aside className="app-sidebar" aria-label="Main navigation">
           <div className="app-sidebar__inner">
             <div className="sidebar-brand-row">
-              <Link
-                to={sidebarBrandTarget}
-                className="sidebar-brand"
-                aria-label={`${brandLabel} home`}
-                title={brandLabel}
-              >
-                <img
-                  src={brandLogoSrc}
-                  alt=""
-                  className="sidebar-brand-logo"
-                  decoding="async"
-                />
-              </Link>
+              {sidebarBrandIsExternal ? (
+                <a
+                  href={sidebarBrandTarget}
+                  className="sidebar-brand"
+                  aria-label={`${brandLabel} home`}
+                  title={brandLabel}
+                >
+                  {sidebarBrandImg}
+                </a>
+              ) : (
+                <Link
+                  to={sidebarBrandTarget}
+                  className="sidebar-brand"
+                  aria-label={`${brandLabel} home`}
+                  title={brandLabel}
+                >
+                  {sidebarBrandImg}
+                </Link>
+              )}
               <button
                 type="button"
                 className="sidebar-collapse-toggle"
