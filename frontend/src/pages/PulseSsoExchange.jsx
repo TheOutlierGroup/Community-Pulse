@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../services/api.js';
 import Layout from '../components/shared/Layout.jsx';
@@ -12,12 +12,24 @@ export default function PulseSsoExchange() {
   const location = useLocation();
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  // A handoff token is single-use server-side. setUserFromLogin below
+  // changes auth state (and fetchBrandSafely inside it changes more,
+  // asynchronously, moments later); both are captured by this effect's own
+  // dependency array, so a successful exchange can retrigger this same
+  // effect while the route transition is still in flight and re-POST the
+  // now-already-consumed token — the second attempt 401s with "Invalid or
+  // expired handoff token" even though the first attempt succeeded. Track
+  // which token this component instance has already started exchanging so
+  // any re-invocation for the same token is a no-op.
+  const startedForTokenRef = useRef('');
 
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const handoffToken = params.get('handoff') || '';
   const queryOrgId = params.get('orgId') || '';
 
   useEffect(() => {
+    if (handoffToken && startedForTokenRef.current === handoffToken) return undefined;
+    startedForTokenRef.current = handoffToken;
     let cancelled = false;
 
     async function runExchange() {
