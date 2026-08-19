@@ -5,7 +5,7 @@ import Layout from '../components/shared/Layout.jsx';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { crmLoginUrl } from '../config/appSurface.js';
 import { getPostLoginPath } from '../utils/postLogin.js';
-import { isWorkspaceUser } from '../hooks/usePlatformAccess.js';
+import { isWorkspaceUser, isEnterpriseClientSelfUser } from '../hooks/usePlatformAccess.js';
 
 export default function PulseSsoExchange() {
   const { setUserFromLogin, logout } = useAuth();
@@ -33,7 +33,14 @@ export default function PulseSsoExchange() {
         setUserFromLogin(data);
 
         const targetOrgId = data.targetOrganizationId || queryOrgId;
-        if (isWorkspaceUser(data.user) && targetOrgId) {
+        // An Enterprise-tier client's own admin lands here the same way a
+        // workspace (platform/licensee) staffer viewing a client does — via
+        // this same handoff, with the same targetOrgId. Both need the
+        // /rhythm-engine suffix: getPostLoginPath's bare
+        // /platform/clients/:orgId has no matching route in this build's
+        // narrower tree (see AppRhythmEngine.jsx) and would otherwise leave
+        // them on a blank page.
+        if ((isWorkspaceUser(data.user) || isEnterpriseClientSelfUser(data.user)) && targetOrgId) {
           navigate(`/platform/clients/${targetOrgId}/rhythm-engine`, { replace: true });
           return;
         }
