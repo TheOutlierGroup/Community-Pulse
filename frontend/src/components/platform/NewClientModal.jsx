@@ -41,10 +41,11 @@ export default function NewClientModal({
   const [error, setError] = useState('');
   const [servicesOpen, setServicesOpen] = useState(false);
   const servicesRef = useRef(null);
-  // null = not yet chosen. Only relevant when Rhythm Engine is selected and
-  // this account can create Practitioners — decides whether the new org
-  // becomes a Practitioner (licensee) shell or a standalone Enterprise
-  // client with its own licence.
+  // null = not yet chosen. Only relevant when Rhythm Engine is selected —
+  // decides whether the new org becomes a Guided client (simple, restricted
+  // dashboard; Outlier runs Rhythm Engine on their behalf), a standalone
+  // Enterprise client with its own licence, or (accounts that can create
+  // Practitioners only) a Practitioner (licensee) shell.
   const [rhythmEngineMode, setRhythmEngineMode] = useState(null);
   // Only relevant when rhythmEngineMode === 'enterprise' — which specific
   // Enterprise licence size to provision. Previously this was silently
@@ -105,12 +106,12 @@ export default function NewClientModal({
   }
 
   const rhythmEngineSelected = fields.serviceIds.includes(CLIENT_SERVICE_PULSE);
-  const needsRhythmEngineModeChoice = canCreateLicensees && rhythmEngineSelected;
+  const needsRhythmEngineModeChoice = rhythmEngineSelected;
 
   async function submit(e) {
     e.preventDefault();
     if (needsRhythmEngineModeChoice && !rhythmEngineMode) {
-      setError('Choose whether this is a Practitioner or an Enterprise of Rhythm Engine.');
+      setError('Choose what kind of Rhythm Engine client this is.');
       return;
     }
     setBusy(true);
@@ -127,8 +128,8 @@ export default function NewClientModal({
         fd.append('enableLogin', enableLogin ? 'true' : 'false');
       }
       // Rhythm Engine no longer implies Rhythm Engine Licensee (Practitioner)
-      // automatically — the admin explicitly chooses Practitioner or
-      // Enterprise above. Practitioner status can only be granted at
+      // automatically — the admin explicitly chooses Guided, Enterprise, or
+      // Practitioner above. Practitioner status can only be granted at
       // creation time (it never changes after), so that choice has to
       // travel with this same request.
       const serviceIds = needsRhythmEngineModeChoice && rhythmEngineMode === 'practitioner'
@@ -304,21 +305,16 @@ export default function NewClientModal({
           {needsRhythmEngineModeChoice ? (
             <div className="field" style={{ background: 'var(--surface2)', borderRadius: 10, padding: '0.85rem 1rem' }}>
               <p style={{ margin: '0 0 0.6rem', fontWeight: 600, fontSize: '0.9rem' }}>
-                Is this a Practitioner or an Enterprise of Rhythm Engine?
+                What kind of Rhythm Engine client is this?
               </p>
-              <p className="muted" style={{ fontSize: '0.8rem', margin: '0 0 0.7rem' }}>
-                A <strong>Practitioner</strong> resells or administers Rhythm Engine to its own downstream
-                clients and holds the licence there. An <strong>Enterprise</strong> runs Rhythm Engine
-                directly on itself, with its own contract and assessment quota.
-              </p>
-              <div style={{ display: 'flex', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  className={`btn ${rhythmEngineMode === 'practitioner' ? 'btn-primary' : 'btn-ghost'}`}
+                  className={`btn ${rhythmEngineMode === 'guided' ? 'btn-primary' : 'btn-ghost'}`}
                   disabled={busy}
-                  onClick={() => setRhythmEngineMode('practitioner')}
+                  onClick={() => setRhythmEngineMode('guided')}
                 >
-                  Practitioner
+                  Guided
                 </button>
                 <button
                   type="button"
@@ -328,7 +324,35 @@ export default function NewClientModal({
                 >
                   Enterprise
                 </button>
+                {canCreateLicensees ? (
+                  <button
+                    type="button"
+                    className={`btn ${rhythmEngineMode === 'practitioner' ? 'btn-primary' : 'btn-ghost'}`}
+                    disabled={busy}
+                    onClick={() => setRhythmEngineMode('practitioner')}
+                  >
+                    Practitioner
+                  </button>
+                ) : null}
               </div>
+              {rhythmEngineMode === 'guided' ? (
+                <p className="muted" style={{ fontSize: '0.8rem', margin: '0.7rem 0 0' }}>
+                  Outlier runs Rhythm Engine directly for this client — screen-share or screenshot only.
+                  They get a simple, restricted dashboard to view their own assessments.
+                </p>
+              ) : null}
+              {rhythmEngineMode === 'enterprise' ? (
+                <p className="muted" style={{ fontSize: '0.8rem', margin: '0.7rem 0 0' }}>
+                  Runs Rhythm Engine directly on itself, with its own contract, assessment quota, and
+                  self-service workspace.
+                </p>
+              ) : null}
+              {rhythmEngineMode === 'practitioner' ? (
+                <p className="muted" style={{ fontSize: '0.8rem', margin: '0.7rem 0 0' }}>
+                  Resells or administers Rhythm Engine to its own downstream clients and holds the licence
+                  there.
+                </p>
+              ) : null}
               {rhythmEngineMode === 'enterprise' ? (
                 <div className="field" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
                   <label htmlFor="ncm-enterprise-tier">Enterprise licence size</label>
