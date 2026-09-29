@@ -7,7 +7,7 @@ export const REPORT_STAGE_MAP = {
 };
 export const REPORT_FORMATS = new Set(['docx', 'pdf']);
 export const REPORT_AI_TIMEOUT_MS = Number.parseInt(process.env.REPORT_AI_TIMEOUT_MS || '15000', 10);
-export const REPORT_AI_MODEL = process.env.REPORT_AI_MODEL || 'claude-sonnet-4-20250514';
+export const REPORT_AI_MODEL = process.env.REPORT_AI_MODEL || 'claude-sonnet-5-5';
 export const REPORT_STORAGE_DAYS = Number.parseInt(process.env.REPORT_STORAGE_DAYS || '30', 10);
 export const REPORT_DOWNLOAD_TTL_SECONDS = Number.parseInt(
   process.env.REPORT_DOWNLOAD_TTL_SECONDS || String(60 * 60),

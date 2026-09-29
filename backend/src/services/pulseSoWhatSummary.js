@@ -4,7 +4,7 @@ const DEFAULT_CLAUDE_MODEL =
   process.env.CLAUDE_SUMMARY_MODEL ||
   process.env.REPORT_AI_MODEL ||
   process.env.ANTHROPIC_MODEL ||
-  'claude-sonnet-4-20250514';
+  'claude-sonnet-5-5';
 
 function readPositiveIntEnv(name, fallback) {
   const parsed = Number.parseInt(process.env[name] || '', 10);
