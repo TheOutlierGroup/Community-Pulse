@@ -1,3 +1,4 @@
+import { claudeModelParams } from './claudeModelParams.js';
 import { REPORT_AI_MODEL, REPORT_AI_TIMEOUT_MS, NEXT_STEPS_DEFAULT_ORDER } from './reportConfig.js';
 
 const FALLBACK = {
@@ -84,7 +85,7 @@ async function callClaude({ apiKey, instruction, payload, systemPrompt = SECTION
       body: JSON.stringify({
         model: REPORT_AI_MODEL,
         max_tokens: maxTokens,
-        temperature: 0.4,
+        ...claudeModelParams(REPORT_AI_MODEL, { temperature: 0.4 }),
         system: systemPrompt,
         messages: [
           {

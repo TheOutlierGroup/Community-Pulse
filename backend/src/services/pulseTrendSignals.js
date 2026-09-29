@@ -1,3 +1,4 @@
+import { claudeModelParams } from './claudeModelParams.js';
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_CLAUDE_MODEL =
   process.env.CLAUDE_TREND_SIGNALS_MODEL ||
@@ -255,7 +256,7 @@ async function requestTrendSignalsFromAi({ orgName, selectedTimepoint, stages })
         model: DEFAULT_CLAUDE_MODEL,
         system: 'You write concise executive signal banners for dashboard sections.',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
+        ...claudeModelParams(DEFAULT_CLAUDE_MODEL, { temperature: 0.3 }),
         max_tokens: 120,
       }),
       signal: controller.signal,
