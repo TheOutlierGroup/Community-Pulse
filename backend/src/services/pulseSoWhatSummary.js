@@ -1,9 +1,10 @@
+import { claudeModelParams } from './claudeModelParams.js';
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_CLAUDE_MODEL =
   process.env.CLAUDE_SUMMARY_MODEL ||
   process.env.REPORT_AI_MODEL ||
   process.env.ANTHROPIC_MODEL ||
-  'claude-sonnet-4-20250514';
+  'claude-sonnet-5-5';
 
 function readPositiveIntEnv(name, fallback) {
   const parsed = Number.parseInt(process.env[name] || '', 10);
@@ -124,7 +125,7 @@ async function requestClaudeText({ prompt, maxOutputTokens = 120, temperature = 
     model: DEFAULT_CLAUDE_MODEL,
     system: 'You summarize operational analytics for executives with high precision and brevity.',
     messages: [{ role: 'user', content: prompt }],
-    temperature,
+    ...claudeModelParams(DEFAULT_CLAUDE_MODEL, { temperature }),
     max_tokens: maxOutputTokens,
   };
   const maxRetries = summaryMaxRetries();

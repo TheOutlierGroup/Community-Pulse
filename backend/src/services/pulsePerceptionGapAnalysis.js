@@ -1,10 +1,11 @@
+import { claudeModelParams } from './claudeModelParams.js';
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_CLAUDE_MODEL =
   process.env.CLAUDE_PERCEPTION_GAP_MODEL ||
   process.env.CLAUDE_SUMMARY_MODEL ||
   process.env.REPORT_AI_MODEL ||
   process.env.ANTHROPIC_MODEL ||
-  'claude-sonnet-4-20250514';
+  'claude-sonnet-5-5';
 
 export const PERCEPTION_GAP_ANALYSIS_THRESHOLD = 1.5;
 export const PERCEPTION_GAP_ANALYSIS_MIN_SAMPLES = 5;
@@ -174,7 +175,7 @@ async function requestNarrativeFromAi({ orgName, items, threshold, employeeCount
         system:
           'You write factual perception-gap commentary for change readiness dashboards. Output prose only.',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
+        ...claudeModelParams(DEFAULT_CLAUDE_MODEL, { temperature: 0.3 }),
         max_tokens: 320,
       }),
       signal: controller.signal,
