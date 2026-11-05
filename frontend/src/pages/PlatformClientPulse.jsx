@@ -5,6 +5,10 @@ import { normalizeServices } from './platformClientUtils.js';
 import { normalizePulseHash, resolvePulseFocusedSection } from './pulseNavigationRules.js';
 import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
 import PulseTrendAnalysisSection from '../components/platform/PulseTrendAnalysisSection.jsx';
+import {
+  buildReportDownloadFilename,
+  readDownloadErrorMessage,
+} from '../components/platform/reportGeneratorHelpers.js';
 import { crmAppBaseUrl } from '../config/appSurface.js';
 
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
@@ -15,6 +19,10 @@ const QUADRANT_DESCRIPTORS = {
   'Motivated but Lost': ['People are willing to change but lack credible leadership support.', 'Sponsorship is the primary risk.'],
   'Capable but Wary': ['Leadership is driving the change credibly,', 'but the workforce needs more support to build readiness.'],
 };
+import {
+  buildCrossStageDivergenceFlags,
+  describeDivergenceEmptyState,
+} from '../utils/crossStageDivergence.js';
 const DIMENSION_ORDER = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'];
 const PERCEPTION_GAP_THRESHOLD = 1.5;
 const INTRA_DIMENSION_DIVERGENCE_THRESHOLD = 1.5;
@@ -606,14 +614,20 @@ function buildTrendStageSnapshot(stageKey, label, payload) {
   const managerDimensions = Object.fromEntries(
     DIMENSION_ORDER.map((id) => [id, Number.isFinite(byId.get(id)?.frictionAvg) ? byId.get(id).frictionAvg : null])
   );
-  const loadBands = Array.isArray(payload?.sponsorshipAnalysis?.section2?.bands)
+  // RED-064: a withheld manager cohort is not a cohort of zeros; Trend
+  // Analysis gets no manager figures for that stage rather than 0%.
+  const managerCohortWithheld = payload?.sponsorshipAnalysis?.cohort?.sampleSizeMet === false;
+  const loadBands = !managerCohortWithheld && Array.isArray(payload?.sponsorshipAnalysis?.section2?.bands)
     ? payload.sponsorshipAnalysis.section2.bands
     : [];
-  const chainStates = Array.isArray(payload?.sponsorshipAnalysis?.section3?.states)
+  const chainStates = !managerCohortWithheld && Array.isArray(payload?.sponsorshipAnalysis?.section3?.states)
     ? payload.sponsorshipAnalysis.section3.states
     : [];
-  const dominantQuadrant = [...(payload?.quadrants || [])]
-    .sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || '--';
+  // RED-065: the stage's quadrant is the organisation-level classification
+  // from its average scores, not the most common individual quadrant.
+  const dominantQuadrant = String(payload?.kpis?.orgQuadrant || '').trim()
+    || [...(payload?.quadrants || [])]
+      .sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || '--';
   const employeeSponsorshipAvg = average([
     employeeDimensions['2A'],
     employeeDimensions['2B'],
@@ -640,13 +654,13 @@ function buildTrendStageSnapshot(stageKey, label, payload) {
     capacityAvg: Number.isFinite(payload?.sponsorshipAnalysis?.section1?.capacity?.avg)
       ? payload.sponsorshipAnalysis.section1.capacity.avg
       : null,
-    loadBands: {
+    loadBands: managerCohortWithheld ? {} : {
       Sustainable: Number(loadBands.find((band) => band.name === 'Sustainable')?.percent || 0),
       Stretched: Number(loadBands.find((band) => band.name === 'Stretched')?.percent || 0),
       'At Capacity': Number(loadBands.find((band) => band.name === 'At Capacity')?.percent || 0),
       Overloaded: Number(loadBands.find((band) => band.name === 'Overloaded')?.percent || 0),
     },
-    chainStates: {
+    chainStates: managerCohortWithheld ? {} : {
       'Chain Functioning': Number(chainStates.find((row) => row.name === 'Chain Functioning')?.percent || 0),
       'Breaking at Manager Level': Number(chainStates.find((row) => row.name === 'Breaking at Manager Level')?.percent || 0),
       'Managers Resilient, Under-Supported': Number(chainStates.find((row) => row.name === 'Managers Resilient, Under-Supported')?.percent || 0),
@@ -662,60 +676,6 @@ function buildTrendStageSnapshot(stageKey, label, payload) {
       ? managerSponsorshipAvg - employeeSponsorshipAvg
       : null,
   };
-}
-
-function buildCrossStageDivergenceFlags(orderedStages, threshold = 1.0) {
-  const flags = [];
-  const transitions = [];
-  for (let idx = 1; idx < orderedStages.length; idx += 1) {
-    const from = orderedStages[idx - 1];
-    const to = orderedStages[idx];
-    if (!from.available || !to.available) continue;
-    transitions.push([from, to]);
-  }
-  transitions.forEach(([from, to]) => {
-    DIMENSION_ORDER.forEach((dimensionId) => {
-      const employeeFrom = from.dimensions.employee[dimensionId];
-      const employeeTo = to.dimensions.employee[dimensionId];
-      if (Number.isFinite(employeeFrom) && Number.isFinite(employeeTo)) {
-        const delta = employeeTo - employeeFrom;
-        if (Math.abs(delta) >= threshold) {
-          flags.push({
-            key: `employee-${dimensionId}-${from.key}-${to.key}`,
-            dimensionId,
-            survey: 'Employee',
-            transition: `${from.label} -> ${to.label}`,
-            from: employeeFrom,
-            to: employeeTo,
-            delta,
-          });
-        }
-      }
-      const managerFrom = from.dimensions.manager[dimensionId];
-      const managerTo = to.dimensions.manager[dimensionId];
-      if (Number.isFinite(managerFrom) && Number.isFinite(managerTo)) {
-        const delta = managerTo - managerFrom;
-        if (Math.abs(delta) >= threshold) {
-          flags.push({
-            key: `manager-${dimensionId}-${from.key}-${to.key}`,
-            dimensionId,
-            survey: 'Manager',
-            transition: `${from.label} -> ${to.label}`,
-            from: managerFrom,
-            to: managerTo,
-            delta,
-          });
-        }
-      }
-    });
-  });
-  return flags.sort((a, b) => {
-    const absDiff = Math.abs(b.delta) - Math.abs(a.delta);
-    if (absDiff !== 0) return absDiff;
-    if (a.delta < 0 && b.delta > 0) return -1;
-    if (a.delta > 0 && b.delta < 0) return 1;
-    return a.dimensionId.localeCompare(b.dimensionId);
-  });
 }
 
 export default function PlatformClientPulse() {
@@ -790,6 +750,20 @@ export default function PlatformClientPulse() {
     () => [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0] || { name: '--', percent: 0 },
     [quadrants]
   );
+  // RED-065: the headline names the organisation's own classification
+  // (from its average scores, as the verdict, Trend Analysis and the report
+  // do), with the share of respondents in that quadrant. It used to name
+  // whichever quadrant held the most individuals, so a High Risk, Not
+  // Cleared organisation could headline "Optimal". Falls back to the old
+  // behaviour only for a payload without orgQuadrant.
+  const headlineQuadrant = useMemo(() => {
+    const orgQuadrantName = String(kpis?.orgQuadrant || '').trim();
+    if (orgQuadrantName) {
+      const match = quadrants.find((q) => q.name === orgQuadrantName);
+      return { name: orgQuadrantName, percent: match?.percent ?? 0, fromOrgAverage: true };
+    }
+    return { ...dominantQuadrant, fromOrgAverage: false };
+  }, [kpis?.orgQuadrant, quadrants, dominantQuadrant]);
   const optimalPercent = quadrants.find((q) => q.name === 'Optimal')?.percent ?? 0;
   const insightCards = (dashboard?.alerts || []).slice(0, 3);
   const sponsorshipSignals = dashboard?.sponsorshipAnalysis?.signals || null;
@@ -1213,8 +1187,12 @@ export default function PlatformClientPulse() {
     return availableStages.length > 0 ? availableStages : fullOrder;
   }, [trendSnapshots, selectedTrendDuringIds, orderedDuringOptions]);
   const trendDivergenceFlags = useMemo(
-    () => buildCrossStageDivergenceFlags(orderedTrendStages, 1.0),
+    () => buildCrossStageDivergenceFlags(orderedTrendStages, 1.0, DIMENSION_ORDER),
     [orderedTrendStages]
+  );
+  const trendDivergenceEmptyState = useMemo(
+    () => describeDivergenceEmptyState(orderedTrendStages, trendDivergenceFlags, DIMENSION_ORDER),
+    [orderedTrendStages, trendDivergenceFlags]
   );
   const scoreCardSignals = dashboard?.scoreCardSignals || {};
   const adoptionScoreCardSignal = scoreCardSignals.adoption || {};
@@ -1310,6 +1288,10 @@ export default function PlatformClientPulse() {
   // manager-cohort equivalent of the wave-over-wave delta exists yet, so
   // that's left blank rather than paired with a now-correct score.
   const managerCohort = dashboard?.sponsorshipAnalysis?.cohort || {};
+  // RED-064: below the floor the backend withholds every manager-cohort
+  // figure; say so plainly rather than rendering empty bars and zeros.
+  const managerCohortWithheld = managerCohort.sampleSizeMet === false;
+  const managerCohortMinSample = Number.isFinite(managerCohort.minSampleSize) ? managerCohort.minSampleSize : 5;
   const topCardAdoptionScore = managerFocusedTopCard ? managerCohort.managerAdoptionAvg ?? null : kpis.adoptionScore;
   const topCardSponsorshipScore = managerFocusedTopCard
     ? managerCohort.managerSponsorshipAvg ?? null
@@ -1546,7 +1528,8 @@ export default function PlatformClientPulse() {
     loadReports();
   }, [loadReports]);
 
-  async function downloadPastReport(reportId) {
+  async function downloadPastReport(report) {
+    const reportId = report?.id;
     setReportsError('');
     try {
       const base = crmAppBaseUrl();
@@ -1563,13 +1546,20 @@ export default function PlatformClientPulse() {
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.href = url;
-      link.download = `${org.slug || org.id}-report`;
+      // RED-055: this saved every past report as "<client>-report" with no
+      // extension, so a PDF from the history list was not recognised as a
+      // PDF and would not open. Same filename rule as a fresh download.
+      link.download = buildReportDownloadFilename({
+        organization: { slug: org.slug || org.id },
+        stage: report?.stage,
+        format: report?.format,
+      });
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      setReportsError('Could not download report.');
+    } catch (downloadError) {
+      setReportsError(await readDownloadErrorMessage(downloadError));
     }
   }
 
@@ -1689,7 +1679,7 @@ export default function PlatformClientPulse() {
                     ? (topCardAdoptionScore >= threshold
                       ? 'The management layer is ready to absorb and drive adoption across teams.'
                       : 'The management layer needs support to build the adoption capability required for this change.')
-                    : 'Adoption score data is not yet available for this cohort.')
+                    : (managerCohortWithheld ? `Withheld: fewer than ${managerCohortMinSample} managers have responded.` : 'Adoption score data is not yet available for this cohort.'))
                 )}
               </p>
             </div>
@@ -1704,7 +1694,7 @@ export default function PlatformClientPulse() {
                     ? (topCardSponsorshipScore >= threshold
                       ? 'Sponsorship credibility is strong — managers are receiving and passing on adequate leadership support.'
                       : 'Sponsorship credibility is below threshold — review which sub-score is weaker to identify where the chain is breaking.')
-                    : 'Sponsorship score data is not yet available for this cohort.')
+                    : (managerCohortWithheld ? `Withheld: fewer than ${managerCohortMinSample} managers have responded.` : 'Sponsorship score data is not yet available for this cohort.'))
                 )}
               </p>
             </div>
@@ -1847,7 +1837,7 @@ export default function PlatformClientPulse() {
                     ))}
                   </div>
                   <p className="pulse-sa-card__explainer" style={{ marginTop: '0.8rem' }}>
-                    <strong>Score:</strong> {dominantQuadrant.name} ({formatPercent(dominantQuadrant.percent)})
+                    <strong>Score:</strong> {headlineQuadrant.name} ({formatPercent(headlineQuadrant.percent)}{headlineQuadrant.fromOrgAverage ? ' of respondents' : ''})
                   </p>
                   <p className="pulse-sa-card__explainer" style={{ marginTop: '0.35rem' }}>
                     <strong>What it means:</strong> {renderSignalMarkup(
@@ -1858,7 +1848,7 @@ export default function PlatformClientPulse() {
               ) : (
                 <p className="pulse-sa-card__explainer" role="note">
                   Insufficient data — this view has fewer than {minSampleSize} respondents, so quadrant
-                  and score results are hidden to protect individual anonymity. Broaden the manager
+                  and score results are hidden to keep individual responses confidential. Broaden the manager
                   filter to see results.
                 </p>
               )}
@@ -1919,6 +1909,7 @@ export default function PlatformClientPulse() {
             error={trendError}
             orderedStages={orderedTrendStages}
             divergenceFlags={trendDivergenceFlags}
+            divergenceEmptyState={trendDivergenceEmptyState}
             sectionSignals={trendSignals}
           />
         </>
@@ -1950,6 +1941,18 @@ export default function PlatformClientPulse() {
 
       {showScoresSection ? (
         <section className="pulse-clean-scores pulse-sa">
+          {managerCohortWithheld ? (
+            <div className="pulse-sa-card" role="note">
+              <p className="pulse-sa-card__label">Manager Cohort · Insufficient Data</p>
+              <p className="pulse-sa-card__explainer">
+                Fewer than {managerCohortMinSample} managers have responded, so the manager scores, load
+                bands, sponsorship chain states and team breakdown are withheld to keep individual
+                responses confidential. They will appear once at least {managerCohortMinSample} managers
+                have responded.
+              </p>
+            </div>
+          ) : (
+          <>
           {/* ─── SECTION 1: SUB-SCORE OVERVIEW ─── */}
           <div className="pulse-sa-card">
             <p className="pulse-sa-card__label">
@@ -2165,7 +2168,7 @@ export default function PlatformClientPulse() {
                             {suppressed ? (
                               <span
                                 className="pulse-sa-chain-pill pulse-sa-chain-pill--suppressed"
-                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to protect individual anonymity.`}
+                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to keep individual responses confidential.`}
                               >
                                 Protected
                               </span>
@@ -2179,7 +2182,7 @@ export default function PlatformClientPulse() {
                             {suppressed ? (
                               <span
                                 className="pulse-sa-load-text pulse-sa-load-text--suppressed"
-                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to protect individual anonymity.`}
+                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to keep individual responses confidential.`}
                               >
                                 Protected
                               </span>
@@ -2210,6 +2213,8 @@ export default function PlatformClientPulse() {
               ) : null}
             </div>
           ) : null}
+          </>
+          )}
         </section>
       ) : null}
 
@@ -2437,7 +2442,7 @@ export default function PlatformClientPulse() {
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() => downloadPastReport(report.id)}
+                          onClick={() => downloadPastReport(report)}
                           disabled={report.status !== 'complete'}
                         >
                           Download

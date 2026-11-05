@@ -4,6 +4,7 @@ import { crmAppBaseUrl } from '../../config/appSurface.js';
 import {
   buildReportDownloadFilename,
   buildReportGeneratePayload,
+  readDownloadErrorMessage,
 } from './reportGeneratorHelpers.js';
 
 const STAGE_OPTIONS = [
@@ -85,7 +86,7 @@ export default function ReportGeneratorModal({ open, onClose, organization }) {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (downloadError) {
-      setError(downloadError?.response?.data?.error || 'Could not download report.');
+      setError(await readDownloadErrorMessage(downloadError));
     } finally {
       setDownloading(false);
     }

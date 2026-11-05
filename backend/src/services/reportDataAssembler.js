@@ -15,6 +15,8 @@ import { calculateLargestRemainderPercentages } from './pulseDashboardMetrics.js
 import { REPORT_MIN_RESPONSES, REPORT_STAGE_MAP } from './reportConfig.js';
 import { DASHBOARD_MIN_SAMPLE_SIZE } from './pulseDashboardScope.js';
 
+const UNASSIGNED_TEAM_LABEL = 'Unassigned';
+
 function round1(value) {
   return Math.round(Number(value || 0) * 10) / 10;
 }
@@ -204,15 +206,21 @@ export function createAssembleReportData({
     const linkStaffInvites = linkInviteRows.filter((row) => row.survey_role !== 'manager').length;
     const linkManagerInvites = linkInviteRows.filter((row) => row.survey_role === 'manager').length;
     const invitedEmployees = inviteCounts.employee + linkStaffInvites;
-    const invitedManagers = inviteCounts.admin + linkManagerInvites;
+    // RED-068: admin accounts are client administrators, never survey
+    // invitees (managers are surveyed by personal link only), so they are
+    // not part of the invited count. Matches the dashboard.
+    const invitedManagers = linkManagerInvites;
     const invitedTotal = invitedEmployees + invitedManagers;
     const responseRate = invitedTotal > 0 ? pct(filteredRows.length, invitedTotal) : null;
 
     // Team identity comes from the deepest group_level_values entry on
-    // an invite (the actual team/department label). When no group values
-    // are configured we fall back to the lead manager's display name so
-    // the team can still be referenced — never the staff member's own
-    // name. This mirrors the dashboard's teamNameFromGroupValues.
+    // an invite (the actual team/department label). RED-067: with no
+    // group values set, this used to fall back to the lead manager's
+    // display name, which for a recipient added without a name is their
+    // email prefix ("nick+2"), and either way is a personal identifier in
+    // "Teams in Scope" and the executive summary. Recipients without a
+    // team are now grouped under one neutral label, as People View and the
+    // dashboard's team table already do.
     const deriveTeamNameForInvite = (invite) => {
       const groupValues = Array.isArray(invite?.group_level_values)
         ? invite.group_level_values
@@ -220,11 +228,7 @@ export function createAssembleReportData({
             .filter(Boolean)
         : [];
       if (groupValues.length > 0) return groupValues[groupValues.length - 1];
-      const isManager = String(invite?.survey_role || '').trim() === 'manager';
-      const managerName = isManager
-        ? String(invite?.display_name || '').trim()
-        : String(invite?.manager_display_name || '').trim();
-      return managerName || null;
+      return UNASSIGNED_TEAM_LABEL;
     };
 
     const teams = [...new Set(linkInviteRows

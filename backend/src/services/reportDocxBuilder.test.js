@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
-import { buildReportDocx } from './reportDocxBuilder.js';
+import { buildReportDocx, stageFramingSentence, stageActionWindow } from './reportDocxBuilder.js';
 
 async function extractDocxText(buffer) {
   const zip = await JSZip.loadAsync(buffer);
@@ -227,4 +227,17 @@ test('buildReportDocx omits a logo it cannot identify instead of corrupting the 
   });
   const media = await docxMediaEntries(buffer);
   assert.equal(media.length, 0);
+});
+
+// RED-070: every report called itself "the <stage> baseline ... ahead of
+// programme launch", so a Mid-Change report described itself as pre-launch.
+test('stage framing describes each stage as itself', () => {
+  assert.match(stageFramingSentence('pre'), /pre-change baseline .* ahead of programme launch/);
+  for (const stage of ['mid', 'post']) {
+    const sentence = stageFramingSentence(stage);
+    assert.doesNotMatch(sentence, /baseline|ahead of programme launch/, stage);
+  }
+  assert.match(stageFramingSentence('mid'), /mid-change check-in/);
+  assert.equal(stageActionWindow('pre'), 'before launch');
+  assert.notEqual(stageActionWindow('mid'), 'before launch');
 });

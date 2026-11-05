@@ -1008,14 +1008,37 @@ function teamBreakdownTable(teams) {
 function teamSuppressionNote(reportData) {
   const min = reportData?.suppression?.min_sample_size ?? 5;
   const suppressed = reportData?.suppression?.suppressed_team_count ?? 0;
-  const base = `To protect respondent anonymity, scores are withheld for any team with fewer than ${min} responses. Manager Load reflects the team's lead manager and is withheld on the same basis.`;
+  // RED-070: Rhythm Engine responses are confidential, not anonymous.
+  const base = `To keep individual responses confidential, scores are withheld for any team with fewer than ${min} responses. Manager Load reflects the team's lead manager and is withheld on the same basis.`;
   if (!suppressed) return base;
   const plural = suppressed === 1 ? 'team is' : 'teams are';
   return `${base} ${suppressed} ${plural} shown as "Insufficient data" on that basis.`;
 }
 
+/**
+ * RED-070: the Executive Summary described every report as "the <stage>
+ * baseline ... ahead of programme launch", so a Mid-Change report called
+ * itself a pre-launch baseline. Each stage now describes itself.
+ */
+export function stageFramingSentence(stage) {
+  const notAVerdict = "not as a verdict on the organisation's capability.";
+  if (stage === 'mid') {
+    return `The findings below reflect a mid-change check-in taken while the programme is under way, and should be read as diagnostic intelligence to guide the remainder of delivery – ${notAVerdict}`;
+  }
+  if (stage === 'post') {
+    return `The findings below reflect the post-change position once the programme has been delivered, and should be read as diagnostic intelligence for embedding and sustaining the change – ${notAVerdict}`;
+  }
+  return `The findings below reflect the pre-change baseline and should be read as diagnostic intelligence ahead of programme launch – ${notAVerdict}`;
+}
+
+export function stageActionWindow(stage) {
+  if (stage === 'mid') return 'during the remainder of delivery';
+  if (stage === 'post') return 'to embed and sustain the change';
+  return 'before launch';
+}
+
 function cohortSuppressionNote(min, cohort) {
-  return `Withheld to protect respondent anonymity: fewer than ${min} ${cohort} responses were recorded, so this breakdown would reflect individually identifiable answers.`;
+  return `Withheld to keep individual responses confidential: fewer than ${min} ${cohort} responses were recorded, so this breakdown would reflect individually identifiable answers.`;
 }
 
 function dimensionStatusText(avg) {
@@ -1056,6 +1079,54 @@ function detectImageType(buffer) {
   return null;
 }
 
+// RED-061: logos were drawn into fixed boxes (e.g. 150x50), so any logo
+// that was not already about 3:1 was stretched: a square client mark came
+// out as a wide oval beside the brand logo. These read the image's own
+// pixel size so it can be fitted inside the box instead.
+export function readImageDimensions(buffer) {
+  const type = detectImageType(buffer);
+  try {
+    if (type === 'png' && buffer.length >= 24) {
+      return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+    }
+    if (type === 'gif' && buffer.length >= 10) {
+      return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
+    }
+    if (type === 'bmp' && buffer.length >= 26) {
+      return { width: Math.abs(buffer.readInt32LE(18)), height: Math.abs(buffer.readInt32LE(22)) };
+    }
+    if (type === 'jpg') {
+      let offset = 2;
+      while (offset + 9 < buffer.length) {
+        if (buffer[offset] !== 0xff) { offset += 1; continue; }
+        const marker = buffer[offset + 1];
+        if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { offset += 2; continue; }
+        const length = buffer.readUInt16BE(offset + 2);
+        const isStartOfFrame = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+        if (isStartOfFrame) {
+          return { width: buffer.readUInt16BE(offset + 7), height: buffer.readUInt16BE(offset + 5) };
+        }
+        offset += 2 + length;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function fitLogoWithinBox(buffer, maxWidth, maxHeight) {
+  const dims = readImageDimensions(buffer);
+  if (!dims || !(dims.width > 0) || !(dims.height > 0)) {
+    return { width: maxWidth, height: maxHeight };
+  }
+  const scale = Math.min(maxWidth / dims.width, maxHeight / dims.height);
+  return {
+    width: Math.max(1, Math.round(dims.width * scale)),
+    height: Math.max(1, Math.round(dims.height * scale)),
+  };
+}
+
 function isUsableLogoBuffer(buffer) {
   return Buffer.isBuffer(buffer) && buffer.length > 0 && detectImageType(buffer) != null;
 }
@@ -1070,7 +1141,7 @@ function logoParagraph(buffer, { width = 180, height = 56, after = 120, alignmen
         new ImageRun({
           data: buffer,
           type: detectImageType(buffer),
-          transformation: { width, height },
+          transformation: fitLogoWithinBox(buffer, width, height),
         }),
       ],
     });
@@ -1104,7 +1175,7 @@ function coverLogoStack({ defaultLogoBuffer, brandLogoBuffer, companyLogoBuffer 
   if (topUsable && companyUsable) {
     try {
       const companyCell = logoParagraph(companyLogoBuffer, {
-        width: 150, height: 50, after: 0, alignment: AlignmentType.LEFT,
+        width: 170, height: 64, after: 0, alignment: AlignmentType.LEFT,
       });
       const brandCell = logoParagraph(topLogo, {
         width: 170, height: 51, after: 0, alignment: AlignmentType.RIGHT,
@@ -1145,7 +1216,7 @@ function coverLogoStack({ defaultLogoBuffer, brandLogoBuffer, companyLogoBuffer 
   const paragraphs = [];
   const top = logoParagraph(topLogo, { width: 200, height: 60, after: companyUsable ? 120 : 240 });
   if (top) paragraphs.push(top);
-  const company = logoParagraph(companyLogoBuffer, { width: 180, height: 60, after: 240 });
+  const company = logoParagraph(companyLogoBuffer, { width: 180, height: 64, after: 240 });
   if (company) paragraphs.push(company);
   return paragraphs;
 }
@@ -1394,7 +1465,7 @@ export async function buildReportDocx({
           // ── Executive Summary ─────────────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),
           h1('Executive Summary'),
-          body(`This report presents the results of the Change Readiness Assessment conducted for ${reportData.org.name}. The assessment was completed by ${reportData.totals.responses} respondents across ${reportData.totals.teams_in_scope || 'multiple teams'}. The findings below reflect the ${stageLabel.toLowerCase()} baseline and should be read as diagnostic intelligence ahead of programme launch – not as a verdict on the organisation's capability.`),
+          body(`This report presents the results of the Change Readiness Assessment conducted for ${reportData.org.name}. The assessment was completed by ${reportData.totals.responses} respondents across ${reportData.totals.teams_in_scope || 'multiple teams'}. ${stageFramingSentence(reportData.stage)}`),
           spacer(100),
           h2('Overall Readiness Verdict'),
           verdictBox(reportData.readiness.verdict, reportData.readiness.quadrant_label),
@@ -1553,7 +1624,7 @@ export async function buildReportDocx({
           // ── Adoption Alerts ───────────────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),
           h1('Adoption Alerts'),
-          body('The following alerts were generated automatically based on scoring thresholds built into the assessment instrument. They are listed in priority order and represent the system\'s assessment of the most operationally significant findings requiring action before launch.'),
+          body(`The following alerts were generated automatically based on scoring thresholds built into the assessment instrument. They are listed in priority order and represent the system's assessment of the most operationally significant findings requiring action ${stageActionWindow(reportData.stage)}.`),
           spacer(80),
           ...(reportData.alerts.length > 0
             ? reportData.alerts.flatMap((alert) => [alertBlock(alert.severity, alert.title, alert.description), spacer(100)])

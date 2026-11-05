@@ -58,3 +58,22 @@ test('buildReportDownloadFilename uses org slug and extension fallback rules', (
     'report-pre.docx'
   );
 });
+
+// RED-055: the report history saved every file as "<client>-report" with no
+// extension, and a refused download only ever said "Could not download".
+test('buildReportDownloadFilename always carries the right extension', async () => {
+  const { buildReportDownloadFilename } = await import('./reportGeneratorHelpers.js');
+  assert.equal(buildReportDownloadFilename({ organization: { slug: 'acme' }, stage: 'mid', format: 'pdf' }), 'acme-mid.pdf');
+  assert.equal(buildReportDownloadFilename({ organization: { slug: 'acme' }, stage: 'pre', format: 'docx' }), 'acme-pre.docx');
+  assert.equal(buildReportDownloadFilename({ organization: { slug: 'acme' }, stage: '', format: 'pdf' }), 'acme-report.pdf');
+});
+
+test('readDownloadErrorMessage reads the server message out of a blob error body', async () => {
+  const { readDownloadErrorMessage } = await import('./reportGeneratorHelpers.js');
+  const message = 'This PDF was not generated correctly and cannot be opened. Please regenerate the report.';
+  const blobError = { response: { data: new Blob([JSON.stringify({ error: message })], { type: 'application/json' }) } };
+  assert.equal(await readDownloadErrorMessage(blobError), message);
+  assert.equal(await readDownloadErrorMessage({ response: { data: { error: 'Report has expired' } } }), 'Report has expired');
+  assert.equal(await readDownloadErrorMessage({ response: { data: new Blob(['not json']) } }), 'Could not download report.');
+  assert.equal(await readDownloadErrorMessage(new Error('network')), 'Could not download report.');
+});

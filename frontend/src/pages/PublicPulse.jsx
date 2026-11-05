@@ -7,6 +7,7 @@ import SurveyQuestionStep from '../components/employee/SurveyQuestionStep.jsx';
 import Step5Reflection from '../components/employee/Step5Reflection.jsx';
 import rhythmEngineLogo from '../images/rhythm-engine-logo.png';
 import { normalizePulseStage } from '../utils/pulseStage.js';
+import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 
 const EXPIRED_OR_INVALID_LINK_RE = /invalid or expired link/i;
 
@@ -74,6 +75,9 @@ export default function PublicPulse() {
   const [introStartBusy, setIntroStartBusy] = useState(false);
   const [capReached, setCapReached] = useState(false);
   const [brand, setBrand] = useState(null);
+  // RED-069: the survey tab carries the Practitioner's own name where one is
+  // configured, otherwise Rhythm Engine; never the platform owner's name.
+  useDocumentTitle(String(brand?.displayName || '').trim() || 'Rhythm Engine');
 
   function handlePossibleCapReached(err) {
     if (err?.response?.data?.capReached) {
