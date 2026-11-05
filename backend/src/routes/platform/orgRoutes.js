@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { normalizeLegacyTemplatePlaceholders } from '../../services/templatePlaceholders.js';
 import { randomBytes, randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
@@ -312,7 +313,9 @@ function loadSeverityRank(loadBand) {
   return 1;
 }
 
-function teamNameFromGroupValues(groupValues, fallbackName) {
+export const UNASSIGNED_TEAM_LABEL = 'Unassigned';
+
+function teamNameFromGroupValues(groupValues, fallbackName = UNASSIGNED_TEAM_LABEL) {
   const normalized = Array.isArray(groupValues)
     ? groupValues.map((value) => String(value || '').trim()).filter(Boolean)
     : [];
@@ -1153,7 +1156,58 @@ function pulseSurveyStartDefaultTemplatesPayload(platformOrg, timepointPhase = '
   };
 }
 
-function pulseInviteDefaultTemplateFromSettings(settings, audience, organizationName, timepointPhase = 'pre') {
+// RED-069: the platform-wide default invite templates used to be generated
+// with the platform organisation's own name where the client's name
+// belongs ("Rhythm Engine questionnaire — Outlier"). Once a platform admin
+// saved them, every client inheriting the defaults sent that subject and
+// body. Rebinding the baked-in platform name to {{clientName}} fixes the
+// stored copies without a data migration; a fresh save from the editor
+// then stores the token itself.
+function escapeRegExpLiteral(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function escapeHtmlLiteral(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function rebindPlatformNameToClientToken(template, platformName) {
+  const name = String(platformName || '').trim();
+  if (!template) return template;
+  if (!name) {
+    return {
+      ...template,
+      subject: normalizeLegacyTemplatePlaceholders(template.subject),
+      bodyHtml: normalizeLegacyTemplatePlaceholders(template.bodyHtml),
+    };
+  }
+  const plainName = escapeRegExpLiteral(name);
+  const htmlName = escapeRegExpLiteral(escapeHtmlLiteral(name));
+  return {
+    ...template,
+    subject: normalizeLegacyTemplatePlaceholders(template.subject).replace(
+      new RegExp(`(\\s[—–-]\\s*)${plainName}\\s*$`),
+      '$1{{clientName}}'
+    ),
+    bodyHtml: normalizeLegacyTemplatePlaceholders(template.bodyHtml).replace(
+      new RegExp(`<strong>\\s*(?:${htmlName}|${plainName})\\s*</strong>`, 'g'),
+      '<strong>{{clientName}}</strong>'
+    ),
+  };
+}
+
+function pulseInviteDefaultTemplateFromSettings(
+  settings,
+  audience,
+  organizationName,
+  timepointPhase = 'pre',
+  platformName = null
+) {
   const role = audience === 'manager' ? 'manager' : 'staff';
   const fallback = getPulseInviteDefaultTemplate(role, organizationName);
   const defaults = pulseInviteTemplateBucketByTimepoint(settings?.pulseInviteDefaultEmailTemplates, timepointPhase);
@@ -1161,10 +1215,13 @@ function pulseInviteDefaultTemplateFromSettings(settings, audience, organization
   if (!raw || typeof raw !== 'object') return fallback;
   const subject = typeof raw.subject === 'string' ? raw.subject.trim() : '';
   const bodyHtml = typeof raw.bodyHtml === 'string' ? raw.bodyHtml.trim() : '';
-  return {
-    subject: subject || fallback.subject,
-    bodyHtml: bodyHtml || fallback.bodyHtml,
-  };
+  return rebindPlatformNameToClientToken(
+    {
+      subject: subject || fallback.subject,
+      bodyHtml: bodyHtml || fallback.bodyHtml,
+    },
+    platformName
+  );
 }
 
 function pulseInviteTemplateFromSettings(
@@ -1172,32 +1229,58 @@ function pulseInviteTemplateFromSettings(
   audience,
   organizationName,
   platformSettings = null,
-  timepointPhase = 'pre'
+  timepointPhase = 'pre',
+  platformName = null
 ) {
   const role = audience === 'manager' ? 'manager' : 'staff';
-  const fallback = pulseInviteDefaultTemplateFromSettings(platformSettings, role, organizationName, timepointPhase);
+  const fallback = pulseInviteDefaultTemplateFromSettings(
+    platformSettings,
+    role,
+    organizationName,
+    timepointPhase,
+    platformName
+  );
   const templates = pulseInviteTemplateBucketByTimepoint(settings?.pulseInviteEmailTemplates, timepointPhase);
   const raw = templates && typeof templates === 'object' ? templates[role] : null;
   if (!raw || typeof raw !== 'object') return fallback;
   const subject = typeof raw.subject === 'string' ? raw.subject.trim() : '';
   const bodyHtml = typeof raw.bodyHtml === 'string' ? raw.bodyHtml.trim() : '';
+  // RED-066/069: a client's own saved copy may be a snapshot of the old
+  // platform defaults, so it gets the same clean-up.
+  return rebindPlatformNameToClientToken(
+    {
+      subject: subject || fallback.subject,
+      bodyHtml: bodyHtml || fallback.bodyHtml,
+    },
+    platformName
+  );
+}
+
+function pulseInviteTemplatesPayload(org, platformSettings = null, timepointPhase = 'pre', platformName = null) {
   return {
-    subject: subject || fallback.subject,
-    bodyHtml: bodyHtml || fallback.bodyHtml,
+    staff: pulseInviteTemplateFromSettings(org?.settings, 'staff', org?.name, platformSettings, timepointPhase, platformName),
+    manager: pulseInviteTemplateFromSettings(org?.settings, 'manager', org?.name, platformSettings, timepointPhase, platformName),
   };
 }
 
-function pulseInviteTemplatesPayload(org, platformSettings = null, timepointPhase = 'pre') {
-  return {
-    staff: pulseInviteTemplateFromSettings(org?.settings, 'staff', org?.name, platformSettings, timepointPhase),
-    manager: pulseInviteTemplateFromSettings(org?.settings, 'manager', org?.name, platformSettings, timepointPhase),
-  };
-}
-
+// RED-069: these are the defaults every client inherits, so the client's
+// name stays a {{clientName}} token here, never the platform's own name.
 function pulseInviteDefaultTemplatesPayload(platformOrg, timepointPhase = 'pre') {
   return {
-    staff: pulseInviteDefaultTemplateFromSettings(platformOrg?.settings, 'staff', platformOrg?.name, timepointPhase),
-    manager: pulseInviteDefaultTemplateFromSettings(platformOrg?.settings, 'manager', platformOrg?.name, timepointPhase),
+    staff: pulseInviteDefaultTemplateFromSettings(
+      platformOrg?.settings,
+      'staff',
+      '{{clientName}}',
+      timepointPhase,
+      platformOrg?.name
+    ),
+    manager: pulseInviteDefaultTemplateFromSettings(
+      platformOrg?.settings,
+      'manager',
+      '{{clientName}}',
+      timepointPhase,
+      platformOrg?.name
+    ),
   };
 }
 
@@ -3544,8 +3627,14 @@ export function registerPlatformOrgRoutes(router) {
     const completedEmployeeResponses = completedEmployeeRows.length;
     const completedManagerResponses = completedManagerRows.length;
 
+    // RED-068: only employee accounts can answer the survey through a
+    // login (the account survey routes in employees.js are employee-only);
+    // managers are only ever surveyed through a personal link. Admin
+    // accounts are client administrators, not invitees, so counting them
+    // added a phantom manager ("6 of 7 invited", "1 of 2 managers", and
+    // "0 of 1" on a client with no recipients at all).
     let invitedEmployees = activeUsersByRole.employee || 0;
-    let invitedManagers = activeUsersByRole.admin || 0;
+    let invitedManagers = 0;
     let pulseLinkStaff = pulseLinkByRole.staff;
     let pulseLinkManager = pulseLinkByRole.manager;
     if (managerFilterActive) {
@@ -3807,6 +3896,9 @@ export function registerPlatformOrgRoutes(router) {
         managerId: manager.id,
         managerName: manager.displayName || manager.email,
         managerEmail: manager.email,
+        // RED-067: the client-facing label for this manager's team, used
+        // wherever the team is named outside the admin's own roster.
+        teamName: teamNameFromGroupValues(manager.groupValues),
         directReportInvitedCount: inviteRows.filter((r) => r.manager_invite_id === manager.id).length,
         directReportCompletedCount: completedRows.filter(
           (row) => row.manager_invite_id === manager.id && row.invite_id !== manager.id
@@ -3855,36 +3947,52 @@ export function registerPlatformOrgRoutes(router) {
       .filter(Boolean);
 
     const managerRespondentCount = managerSelfMetrics.length;
+    // RED-064 (regression of RED-022 / RED-038): every figure below is built
+    // from the managers' own answers, so with fewer than
+    // DASHBOARD_MIN_SAMPLE_SIZE manager respondents it stops being an
+    // aggregate. With one manager it is that person's answers verbatim.
+    // People View and the Word report already withhold this data at the
+    // same floor (reportDataAssembler.js managerSampleSizeMet); the Manager
+    // View now does too, for the score tiles, sub-scores, load bands, chain
+    // states, the load x chain matrix and the team table.
+    const managerCohortSampleSizeMet = managerRespondentCount >= DASHBOARD_MIN_SAMPLE_SIZE;
+    if (!managerCohortSampleSizeMet) {
+      // A team's load band is its lead manager's own answer: withheld with
+      // the rest of the cohort's figures.
+      for (const row of byManager) row.managerLoadBand = null;
+    }
     const managerAdoptionAvg =
-      managerRespondentCount > 0
+      managerCohortSampleSizeMet && managerRespondentCount > 0
         ? round1(
             managerSelfMetrics.reduce((sum, row) => sum + row.adoptionScore, 0) / managerRespondentCount
           )
         : null;
     const managerSponsorshipAvg =
-      managerRespondentCount > 0
+      managerCohortSampleSizeMet && managerRespondentCount > 0
         ? round1(
             managerSelfMetrics.reduce((sum, row) => sum + row.sponsorshipScore, 0) / managerRespondentCount
           )
         : null;
     const receivedAvg =
-      managerRespondentCount > 0
+      managerCohortSampleSizeMet && managerRespondentCount > 0
         ? round1(
             managerSelfMetrics.reduce((sum, row) => sum + row.receivedScore, 0) / managerRespondentCount
           )
         : null;
     const capacityAvg =
-      managerRespondentCount > 0
+      managerCohortSampleSizeMet && managerRespondentCount > 0
         ? round1(
             managerSelfMetrics.reduce((sum, row) => sum + row.capacityScore, 0) / managerRespondentCount
           )
         : null;
-    const receivedThresholdStatus =
-      receivedAvg != null && receivedAvg >= sponsorshipConfig.receivedThreshold
+    const receivedThresholdStatus = !managerCohortSampleSizeMet
+      ? 'Insufficient Data'
+      : receivedAvg != null && receivedAvg >= sponsorshipConfig.receivedThreshold
         ? 'Above Threshold'
         : 'Below Threshold';
-    const capacityThresholdStatus =
-      capacityAvg != null && capacityAvg >= sponsorshipConfig.capacityThreshold
+    const capacityThresholdStatus = !managerCohortSampleSizeMet
+      ? 'Insufficient Data'
+      : capacityAvg != null && capacityAvg >= sponsorshipConfig.capacityThreshold
         ? 'Above Threshold'
         : 'Below Threshold';
 
@@ -3898,8 +4006,8 @@ export function registerPlatformOrgRoutes(router) {
     );
     const loadBandsV3 = loadBandNamesV3.map((name, idx) => ({
       name,
-      count: loadBandCountsV3[name] || 0,
-      percent: loadBandPercentsV3[idx] || 0,
+      count: managerCohortSampleSizeMet ? loadBandCountsV3[name] || 0 : null,
+      percent: managerCohortSampleSizeMet ? loadBandPercentsV3[idx] || 0 : null,
     }));
 
     const chainStateNames = sponsorshipChainStateOrder();
@@ -3912,10 +4020,12 @@ export function registerPlatformOrgRoutes(router) {
     );
     const chainStates = chainStateNames.map((name, idx) => ({
       name,
-      count: chainStateCounts[name] || 0,
-      percent: chainStatePercents[idx] || 0,
+      count: managerCohortSampleSizeMet ? chainStateCounts[name] || 0 : null,
+      percent: managerCohortSampleSizeMet ? chainStatePercents[idx] || 0 : null,
     }));
-    const chainMajority = [...chainStates].sort((a, b) => b.percent - a.percent)[0] || null;
+    const chainMajority = managerCohortSampleSizeMet
+      ? [...chainStates].sort((a, b) => b.percent - a.percent)[0] || null
+      : null;
 
     const matrixSeverityClass = (loadBand, chainState) => {
       if (loadBand === 'Sustainable' && chainState === 'Chain Functioning') return 'cx0';
@@ -3955,7 +4065,6 @@ export function registerPlatformOrgRoutes(router) {
     // load_chain_matrix via managerSampleSizeMet. className stays populated
     // even when suppressed — it's a function of the axis position
     // (loadBand/chainState), not of the count, so it carries no data.
-    const managerCohortSampleSizeMet = managerRespondentCount >= DASHBOARD_MIN_SAMPLE_SIZE;
     const crossMatrixRows = matrixRowOrder.map((loadBand) => ({
       loadBand,
       cells: matrixColOrder.map((chainState) => {
@@ -3991,9 +4100,15 @@ export function registerPlatformOrgRoutes(router) {
       // team table. This is that same data, same reasoning, on the live
       // dashboard's Section 4 instead.
       const managerBreakdown = byManager.find((row) => row.managerId === managerId) || null;
-      const sampleSizeMet = managerBreakdown?.sampleSizeMet ?? false;
-      const fallbackTeamName = manager.displayName || manager.email || managerId;
-      const teamName = teamNameFromGroupValues(manager.groupValues, fallbackTeamName);
+      // RED-064: chain state, load band and the received/capacity averages
+      // on this row come from the manager's own answers, so the row needs
+      // both its team's floor and the manager cohort's floor.
+      const sampleSizeMet = (managerBreakdown?.sampleSizeMet ?? false) && managerCohortSampleSizeMet;
+      // RED-067: a manager with no team set used to be labelled with their
+      // own name or email prefix, putting a personal identifier into a
+      // client-facing table. People View already groups these as
+      // "Unassigned"; this matches it.
+      const teamName = teamNameFromGroupValues(manager.groupValues, UNASSIGNED_TEAM_LABEL);
       const responses = managerBreakdown?.directReportCompletedCount || 0;
 
       if (!sampleSizeMet) {
@@ -4034,6 +4149,7 @@ export function registerPlatformOrgRoutes(router) {
 
     const failingBothPercent =
       chainStates.find((state) => state.name === 'Sponsorship Failed at Both Levels')?.percent || 0;
+    const managerCohortWithheldLabel = 'Insufficient data';
     const highRiskTeamCount = sortedTeamRows.filter(
       (row) => row.chainState === 'Sponsorship Failed at Both Levels'
     ).length;
@@ -4062,7 +4178,11 @@ export function registerPlatformOrgRoutes(router) {
     let verdictState;
     let verdictHeadline;
     let verdictBody;
-    if (!receivedBelowThreshold && !capacityBelowThreshold) {
+    if (!managerCohortSampleSizeMet) {
+      verdictState = 'insufficient_data';
+      verdictHeadline = 'Not enough manager responses to show this view.';
+      verdictBody = `Manager results are shown once at least ${DASHBOARD_MIN_SAMPLE_SIZE} managers have responded, so no individual's answers can be identified.`;
+    } else if (!receivedBelowThreshold && !capacityBelowThreshold) {
       verdictState = 'functioning';
       verdictHeadline = 'The sponsorship chain is functioning.';
       verdictBody = 'Leaders are receiving support and have capacity to sponsor change through their teams.';
@@ -4092,7 +4212,9 @@ export function registerPlatformOrgRoutes(router) {
     // suppression policy and keeps the policy in one place with the rest
     // of this gate.
     const sampleSizeMetTeamRows = sortedTeamRows.filter((row) => row.chainState != null);
-    const sponsorshipSignals = buildSponsorshipSectionSignals({
+    // RED-064: no AI or fallback commentary is written about a cohort too
+    // small to report on; it would describe the withheld figures in prose.
+    const sponsorshipSignals = !managerCohortSampleSizeMet ? null : buildSponsorshipSectionSignals({
       header: {
         clientName: org.name,
         stage: requestedTimepoint,
@@ -4118,15 +4240,19 @@ export function registerPlatformOrgRoutes(router) {
         state: verdictState,
         headline: verdictHeadline,
         body: verdictBody,
-        badge: interventionRequired ? 'Intervention Required' : 'Monitoring',
-        badgeVariant: interventionRequired ? 'red' : 'amber',
-        interventionRequired,
+        badge: !managerCohortSampleSizeMet
+          ? managerCohortWithheldLabel
+          : interventionRequired ? 'Intervention Required' : 'Monitoring',
+        badgeVariant: !managerCohortSampleSizeMet ? 'grey' : interventionRequired ? 'red' : 'amber',
+        interventionRequired: managerCohortSampleSizeMet && interventionRequired,
         provenance: `Based on ${managerRespondentCount} manager responses · Derived from MQ9-MQ16 · Threshold: ${sponsorshipConfig.receivedThreshold}/20 per sub-score`,
-        chips: [
-          { label: 'Sub-scores below threshold', value: `${Math.round(subScoresBelowThresholdPct)}%` },
-          { label: 'Chain failure', value: `${failingBothPercent}% of managers` },
-          { label: 'High-risk teams', value: `${highRiskTeamCount} teams identified` },
-        ],
+        chips: managerCohortSampleSizeMet
+          ? [
+            { label: 'Sub-scores below threshold', value: `${Math.round(subScoresBelowThresholdPct)}%` },
+            { label: 'Chain failure', value: `${failingBothPercent}% of managers` },
+            { label: 'High-risk teams', value: `${highRiskTeamCount} teams identified` },
+          ]
+          : [],
       },
       config: {
         receivedThreshold: sponsorshipConfig.receivedThreshold,
@@ -4145,6 +4271,8 @@ export function registerPlatformOrgRoutes(router) {
         managerRespondentCount,
         managerAdoptionAvg,
         managerSponsorshipAvg,
+        sampleSizeMet: managerCohortSampleSizeMet,
+        minSampleSize: DASHBOARD_MIN_SAMPLE_SIZE,
       },
       section1: {
         cardLabel: 'AVG SCORE OVERVIEW · MANAGER COHORT ONLY',
@@ -4205,7 +4333,7 @@ export function registerPlatformOrgRoutes(router) {
         rows: teamRowsLimited,
         totalRows: sortedTeamRows.length,
       },
-      signals: sponsorshipConfig.aiSignalsEnabled ? sponsorshipSignals : null,
+      signals: sponsorshipConfig.aiSignalsEnabled && managerCohortSampleSizeMet ? sponsorshipSignals : null,
     };
     // Below the sample-size floor every quadrant.percent is null (see
     // orgScoreSampleSizeMet above) — without this guard, sorting by
@@ -4218,9 +4346,15 @@ export function registerPlatformOrgRoutes(router) {
         : orgScoreSampleSizeMet
           ? [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || null
           : null;
-    const modalQuadrantForScoreCards = orgScoreSampleSizeMet
-      ? [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || null
-      : null;
+    // RED-065: the score-card wording used the most common individual
+    // quadrant ("the majority ... within the Optimal quadrant") while the
+    // verdict, Trend Analysis and the Word report use the organisation's
+    // own classification from its average scores, so a Not Cleared, High
+    // Risk organisation could read "Optimal". Every headline now uses the
+    // organisation-level classification.
+    const orgQuadrant =
+      adoptionScore != null && sponsorshipScore != null ? quadrantLabel(adoptionScore, sponsorshipScore) : null;
+    const modalQuadrantForScoreCards = orgQuadrant;
     const scoreCardSignals = buildTopScoreCardSignals({
       clientName: org.name,
       adoptionScore,
@@ -4473,6 +4607,7 @@ export function registerPlatformOrgRoutes(router) {
         sponsorshipDelta,
         launchVerdict,
         launchHeadline,
+        orgQuadrant,
       },
       scoreSemantics: {
         threshold: READINESS_THRESHOLD,
@@ -4610,7 +4745,7 @@ export function registerPlatformOrgRoutes(router) {
     if (duringSessionError) return res.status(400).json({ error: duringSessionError });
     const platformOrg = await Organization.getOrganization(req.user.organizationId);
     res.json({
-      templates: pulseInviteTemplatesPayload(org, platformOrg?.settings, templateTimepointKey),
+      templates: pulseInviteTemplatesPayload(org, platformOrg?.settings, templateTimepointKey, platformOrg?.name),
       timepoint: internalTimepointToPulseStage(templateTimepointKey),
       placeholders: PULSE_INVITE_TEMPLATE_PLACEHOLDERS,
     });
@@ -4668,7 +4803,7 @@ export function registerPlatformOrgRoutes(router) {
     if (!updated) return res.status(404).json({ error: 'Organization not found' });
     const platformOrg = await Organization.getOrganization(req.user.organizationId);
     res.json({
-      templates: pulseInviteTemplatesPayload(updated, platformOrg?.settings, templateTimepointKey),
+      templates: pulseInviteTemplatesPayload(updated, platformOrg?.settings, templateTimepointKey, platformOrg?.name),
       timepoint: internalTimepointToPulseStage(templateTimepointKey),
       placeholders: PULSE_INVITE_TEMPLATE_PLACEHOLDERS,
     });
@@ -4693,7 +4828,8 @@ export function registerPlatformOrgRoutes(router) {
       platformOrg?.settings,
       audience,
       org.name,
-      templateTimepointKey
+      templateTimepointKey,
+      platformOrg?.name
     );
     const existingTemplates =
       org.settings?.pulseInviteEmailTemplates && typeof org.settings.pulseInviteEmailTemplates === 'object'
@@ -4716,7 +4852,7 @@ export function registerPlatformOrgRoutes(router) {
     });
     if (!updated) return res.status(404).json({ error: 'Organization not found' });
     return res.json({
-      templates: pulseInviteTemplatesPayload(updated, platformOrg?.settings, templateTimepointKey),
+      templates: pulseInviteTemplatesPayload(updated, platformOrg?.settings, templateTimepointKey, platformOrg?.name),
       timepoint: internalTimepointToPulseStage(templateTimepointKey),
       placeholders: PULSE_INVITE_TEMPLATE_PLACEHOLDERS,
     });
@@ -5275,7 +5411,8 @@ export function registerPlatformOrgRoutes(router) {
       audience,
       org.name,
       platformOrg?.settings,
-      templateTimepointKey
+      templateTimepointKey,
+      platformOrg?.name
     );
     const dueDate = pulseInviteDueDateForScope(org.settings, timepointPhase, duringSessionId);
     try {

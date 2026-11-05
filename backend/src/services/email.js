@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { normalizeLegacyTemplatePlaceholders, DEFAULT_SURVEY_CONTACT } from './templatePlaceholders.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
@@ -316,20 +317,25 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
   const audience = options?.audience === 'manager' ? 'manager' : 'staff';
   const safePulseUrl = String(pulseUrl || '');
   const defaultTemplate = getPulseInviteDefaultTemplate(audience, orgPlain);
-  const subjectTemplate =
+  // RED-066: stored templates can still carry hand-typed placeholders
+  // ("[NAME/EMAIL]", "<INSERT TEXT>") that no token ever resolved.
+  const subjectTemplate = normalizeLegacyTemplatePlaceholders(
     typeof options?.subjectTemplate === 'string' && options.subjectTemplate.trim()
       ? options.subjectTemplate
-      : defaultTemplate.subject;
-  const bodyTemplateHtml =
+      : defaultTemplate.subject
+  );
+  const bodyTemplateHtml = normalizeLegacyTemplatePlaceholders(
     typeof options?.bodyTemplateHtml === 'string' && options.bodyTemplateHtml.trim()
       ? options.bodyTemplateHtml
-      : defaultTemplate.bodyHtml;
+      : defaultTemplate.bodyHtml
+  );
   const dueDateRaw = String(options?.dueDate || '').trim();
   const dueDateFormatted = formatDueDateForEmail(dueDateRaw);
   const clientName = orgPlain;
   // D-020: never renders empty -- "please contact ." reads as broken as
   // a literal unresolved [NAME/EMAIL] placeholder did.
-  const contactInfo = String(options?.contactInfo || '').trim() || 'your Outlier Group representative';
+  // RED-069: a Rhythm Engine invite, so the fallback never names Outlier.
+  const contactInfo = String(options?.contactInfo || '').trim() || DEFAULT_SURVEY_CONTACT;
   const templateReplacements = {
     name: name || 'there',
     link: safePulseUrl,

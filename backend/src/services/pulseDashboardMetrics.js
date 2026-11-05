@@ -11,17 +11,17 @@ export const SCORE_CARD_SIGNAL_PROMPTS = Object.freeze({
     system:
       'You are a change readiness analyst writing a single descriptive sentence for a dashboard score card. Maximum 1 sentence. No hedging. No classification labels. Do not use the words "High Risk", "Optimal", "Capable Wary", or "Motivated but Lost".',
     user:
-      'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Respondents: {{respondent_count}} (all employees and managers)\n\nAdoption Readiness score: {{adoption_score}}/40 | Threshold: 28 | Modal quadrant across all respondents: {{modal_quadrant}}\n\nWrite one sentence that states, generically, where the majority of respondents sit — using the quadrant name only — without leading with a verdict or classification. For example: "With the majority of respondents sitting within the [quadrant] quadrant, this score reflects how employees and managers collectively experience their capacity and conditions to absorb this change."',
+      'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Respondents: {{respondent_count}} (all employees and managers)\n\nAdoption Readiness score: {{adoption_score}}/40 | Threshold: 28 | Organisation-level quadrant (from the organisation\'s average scores; the same classification as the readiness verdict): {{modal_quadrant}}\n\nWrite one sentence that states, generically, which quadrant the organisation sits in overall — using the quadrant name only — without leading with a verdict. Do not describe where the majority of individual respondents sit. For example: "With the organisation\'s average scores placing it within the [quadrant] quadrant, this score reflects how employees and managers collectively experience their capacity and conditions to absorb this change."',
     fallback:
-      'With the majority of respondents sitting within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience their readiness to absorb this change.',
+      "With the organisation's average scores placing it within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience their readiness to absorb this change.",
   }),
   sponsorship: Object.freeze({
     system:
       'You are a change readiness analyst writing a single descriptive sentence for a dashboard score card. Maximum 1 sentence. No hedging. No classification labels. Do not use the words "High Risk", "Optimal", "Capable Wary", or "Motivated but Lost".',
     user:
-      'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Respondents: {{respondent_count}} (all employees and managers)\n\nSponsorship Credibility score: {{sponsorship_score}}/40 | Threshold: 28 | Modal quadrant across all respondents: {{modal_quadrant}}\n\nWrite one sentence that states, generically, where the majority of respondents sit — using the quadrant name only — without leading with a verdict or classification. For example: "With the majority of respondents sitting within the [quadrant] quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship."',
+      'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Respondents: {{respondent_count}} (all employees and managers)\n\nSponsorship Credibility score: {{sponsorship_score}}/40 | Threshold: 28 | Organisation-level quadrant (from the organisation\'s average scores; the same classification as the readiness verdict): {{modal_quadrant}}\n\nWrite one sentence that states, generically, which quadrant the organisation sits in overall — using the quadrant name only — without leading with a verdict. Do not describe where the majority of individual respondents sit. For example: "With the organisation\'s average scores placing it within the [quadrant] quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship."',
     fallback:
-      'With the majority of respondents sitting within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship.',
+      "With the organisation's average scores placing it within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship.",
   }),
   likelihood: Object.freeze({
     system:
@@ -205,19 +205,22 @@ export function buildTeamOutlierAlerts({
       orgSponsorshipScore != null && manager.sponsorshipScore != null
         ? orgSponsorshipScore - manager.sponsorshipScore
         : null;
-    const name = manager.managerName || manager.managerEmail || 'Unknown manager';
+    // RED-067: alerts reach the Word report and its AI-written summary, so
+    // they name the team, never the manager or an email address.
+    const teamName = String(manager.teamName || '').trim() || 'Unassigned';
+    const teamLabel = teamName === 'Unassigned' ? 'An unassigned team' : `The ${teamName} team`;
     if (adoptionGap != null && adoptionGap > gapThreshold) {
       alerts.push({
         level: 'warning',
-        title: `Team outlier: ${name}`,
-        body: `${name}'s team adoption score is ${adoptionGap.toFixed(1)} points below the org average.`,
+        title: `Team outlier: ${teamName}`,
+        body: `${teamLabel}'s adoption score is ${adoptionGap.toFixed(1)} points below the org average.`,
       });
     }
     if (sponsorshipGap != null && sponsorshipGap > gapThreshold) {
       alerts.push({
         level: 'warning',
-        title: `Team outlier: ${name}`,
-        body: `${name}'s team sponsorship score is ${sponsorshipGap.toFixed(1)} points below the org average.`,
+        title: `Team outlier: ${teamName}`,
+        body: `${teamLabel}'s sponsorship score is ${sponsorshipGap.toFixed(1)} points below the org average.`,
       });
     }
   }

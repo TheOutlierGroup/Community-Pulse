@@ -1,6 +1,9 @@
 import { useEffect } from 'react';
+import { IS_RHYTHM_ENGINE_SURFACE } from '../config/appSurface.js';
 
-const DEFAULT_TAB = 'Outlier';
+// RED-069: pages on the Rhythm Engine site must never title the tab
+// "Outlier"; the CRM keeps its own name.
+const DEFAULT_TAB = IS_RHYTHM_ENGINE_SURFACE ? 'Rhythm Engine' : 'Outlier';
 
 /**
  * Sets document.title while mounted; restores the previous title on unmount.

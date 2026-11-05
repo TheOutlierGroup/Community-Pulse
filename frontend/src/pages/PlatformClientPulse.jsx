@@ -606,14 +606,20 @@ function buildTrendStageSnapshot(stageKey, label, payload) {
   const managerDimensions = Object.fromEntries(
     DIMENSION_ORDER.map((id) => [id, Number.isFinite(byId.get(id)?.frictionAvg) ? byId.get(id).frictionAvg : null])
   );
-  const loadBands = Array.isArray(payload?.sponsorshipAnalysis?.section2?.bands)
+  // RED-064: a withheld manager cohort is not a cohort of zeros; Trend
+  // Analysis gets no manager figures for that stage rather than 0%.
+  const managerCohortWithheld = payload?.sponsorshipAnalysis?.cohort?.sampleSizeMet === false;
+  const loadBands = !managerCohortWithheld && Array.isArray(payload?.sponsorshipAnalysis?.section2?.bands)
     ? payload.sponsorshipAnalysis.section2.bands
     : [];
-  const chainStates = Array.isArray(payload?.sponsorshipAnalysis?.section3?.states)
+  const chainStates = !managerCohortWithheld && Array.isArray(payload?.sponsorshipAnalysis?.section3?.states)
     ? payload.sponsorshipAnalysis.section3.states
     : [];
-  const dominantQuadrant = [...(payload?.quadrants || [])]
-    .sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || '--';
+  // RED-065: the stage's quadrant is the organisation-level classification
+  // from its average scores, not the most common individual quadrant.
+  const dominantQuadrant = String(payload?.kpis?.orgQuadrant || '').trim()
+    || [...(payload?.quadrants || [])]
+      .sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0]?.name || '--';
   const employeeSponsorshipAvg = average([
     employeeDimensions['2A'],
     employeeDimensions['2B'],
@@ -640,13 +646,13 @@ function buildTrendStageSnapshot(stageKey, label, payload) {
     capacityAvg: Number.isFinite(payload?.sponsorshipAnalysis?.section1?.capacity?.avg)
       ? payload.sponsorshipAnalysis.section1.capacity.avg
       : null,
-    loadBands: {
+    loadBands: managerCohortWithheld ? {} : {
       Sustainable: Number(loadBands.find((band) => band.name === 'Sustainable')?.percent || 0),
       Stretched: Number(loadBands.find((band) => band.name === 'Stretched')?.percent || 0),
       'At Capacity': Number(loadBands.find((band) => band.name === 'At Capacity')?.percent || 0),
       Overloaded: Number(loadBands.find((band) => band.name === 'Overloaded')?.percent || 0),
     },
-    chainStates: {
+    chainStates: managerCohortWithheld ? {} : {
       'Chain Functioning': Number(chainStates.find((row) => row.name === 'Chain Functioning')?.percent || 0),
       'Breaking at Manager Level': Number(chainStates.find((row) => row.name === 'Breaking at Manager Level')?.percent || 0),
       'Managers Resilient, Under-Supported': Number(chainStates.find((row) => row.name === 'Managers Resilient, Under-Supported')?.percent || 0),
@@ -790,6 +796,20 @@ export default function PlatformClientPulse() {
     () => [...quadrants].sort((a, b) => (Number(b?.percent) || 0) - (Number(a?.percent) || 0))[0] || { name: '--', percent: 0 },
     [quadrants]
   );
+  // RED-065: the headline names the organisation's own classification
+  // (from its average scores, as the verdict, Trend Analysis and the report
+  // do), with the share of respondents in that quadrant. It used to name
+  // whichever quadrant held the most individuals, so a High Risk, Not
+  // Cleared organisation could headline "Optimal". Falls back to the old
+  // behaviour only for a payload without orgQuadrant.
+  const headlineQuadrant = useMemo(() => {
+    const orgQuadrantName = String(kpis?.orgQuadrant || '').trim();
+    if (orgQuadrantName) {
+      const match = quadrants.find((q) => q.name === orgQuadrantName);
+      return { name: orgQuadrantName, percent: match?.percent ?? 0, fromOrgAverage: true };
+    }
+    return { ...dominantQuadrant, fromOrgAverage: false };
+  }, [kpis?.orgQuadrant, quadrants, dominantQuadrant]);
   const optimalPercent = quadrants.find((q) => q.name === 'Optimal')?.percent ?? 0;
   const insightCards = (dashboard?.alerts || []).slice(0, 3);
   const sponsorshipSignals = dashboard?.sponsorshipAnalysis?.signals || null;
@@ -1310,6 +1330,10 @@ export default function PlatformClientPulse() {
   // manager-cohort equivalent of the wave-over-wave delta exists yet, so
   // that's left blank rather than paired with a now-correct score.
   const managerCohort = dashboard?.sponsorshipAnalysis?.cohort || {};
+  // RED-064: below the floor the backend withholds every manager-cohort
+  // figure; say so plainly rather than rendering empty bars and zeros.
+  const managerCohortWithheld = managerCohort.sampleSizeMet === false;
+  const managerCohortMinSample = Number.isFinite(managerCohort.minSampleSize) ? managerCohort.minSampleSize : 5;
   const topCardAdoptionScore = managerFocusedTopCard ? managerCohort.managerAdoptionAvg ?? null : kpis.adoptionScore;
   const topCardSponsorshipScore = managerFocusedTopCard
     ? managerCohort.managerSponsorshipAvg ?? null
@@ -1689,7 +1713,7 @@ export default function PlatformClientPulse() {
                     ? (topCardAdoptionScore >= threshold
                       ? 'The management layer is ready to absorb and drive adoption across teams.'
                       : 'The management layer needs support to build the adoption capability required for this change.')
-                    : 'Adoption score data is not yet available for this cohort.')
+                    : (managerCohortWithheld ? `Withheld: fewer than ${managerCohortMinSample} managers have responded.` : 'Adoption score data is not yet available for this cohort.'))
                 )}
               </p>
             </div>
@@ -1704,7 +1728,7 @@ export default function PlatformClientPulse() {
                     ? (topCardSponsorshipScore >= threshold
                       ? 'Sponsorship credibility is strong — managers are receiving and passing on adequate leadership support.'
                       : 'Sponsorship credibility is below threshold — review which sub-score is weaker to identify where the chain is breaking.')
-                    : 'Sponsorship score data is not yet available for this cohort.')
+                    : (managerCohortWithheld ? `Withheld: fewer than ${managerCohortMinSample} managers have responded.` : 'Sponsorship score data is not yet available for this cohort.'))
                 )}
               </p>
             </div>
@@ -1847,7 +1871,7 @@ export default function PlatformClientPulse() {
                     ))}
                   </div>
                   <p className="pulse-sa-card__explainer" style={{ marginTop: '0.8rem' }}>
-                    <strong>Score:</strong> {dominantQuadrant.name} ({formatPercent(dominantQuadrant.percent)})
+                    <strong>Score:</strong> {headlineQuadrant.name} ({formatPercent(headlineQuadrant.percent)}{headlineQuadrant.fromOrgAverage ? ' of respondents' : ''})
                   </p>
                   <p className="pulse-sa-card__explainer" style={{ marginTop: '0.35rem' }}>
                     <strong>What it means:</strong> {renderSignalMarkup(
@@ -1858,7 +1882,7 @@ export default function PlatformClientPulse() {
               ) : (
                 <p className="pulse-sa-card__explainer" role="note">
                   Insufficient data — this view has fewer than {minSampleSize} respondents, so quadrant
-                  and score results are hidden to protect individual anonymity. Broaden the manager
+                  and score results are hidden to keep individual responses confidential. Broaden the manager
                   filter to see results.
                 </p>
               )}
@@ -1950,6 +1974,18 @@ export default function PlatformClientPulse() {
 
       {showScoresSection ? (
         <section className="pulse-clean-scores pulse-sa">
+          {managerCohortWithheld ? (
+            <div className="pulse-sa-card" role="note">
+              <p className="pulse-sa-card__label">Manager Cohort · Insufficient Data</p>
+              <p className="pulse-sa-card__explainer">
+                Fewer than {managerCohortMinSample} managers have responded, so the manager scores, load
+                bands, sponsorship chain states and team breakdown are withheld to keep individual
+                responses confidential. They will appear once at least {managerCohortMinSample} managers
+                have responded.
+              </p>
+            </div>
+          ) : (
+          <>
           {/* ─── SECTION 1: SUB-SCORE OVERVIEW ─── */}
           <div className="pulse-sa-card">
             <p className="pulse-sa-card__label">
@@ -2165,7 +2201,7 @@ export default function PlatformClientPulse() {
                             {suppressed ? (
                               <span
                                 className="pulse-sa-chain-pill pulse-sa-chain-pill--suppressed"
-                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to protect individual anonymity.`}
+                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to keep individual responses confidential.`}
                               >
                                 Protected
                               </span>
@@ -2179,7 +2215,7 @@ export default function PlatformClientPulse() {
                             {suppressed ? (
                               <span
                                 className="pulse-sa-load-text pulse-sa-load-text--suppressed"
-                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to protect individual anonymity.`}
+                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to keep individual responses confidential.`}
                               >
                                 Protected
                               </span>
@@ -2210,6 +2246,8 @@ export default function PlatformClientPulse() {
               ) : null}
             </div>
           ) : null}
+          </>
+          )}
         </section>
       ) : null}
 

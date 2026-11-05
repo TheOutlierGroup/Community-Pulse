@@ -15,6 +15,18 @@ import { organizationHasService, CLIENT_SERVICE_PULSE } from '../services/client
 import { internalTimepointToPulseStage, parsePulseStageFromRequest } from '../services/pulseStage.js';
 import { effectiveRespondentCapForSession } from '../services/assessmentMeter.js';
 import { resolveBrandForOrganization, publicBrand } from '../services/licenseeBrand.js';
+import {
+  normalizeLegacyTemplatePlaceholders,
+  DEFAULT_SURVEY_CONTACT,
+} from '../services/templatePlaceholders.js';
+
+function escapeWelcomeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 const ISO_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -167,12 +179,19 @@ function getLinkToken(req) {
   // per-recipient (see PulseLinkInvite.display_name, set from the CSV
   // import), so this is available even though the survey itself stays
   // anonymous past this point.
+  // RED-066: legacy hand-typed placeholders ("<INSERT TEXT>",
+  // "[NAME/EMAIL]") are removed or resolved the same way the invite email
+  // resolves them, so they never reach a respondent.
   function applyWelcomeTemplatePlaceholders(bodyHtml, organization, respondentInvite) {
-    const clientName = String(organization?.name || '').trim();
-    const respondentName = String(respondentInvite?.display_name || '').trim() || 'there';
-    return String(bodyHtml || '')
+    const clientName = escapeWelcomeHtml(String(organization?.name || '').trim());
+    const respondentName = escapeWelcomeHtml(String(respondentInvite?.display_name || '').trim() || 'there');
+    const contactInfo = escapeWelcomeHtml(
+      String(organization?.report_contact || '').trim() || DEFAULT_SURVEY_CONTACT
+    );
+    return normalizeLegacyTemplatePlaceholders(bodyHtml)
       .replace(/\{\{\s*clientname\s*\}\}/gi, clientName)
-      .replace(/\{\{\s*name\s*\}\}/gi, respondentName);
+      .replace(/\{\{\s*name\s*\}\}/gi, respondentName)
+      .replace(/\{\{\s*contactinfo\s*\}\}/gi, contactInfo);
   }
 
   async function resolveSurveyCopyWithTemplate(organization, audience, stage, respondentInvite = null) {

@@ -34,8 +34,58 @@ function teamsFallbackText(reportData) {
   return `${belowBoth.length} of ${teams.length} teams fall below the readiness threshold on both Adoption and Sponsorship${worstName}; ${belowAdoption} are below on Adoption and ${belowSponsorship} on Sponsorship overall. Sequence enablement against this list rather than treating the org as uniform.`;
 }
 
+// RED-070: product language rules. The report is confidential, not
+// anonymous; the product is Rhythm Engine and its measures are Adoption
+// Readiness and Sponsorship Credibility, never a "pulse"; and the text is
+// placed into a Word document as plain runs, so any markdown shows as
+// literal asterisks or hashes.
 const HOUSE_STYLE_RULES = `- Write in Australian English (e.g. "organisation", "programme", "recognise").
-- Never use an em dash (—). Use a comma, colon, or a new sentence instead.`;
+- Never use an em dash (—). Use a comma, colon, or a new sentence instead.
+- Never use the word "pulse" in any form (not "pulse check", "pulse survey" or "Sponsorship Pulse"). Call the measures Adoption Readiness and Sponsorship Credibility, and a repeat assessment a "check-in" or "follow-up assessment".
+- Describe responses as confidential. Never call them anonymous or refer to anonymity.
+- Plain prose only: no markdown, no asterisks, no hash headings, no bullet symbols, no bold or italic markers.
+- The DATA includes "stage" and "stage_context". Describe the findings as that stage only. A Mid-Change or Post-Change assessment is never a baseline and never "ahead of launch".`;
+
+const STAGE_CONTEXT = {
+  pre: 'Pre-Change: the baseline taken before the programme launches. The decision it informs is whether to launch now.',
+  mid: 'Mid-Change: a check-in taken while the programme is already under way. It is not a baseline and the programme has already launched. The decision it informs is whether delivery can continue at the current pace or needs to be adjusted.',
+  post: 'Post-Change: taken after the programme has been delivered. The decision it informs is what is needed to embed and sustain the change.',
+};
+
+function stageContextFor(stage) {
+  return STAGE_CONTEXT[stage] || STAGE_CONTEXT.pre;
+}
+
+function stageDecisionPhrase(stage) {
+  if (stage === 'mid') return 'whether delivery can continue at the current pace';
+  if (stage === 'post') return 'what is needed to embed and sustain the change';
+  return "whether the initiative is 'cleared for launch'";
+}
+
+// Belt-and-braces on top of the prompt rules above, because an instruction
+// is not a guarantee: whatever lands in the delivered report must follow
+// them.
+export function enforceReportLanguage(text) {
+  return String(text || '')
+    // Markdown emphasis and headings would print literally in the document.
+    .replace(/\*\*([^*\n]+?)\*\*/g, '$1')
+    .replace(/__([^_\n]+?)__/g, '$1')
+    .replace(/(^|[\s(])\*([^*\s][^*\n]*?)\*(?=[\s).,;:!?]|$)/g, '$1$2')
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '')
+    .replace(/^[ \t]*[*•][ \t]+/gm, '')
+    .replace(/\*+/g, '')
+    // Product language.
+    .replace(/\bSponsorship Pulse\b/gi, 'Sponsorship Credibility')
+    .replace(/\bAdoption Pulse\b/gi, 'Adoption Readiness')
+    .replace(/\bpulse[- ](check|survey)(s?)\b/gi, (match, _noun, plural) => {
+      const word = `check-in${plural}`;
+      return match[0] === 'P' ? `C${word.slice(1)}` : word;
+    })
+    .replace(/\banonymity\b/gi, (m) => (m[0] === 'A' ? 'Confidentiality' : 'confidentiality'))
+    .replace(/\banonymous(ly)?\b/gi, (m, ly) => `${m[0] === 'A' ? 'C' : 'c'}onfidential${ly ? 'ly' : ''}`)
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
 
 // Belt-and-suspenders on top of HOUSE_STYLE_RULES above: an instruction is
 // not a guarantee, and EXE-05's "no em dashes" requirement applies to
@@ -63,8 +113,8 @@ ${HOUSE_STYLE_RULES}`;
 // box. The section-level prompt above is too short and reads as a sound
 // bite; the executive summary needs to do the strategic interpretation
 // the rest of the report leaves to the reader.
-const EXECUTIVE_SYSTEM_PROMPT = `Generate an executive summary based on the data in this report. Write for a C-suite audience and focus on the 'so what': the key insights, implications, and strategic meaning behind the data. Your summary must include:
-- A clear statement on whether the initiative is 'cleared for launch' or not, based on the evidence.
+const executiveSystemPrompt = (stage) => `Generate an executive summary based on the data in this report. Write for a C-suite audience and focus on the 'so what': the key insights, implications, and strategic meaning behind the data. Your summary must include:
+- A clear statement on ${stageDecisionPhrase(stage)}, based on the evidence.
 - A high-level interpretation of the 'messy middle': summarising the major management, operational, or performance dynamics revealed in the data.
 - A concise overview of the 'next steps' section, highlighting only the actions that matter most at an executive level.
 The tone should be concise, outcome-focused, and aligned with how an executive summary is typically written.
@@ -101,7 +151,7 @@ async function callClaude({ apiKey, instruction, payload, systemPrompt = SECTION
     }
     const data = await response.json();
     const text = data?.content?.find?.((item) => item.type === 'text')?.text || '';
-    return stripEmDashes(String(text).trim());
+    return enforceReportLanguage(stripEmDashes(String(text).trim()));
   } finally {
     clearTimeout(timeout);
   }
@@ -160,6 +210,7 @@ export async function generateReportSignals(reportData, context = {}) {
   const nextStepsOrder = nextStepsOrderFromData(reportData);
   const payload = {
     stage: reportData.stage,
+    stage_context: stageContextFor(reportData.stage),
     org: reportData.org.name,
     readiness: reportData.readiness,
     dimensions: reportData.dimensions,
@@ -173,16 +224,16 @@ export async function generateReportSignals(reportData, context = {}) {
   const calls = [
     callClaude({
       apiKey,
-      systemPrompt: EXECUTIVE_SYSTEM_PROMPT,
+      systemPrompt: executiveSystemPrompt(reportData.stage),
       maxTokens: 600,
       instruction:
-        'Write the Executive Summary for this Change Readiness Assessment, following the executive-summary system prompt exactly. Use the readiness verdict and quadrant to anchor the launch decision, the manager load, sponsorship chain distribution, and team-level scores to interpret the messy middle, and the next_steps_priority_order to pick the actions that matter most at an executive level.',
+        `Write the Executive Summary for this Change Readiness Assessment, following the executive-summary system prompt exactly. Use the readiness verdict and quadrant to anchor ${stageDecisionPhrase(reportData.stage)}, the manager load, sponsorship chain distribution, and team-level scores to interpret the messy middle, and the next_steps_priority_order to pick the actions that matter most at an executive level.`,
       payload,
     }).catch(() => FALLBACK.executive),
     callClaude({
       apiKey,
       instruction:
-        'Write an Adoption Readiness signal commentary. Identify the most significant finding and its launch implication.',
+        `Write an Adoption Readiness signal commentary. Identify the most significant finding and what it means for ${stageDecisionPhrase(reportData.stage)}.`,
       payload,
     }).catch(() => FALLBACK.adoption),
     callClaude({
@@ -194,7 +245,9 @@ export async function generateReportSignals(reportData, context = {}) {
     callClaude({
       apiKey,
       instruction:
-        'Write a Manager Load signal commentary focused on operational risk for launch timing.',
+        reportData.stage === 'pre'
+          ? 'Write a Manager Load signal commentary focused on operational risk for launch timing.'
+          : 'Write a Manager Load signal commentary focused on operational risk for the current stage of delivery.',
       payload,
     }).catch(() => FALLBACK.managerLoad),
     callClaude({

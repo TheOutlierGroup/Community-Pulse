@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateReportSignals } from './reportAiSignals.js';
+import { generateReportSignals, enforceReportLanguage } from './reportAiSignals.js';
 
 function buildReportData({
+  stage = 'pre',
   adoption = 32,
   sponsorship = 24,
   overloadedPercent = 12,
   failedChainPercent = 18,
 } = {}) {
   return {
-    stage: 'pre',
+    stage,
     org: { name: 'Client A' },
     readiness: {
       adoption_score: adoption,
@@ -92,6 +93,58 @@ test('generateReportSignals falls back when AI API calls fail', async () => {
     assert.match(out.executive, /Review the score cards/i);
     assert.equal(out.nextStepsOrder[0], 'Sponsorship Architecture Review');
     assert.ok(out.keyFindings.some((line) => /Adoption Readiness is 24\/40/i.test(line)));
+  } finally {
+    process.env.ANTHROPIC_API_KEY = prevKey;
+    global.fetch = prevFetch;
+  }
+});
+
+// RED-070: the FourTier Mid-Change report showed literal asterisks around
+// headings, "pulse checks" / "Sponsorship Pulse", and "anonymity" wording.
+test('enforceReportLanguage strips markdown and applies product language', () => {
+  const out = enforceReportLanguage(
+    '**Readiness verdict:** Not cleared.\n\n## Next steps\n* Run monthly pulse checks.\nThe Sponsorship Pulse is low. Respondent anonymity is protected and answers are anonymous.'
+  );
+  assert.doesNotMatch(out, /\*|#/);
+  assert.doesNotMatch(out, /pulse/i);
+  assert.doesNotMatch(out, /anonym/i);
+  assert.match(out, /^Readiness verdict: Not cleared\.\n\nNext steps\nRun monthly check-ins\./);
+  assert.match(out, /Sponsorship Credibility is low/);
+  assert.match(out, /confidentiality is protected and answers are confidential\./);
+});
+
+test('RED-070: AI text is sanitised and the prompts carry the stage and language rules', async () => {
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  const prevFetch = global.fetch;
+  const requests = [];
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  global.fetch = async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [{ type: 'text', text: '**Overview** Schedule quarterly pulse checks to protect anonymity.' }],
+      }),
+    };
+  };
+  try {
+    const out = await generateReportSignals(buildReportData({ stage: 'mid' }));
+    for (const value of [out.executive, out.adoption, out.sponsorship, out.managerLoad, out.chain, out.teams]) {
+      assert.doesNotMatch(value, /\*|pulse|anonym/i, `expected clean text in: ${value}`);
+    }
+    assert.ok(requests.length > 0);
+    for (const body of requests) {
+      assert.match(body.system, /Never use the word "pulse"/);
+      assert.match(body.system, /confidential/);
+      assert.match(body.system, /no markdown/);
+      const data = body.messages[0].content;
+      assert.match(data, /"stage": "mid"/);
+      assert.match(data, /Mid-Change: a check-in taken while the programme is already under way/);
+      assert.doesNotMatch(data.split('DATA:')[0], /launch implication|launch timing|cleared for launch/i);
+    }
+    const executiveRequest = requests.find((body) => /executive summary/i.test(body.system));
+    assert.match(executiveRequest.system, /whether delivery can continue at the current pace/);
   } finally {
     process.env.ANTHROPIC_API_KEY = prevKey;
     global.fetch = prevFetch;

@@ -106,7 +106,9 @@ test('assembleReportData returns stable matrix, percentages, and invite totals f
 
   assert.equal(out.stage, 'pre');
   assert.equal(out.totals.responses, 8); // only pre sessions (3 staff + 5 managers)
-  assert.equal(out.totals.invited, 15); // 10+2 + (2 staff +1 manager)
+  // RED-068: admin accounts (2 here) are client administrators, never
+  // survey invitees, so only employee accounts and link invites count.
+  assert.equal(out.totals.invited, 13); // 10 employee accounts + (2 staff + 1 manager) links
   assert.equal(out.manager.load_distribution.reduce((sum, row) => sum + row.percent, 0), 100);
   assert.equal(
     out.manager.sponsorship_chain_distribution.reduce((sum, row) => sum + row.percent, 0),
@@ -217,7 +219,9 @@ test('assembleReportData populates hierarchy_levels from configured groupLevelLa
   assert.equal(emptyOut.org.hierarchy_levels, null);
 });
 
-test('assembleReportData falls back to manager display name when group_level_values is absent', async () => {
+// RED-067: with no group values the team used to be named after the lead
+// manager (or their email prefix). It is now a neutral label.
+test('assembleReportData labels a team with no group values as Unassigned, never a person', async () => {
   const responses = [
     { id: 'r1', invite_id: 'staff-1', manager_invite_id: 'mgr-1', role: 'employee', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('Q', 4) },
     { id: 'r2', invite_id: 'mgr-1', manager_invite_id: null, role: 'admin', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('MQ', 5) },
@@ -249,7 +253,8 @@ test('assembleReportData falls back to manager display name when group_level_val
   });
 
   assert.equal(out.teams.length, 1);
-  assert.equal(out.teams[0].name, 'Mike');
+  assert.equal(out.teams[0].name, 'Unassigned');
+  assert.doesNotMatch(String(out.totals.teams_in_scope), /Mike|Sara/);
 });
 
 // D-008/D-016/D-017: the dashboard resolves an org's own

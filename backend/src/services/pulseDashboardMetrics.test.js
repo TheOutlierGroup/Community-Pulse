@@ -31,7 +31,9 @@ test('score card prompt templates are spec-locked', () => {
   assert.ok(SCORE_CARD_SIGNAL_PROMPTS.adoption.user.includes('{{modal_quadrant}}'));
   assert.equal(
     SCORE_CARD_SIGNAL_PROMPTS.adoption.fallback,
-    'With the majority of respondents sitting within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience their readiness to absorb this change.'
+    // RED-065: names the organisation-level quadrant (the verdict's own
+    // classification), never "the majority of respondents".
+    "With the organisation's average scores placing it within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience their readiness to absorb this change."
   );
   assert.equal(
     SCORE_CARD_SIGNAL_PROMPTS.sponsorship.system,
@@ -44,7 +46,9 @@ test('score card prompt templates are spec-locked', () => {
   assert.ok(SCORE_CARD_SIGNAL_PROMPTS.sponsorship.user.includes('{{modal_quadrant}}'));
   assert.equal(
     SCORE_CARD_SIGNAL_PROMPTS.sponsorship.fallback,
-    'With the majority of respondents sitting within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship.'
+    // RED-065: names the organisation-level quadrant (the verdict's own
+    // classification), never "the majority of respondents".
+    "With the organisation's average scores placing it within the {{modal_quadrant}} quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship."
   );
   assert.equal(
     SCORE_CARD_SIGNAL_PROMPTS.likelihood.fallback,
@@ -185,13 +189,28 @@ test('dimension floor alerts do not fire for averages at or above 2.5', () => {
 
 test('team outlier alerts fire when team score is more than 8 pts below org avg', () => {
   const byManager = [
-    { managerName: 'Alice', managerEmail: 'alice@co', adoptionScore: 20, sponsorshipScore: 30, directReportCompletedCount: 6 },
-    { managerName: 'Bob', managerEmail: 'bob@co', adoptionScore: 30, sponsorshipScore: 30, directReportCompletedCount: 6 },
+    { managerName: 'Alice', managerEmail: 'alice@co', teamName: 'Finance', adoptionScore: 20, sponsorshipScore: 30, directReportCompletedCount: 6 },
+    { managerName: 'Bob', managerEmail: 'bob@co', teamName: 'Sales', adoptionScore: 30, sponsorshipScore: 30, directReportCompletedCount: 6 },
   ];
   const alerts = buildTeamOutlierAlerts({ byManager, orgAdoptionScore: 30, orgSponsorshipScore: 30 });
   assert.equal(alerts.length, 1);
-  assert.ok(alerts[0].title.includes('Alice'));
+  assert.ok(alerts[0].title.includes('Finance'));
   assert.ok(alerts[0].body.includes('adoption'));
+});
+
+// RED-067: alerts reach the Word report and its AI summary, so they name
+// the team, never the manager or an email address.
+test('team outlier alerts never name the manager or their email', () => {
+  const byManager = [
+    { managerName: 'GW Manager One', managerEmail: 'nick+2@example.com', adoptionScore: 18, sponsorshipScore: 18, directReportCompletedCount: 6 },
+  ];
+  const alerts = buildTeamOutlierAlerts({ byManager, orgAdoptionScore: 30, orgSponsorshipScore: 30 });
+  assert.equal(alerts.length, 2);
+  for (const alert of alerts) {
+    const text = `${alert.title} ${alert.body}`;
+    assert.doesNotMatch(text, /GW Manager One|nick\+2|example\.com/);
+    assert.match(alert.title, /Unassigned/);
+  }
 });
 
 test('team outlier alerts respect anonymity threshold of 5 responses', () => {
@@ -426,7 +445,7 @@ test('adoption score card signal highlights absorption implication', () => {
   assert.ok(signal.text.includes('absorb additional change load right now'));
   assert.equal(
     signal.blurb,
-    'With the majority of respondents sitting within the Optimal quadrant, this score reflects how employees and managers collectively experience their readiness to absorb this change.'
+    "With the organisation's average scores placing it within the Optimal quadrant, this score reflects how employees and managers collectively experience their readiness to absorb this change."
   );
   assert.equal(signal.modalQuadrant, 'Optimal');
 });
@@ -460,7 +479,7 @@ test('sponsorship score card signal localizes deficit to received stream', () =>
   assert.ok(signal.text.includes('<strong>'));
   assert.equal(
     signal.blurb,
-    'With the majority of respondents sitting within the Motivated but Lost quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship.'
+    "With the organisation's average scores placing it within the Motivated but Lost quadrant, this score reflects how employees and managers collectively experience the credibility and visibility of leadership sponsorship."
   );
 });
 

@@ -1008,14 +1008,37 @@ function teamBreakdownTable(teams) {
 function teamSuppressionNote(reportData) {
   const min = reportData?.suppression?.min_sample_size ?? 5;
   const suppressed = reportData?.suppression?.suppressed_team_count ?? 0;
-  const base = `To protect respondent anonymity, scores are withheld for any team with fewer than ${min} responses. Manager Load reflects the team's lead manager and is withheld on the same basis.`;
+  // RED-070: Rhythm Engine responses are confidential, not anonymous.
+  const base = `To keep individual responses confidential, scores are withheld for any team with fewer than ${min} responses. Manager Load reflects the team's lead manager and is withheld on the same basis.`;
   if (!suppressed) return base;
   const plural = suppressed === 1 ? 'team is' : 'teams are';
   return `${base} ${suppressed} ${plural} shown as "Insufficient data" on that basis.`;
 }
 
+/**
+ * RED-070: the Executive Summary described every report as "the <stage>
+ * baseline ... ahead of programme launch", so a Mid-Change report called
+ * itself a pre-launch baseline. Each stage now describes itself.
+ */
+export function stageFramingSentence(stage) {
+  const notAVerdict = "not as a verdict on the organisation's capability.";
+  if (stage === 'mid') {
+    return `The findings below reflect a mid-change check-in taken while the programme is under way, and should be read as diagnostic intelligence to guide the remainder of delivery – ${notAVerdict}`;
+  }
+  if (stage === 'post') {
+    return `The findings below reflect the post-change position once the programme has been delivered, and should be read as diagnostic intelligence for embedding and sustaining the change – ${notAVerdict}`;
+  }
+  return `The findings below reflect the pre-change baseline and should be read as diagnostic intelligence ahead of programme launch – ${notAVerdict}`;
+}
+
+export function stageActionWindow(stage) {
+  if (stage === 'mid') return 'during the remainder of delivery';
+  if (stage === 'post') return 'to embed and sustain the change';
+  return 'before launch';
+}
+
 function cohortSuppressionNote(min, cohort) {
-  return `Withheld to protect respondent anonymity: fewer than ${min} ${cohort} responses were recorded, so this breakdown would reflect individually identifiable answers.`;
+  return `Withheld to keep individual responses confidential: fewer than ${min} ${cohort} responses were recorded, so this breakdown would reflect individually identifiable answers.`;
 }
 
 function dimensionStatusText(avg) {
@@ -1394,7 +1417,7 @@ export async function buildReportDocx({
           // ── Executive Summary ─────────────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),
           h1('Executive Summary'),
-          body(`This report presents the results of the Change Readiness Assessment conducted for ${reportData.org.name}. The assessment was completed by ${reportData.totals.responses} respondents across ${reportData.totals.teams_in_scope || 'multiple teams'}. The findings below reflect the ${stageLabel.toLowerCase()} baseline and should be read as diagnostic intelligence ahead of programme launch – not as a verdict on the organisation's capability.`),
+          body(`This report presents the results of the Change Readiness Assessment conducted for ${reportData.org.name}. The assessment was completed by ${reportData.totals.responses} respondents across ${reportData.totals.teams_in_scope || 'multiple teams'}. ${stageFramingSentence(reportData.stage)}`),
           spacer(100),
           h2('Overall Readiness Verdict'),
           verdictBox(reportData.readiness.verdict, reportData.readiness.quadrant_label),
@@ -1553,7 +1576,7 @@ export async function buildReportDocx({
           // ── Adoption Alerts ───────────────────────────────────────────
           new Paragraph({ pageBreakBefore: true }),
           h1('Adoption Alerts'),
-          body('The following alerts were generated automatically based on scoring thresholds built into the assessment instrument. They are listed in priority order and represent the system\'s assessment of the most operationally significant findings requiring action before launch.'),
+          body(`The following alerts were generated automatically based on scoring thresholds built into the assessment instrument. They are listed in priority order and represent the system's assessment of the most operationally significant findings requiring action ${stageActionWindow(reportData.stage)}.`),
           spacer(80),
           ...(reportData.alerts.length > 0
             ? reportData.alerts.flatMap((alert) => [alertBlock(alert.severity, alert.title, alert.description), spacer(100)])

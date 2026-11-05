@@ -102,3 +102,33 @@ test('D-021: {{name}} falls back to a real greeting, not blank, when the invite 
   assert.equal(res.status, 200);
   assert.match(res.body.copy.welcomeHtml, /Welcome there!/);
 });
+
+// RED-066: the platform default welcome page still carried "<INSERT TEXT>"
+// (and contact placeholders), which reached every respondent of a client
+// that had not edited the template.
+test('RED-066: legacy placeholders never reach the respondent welcome page', async () => {
+  const router = buildRouter({
+    orgName: 'Acme Co',
+    welcomeBodyHtml:
+      '<p>Welcome {{name}}!</p><p>&lt;INSERT TEXT&gt;</p><p>Questions? Contact [NAME/EMAIL].</p>',
+    displayName: 'Jordan',
+  });
+  const res = await request(router, `/api/pulse-link/themes?token=${RAW_TOKEN}`);
+  assert.equal(res.status, 200);
+  const html = res.body.copy.welcomeHtml;
+  assert.doesNotMatch(html, /INSERT/i);
+  assert.doesNotMatch(html, /\[NAME\/EMAIL\]/i);
+  assert.doesNotMatch(html, /\{\{/);
+  assert.match(html, /Welcome Jordan!/);
+  assert.match(html, /Contact your project lead\./);
+});
+
+test('RED-066: names are HTML-escaped when substituted into the welcome page', async () => {
+  const router = buildRouter({
+    orgName: 'Acme <b>Co</b>',
+    welcomeBodyHtml: '<p>Welcome to {{clientname}}.</p>',
+  });
+  const res = await request(router, `/api/pulse-link/themes?token=${RAW_TOKEN}`);
+  assert.equal(res.status, 200);
+  assert.match(res.body.copy.welcomeHtml, /Acme &lt;b&gt;Co&lt;\/b&gt;/);
+});
