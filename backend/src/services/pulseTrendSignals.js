@@ -37,6 +37,11 @@ const DIMENSION_LABELS = {
 // enough completed responses to produce real scores. Filter on the
 // accessor's own value instead, so an empty checkpoint (e.g. a Post-Change
 // session that hasn't run yet) is never mistaken for the latest data point.
+export const WITHHELD_MANAGER_LINE =
+  'Manager figures are withheld at the current stage: fewer than 5 managers responded.';
+export const WITHHELD_DIMENSIONS_LINE =
+  'Manager dimension scores are withheld at the current stage: fewer than 5 employees or managers responded.';
+
 function stageDelta(stages, accessor) {
   const populated = stages.filter((stage) => Number.isFinite(accessor(stage)));
   if (populated.length < 2) return null;
@@ -164,25 +169,51 @@ function defaultTrendSignals(stages) {
     : subScoreMovement.absDelta < 0.05
       ? 'Received and Capacity have been stable across the stages shown.'
       : `${subScoreMovement.id === 'received' ? 'Received' : 'Capacity'} moved the most, from ${subScoreMovement.fromLabel} to ${subScoreMovement.toLabel} (${formatDelta(subScoreMovement.delta)}).`;
-  const section4Headline = (currentStage?.loadBands?.Overloaded || 0) >= 10
-    ? `Critical load threshold breached (${Math.round(currentStage?.loadBands?.Overloaded || 0)}% overloaded).`
-    : 'Overloaded band remains below critical threshold.';
-  const section6Headline = (currentStage?.dimensions?.manager?.['1C'] || 0) < (currentStage?.dimensions?.manager?.['2D'] || 0)
-    ? 'Change Saturation is the tighter constraint on manager capacity.'
-    : 'Manager Wellbeing is the tighter constraint on manager capacity.';
-  const section8Headline = Number(currentStage?.perceptionGap || 0) > 0
-    ? 'Managers are currently overestimating sponsorship delivery versus employee experience.'
-    : 'Managers are not overestimating sponsorship delivery at the current stage.';
+  // RED-064: a withheld manager cohort arrives as missing values. These
+  // used to be read as 0 ("Chain Functioning is 0%", "Overloaded band
+  // remains below critical threshold"), describing hidden data in prose.
+  const managerWithheld = Boolean(currentStage?.managerCohortWithheld);
+  const overloaded = currentStage?.loadBands?.Overloaded;
+  const chainFunctioning = currentStage?.chainStates?.['Chain Functioning'];
+  const saturation = currentStage?.dimensions?.manager?.['1C'];
+  const wellbeing = currentStage?.dimensions?.manager?.['2D'];
+  const perceptionGap = currentStage?.perceptionGap;
+  const section4Headline = managerWithheld || !Number.isFinite(overloaded)
+    ? WITHHELD_MANAGER_LINE
+    : overloaded >= 10
+      ? `Critical load threshold breached (${Math.round(overloaded)}% overloaded).`
+      : 'Overloaded band remains below critical threshold.';
+  const section6Headline = !Number.isFinite(saturation) || !Number.isFinite(wellbeing)
+    ? WITHHELD_DIMENSIONS_LINE
+    : saturation < wellbeing
+      ? 'Change Saturation is the tighter constraint on manager capacity.'
+      : 'Manager Wellbeing is the tighter constraint on manager capacity.';
+  const section8Headline = !Number.isFinite(perceptionGap)
+    ? 'The perception gap is not reported at the current stage: fewer than 5 employees or managers responded.'
+    : perceptionGap > 0
+      ? 'Managers are currently overestimating sponsorship delivery versus employee experience.'
+      : 'Managers are not overestimating sponsorship delivery at the current stage.';
+  const section7Text = managerWithheld || !Number.isFinite(chainFunctioning)
+    ? `<strong>${WITHHELD_MANAGER_LINE}</strong>`
+    : `<strong>Chain Functioning is ${Math.round(chainFunctioning)}% at the current stage.</strong> Delta vs prior stage: ${formatDelta(chainDelta)}pp.`;
 
   return {
     section1: `<strong>${section1Headline}</strong> Latest deltas are Adoption ${formatDelta(adoptionDelta)} and Sponsorship ${formatDelta(sponsorshipDelta)}.`,
     section2: `<strong>Current quadrant is ${currentStage?.quadrant || '--'}.</strong> Use this trajectory to set leadership intervention priority.`,
     section3: `<strong>${section3Headline}</strong> Latest deltas: Received ${formatDelta(receivedDelta)}, Capacity ${formatDelta(capacityDelta)}.`,
-    section4: `<strong>${section4Headline}</strong> Adjust pace and support based on this distribution.`,
-    section5: '<strong>Dimension movement is available across the stages shown.</strong> Prioritise the largest shifts in employee dimensions.',
-    section6: `<strong>${section6Headline}</strong> Use this as an early warning for sponsorship chain strain.`,
-    section7: `<strong>Chain Functioning is ${Math.round(currentStage?.chainStates?.['Chain Functioning'] || 0)}% at the current stage.</strong> Delta vs prior stage: ${formatDelta(chainDelta)}pp.`,
-    section8: `<strong>${section8Headline}</strong> Track whether the gap narrows or widens in the next wave.`,
+    section4: section4Headline === WITHHELD_MANAGER_LINE
+      ? `<strong>${section4Headline}</strong>`
+      : `<strong>${section4Headline}</strong> Adjust pace and support based on this distribution.`,
+    section5: stages.filter((stage) => Object.values(stage?.dimensions?.employee || {}).some((value) => Number.isFinite(value))).length >= 2
+      ? '<strong>Dimension movement is available across the stages shown.</strong> Prioritise the largest shifts in employee dimensions.'
+      : '<strong>Dimension movement is not available yet:</strong> it needs employee dimension scores at two or more checkpoints.',
+    section6: section6Headline === WITHHELD_DIMENSIONS_LINE
+      ? `<strong>${section6Headline}</strong>`
+      : `<strong>${section6Headline}</strong> Use this as an early warning for sponsorship chain strain.`,
+    section7: section7Text,
+    section8: Number.isFinite(perceptionGap)
+      ? `<strong>${section8Headline}</strong> Track whether the gap narrows or widens in the next wave.`
+      : `<strong>${section8Headline}</strong>`,
     section9: divergenceFlags.length > 0
       ? `<strong>${divergenceFlags[0].delta > 0 ? 'Largest flagged movement is an improvement.' : 'Largest flagged movement is a decline.'}</strong> Prioritise intervention around ${DIMENSION_LABELS[divergenceFlags[0].dimensionId] || divergenceFlags[0].dimensionId} (${divergenceFlags[0].transition}).`
       : null,
@@ -232,6 +263,10 @@ async function requestTrendSignalsFromAi({ orgName, selectedTimepoint, stages })
     'Never reference raw dimension codes like 1A, 2D, or MQ5 — use their plain-language names instead '
       + `(${Object.entries(DIMENSION_LABELS).map(([id, label]) => `${id}=${label}`).join(', ')}).`,
     'If no clear finding exists for a section, still return a useful concise line.',
+    // RED-064: missing values are withheld, not zero.
+    'A null or missing value means the figure is withheld (fewer than 5 respondents in that group) or not yet collected. '
+      + 'Never treat it as 0 and never describe or estimate it. Where a stage has managerCohortWithheld true, '
+      + 'do not describe manager load, chain states, manager dimensions or sub-scores for that stage; say they are withheld.',
     '',
     `Org: ${orgName || 'Unknown org'}`,
     `Selected stage context: ${selectedTimepoint || 'unknown'}`,

@@ -84,6 +84,7 @@ import {
   DASHBOARD_MIN_SAMPLE_SIZE,
 } from '../../services/pulseDashboardScope.js';
 import {
+  quadrantVerdictSentence,
   buildLikelihoodWhatThisMeansSignal,
   buildQuadrantExplanationSignal,
   normalizeAssessmentStageLabel,
@@ -230,14 +231,22 @@ function buildExecutiveSummaryContent({
   interventionRequired,
   completedTotal,
 }) {
-  const headline = interventionRequired
-    ? 'This organisation has capacity to change, but not yet the conditions to sustain it.'
-    : 'This organisation is trending toward sustained change conditions if current sponsorship discipline holds.';
+  // N1 (RED-065 class): this always read "has capacity to change, but not
+  // yet the conditions to sustain it" whenever intervention was needed,
+  // including for a High Risk, Not Cleared organisation. The headline now
+  // follows the organisation-level quadrant the verdict uses.
+  const orgQuadrant =
+    adoptionScore != null && sponsorshipScore != null ? quadrantLabel(adoptionScore, sponsorshipScore) : null;
+  const headline = orgQuadrant && orgQuadrant !== 'Optimal'
+    ? quadrantVerdictSentence(orgQuadrant)
+    : interventionRequired
+      ? 'This organisation has the conditions to change, but pressure points need attention to sustain it.'
+      : 'This organisation is trending toward sustained change conditions if current sponsorship discipline holds.';
   const subhead = `Only ${formatPercentInt(optimalPercent)} of respondents are currently in Optimal. The remaining ${formatPercentInt(100 - (optimalPercent || 0))} sit across readiness states that require different intervention approaches.`;
 
   const riskChips = [
     sponsorshipScore != null && sponsorshipScore < threshold ? 'Sponsorship gap' : null,
-    overloadedPercent > 10 ? 'Manager overload' : null,
+    overloadedPercent != null && overloadedPercent > 10 ? 'Manager overload' : null,
     sponsorshipDelta != null && sponsorshipDelta < 0 ? 'Declining sponsorship trend' : null,
     criticalLoadPercent >= 35 ? 'Capacity concentration risk' : null,
     optimalPercent < 30 ? 'Low optimal readiness share' : null,
@@ -255,7 +264,7 @@ function buildExecutiveSummaryContent({
       textA:
         adoptionScore == null || sponsorshipScore == null
           ? 'The current pattern remains unresolved: readiness risks persist and rollout friction accumulates in the middle of the organisation.'
-          : `The change launches with Adoption at ${formatScore1(adoptionScore)}/40 and Sponsorship at ${formatScore1(sponsorshipScore)}/40. With ${formatPercentInt(highRiskPercent)} in High Risk and ${formatPercentInt(overloadedPercent)} overloaded manager capacity, early compliance is unlikely to convert into sustained behaviour change.`,
+          : `The change launches with Adoption at ${formatScore1(adoptionScore)}/40 and Sponsorship at ${formatScore1(sponsorshipScore)}/40. With ${formatPercentInt(highRiskPercent)} in High Risk${overloadedPercent == null ? '' : ` and ${formatPercentInt(overloadedPercent)} overloaded manager capacity`}, early compliance is unlikely to convert into sustained behaviour change.`,
       textB:
         'Momentum stalls in teams already under strain, and the absence of targeted reinforcement makes course-correction slower and more expensive.',
       outcome:
@@ -3687,12 +3696,19 @@ export function registerPlatformOrgRoutes(router) {
     const loadBandNames = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
     const managerLoadBandCounts = loadBandNames.map((name) => managerLoadCounts[name]);
     const managerLoadPercents = calculateLargestRemainderPercentages(managerLoadBandCounts);
+    // RED-064: this top-level copy of the manager load split reached the
+    // browser unfiltered even after the Manager View sections were
+    // withheld, so one manager's own band ("Stretched 100%") was visible in
+    // the dashboard data and fed Scenario A's "0% overloaded" line. Same
+    // floor as the rest of the manager cohort.
+    const managerLoadSampleSizeMet = completedManagerRows.length >= DASHBOARD_MIN_SAMPLE_SIZE;
     const managerLoad = {
       total: completedManagerRows.length,
+      sampleSizeMet: managerLoadSampleSizeMet,
       bands: loadBandNames.map((name, idx) => ({
         name,
-        count: managerLoadCounts[name],
-        percent: managerLoadPercents[idx],
+        count: managerLoadSampleSizeMet ? managerLoadCounts[name] : null,
+        percent: managerLoadSampleSizeMet ? managerLoadPercents[idx] : null,
       })),
     };
 
@@ -4477,7 +4493,7 @@ export function registerPlatformOrgRoutes(router) {
           threshold: READINESS_THRESHOLD,
           optimalPercent: optimalQuadrant?.percent || 0,
           highRiskPercent: highRiskQuadrant?.percent || 0,
-          overloadedPercent: overloadedBand?.percent || 0,
+          overloadedPercent: managerLoadSampleSizeMet ? overloadedBand?.percent || 0 : null,
           alertTitles: prioritizedAlerts.alerts.map((alert) => alert.title),
         }),
         aiRenderDeadlineMs
@@ -4559,7 +4575,7 @@ export function registerPlatformOrgRoutes(router) {
         threshold: READINESS_THRESHOLD,
         optimalPercent: optimalQuadrant?.percent || 0,
         highRiskPercent: highRiskQuadrant?.percent || 0,
-        overloadedPercent: overloadedBand?.percent || 0,
+        overloadedPercent: managerLoadSampleSizeMet ? overloadedBand?.percent || 0 : null,
         criticalLoadPercent: managerLoad.bands
           .filter((band) => band.name === 'At Capacity' || band.name === 'Overloaded')
           .reduce((sum, band) => sum + (band.percent || 0), 0),
@@ -4681,6 +4697,7 @@ export function registerPlatformOrgRoutes(router) {
         employeeSponsorshipAvg: Number.isFinite(stage?.employeeSponsorshipAvg) ? stage.employeeSponsorshipAvg : null,
         managerSponsorshipAvg: Number.isFinite(stage?.managerSponsorshipAvg) ? stage.managerSponsorshipAvg : null,
         perceptionGap: Number.isFinite(stage?.perceptionGap) ? stage.perceptionGap : null,
+        managerCohortWithheld: stage?.managerCohortWithheld === true,
       }))
       .filter((stage) => stage.key && stage.label);
 

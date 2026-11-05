@@ -76,13 +76,20 @@ function joinLabels(labels) {
   return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
 }
 
+function stageResponseCount(stage) {
+  const count = Number(stage?.responseCount);
+  return Number.isFinite(count) ? count : 0;
+}
+
 /**
  * Why Section 9 has no flags, as one of:
- *  - 'no-data':        no checkpoint has dimension results yet
- *  - 'single-stage':   only one checkpoint has results, nothing to compare
+ *  - 'no-data':        no checkpoint has any responses yet
+ *  - 'withheld':       a checkpoint has responses but its dimension scores
+ *                      are withheld (fewer than 5 employees or 5 managers),
+ *                      leaving nothing that can be compared
+ *  - 'single-stage':   only one checkpoint has scores, nothing to compare
  *  - 'not-comparable': two or more do, but no dimension can be compared
- *                      between consecutive checkpoints (a checkpoint in
- *                      between has no results, or scores are withheld)
+ *                      between consecutive checkpoints
  *  - 'within-range':   comparisons were made and none reached the threshold
  * Returns null when there are flags to show.
  */
@@ -95,18 +102,35 @@ export function describeDivergenceEmptyState(
   const stages = orderedStages || [];
   const withData = stages.filter((stage) => stageHasDimensionData(stage, dimensionOrder));
   const labels = withData.map((stage) => stage.label);
+  // RED-046 follow-up: a checkpoint can have responses and still no scores
+  // to compare, because dimension scores are withheld below 5 employees or
+  // 5 managers. That is not "no results yet".
+  const withheld = stages.filter(
+    (stage) => stage?.available && stageResponseCount(stage) > 0 && !stageHasDimensionData(stage, dimensionOrder)
+  );
+  const withheldText = withheld.length > 0
+    ? `${joinLabels(withheld.map((stage) => `${stage.label} (${stageResponseCount(stage)} responses)`))} ${withheld.length === 1 ? 'has' : 'have'} responses, but dimension scores are withheld because fewer than 5 employees or 5 managers responded.`
+    : '';
 
   if (withData.length === 0) {
+    if (withheld.length > 0) {
+      return {
+        reason: 'withheld',
+        message: `Nothing to compare yet. ${withheldText} Flags will appear once at least two checkpoints have scores.`,
+      };
+    }
     return {
       reason: 'no-data',
       message:
-        'Nothing to compare yet. Divergence flags compare dimension scores between checkpoints, and no checkpoint has results yet.',
+        'Nothing to compare yet. Divergence flags compare dimension scores between checkpoints, and no checkpoint has responses yet.',
     };
   }
   if (withData.length === 1) {
     return {
-      reason: 'single-stage',
-      message: `Nothing to compare yet. Divergence flags compare dimension scores between checkpoints, and only ${labels[0]} has results so far. Flags will appear here once the next checkpoint has responses.`,
+      reason: withheld.length > 0 ? 'withheld' : 'single-stage',
+      message: withheld.length > 0
+        ? `Nothing to compare yet. Only ${labels[0]} has dimension scores. ${withheldText}`
+        : `Nothing to compare yet. Divergence flags compare dimension scores between checkpoints, and only ${labels[0]} has results so far. Flags will appear here once the next checkpoint has responses.`,
     };
   }
 
@@ -120,7 +144,7 @@ export function describeDivergenceEmptyState(
   if (!comparedSomething) {
     return {
       reason: 'not-comparable',
-      message: `${joinLabels(labels)} have results, but no dimension can be compared between consecutive checkpoints yet. This happens when the checkpoint in between has no results, or when scores are withheld because fewer than 5 people in a group responded.`,
+      message: `${joinLabels(labels)} have results, but no dimension can be compared between consecutive checkpoints yet. ${withheldText || 'This happens when the checkpoint in between has no results, or when scores are withheld because fewer than 5 people in a group responded.'}`.trim(),
     };
   }
   return {

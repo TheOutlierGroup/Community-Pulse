@@ -653,3 +653,22 @@ test('normalizeAssessmentStageLabel maps timepoint codes to display labels', () 
   assert.equal(normalizeAssessmentStageLabel(null), 'Pre-Change');
   assert.equal(normalizeAssessmentStageLabel('Pre-Change'), 'Pre-Change');
 });
+
+// Review Low item: a 50/50 Optimal / High Risk split for a High Risk
+// organisation said High Risk was "the largest segment" and showed green.
+test('quadrant signal words a tie as a tie and does not show green for a High Risk organisation', async () => {
+  const { buildQuadrantExplanationSignal } = await import('./pulseDashboardMetrics.js');
+  const out = buildQuadrantExplanationSignal({
+    optimalPct: 50,
+    highRiskPct: 50,
+    capableWaryPct: 0,
+    motivatedLostPct: 0,
+    adoptionScore: 26.7,
+    sponsorshipScore: 26.7,
+    currentQuadrant: 'High Risk',
+  });
+  const text = String(out.text || out.fallback || '');
+  assert.doesNotMatch(text, /largest segment/);
+  assert.match(text, /an equal 50% sit in High Risk/);
+  assert.notEqual(out.bannerVariant, 'green');
+});

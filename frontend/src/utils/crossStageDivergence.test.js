@@ -54,3 +54,25 @@ test('movements of 1.0 or more are flagged and the empty state is not used', () 
   assert.ok(flags.every((flag) => flag.survey === 'Employee' && flag.delta === 1.5));
   assert.equal(describeDivergenceEmptyState(stages, flags), null);
 });
+
+// RED-046 follow-up: the test client had 7 Pre responses but every dimension
+// score withheld (1 manager), and the section said "no checkpoint has results".
+test('responses with withheld scores are explained as withheld, not as no results', () => {
+  const pre = { ...stage('pre', 'Pre'), available: true, responseCount: 7 };
+  const stages = [pre, stage('during', 'During'), stage('post', 'Post')];
+  const state = describeDivergenceEmptyState(stages, buildCrossStageDivergenceFlags(stages));
+  assert.equal(state.reason, 'withheld');
+  assert.match(state.message, /Pre \(7 responses\) has responses, but dimension scores are withheld/);
+  assert.doesNotMatch(state.message, /no checkpoint has/);
+});
+
+test('one scored checkpoint plus one withheld checkpoint names both', () => {
+  const stages = [
+    { ...stage('pre', 'Pre', 3.2, 3.4), responseCount: 12 },
+    { ...stage('during', 'During'), available: true, responseCount: 6 },
+    stage('post', 'Post'),
+  ];
+  const state = describeDivergenceEmptyState(stages, []);
+  assert.equal(state.reason, 'withheld');
+  assert.match(state.message, /Only Pre has dimension scores\. During \(6 responses\) has responses/);
+});

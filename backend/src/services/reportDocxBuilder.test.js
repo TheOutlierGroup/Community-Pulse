@@ -241,3 +241,27 @@ test('stage framing describes each stage as itself', () => {
   assert.equal(stageActionWindow('pre'), 'before launch');
   assert.notEqual(stageActionWindow('mid'), 'before launch');
 });
+
+// RED-070 follow-up: "Sponsorship Pulse" was fixed next-steps text, not AI.
+test('no fixed report text uses the word pulse', async () => {
+  const { NEXT_STEPS_STATIC_BLOCKS } = await import('./reportConfig.js');
+  for (const [block, lines] of Object.entries(NEXT_STEPS_STATIC_BLOCKS)) {
+    for (const line of lines) assert.doesNotMatch(line, /pulse/i, `${block}: ${line}`);
+  }
+});
+
+test('a generated report contains no "pulse" or "anonym" wording, and a High Risk verdict is not called motivated', async () => {
+  const reportData = makeReportData();
+  reportData.readiness = {
+    ...reportData.readiness,
+    adoption_score: 26.7,
+    sponsorship_score: 26.7,
+    quadrant_label: 'High Risk',
+    verdict: 'NOT CLEARED',
+  };
+  const text = await extractDocxText(await buildReportDocx({ reportData, signals }));
+  assert.doesNotMatch(text, /pulse/i);
+  assert.doesNotMatch(text, /anonym/i);
+  assert.doesNotMatch(text, /has the motivation to change/);
+  assert.match(text, /does not yet have either the readiness to absorb this change or the sponsorship conditions/);
+});
