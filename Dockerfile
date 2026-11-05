@@ -49,7 +49,13 @@ RUN npm run build
 
 # ---- runtime ---------------------------------------------------------------
 FROM node:20-bookworm-slim AS runtime
-ARG APP_SURFACE=crm
+# Survey outage (5 Nov 2026): this used to default to crm. A service with no
+# APP_SURFACE env var of its own (on the native runtime, the server's own
+# default was "all") then booted as the CRM surface after the Docker switch,
+# which does not mount the survey-link, employee or client-admin Rhythm
+# Engine routes: every survey link 404'd. "all" matches the native runtime's
+# behaviour; set APP_SURFACE explicitly per service to narrow it.
+ARG APP_SURFACE=all
 ENV APP_SURFACE=${APP_SURFACE} \
     NODE_ENV=production
 

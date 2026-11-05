@@ -242,5 +242,6 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Rhythm Engine API listening on ${PORT}`);
+  // Logged so a deploy's surface is visible in Render's logs at a glance.
+  console.log(`Rhythm Engine API listening on ${PORT} (surface: ${APP_SURFACE})`);
 });
