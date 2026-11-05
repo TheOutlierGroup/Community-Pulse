@@ -574,8 +574,13 @@ export function buildQuadrantExplanationSignal({
   });
   const largestSegment = allSegments[0];
 
+  // A tie with Optimal only reads green when the organisation itself is
+  // Optimal; a 50/50 High Risk organisation must not get a green banner.
+  const optimalTiedWithDeficit = largestSegment.name === 'Optimal'
+    && largestDeficit != null && largestDeficit.percent === optimal;
+  const orgIsOptimal = String(currentQuadrant || '').trim() === 'Optimal';
   let bannerVariant;
-  if (largestSegment.name === 'Optimal') {
+  if (largestSegment.name === 'Optimal' && (!optimalTiedWithDeficit || orgIsOptimal || !currentQuadrant)) {
     bannerVariant = 'green';
   } else if (largestDeficit?.name === 'High Risk') {
     bannerVariant = 'red';
@@ -589,9 +594,20 @@ export function buildQuadrantExplanationSignal({
 
   let sentence2;
   if (largestDeficit) {
+    // Low (review item): "largest segment" read as largest overall, so a
+    // 50/50 split was described as High Risk being the largest. Ties and
+    // smaller shares are now worded as what they are.
+    let deficitClause;
+    if (largestDeficit.percent > optimal) {
+      deficitClause = `${largestDeficit.percent}% sit in ${largestDeficit.name}, the largest segment overall and one that does not yet meet the conditions to absorb this change.`;
+    } else if (largestDeficit.percent === optimal) {
+      deficitClause = `an equal ${largestDeficit.percent}% sit in ${largestDeficit.name}, which does not yet meet the conditions to absorb this change.`;
+    } else {
+      deficitClause = `${largestDeficit.percent}% sit in ${largestDeficit.name}, the largest of the segments that do not yet meet the conditions to absorb this change.`;
+    }
     sentence2 = optimal > 0
-      ? `<strong>${optimal}% of respondents are positioned in Optimal</strong>, while ${largestDeficit.percent}% sit in ${largestDeficit.name} as the largest segment that does not yet meet the conditions to absorb this change.`
-      : `<strong>No respondents are positioned in Optimal</strong>, with ${largestDeficit.percent}% concentrated in ${largestDeficit.name} as the largest segment that does not yet meet the conditions to absorb this change.`;
+      ? `<strong>${optimal}% of respondents are positioned in Optimal</strong>, while ${deficitClause}`
+      : `<strong>No respondents are positioned in Optimal</strong>, with ${largestDeficit.percent}% concentrated in ${largestDeficit.name}, the largest segment that does not yet meet the conditions to absorb this change.`;
   } else {
     sentence2 = `<strong>${optimal}% of respondents are positioned in Optimal</strong>, with no other quadrant carrying material weight in this distribution.`;
   }
@@ -949,3 +965,24 @@ export function buildSponsorshipSectionSignals({
     },
   };
 }
+
+/**
+ * One sentence describing an organisation-level quadrant, shared by the
+ * dashboard's executive headline and the Word report's verdict box so the
+ * two can never disagree with the verdict beside them.
+ */
+export function quadrantVerdictSentence(quadrant) {
+  switch (quadrant) {
+    case 'Optimal':
+      return 'This organisation has the conditions required to proceed with the change programme.';
+    case 'Motivated but Lost':
+      return 'This organisation has the motivation to change. It does not yet have the sponsorship conditions to sustain it.';
+    case 'Capable but Wary':
+      return 'This organisation has credible sponsorship in place. It does not yet have the readiness to absorb the change.';
+    case 'High Risk':
+      return 'This organisation does not yet have either the readiness to absorb this change or the sponsorship conditions to sustain it.';
+    default:
+      return 'This organisation does not yet have the conditions required to proceed with the change programme.';
+  }
+}
+

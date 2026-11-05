@@ -672,6 +672,8 @@ function buildTrendStageSnapshot(stageKey, label, payload) {
     },
     employeeSponsorshipAvg,
     managerSponsorshipAvg,
+    managerCohortWithheld,
+    responseCount: Number.isFinite(payload?.kpis?.completedTotal) ? payload.kpis.completedTotal : 0,
     perceptionGap: employeeSponsorshipAvg != null && managerSponsorshipAvg != null
       ? managerSponsorshipAvg - employeeSponsorshipAvg
       : null,
@@ -2228,6 +2230,16 @@ export default function PlatformClientPulse() {
             </p>
           </div>
 
+          {/* Review Low item: below the floor the Emp/Mgr cells were blank
+              with no explanation. */}
+          {dashboard?.dimensionsSampleSizeMet === false ? (
+            <p className="pulse-sa-card__explainer" role="note" style={{ marginTop: 0 }}>
+              Dimension scores are withheld to keep individual responses confidential. They are shown
+              once at least {minSampleSize} employees and {minSampleSize} managers have responded
+              (currently {kpis.completedEmployees ?? 0} employees and {kpis.completedManagers ?? 0}{' '}
+              {Number(kpis.completedManagers) === 1 ? 'manager' : 'managers'}).
+            </p>
+          ) : null}
           {dimensionHeatmapRows.length === 0 ? (
             <p className="muted">No dimension data available yet.</p>
           ) : (
@@ -2387,6 +2399,13 @@ export default function PlatformClientPulse() {
             </tbody>
           </table>
         </div>
+        {groupedTeamRows.length > 0 ? (
+          <p className="muted" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
+            &ldquo;--&rdquo; means withheld to keep individual responses confidential: a group&apos;s
+            scores need at least {minSampleSize} responses, and manager load needs at least{' '}
+            {minSampleSize} managers.
+          </p>
+        ) : null}
         </section>
       ) : null}
 

@@ -90,7 +90,11 @@ function buildPrompt(snapshot) {
     `Threshold: ${snapshot?.threshold ?? 28}`,
     `Optimal quadrant (%): ${clampPercent(snapshot?.optimalPercent)}`,
     `High Risk quadrant (%): ${clampPercent(snapshot?.highRiskPercent)}`,
-    `Overloaded managers (%): ${clampPercent(snapshot?.overloadedPercent)}`,
+    // RED-064: withheld (fewer than 5 managers) is not 0%; say so, so the
+    // summary cannot describe one manager's answer as a cohort figure.
+    `Overloaded managers (%): ${Number.isFinite(snapshot?.overloadedPercent)
+      ? clampPercent(snapshot.overloadedPercent)
+      : 'withheld (fewer than 5 manager responses; do not mention manager load)'}`,
     `Top alerts: ${alertTitles.length ? alertTitles.join(' | ') : 'none'}`,
   ].join('\n');
 }

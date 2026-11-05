@@ -16,6 +16,7 @@ import {
   WidthType,
   convertInchesToTwip,
 } from 'docx';
+import { quadrantVerdictSentence } from './pulseDashboardMetrics.js';
 import JSZip from 'jszip';
 import { NEXT_STEPS_STATIC_BLOCKS, NEXT_STEPS_DEFAULT_ORDER } from './reportConfig.js';
 
@@ -479,9 +480,13 @@ function verdictBox(verdictText, quadrantLabel) {
   const descColor = COLOUR.verdictDescText;
   const labelColor = COLOUR.verdictLabelText;
   const quadColor = COLOUR.white;
+  // N1 (RED-065 class): a Not Cleared report always said "This
+  // organisation has the motivation to change", including beside a High
+  // Risk verdict. The sentence now follows the quadrant, shared with the
+  // dashboard's executive headline.
   const desc = isPassed
-    ? 'This organisation has the conditions required to proceed with the change programme.'
-    : 'This organisation has the motivation to change. It does not yet have the sponsorship conditions to sustain it.';
+    ? quadrantVerdictSentence('Optimal')
+    : quadrantVerdictSentence(quadrantLabel === 'Optimal' ? null : quadrantLabel);
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },

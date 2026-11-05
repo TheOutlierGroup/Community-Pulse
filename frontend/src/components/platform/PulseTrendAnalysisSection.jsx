@@ -234,10 +234,13 @@ export default function PulseTrendAnalysisSection({
   }, [subScoreMovement]);
   const overloadHeadline = useMemo(() => {
     const overloaded = currentStage?.loadBands?.Overloaded;
+    if (currentStage?.managerCohortWithheld) {
+      return 'Manager figures are withheld at the current stage: fewer than 5 managers responded.';
+    }
     if (!Number.isFinite(overloaded)) return 'Overloaded-band data is not available yet.';
     if (overloaded >= 10) return `Critical load threshold breached (${formatPercent(overloaded)} overloaded).`;
     return 'Overloaded band remains below critical threshold.';
-  }, [currentStage?.loadBands?.Overloaded]);
+  }, [currentStage?.loadBands?.Overloaded, currentStage?.managerCohortWithheld]);
   const managerConstraintHeadline = useMemo(() => {
     const changeSaturation = currentStage?.dimensions?.manager?.['1C'];
     const managerWellbeing = currentStage?.dimensions?.manager?.['2D'];
@@ -336,11 +339,23 @@ export default function PulseTrendAnalysisSection({
   const section1Signal = sectionSignals?.section1;
   const section2Signal = sectionSignals?.section2;
   const section3Signal = sectionSignals?.section3;
-  const section4Signal = sectionSignals?.section4;
+  // RED-064: when the current stage's manager cohort is withheld, the
+  // manager sections say so, whatever the commentary (AI or fallback)
+  // returned, so hidden figures are never described as 0%.
+  const managerWithheldNow = Boolean(currentStage?.managerCohortWithheld);
+  const withheldManagerLine = 'Manager figures are withheld at the current stage: fewer than 5 managers responded.';
+  const section4Signal = managerWithheldNow ? `<strong>${withheldManagerLine}</strong>` : sectionSignals?.section4;
   const section5Signal = sectionSignals?.section5;
-  const section6Signal = sectionSignals?.section6;
-  const section7Signal = sectionSignals?.section7;
-  const section8Signal = sectionSignals?.section8;
+  const managerDimensionsWithheldNow = Boolean(currentStage)
+    && (!Number.isFinite(currentStage?.dimensions?.manager?.['1C'])
+      || !Number.isFinite(currentStage?.dimensions?.manager?.['2D']));
+  const section6Signal = managerDimensionsWithheldNow
+    ? '<strong>Manager dimension scores are withheld at the current stage: fewer than 5 employees or managers responded.</strong>'
+    : sectionSignals?.section6;
+  const section7Signal = managerWithheldNow ? `<strong>${withheldManagerLine}</strong>` : sectionSignals?.section7;
+  const section8Signal = Boolean(currentStage) && !Number.isFinite(currentStage?.perceptionGap)
+    ? '<strong>The perception gap is not reported at the current stage: fewer than 5 employees or managers responded.</strong>'
+    : sectionSignals?.section8;
   const section9Signal = sectionSignals?.section9;
   const quadrantJourneySummary = useMemo(() => {
     const populatedStages = orderedStages.filter((stage) => isStagePopulated(stage));

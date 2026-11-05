@@ -21,7 +21,8 @@ export const NEXT_STEPS_STATIC_BLOCKS = {
   'Sponsorship Architecture Review': [
     'Senior Leadership Sponsorship Diagnostic – half-day facilitated session with programme sponsors.',
     'Sponsorship Behaviour Design – co-create visible sponsorship commitments for the programme lifecycle.',
-    'Sponsorship Pulse – run a lightweight sponsorship check every 4 weeks.'
+    // RED-070: product language, never "pulse".
+    'Sponsorship Check-in – run a lightweight sponsorship check-in every 4 weeks.'
   ],
   'Manager Enablement Programme': [
     'Manager Readiness Bootcamp – targeted practical change-leadership session for manager cohort.',
