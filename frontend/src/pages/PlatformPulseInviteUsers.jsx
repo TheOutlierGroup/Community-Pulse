@@ -370,6 +370,10 @@ export default function PlatformPulseInviteUsers() {
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState('staff');
   const [addManagerInviteId, setAddManagerInviteId] = useState('');
+  // RED-067 follow-up: recipients added one at a time could not be given a
+  // team, so they always showed as "Unassigned". One value per configured
+  // group level, the same columns the CSV import takes.
+  const [addGroupValues, setAddGroupValues] = useState([]);
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState('');
   const [templateModalAudience, setTemplateModalAudience] = useState(null);
@@ -418,6 +422,7 @@ export default function PlatformPulseInviteUsers() {
         .map((row) => ({
           id: row.id,
           label: `${row.displayName?.trim() || row.email} (${row.email})`,
+          groupValues: Array.isArray(row.groupValues) ? row.groupValues : [],
         })),
     [invites]
   );
@@ -763,6 +768,7 @@ export default function PlatformPulseInviteUsers() {
     setAddEmail('');
     setAddRole('staff');
     setAddManagerInviteId('');
+    setAddGroupValues([]);
   }
 
   function openTestDataModal() {
@@ -975,6 +981,11 @@ export default function PlatformPulseInviteUsers() {
       const name = String(addName || '').trim() || email.split('@')[0];
       const recipient = { name, email, role: addRole };
       if (addRole === 'staff') recipient.managerInviteId = addManagerInviteId;
+      if (configuredGroupLabels.length > 0) {
+        recipient.groupValues = configuredGroupLabels.map(
+          (_, index) => String(addGroupValues[index] ?? '').trim() || null
+        );
+      }
       const { data } = await api.post(
         `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/import`,
         { recipients: [recipient] },
@@ -988,6 +999,7 @@ export default function PlatformPulseInviteUsers() {
         if (first?.error === 'invalid_manager_invite') message = 'Selected manager is not valid for this organization.';
         if (first?.error === 'manager_not_found') message = 'Manager reference could not be resolved.';
         if (first?.error === 'self_manager_not_allowed') message = 'A recipient cannot be their own manager.';
+        if (first?.error === 'invalid_group_levels') message = 'The team details do not match this client\'s group levels.';
         showToast(message, { variant: 'error' });
         return;
       }
@@ -2078,7 +2090,21 @@ export default function PlatformPulseInviteUsers() {
               <select
                 id="pulse-add-manager"
                 value={addManagerInviteId}
-                onChange={(e) => setAddManagerInviteId(e.target.value)}
+                onChange={(e) => {
+                  const nextManagerId = e.target.value;
+                  setAddManagerInviteId(nextManagerId);
+                  // Staff usually sit in their manager's team: start from the
+                  // manager's values, without overwriting anything typed.
+                  const manager = managerOptions.find((option) => option.id === nextManagerId);
+                  if (manager) {
+                    setAddGroupValues((previous) =>
+                      configuredGroupLabels.map((_, index) => {
+                        const typed = String(previous[index] ?? '').trim();
+                        return typed || String(manager.groupValues[index] ?? '').trim();
+                      })
+                    );
+                  }
+                }}
                 required
                 disabled={managerOptions.length === 0}
               >
@@ -2098,6 +2124,33 @@ export default function PlatformPulseInviteUsers() {
               ) : null}
             </div>
           ) : null}
+          {configuredGroupLabels.length > 0 ? (
+            configuredGroupLabels.map((label, index) => (
+              <div className="field" key={`add-group-${label}`}>
+                <label htmlFor={`pulse-add-group-${index}`}>
+                  {label} <span className="muted">(optional)</span>
+                </label>
+                <input
+                  id={`pulse-add-group-${index}`}
+                  value={addGroupValues[index] ?? ''}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setAddGroupValues((previous) => {
+                      const next = configuredGroupLabels.map((_, i) => previous[i] ?? '');
+                      next[index] = value;
+                      return next;
+                    });
+                  }}
+                  placeholder={`e.g. ${label} name`}
+                />
+              </div>
+            ))
+          ) : (
+            <p className="muted" style={{ marginTop: 0 }}>
+              To place recipients in teams, set up this client&apos;s group levels in Rhythm Engine
+              Settings first. Until then, recipients are grouped as &ldquo;Unassigned&rdquo;.
+            </p>
+          )}
           <div className="modal-dialog__actions">
             <button type="button" className="btn btn-ghost" onClick={closeAddModal} disabled={addBusy || bulkSending}>
               Cancel

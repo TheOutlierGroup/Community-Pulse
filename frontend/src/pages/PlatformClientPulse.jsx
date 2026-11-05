@@ -5,6 +5,10 @@ import { normalizeServices } from './platformClientUtils.js';
 import { normalizePulseHash, resolvePulseFocusedSection } from './pulseNavigationRules.js';
 import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
 import PulseTrendAnalysisSection from '../components/platform/PulseTrendAnalysisSection.jsx';
+import {
+  buildReportDownloadFilename,
+  readDownloadErrorMessage,
+} from '../components/platform/reportGeneratorHelpers.js';
 import { crmAppBaseUrl } from '../config/appSurface.js';
 
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
@@ -15,6 +19,10 @@ const QUADRANT_DESCRIPTORS = {
   'Motivated but Lost': ['People are willing to change but lack credible leadership support.', 'Sponsorship is the primary risk.'],
   'Capable but Wary': ['Leadership is driving the change credibly,', 'but the workforce needs more support to build readiness.'],
 };
+import {
+  buildCrossStageDivergenceFlags,
+  describeDivergenceEmptyState,
+} from '../utils/crossStageDivergence.js';
 const DIMENSION_ORDER = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'];
 const PERCEPTION_GAP_THRESHOLD = 1.5;
 const INTRA_DIMENSION_DIVERGENCE_THRESHOLD = 1.5;
@@ -670,60 +678,6 @@ function buildTrendStageSnapshot(stageKey, label, payload) {
   };
 }
 
-function buildCrossStageDivergenceFlags(orderedStages, threshold = 1.0) {
-  const flags = [];
-  const transitions = [];
-  for (let idx = 1; idx < orderedStages.length; idx += 1) {
-    const from = orderedStages[idx - 1];
-    const to = orderedStages[idx];
-    if (!from.available || !to.available) continue;
-    transitions.push([from, to]);
-  }
-  transitions.forEach(([from, to]) => {
-    DIMENSION_ORDER.forEach((dimensionId) => {
-      const employeeFrom = from.dimensions.employee[dimensionId];
-      const employeeTo = to.dimensions.employee[dimensionId];
-      if (Number.isFinite(employeeFrom) && Number.isFinite(employeeTo)) {
-        const delta = employeeTo - employeeFrom;
-        if (Math.abs(delta) >= threshold) {
-          flags.push({
-            key: `employee-${dimensionId}-${from.key}-${to.key}`,
-            dimensionId,
-            survey: 'Employee',
-            transition: `${from.label} -> ${to.label}`,
-            from: employeeFrom,
-            to: employeeTo,
-            delta,
-          });
-        }
-      }
-      const managerFrom = from.dimensions.manager[dimensionId];
-      const managerTo = to.dimensions.manager[dimensionId];
-      if (Number.isFinite(managerFrom) && Number.isFinite(managerTo)) {
-        const delta = managerTo - managerFrom;
-        if (Math.abs(delta) >= threshold) {
-          flags.push({
-            key: `manager-${dimensionId}-${from.key}-${to.key}`,
-            dimensionId,
-            survey: 'Manager',
-            transition: `${from.label} -> ${to.label}`,
-            from: managerFrom,
-            to: managerTo,
-            delta,
-          });
-        }
-      }
-    });
-  });
-  return flags.sort((a, b) => {
-    const absDiff = Math.abs(b.delta) - Math.abs(a.delta);
-    if (absDiff !== 0) return absDiff;
-    if (a.delta < 0 && b.delta > 0) return -1;
-    if (a.delta > 0 && b.delta < 0) return 1;
-    return a.dimensionId.localeCompare(b.dimensionId);
-  });
-}
-
 export default function PlatformClientPulse() {
   const {
     org,
@@ -1233,8 +1187,12 @@ export default function PlatformClientPulse() {
     return availableStages.length > 0 ? availableStages : fullOrder;
   }, [trendSnapshots, selectedTrendDuringIds, orderedDuringOptions]);
   const trendDivergenceFlags = useMemo(
-    () => buildCrossStageDivergenceFlags(orderedTrendStages, 1.0),
+    () => buildCrossStageDivergenceFlags(orderedTrendStages, 1.0, DIMENSION_ORDER),
     [orderedTrendStages]
+  );
+  const trendDivergenceEmptyState = useMemo(
+    () => describeDivergenceEmptyState(orderedTrendStages, trendDivergenceFlags, DIMENSION_ORDER),
+    [orderedTrendStages, trendDivergenceFlags]
   );
   const scoreCardSignals = dashboard?.scoreCardSignals || {};
   const adoptionScoreCardSignal = scoreCardSignals.adoption || {};
@@ -1570,7 +1528,8 @@ export default function PlatformClientPulse() {
     loadReports();
   }, [loadReports]);
 
-  async function downloadPastReport(reportId) {
+  async function downloadPastReport(report) {
+    const reportId = report?.id;
     setReportsError('');
     try {
       const base = crmAppBaseUrl();
@@ -1587,13 +1546,20 @@ export default function PlatformClientPulse() {
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.href = url;
-      link.download = `${org.slug || org.id}-report`;
+      // RED-055: this saved every past report as "<client>-report" with no
+      // extension, so a PDF from the history list was not recognised as a
+      // PDF and would not open. Same filename rule as a fresh download.
+      link.download = buildReportDownloadFilename({
+        organization: { slug: org.slug || org.id },
+        stage: report?.stage,
+        format: report?.format,
+      });
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      setReportsError('Could not download report.');
+    } catch (downloadError) {
+      setReportsError(await readDownloadErrorMessage(downloadError));
     }
   }
 
@@ -1943,6 +1909,7 @@ export default function PlatformClientPulse() {
             error={trendError}
             orderedStages={orderedTrendStages}
             divergenceFlags={trendDivergenceFlags}
+            divergenceEmptyState={trendDivergenceEmptyState}
             sectionSignals={trendSignals}
           />
         </>
@@ -2475,7 +2442,7 @@ export default function PlatformClientPulse() {
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() => downloadPastReport(report.id)}
+                          onClick={() => downloadPastReport(report)}
                           disabled={report.status !== 'complete'}
                         >
                           Download

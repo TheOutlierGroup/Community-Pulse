@@ -1079,6 +1079,54 @@ function detectImageType(buffer) {
   return null;
 }
 
+// RED-061: logos were drawn into fixed boxes (e.g. 150x50), so any logo
+// that was not already about 3:1 was stretched: a square client mark came
+// out as a wide oval beside the brand logo. These read the image's own
+// pixel size so it can be fitted inside the box instead.
+export function readImageDimensions(buffer) {
+  const type = detectImageType(buffer);
+  try {
+    if (type === 'png' && buffer.length >= 24) {
+      return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+    }
+    if (type === 'gif' && buffer.length >= 10) {
+      return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
+    }
+    if (type === 'bmp' && buffer.length >= 26) {
+      return { width: Math.abs(buffer.readInt32LE(18)), height: Math.abs(buffer.readInt32LE(22)) };
+    }
+    if (type === 'jpg') {
+      let offset = 2;
+      while (offset + 9 < buffer.length) {
+        if (buffer[offset] !== 0xff) { offset += 1; continue; }
+        const marker = buffer[offset + 1];
+        if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { offset += 2; continue; }
+        const length = buffer.readUInt16BE(offset + 2);
+        const isStartOfFrame = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+        if (isStartOfFrame) {
+          return { width: buffer.readUInt16BE(offset + 7), height: buffer.readUInt16BE(offset + 5) };
+        }
+        offset += 2 + length;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function fitLogoWithinBox(buffer, maxWidth, maxHeight) {
+  const dims = readImageDimensions(buffer);
+  if (!dims || !(dims.width > 0) || !(dims.height > 0)) {
+    return { width: maxWidth, height: maxHeight };
+  }
+  const scale = Math.min(maxWidth / dims.width, maxHeight / dims.height);
+  return {
+    width: Math.max(1, Math.round(dims.width * scale)),
+    height: Math.max(1, Math.round(dims.height * scale)),
+  };
+}
+
 function isUsableLogoBuffer(buffer) {
   return Buffer.isBuffer(buffer) && buffer.length > 0 && detectImageType(buffer) != null;
 }
@@ -1093,7 +1141,7 @@ function logoParagraph(buffer, { width = 180, height = 56, after = 120, alignmen
         new ImageRun({
           data: buffer,
           type: detectImageType(buffer),
-          transformation: { width, height },
+          transformation: fitLogoWithinBox(buffer, width, height),
         }),
       ],
     });
@@ -1127,7 +1175,7 @@ function coverLogoStack({ defaultLogoBuffer, brandLogoBuffer, companyLogoBuffer 
   if (topUsable && companyUsable) {
     try {
       const companyCell = logoParagraph(companyLogoBuffer, {
-        width: 150, height: 50, after: 0, alignment: AlignmentType.LEFT,
+        width: 170, height: 64, after: 0, alignment: AlignmentType.LEFT,
       });
       const brandCell = logoParagraph(topLogo, {
         width: 170, height: 51, after: 0, alignment: AlignmentType.RIGHT,
@@ -1168,7 +1216,7 @@ function coverLogoStack({ defaultLogoBuffer, brandLogoBuffer, companyLogoBuffer 
   const paragraphs = [];
   const top = logoParagraph(topLogo, { width: 200, height: 60, after: companyUsable ? 120 : 240 });
   if (top) paragraphs.push(top);
-  const company = logoParagraph(companyLogoBuffer, { width: 180, height: 60, after: 240 });
+  const company = logoParagraph(companyLogoBuffer, { width: 180, height: 64, after: 240 });
   if (company) paragraphs.push(company);
   return paragraphs;
 }

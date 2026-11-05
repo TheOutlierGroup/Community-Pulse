@@ -174,6 +174,7 @@ export default function PulseTrendAnalysisSection({
   error,
   orderedStages,
   divergenceFlags,
+  divergenceEmptyState = null,
   sectionSignals,
 }) {
   const stageColumns = useMemo(
@@ -678,7 +679,11 @@ export default function PulseTrendAnalysisSection({
               ) : (
                 <tr>
                   <td colSpan={7} className="muted" style={{ fontStyle: 'italic', textAlign: 'center' }}>
-                    No cross-stage divergence flags at this stage. Score movements across all dimensions are within expected variation (±1.0 point).
+                    {/* RED-046: says why nothing is shown, rather than
+                        claiming movement was within range when no
+                        comparison was possible. */}
+                    {divergenceEmptyState?.message
+                      || 'No cross-stage divergence flags at this stage. Score movements across all dimensions are within expected variation (±1.0 point).'}
                   </td>
                 </tr>
               )}

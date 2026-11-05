@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
-import { buildReportDocx } from './reportDocxBuilder.js';
+import { buildReportDocx, readImageDimensions, fitLogoWithinBox } from './reportDocxBuilder.js';
 
 /**
  * Cover-page logo lock-up layout: the client's company logo and the
@@ -121,4 +121,41 @@ test('cover logo lock-up: falls back to a single centered logo when there is no 
     tableIndex === -1 || tableIndex > drawingIndex,
     'no side-by-side table should wrap the cover logo when only one logo is present'
   );
+});
+
+// RED-061: logos were forced into fixed boxes, so a square client mark was
+// stretched into a wide oval beside the brand logo. Each logo is now fitted
+// inside its box at its own aspect ratio.
+function minimalJpeg(width, height) {
+  const app0 = Buffer.from([0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00]);
+  const sof = Buffer.alloc(19);
+  sof.writeUInt16BE(0xffc0, 0);
+  sof.writeUInt16BE(17, 2);
+  sof[4] = 8;
+  sof.writeUInt16BE(height, 5);
+  sof.writeUInt16BE(width, 7);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), app0, sof, Buffer.from([0xff, 0xd9])]);
+}
+
+test('readImageDimensions reads PNG and JPEG pixel sizes', () => {
+  assert.deepEqual(readImageDimensions(RE_LOGO), { width: 600, height: 150 });
+  assert.deepEqual(readImageDimensions(minimalJpeg(400, 400)), { width: 400, height: 400 });
+  assert.equal(readImageDimensions(Buffer.from('not an image')), null);
+});
+
+test('fitLogoWithinBox keeps the aspect ratio inside the box', () => {
+  assert.deepEqual(fitLogoWithinBox(minimalJpeg(400, 400), 170, 64), { width: 64, height: 64 });
+  assert.deepEqual(fitLogoWithinBox(minimalJpeg(200, 500), 170, 64), { width: 26, height: 64 });
+  assert.deepEqual(fitLogoWithinBox(RE_LOGO, 170, 51), { width: 170, height: 43 });
+  // Unknown size falls back to the box rather than failing the report.
+  assert.deepEqual(fitLogoWithinBox(Buffer.from('????'), 170, 64), { width: 170, height: 64 });
+});
+
+test('a square client logo is embedded square on the cover, not stretched', async () => {
+  const { xml } = await render({ companyLogoBuffer: minimalJpeg(400, 400) });
+  const tableMatch = xml.match(/<w:tbl>[\s\S]*?<\/w:tbl>/);
+  const extents = [...tableMatch[0].matchAll(/<wp:extent cx="(\d+)" cy="(\d+)"/g)].map((m) => [Number(m[1]), Number(m[2])]);
+  assert.equal(extents.length, 2);
+  const [companyCx, companyCy] = extents[0];
+  assert.equal(companyCx, companyCy, 'square logo should stay square');
 });
