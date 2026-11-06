@@ -124,7 +124,7 @@ export default function PlatformClientLayout() {
     const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-sessions`);
     const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
     // Pre/Post are driven by the client's contract, set at the CRM layer
-    // (Configurations → Licence) — not editable from Rhythm Engine. Only
+    // (client Settings → Licence) — not editable from Rhythm Engine. Only
     // fall back to the session's own creation time when no contract date
     // has been configured yet.
     const contractStartKey = sessionDateKey(licenseConfig?.contractStart);
@@ -406,13 +406,13 @@ export default function PlatformClientLayout() {
     } else if (tail === 'activity') {
       section = 'Recent activity';
     } else if (tail === 'account') {
-      section = 'Configurations';
+      section = 'Settings';
     } else if (tail === 'my-account') {
       section = 'Account';
-    } else if (tail.startsWith('rhythm-engine/users')) {
-      section = 'Rhythm Engine · Invites';
-    } else if (tail.startsWith('rhythm-engine/settings')) {
-      section = 'Rhythm Engine · Settings';
+    } else if (tail.startsWith('rhythm-engine/respondents')) {
+      section = 'Rhythm Engine · Respondents';
+    } else if (tail.startsWith('rhythm-engine/configurations')) {
+      section = 'Rhythm Engine · Configurations';
     } else if (tail.startsWith('rhythm-engine')) {
       section = 'Rhythm Engine';
     }

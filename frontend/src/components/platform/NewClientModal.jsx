@@ -273,7 +273,7 @@ export default function NewClientModal({
           ) : null}
           {serviceCatalog.length > 0 && (
             <div className="field" ref={servicesRef} style={{ position: 'relative' }}>
-              <label htmlFor="ncm-services-trigger">Services (optional — more can be enabled later in Configurations)</label>
+              <label htmlFor="ncm-services-trigger">Services (optional — more can be enabled later in Settings)</label>
               <button
                 id="ncm-services-trigger"
                 type="button"
@@ -367,7 +367,7 @@ export default function NewClientModal({
                     <option value="enterprise_unlimited">Enterprise (Unlimited)</option>
                   </select>
                   <p className="muted" style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
-                    Sets the initial licence tier. Adjustable later in Configurations.
+                    Sets the initial licence tier. Adjustable later in Settings.
                   </p>
                 </div>
               ) : null}

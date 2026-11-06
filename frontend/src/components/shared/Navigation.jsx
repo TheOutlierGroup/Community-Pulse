@@ -100,9 +100,9 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
     Boolean(platformClientOrgId) &&
     location.pathname.startsWith(`/platform/clients/${platformClientOrgId}/rhythm-engine`);
   const activePulseSection = isPlatformPulseRoute
-    ? location.pathname.endsWith('/rhythm-engine/users')
+    ? location.pathname.endsWith('/rhythm-engine/respondents')
       ? 'pulse-users'
-      : location.pathname.endsWith('/rhythm-engine/settings')
+      : location.pathname.endsWith('/rhythm-engine/configurations')
         ? 'pulse-settings'
         : (location.hash || '#organisation-dashboard').replace(/^#/, '')
     : '';
@@ -321,11 +321,11 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     </Link>
                   ) : null}
                   <NavLink
-                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine/users`}
+                    to={`/platform/clients/${platformClientOrgId}/rhythm-engine/respondents`}
                     className={pulseSectionLinkClass('pulse-users')}
                   >
                     <UserPlus size={20} strokeWidth={1.75} aria-hidden />
-                    Users
+                    Respondents
                   </NavLink>
                   <Link
                     to={`/platform/clients/${platformClientOrgId}/rhythm-engine#reports`}
@@ -336,11 +336,11 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                   </Link>
                   {user.role === 'admin' ? (
                     <NavLink
-                      to={`/platform/clients/${platformClientOrgId}/rhythm-engine/settings`}
+                      to={`/platform/clients/${platformClientOrgId}/rhythm-engine/configurations`}
                       className={pulseSectionLinkClass('pulse-settings')}
                     >
-                      <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
-                      Settings
+                      <Cog size={20} strokeWidth={1.75} aria-hidden />
+                      Configurations
                     </NavLink>
                   ) : null}
                 </>
@@ -374,8 +374,8 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                     </NavLink>
                   )}
                   <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
-                    <Cog size={20} strokeWidth={1.75} aria-hidden />
-                    Configurations
+                    <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
+                    Settings
                   </NavLink>
                 </>
               ) : (
@@ -424,8 +424,8 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                   )}
                   {pulseLaunchError && <p className="muted">{pulseLaunchError}</p>}
                   <NavLink to={`/platform/clients/${platformClientOrgId}/account`} className={sidebarLinkClass}>
-                    <Cog size={20} strokeWidth={1.75} aria-hidden />
-                    Configurations
+                    <SlidersHorizontal size={20} strokeWidth={1.75} aria-hidden />
+                    Settings
                   </NavLink>
                   {!isLicensee && (
                     <NavLink to={`/platform/clients/${platformClientOrgId}/activity`} className={sidebarLinkClass}>
