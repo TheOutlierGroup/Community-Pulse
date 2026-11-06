@@ -6,6 +6,8 @@ import * as GeneratedReport from '../models/GeneratedReport.js';
 import { resolveReportOrganizationForUser } from '../services/reportAuth.js';
 import { validateReportRequest } from '../services/reportInput.js';
 import { generateReport, looksLikeCompletePdf } from '../services/reportGeneration.js';
+import { countReportResponsesByStage } from '../services/reportDataAssembler.js';
+import { REPORT_MIN_RESPONSES } from '../services/reportConfig.js';
 import { createReportDownloadToken, verifyReportDownloadToken } from '../services/reportDownloadToken.js';
 
 export function createReportsRoutes({
@@ -20,6 +22,8 @@ export function createReportsRoutes({
   readFileFn = fs.readFileSync,
   looksLikeCompletePdfFn = looksLikeCompletePdf,
   basenameFn = path.basename,
+  countReportResponsesByStageFn = countReportResponsesByStage,
+  reportMinResponses = REPORT_MIN_RESPONSES,
 } = {}) {
   const router = Router();
 
@@ -64,6 +68,34 @@ export function createReportsRoutes({
   });
   });
 
+  // Which stages can be reported on right now: one entry per stage with its
+  // completed-response count against the generation minimum. The client
+  // panel lists only the available ones as "<Stage> Report as at <date>".
+  router.get('/availability', async (req, res) => {
+    const requestedOrgId = String(req.query?.org_id || '').trim() || null;
+    const requestedOrgSlug = String(req.query?.org_slug || '').trim() || null;
+    if (!requestedOrgId && !requestedOrgSlug) {
+      return res.status(400).json({ error: 'org_id or org_slug is required' });
+    }
+    const access = await resolveReportOrganizationForUserFn({
+      user: req.user,
+      requestedOrgId,
+      requestedOrgSlug,
+    });
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.message, code: access.error });
+    }
+    const counts = await countReportResponsesByStageFn(access.organization);
+    return res.json({
+      as_at: new Date().toISOString(),
+      min_responses: reportMinResponses,
+      stages: ['pre', 'mid', 'post'].map((stage) => {
+        const responseCount = Number(counts?.[stage] || 0);
+        return { stage, response_count: responseCount, available: responseCount >= reportMinResponses };
+      }),
+    });
+  });
+
   router.post('/generate', async (req, res) => {
     const validated = validateReportRequestFn(req.body || {});
     if (!validated.ok) {
@@ -87,7 +119,6 @@ export function createReportsRoutes({
         dateFrom: validated.value.dateFrom,
         dateTo: validated.value.dateTo,
         format: validated.value.format,
-        context: validated.value.context,
       });
       const downloadUrl = `/api/reports/${report.id}`;
       return res.json({

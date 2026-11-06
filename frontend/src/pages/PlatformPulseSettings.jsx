@@ -367,7 +367,7 @@ export default function PlatformPulseSettings() {
                 <p style={{ margin: 0, fontWeight: 600 }}>No During checkpoints yet</p>
                 <p className="muted" style={{ margin: '0.35rem 0 0' }}>
                   Create one whenever you want a fresh mid-engagement read on how the rollout is landing — for
-                  example partway through a change programme, after a major milestone, or before a go/no-go
+                  example partway through a change program, after a major milestone, or before a go/no-go
                   decision. Each new checkpoint opens a clean During session for both staff and managers (closing
                   any previous one) and consumes one assessment against this client&rsquo;s licence, so only create
                   one when you&rsquo;re ready to invite recipients to it.

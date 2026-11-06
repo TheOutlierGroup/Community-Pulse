@@ -101,7 +101,7 @@ const signals = {
   chain: 'Chain signal text.',
   teams: 'Team breakdown signal text.',
   keyFindings: ['Finding one', 'Finding two'],
-  nextStepsOrder: ['Manager Enablement Programme', 'Mid-Change Assessment'],
+  nextStepsOrder: ['Manager Enablement Program', 'Mid-Change Assessment'],
 };
 
 test('buildReportDocx returns non-empty DOCX buffer for complete data', async () => {
@@ -230,12 +230,12 @@ test('buildReportDocx omits a logo it cannot identify instead of corrupting the 
 });
 
 // RED-070: every report called itself "the <stage> baseline ... ahead of
-// programme launch", so a Mid-Change report described itself as pre-launch.
+// program launch", so a Mid-Change report described itself as pre-launch.
 test('stage framing describes each stage as itself', () => {
-  assert.match(stageFramingSentence('pre'), /pre-change baseline .* ahead of programme launch/);
+  assert.match(stageFramingSentence('pre'), /pre-change baseline .* ahead of program launch/);
   for (const stage of ['mid', 'post']) {
     const sentence = stageFramingSentence(stage);
-    assert.doesNotMatch(sentence, /baseline|ahead of programme launch/, stage);
+    assert.doesNotMatch(sentence, /baseline|ahead of program launch/, stage);
   }
   assert.match(stageFramingSentence('mid'), /mid-change check-in/);
   assert.equal(stageActionWindow('pre'), 'before launch');

@@ -15,28 +15,6 @@ export function normalizeReportStage(raw) {
   return null;
 }
 
-export function sanitizeContext(context = {}) {
-  const source = context && typeof context === 'object' ? context : {};
-  const trim = (value, max) => {
-    const out = String(value || '').trim();
-    if (!out) return null;
-    return out.slice(0, max);
-  };
-  const changeType = (() => {
-    const raw = String(source.change_type || '').trim();
-    if (!raw) return null;
-    const allowed = new Set(['Technology', 'Restructure', 'Culture', 'Process', 'M&A', 'Other']);
-    return allowed.has(raw) ? raw : 'Other';
-  })();
-  return {
-    programme_name: trim(source.programme_name, 120),
-    industry: trim(source.industry, 120),
-    change_type: changeType,
-    programme_timeline: trim(source.programme_timeline, 200),
-    consultant_notes: trim(source.consultant_notes, 500),
-  };
-}
-
 export function validateReportRequest(body = {}) {
   const stage = normalizeReportStage(body.stage);
   if (!stage) return { ok: false, error: 'STAGE_INVALID', message: 'stage must be pre, mid, or post' };
@@ -64,7 +42,6 @@ export function validateReportRequest(body = {}) {
       format,
       dateFrom,
       dateTo,
-      context: sanitizeContext(body.context || {}),
       orgSlug: String(body.org_slug || '').trim() || null,
       orgId: String(body.org_id || '').trim() || null,
     },

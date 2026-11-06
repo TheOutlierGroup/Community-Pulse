@@ -26,8 +26,8 @@ test('insert-text placeholders are removed, and a paragraph left empty is droppe
 });
 
 test('insert-text placeholder inside a sentence is removed without dropping the sentence', () => {
-  const out = normalizeLegacyTemplatePlaceholders('<p>This programme <INSERT TEXT> matters.</p>');
-  assert.equal(out, '<p>This programme matters.</p>');
+  const out = normalizeLegacyTemplatePlaceholders('<p>This program <INSERT TEXT> matters.</p>');
+  assert.equal(out, '<p>This program matters.</p>');
 });
 
 test('hasLegacyTemplatePlaceholders detects both kinds and is repeatable', () => {

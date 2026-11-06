@@ -1022,18 +1022,18 @@ function teamSuppressionNote(reportData) {
 
 /**
  * RED-070: the Executive Summary described every report as "the <stage>
- * baseline ... ahead of programme launch", so a Mid-Change report called
+ * baseline ... ahead of program launch", so a Mid-Change report called
  * itself a pre-launch baseline. Each stage now describes itself.
  */
 export function stageFramingSentence(stage) {
   const notAVerdict = "not as a verdict on the organisation's capability.";
   if (stage === 'mid') {
-    return `The findings below reflect a mid-change check-in taken while the programme is under way, and should be read as diagnostic intelligence to guide the remainder of delivery – ${notAVerdict}`;
+    return `The findings below reflect a mid-change check-in taken while the program is under way, and should be read as diagnostic intelligence to guide the remainder of delivery – ${notAVerdict}`;
   }
   if (stage === 'post') {
-    return `The findings below reflect the post-change position once the programme has been delivered, and should be read as diagnostic intelligence for embedding and sustaining the change – ${notAVerdict}`;
+    return `The findings below reflect the post-change position once the program has been delivered, and should be read as diagnostic intelligence for embedding and sustaining the change – ${notAVerdict}`;
   }
-  return `The findings below reflect the pre-change baseline and should be read as diagnostic intelligence ahead of programme launch – ${notAVerdict}`;
+  return `The findings below reflect the pre-change baseline and should be read as diagnostic intelligence ahead of program launch – ${notAVerdict}`;
 }
 
 export function stageActionWindow(stage) {
@@ -1247,7 +1247,6 @@ function brandPreparedByParagraph(brand, coverColor) {
 export async function buildReportDocx({
   reportData: rawReportData,
   signals: rawSignals,
-  context = {},
   brand = null,
   defaultLogoBuffer = null,
   companyLogoBuffer = null,
@@ -1442,10 +1441,6 @@ export async function buildReportDocx({
           metricRow('Managers', `${reportData.totals.manager_count} (${reportData.totals.manager_pct}% of total)`),
           metricRow('Teams in Scope', reportData.totals.teams_in_scope),
           metricRow('Hierarchy Levels', reportData.org.hierarchy_levels || 'Not available'),
-          ...(context.programme_name ? [metricRow('Programme', context.programme_name)] : []),
-          ...(context.industry ? [metricRow('Industry / Sector', context.industry)] : []),
-          ...(context.change_type ? [metricRow('Change Type', context.change_type)] : []),
-          ...(context.programme_timeline ? [metricRow('Programme Timeline', context.programme_timeline)] : []),
           spacer(600),
           new Paragraph({
             children: [new TextRun({ text: `Prepared by ${providerName}`, font: FONT.heading, size: 22, bold: true, color: COLOUR.text })],
@@ -1666,7 +1661,7 @@ export async function buildReportDocx({
                   }),
                   new Paragraph({
                     alignment: AlignmentType.CENTER,
-                    children: [new TextRun({ text: `Contact ${providerName} to discuss how we can support your programme.`, font: FONT.body, size: 20, color: COLOUR.white })],
+                    children: [new TextRun({ text: `Contact ${providerName} to discuss how we can support your program.`, font: FONT.body, size: 20, color: COLOUR.white })],
                     spacing: { after: 60 },
                   }),
                   ...(reportContactLine ? [new Paragraph({

@@ -41,7 +41,7 @@ test('generateReportSignals returns deterministic fallback copy without Anthropi
   const prevKey = process.env.ANTHROPIC_API_KEY;
   process.env.ANTHROPIC_API_KEY = '';
   try {
-    const out = await generateReportSignals(buildReportData(), { programme_name: 'Phoenix' });
+    const out = await generateReportSignals(buildReportData(), { program_name: 'Phoenix' });
     assert.equal(typeof out.executive, 'string');
     assert.equal(typeof out.adoption, 'string');
     assert.equal(typeof out.sponsorship, 'string');
@@ -140,7 +140,7 @@ test('RED-070: AI text is sanitised and the prompts carry the stage and language
       assert.match(body.system, /no markdown/);
       const data = body.messages[0].content;
       assert.match(data, /"stage": "mid"/);
-      assert.match(data, /Mid-Change: a check-in taken while the programme is already under way/);
+      assert.match(data, /Mid-Change: a check-in taken while the program is already under way/);
       assert.doesNotMatch(data.split('DATA:')[0], /launch implication|launch timing|cleared for launch/i);
     }
     const executiveRequest = requests.find((body) => /executive summary/i.test(body.system));

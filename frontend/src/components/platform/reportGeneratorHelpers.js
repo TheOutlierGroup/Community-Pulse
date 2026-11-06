@@ -1,31 +1,28 @@
-export function buildReportGeneratePayload({
-  organization,
-  stage,
-  format,
-  dateFrom,
-  dateTo,
-  programmeName,
-  industry,
-  changeType,
-  programmeTimeline,
-  consultantNotes,
-}) {
+export const REPORT_STAGE_LABELS = {
+  pre: 'Pre-Change',
+  mid: 'Mid-Change',
+  post: 'Post-Change',
+};
+
+export function buildReportGeneratePayload({ organization, stage, format, dateFrom, dateTo }) {
   const payload = {
     org_slug: organization?.slug || null,
     org_id: organization?.id || null,
     stage,
     format,
-    context: {
-      programme_name: programmeName,
-      industry,
-      change_type: changeType || null,
-      programme_timeline: programmeTimeline,
-      consultant_notes: consultantNotes,
-    },
   };
   if (dateFrom) payload.date_from = new Date(`${dateFrom}T00:00:00.000Z`).toISOString();
   if (dateTo) payload.date_to = new Date(`${dateTo}T23:59:59.999Z`).toISOString();
   return payload;
+}
+
+/** "as at" date for the report list, DD/MM/YYYY in the viewer's local time. */
+export function formatReportAsAtDate(value, now = new Date()) {
+  const parsed = value ? new Date(value) : now;
+  const dt = Number.isNaN(parsed.getTime()) ? now : parsed;
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${dt.getFullYear()}`;
 }
 
 export function buildReportDownloadFilename({ organization, stage, format }) {
