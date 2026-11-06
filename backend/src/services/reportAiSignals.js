@@ -5,11 +5,11 @@ const FALLBACK = {
   executive:
     'Review the score cards and quadrant classification above for the primary strategic signal. Consult your Outlier Group adviser for a tailored interpretation of these results.',
   adoption:
-    'Review the dimension heatmap above to identify the specific Adoption factors requiring attention before programme launch.',
+    'Review the dimension heatmap above to identify the specific Adoption factors requiring attention before program launch.',
   sponsorship:
     'The dimension breakdown above identifies which aspects of senior sponsorship are most in need of intervention.',
   managerLoad:
-    'The load distribution indicates where manager support is required before programme launch.',
+    'The load distribution indicates where manager support is required before program launch.',
   chain:
     'The chain matrix and cross-analysis identify where in the sponsorship architecture intervention is most urgent.',
   teams:
@@ -39,7 +39,7 @@ function teamsFallbackText(reportData) {
 // Readiness and Sponsorship Credibility, never a "pulse"; and the text is
 // placed into a Word document as plain runs, so any markdown shows as
 // literal asterisks or hashes.
-const HOUSE_STYLE_RULES = `- Write in Australian English (e.g. "organisation", "programme", "recognise").
+const HOUSE_STYLE_RULES = `- Write in Australian English (e.g. "organisation", "program", "recognise").
 - Never use an em dash (—). Use a comma, colon, or a new sentence instead.
 - Never use the word "pulse" in any form (not "pulse check", "pulse survey" or "Sponsorship Pulse"). Call the measures Adoption Readiness and Sponsorship Credibility, and a repeat assessment a "check-in" or "follow-up assessment".
 - Describe responses as confidential. Never call them anonymous or refer to anonymity.
@@ -47,9 +47,9 @@ const HOUSE_STYLE_RULES = `- Write in Australian English (e.g. "organisation", "
 - The DATA includes "stage" and "stage_context". Describe the findings as that stage only. A Mid-Change or Post-Change assessment is never a baseline and never "ahead of launch".`;
 
 const STAGE_CONTEXT = {
-  pre: 'Pre-Change: the baseline taken before the programme launches. The decision it informs is whether to launch now.',
-  mid: 'Mid-Change: a check-in taken while the programme is already under way. It is not a baseline and the programme has already launched. The decision it informs is whether delivery can continue at the current pace or needs to be adjusted.',
-  post: 'Post-Change: taken after the programme has been delivered. The decision it informs is what is needed to embed and sustain the change.',
+  pre: 'Pre-Change: the baseline taken before the program launches. The decision it informs is whether to launch now.',
+  mid: 'Mid-Change: a check-in taken while the program is already under way. It is not a baseline and the program has already launched. The decision it informs is whether delivery can continue at the current pace or needs to be adjusted.',
+  post: 'Post-Change: taken after the program has been delivered. The decision it informs is what is needed to embed and sustain the change.',
 };
 
 function stageContextFor(stage) {
@@ -191,7 +191,7 @@ function nextStepsOrderFromData(reportData) {
   return order;
 }
 
-export async function generateReportSignals(reportData, context = {}) {
+export async function generateReportSignals(reportData) {
   const apiKey = String(process.env.ANTHROPIC_API_KEY || '').trim();
   const teamsFallback = teamsFallbackText(reportData);
   if (!apiKey) {
@@ -218,7 +218,6 @@ export async function generateReportSignals(reportData, context = {}) {
     teams: reportData.teams,
     alerts: reportData.alerts.map((alert) => alert.title),
     next_steps_priority_order: nextStepsOrder,
-    context,
   };
 
   const calls = [

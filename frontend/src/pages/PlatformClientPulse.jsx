@@ -3,7 +3,7 @@ import { useLocation, useOutletContext } from 'react-router-dom';
 import api from '../services/api.js';
 import { normalizeServices } from './platformClientUtils.js';
 import { normalizePulseHash, resolvePulseFocusedSection } from './pulseNavigationRules.js';
-import ReportGeneratorModal from '../components/platform/ReportGeneratorModal.jsx';
+import ReportDownloads from '../components/platform/ReportDownloads.jsx';
 import PulseTrendAnalysisSection from '../components/platform/PulseTrendAnalysisSection.jsx';
 import {
   buildReportDownloadFilename,
@@ -701,7 +701,6 @@ export default function PlatformClientPulse() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [groupInviteMap, setGroupInviteMap] = useState({});
-  const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(true);
   const [reportsError, setReportsError] = useState('');
@@ -736,6 +735,17 @@ export default function PlatformClientPulse() {
   const showTrendSection = pulseFocusedSection === 'trend-analysis';
   const showTeamLevelSection = pulseFocusedSection === 'team-level-view';
   const showReportsSection = pulseFocusedSection === 'reports';
+  // Stages not started yet (no During checkpoint, Post not opened) are left
+  // out of the available reports list entirely.
+  const reportLockedStages = useMemo(
+    () => [
+      ...((Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : []).some((row) => row?.phase === 'during')
+        ? []
+        : ['mid']),
+      ...(pulsePostTriggered ? [] : ['post']),
+    ],
+    [pulseTimepointOptions, pulsePostTriggered]
+  );
   const kpis = dashboard?.kpis || {};
   const scoreSemantics = dashboard?.scoreSemantics || {};
   // False when the current scope (org-wide, or narrowed by the manager
@@ -1205,7 +1215,7 @@ export default function PlatformClientPulse() {
   const quadrantSignalText = String(
     quadrantSignal.text
     || quadrantSignal.fallback
-    || 'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this programme can proceed with confidence.'
+    || 'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this program can proceed with confidence.'
   ).trim();
   const quadrantBannerVariant = (() => {
     const fromBackend = String(quadrantSignal.bannerVariant || '').trim().toLowerCase();
@@ -2412,12 +2422,13 @@ export default function PlatformClientPulse() {
 
       {showReportsSection ? (
         <section className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-            <h3 style={{ margin: 0 }}>Past Reports</h3>
-            <button type="button" className="btn btn-primary" onClick={() => setReportModalOpen(true)}>
-              Generate Report
-            </button>
-          </div>
+          <h3 style={{ margin: '0 0 0.75rem' }}>Available Reports</h3>
+          <ReportDownloads
+            organization={org}
+            lockedStages={reportLockedStages}
+            onGenerated={loadReports}
+          />
+          <h3 style={{ margin: '1.75rem 0 0' }}>Past Reports</h3>
           {reportsError ? <p className="error" style={{ marginTop: '1rem' }}>{reportsError}</p> : null}
           {reportsLoading ? <p className="muted" style={{ marginTop: '1rem' }}>Loading reports...</p> : null}
           {!reportsLoading && reports.length === 0 ? (
@@ -2476,21 +2487,6 @@ export default function PlatformClientPulse() {
           ) : null}
         </section>
       ) : null}
-
-      <ReportGeneratorModal
-        open={reportModalOpen}
-        onClose={() => {
-          setReportModalOpen(false);
-          loadReports();
-        }}
-        organization={org}
-        lockedStages={[
-          ...((Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : []).some((row) => row?.phase === 'during')
-            ? []
-            : ['mid']),
-          ...(pulsePostTriggered ? [] : ['post']),
-        ]}
-      />
 
     </div>
   );

@@ -397,9 +397,9 @@ const EMPLOYEE_STAGE_TEXT = {
   post: {
     Q1: 'During this change, I was given enough support to genuinely perform well in the new way, not just go through the motions.',
     Q2: 'Throughout this change, I felt I had enough capacity (time, energy and headspace) to properly learn and adapt.',
-    Q3: 'The changes introduced through this programme have stuck; we have not drifted back to how things were before.',
+    Q3: 'The changes introduced through this program have stuck; we have not drifted back to how things were before.',
     Q4: 'This change was delivered in a way that felt organised and manageable throughout.',
-    Q5: 'The pace and volume of change during this programme felt manageable; I was not overwhelmed by how much was shifting at once.',
+    Q5: 'The pace and volume of change during this program felt manageable; I was not overwhelmed by how much was shifting at once.',
     Q6: 'My team maintained enough bandwidth throughout this change to absorb it without other priorities seriously suffering.',
     Q7: 'My direct manager actively helped me work through this change; they engaged with what it meant for me, not just passed on information.',
     Q8: 'When I raised concerns during this change, I felt genuinely heard; not just managed.',
@@ -425,7 +425,7 @@ const MANAGER_STAGE_TEXT = {
     MQ7: 'I feel I have enough authority and autonomy to make the decisions needed to support my team through this change; I am not constantly waiting for approval.',
     MQ8: 'When I raise concerns about this change with senior leadership, I feel they genuinely engage with my input rather than just proceeding regardless.',
     MQ9: 'Senior leadership in this organisation are visibly modelling this change, not just advocating for it.',
-    MQ10: 'Now that this programme has hit difficulty, senior leaders are remaining visible and engaged; they are not stepping back and leaving managers to manage the fallout.',
+    MQ10: 'Now that this program has hit difficulty, senior leaders are remaining visible and engaged; they are not stepping back and leaving managers to manage the fallout.',
     MQ11: 'The rationale for this change has been clearly explained to me; I understand the why well enough to explain it convincingly to my team.',
     MQ12: 'There is alignment among senior leaders about this change; I am not receiving conflicting messages or priorities from different parts of leadership.',
     MQ13: 'I am being given enough flexibility to adapt how this change is implemented for my team’s specific context; it is not entirely prescribed from above.',
@@ -443,7 +443,7 @@ const MANAGER_STAGE_TEXT = {
     MQ7: 'I felt I had enough authority and autonomy to make the decisions needed to support my team through this change; I was not constantly waiting for approval.',
     MQ8: 'When I raised concerns about this change with senior leadership, I felt they genuinely engaged with my input rather than just proceeding regardless.',
     MQ9: 'Senior leadership visibly modelled this change throughout; they did not just advocate for it.',
-    MQ10: 'When this programme hit difficulty, senior leaders remained visible and engaged; they did not step back and leave managers to manage the fallout.',
+    MQ10: 'When this program hit difficulty, senior leaders remained visible and engaged; they did not step back and leave managers to manage the fallout.',
     MQ11: 'The rationale for this change was clearly explained to me; I understood the why well enough to explain it convincingly to my team.',
     MQ12: 'There was alignment among senior leaders about this change; I did not receive conflicting messages or priorities from different parts of leadership.',
     MQ13: 'I was given enough flexibility to adapt how this change was implemented for my team’s specific context; it was not entirely prescribed from above.',
@@ -476,13 +476,13 @@ const STAGE_COPY = {
   },
   post: {
     employeeIntro:
-      'This change programme has now concluded. We want to understand how it went for you: what worked, what was hard, and what the experience has left you with.',
+      'This change program has now concluded. We want to understand how it went for you: what worked, what was hard, and what the experience has left you with.',
     managerIntro:
-      'This change programme has now concluded. We want to understand how it went from your perspective as a manager and what should be different next time.',
+      'This change program has now concluded. We want to understand how it went from your perspective as a manager and what should be different next time.',
     transition:
       'You have completed the first section. The next set of questions moves from your experience of adopting this change to your reflections on leadership and sponsorship around it.',
     reflection:
-      'Thank you for completing the post-change survey. Your reflections will help the organisation learn from this programme and prepare better for the next one.',
+      'Thank you for completing the post-change survey. Your reflections will help the organisation learn from this program and prepare better for the next one.',
   },
 };
 

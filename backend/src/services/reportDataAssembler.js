@@ -469,3 +469,41 @@ export function createAssembleReportData({
 }
 
 export const assembleReportData = createAssembleReportData();
+
+/**
+ * Completed responses per report stage, counted exactly the way
+ * assembleReportData selects them (same session matching, no date range),
+ * so the report panel can offer only the stages that would actually
+ * generate instead of letting a request fail with INSUFFICIENT_DATA.
+ */
+export function createCountReportResponsesByStage({
+  pulseSessionModel = PulseSession,
+  listSessionResponsesFn = listSessionResponses,
+  reportStageMap = REPORT_STAGE_MAP,
+} = {}) {
+  return async function countReportResponsesByStage(organization) {
+    const sessions = await pulseSessionModel.listSessionsForOrg(organization.id);
+    const completedBySession = new Map();
+    async function completedFor(session) {
+      if (!completedBySession.has(session.id)) {
+        const { rows = [] } = (await listSessionResponsesFn(session.id)) || {};
+        completedBySession.set(
+          session.id,
+          rows.filter((row) => row.completed_at && rowDateMs(row) != null).length
+        );
+      }
+      return completedBySession.get(session.id);
+    }
+    const counts = {};
+    for (const [stage, stagePhase] of Object.entries(reportStageMap)) {
+      let total = 0;
+      for (const session of sessions.filter((s) => sessionMatchesStage(s, stagePhase))) {
+        total += await completedFor(session);
+      }
+      counts[stage] = total;
+    }
+    return counts;
+  };
+}
+
+export const countReportResponsesByStage = createCountReportResponsesByStage();

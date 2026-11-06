@@ -546,7 +546,7 @@ test('quadrant explanation prompt is spec-locked', () => {
   assert.ok(SCORE_CARD_SIGNAL_PROMPTS.quadrant.user.includes('{{largest_deficit_quadrant}}'));
   assert.equal(
     SCORE_CARD_SIGNAL_PROMPTS.quadrant.fallback,
-    'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this programme can proceed with confidence.'
+    'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this program can proceed with confidence.'
   );
 });
 

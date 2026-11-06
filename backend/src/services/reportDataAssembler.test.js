@@ -311,3 +311,29 @@ test('assembleReportData applies an org\'s own sponsorshipAnalysisConfig overrid
   assert.equal(bandCount(overriddenOut, 'Sustainable'), 0);
   assert.equal(bandCount(overriddenOut, 'Stretched'), 5);
 });
+
+test('countReportResponsesByStage counts completed responses per stage like report assembly', async () => {
+  const { createCountReportResponsesByStage } = await import('./reportDataAssembler.js');
+  const responses = {
+    'pre-staff': [{ completed_at: '2026-05-01T00:00:00Z' }, { completed_at: null }],
+    'pre-mgr': [{ completed_at: '2026-05-02T00:00:00Z' }],
+    'during-1': [{ completed_at: '2026-06-01T00:00:00Z' }],
+    'during-2': [{ completed_at: '2026-07-01T00:00:00Z' }, { completed_at: 'not-a-date' }],
+    post: [],
+  };
+  const count = createCountReportResponsesByStage({
+    pulseSessionModel: {
+      async listSessionsForOrg() {
+        return [
+          { id: 'pre-staff', session_purpose: 'pre_project' },
+          { id: 'pre-mgr', session_purpose: 'pre_project' },
+          { id: 'during-1', session_purpose: 'during_project' },
+          { id: 'during-2', session_purpose: 'during_project' },
+          { id: 'post', session_purpose: 'completed_project' },
+        ];
+      },
+    },
+    listSessionResponsesFn: async (id) => ({ rows: responses[id] }),
+  });
+  assert.deepEqual(await count({ id: 'org-1' }), { pre: 2, mid: 2, post: 0 });
+});

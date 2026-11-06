@@ -175,7 +175,6 @@ export async function generateReport({
   dateFrom = null,
   dateTo = null,
   format,
-  context = {},
 }) {
   // Validate and assemble report inputs before creating a database row.
   // This prevents failed validation (e.g. insufficient responses) from creating ghost report entries.
@@ -201,7 +200,7 @@ export async function generateReport({
   });
 
   try {
-    const signals = await generateReportSignals(reportData, context);
+    const signals = await generateReportSignals(reportData);
     const brand = await resolveReportBrand(organization);
     const [defaultLogoBuffer, companyLogoBuffer] = await Promise.all([
       loadDefaultReportLogoBuffer(),
@@ -210,7 +209,6 @@ export async function generateReport({
     const docxBuffer = await buildReportDocx({
       reportData,
       signals,
-      context,
       brand,
       defaultLogoBuffer,
       companyLogoBuffer,

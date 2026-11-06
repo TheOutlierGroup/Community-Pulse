@@ -348,3 +348,34 @@ test('GET /api/reports/download/:id serves a valid PDF report and skips validati
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('GET /api/reports/availability reports per-stage counts against the minimum', async () => {
+  const router = createReportsRoutes({
+    authMiddleware: auth,
+    generatedReportModel: {},
+    resolveReportOrganizationForUserFn: async () => ({ ok: true, organization: { id: 'org-1' } }),
+    countReportResponsesByStageFn: async () => ({ pre: 14, mid: 3 }),
+    reportMinResponses: 10,
+  });
+  const app = appWithRouter(router);
+  const res = await request(app, { path: '/api/reports/availability?org_id=org-1' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.min_responses, 10);
+  assert.ok(!Number.isNaN(new Date(res.body.as_at).getTime()));
+  assert.deepEqual(res.body.stages, [
+    { stage: 'pre', response_count: 14, available: true },
+    { stage: 'mid', response_count: 3, available: false },
+    { stage: 'post', response_count: 0, available: false },
+  ]);
+});
+
+test('GET /api/reports/availability requires org selector', async () => {
+  const router = createReportsRoutes({
+    authMiddleware: auth,
+    generatedReportModel: {},
+    resolveReportOrganizationForUserFn: async () => ({ ok: true, organization: { id: 'org-1' } }),
+    countReportResponsesByStageFn: async () => ({}),
+  });
+  const res = await request(appWithRouter(router), { path: '/api/reports/availability' });
+  assert.equal(res.status, 400);
+});

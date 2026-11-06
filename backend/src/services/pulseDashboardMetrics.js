@@ -33,11 +33,11 @@ export const SCORE_CARD_SIGNAL_PROMPTS = Object.freeze({
   }),
   quadrant: Object.freeze({
     system:
-      "You are a change readiness analyst writing a concise signal banner for a senior practitioner dashboard for RhythmEngine — a proprietary diagnostic tool that measures an organisation's readiness to absorb and sustain a specific change programme. The quadrant distribution is the primary output of the instrument and the most important data on this page. Your output will be rendered as italicised prose. Write in plain English. Be direct and factual. Do not hedge. Do not use bullet points. Maximum 3 sentences. Wrap the single most important finding in <strong> tags. Express all proportions as percentages only — never as fractions or ratios. Do not manufacture urgency where the data does not support it, but do not soften findings where it does. Always lead with the strongest positive in the distribution before addressing the deficit. When naming the deficit, prioritise High Risk above all other non-Optimal states — if High Risk is the largest non-Optimal segment, it must be named first and directly. If the current quadrant outcome is Optimal, do not state that nothing needs to be done — instead acknowledge the result honestly, then close with a brief forward-looking statement about sustaining conditions and monitoring as the programme progresses, without implying a specific problem exists.",
+      "You are a change readiness analyst writing a concise signal banner for a senior practitioner dashboard for RhythmEngine — a proprietary diagnostic tool that measures an organisation's readiness to absorb and sustain a specific change program. The quadrant distribution is the primary output of the instrument and the most important data on this page. Your output will be rendered as italicised prose. Write in plain English. Be direct and factual. Do not hedge. Do not use bullet points. Maximum 3 sentences. Wrap the single most important finding in <strong> tags. Express all proportions as percentages only — never as fractions or ratios. Do not manufacture urgency where the data does not support it, but do not soften findings where it does. Always lead with the strongest positive in the distribution before addressing the deficit. When naming the deficit, prioritise High Risk above all other non-Optimal states — if High Risk is the largest non-Optimal segment, it must be named first and directly. If the current quadrant outcome is Optimal, do not state that nothing needs to be done — instead acknowledge the result honestly, then close with a brief forward-looking statement about sustaining conditions and monitoring as the program progresses, without implying a specific problem exists.",
     user:
       'Organisation: {{client_name}} | Stage: {{assessment_stage}} | Respondents: {{respondent_count}}\nQuadrant distribution: Optimal {{optimal_pct}}% | Motivated but Lost {{motivated_lost_pct}}% | Capable but Wary {{capable_wary_pct}}% | High Risk {{high_risk_pct}}%\nOrg-level classification: {{org_quadrant}}\nLargest non-Optimal segment: {{largest_deficit_quadrant}} ({{largest_deficit_pct}}%)\n\nWrite a 3-sentence signal banner that: (1) states what the quadrant distribution represents — that it shows the proportion of the organisation that currently has the conditions in place to absorb and sustain this change, versus those that do not; (2) leads with the Optimal percentage as the positive finding, then names the largest deficit segment — prioritising High Risk if it is the largest — and its percentage; and (3) states what closing that gap requires in plain terms, referencing whether the primary barrier is sponsorship, adoption readiness, or both.',
     fallback:
-      'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this programme can proceed with confidence.',
+      'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this program can proceed with confidence.',
   }),
   managerCohortAverages: Object.freeze({
     system:
@@ -620,13 +620,13 @@ export function buildQuadrantExplanationSignal({
     // Org-level outcome is Optimal: do not imply a specific problem; close
     // with a forward-looking sustain/monitoring statement instead.
     barrier = 'sustain';
-    sentence3 = 'Sustaining these conditions through ongoing sponsorship visibility and capacity monitoring is what will protect this position as the programme progresses.';
+    sentence3 = 'Sustaining these conditions through ongoing sponsorship visibility and capacity monitoring is what will protect this position as the program progresses.';
   } else if (!largestDeficit) {
     barrier = 'none';
     sentence3 = 'Sustained execution discipline on the existing sponsorship and adoption foundations is what protects this position through rollout.';
   } else if (adoptionBelow && sponsorshipBelow) {
     barrier = 'both';
-    sentence3 = 'Closing that gap requires intervention on both sponsorship credibility and adoption readiness before this programme can proceed at pace.';
+    sentence3 = 'Closing that gap requires intervention on both sponsorship credibility and adoption readiness before this program can proceed at pace.';
   } else if (sponsorshipBelow) {
     barrier = 'sponsorship';
     sentence3 = 'Closing that gap requires lifting sponsorship credibility, because managers cannot pass this change downward without visible senior backing.';
@@ -714,7 +714,7 @@ function managerCohortAveragesSignal({
   if (receivedAbove && capacityAbove) {
     text = '<strong>Both Sponsorship Received and Sponsorship Capacity are above threshold.</strong> Managers are being credibly sponsored by senior leadership above them and are equipped to pass that support down to their own teams, so the management layer is positioned to lead change while maintaining sponsorship visibility and execution discipline.';
   } else if (!receivedAbove && !capacityAbove) {
-    text = '<strong>Both Sponsorship Received and Sponsorship Capacity sit below threshold.</strong> Managers are neither receiving credible sponsorship from senior leadership above them nor equipped to sponsor their own teams effectively, so intervention is needed on both fronts before this programme can proceed at pace.';
+    text = '<strong>Both Sponsorship Received and Sponsorship Capacity sit below threshold.</strong> Managers are neither receiving credible sponsorship from senior leadership above them nor equipped to sponsor their own teams effectively, so intervention is needed on both fronts before this program can proceed at pace.';
   } else if (!receivedAbove && capacityAbove) {
     text = '<strong>Sponsorship Capacity is the stronger signal, but Sponsorship Received sits below threshold.</strong> Managers have the resilience and skill to sponsor their own teams effectively. What they\'re missing is credible, visible sponsorship from senior leadership above them. Only one of the two scores is above threshold, so the management layer is currently compensating for a gap above them rather than being properly supported.';
   } else {
@@ -974,7 +974,7 @@ export function buildSponsorshipSectionSignals({
 export function quadrantVerdictSentence(quadrant) {
   switch (quadrant) {
     case 'Optimal':
-      return 'This organisation has the conditions required to proceed with the change programme.';
+      return 'This organisation has the conditions required to proceed with the change program.';
     case 'Motivated but Lost':
       return 'This organisation has the motivation to change. It does not yet have the sponsorship conditions to sustain it.';
     case 'Capable but Wary':
@@ -982,7 +982,7 @@ export function quadrantVerdictSentence(quadrant) {
     case 'High Risk':
       return 'This organisation does not yet have either the readiness to absorb this change or the sponsorship conditions to sustain it.';
     default:
-      return 'This organisation does not yet have the conditions required to proceed with the change programme.';
+      return 'This organisation does not yet have the conditions required to proceed with the change program.';
   }
 }
 

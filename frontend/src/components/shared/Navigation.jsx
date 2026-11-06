@@ -292,26 +292,6 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                           : 'Post · not opened'}
                       </option>
                     </select>
-                    {!duringOptions.length || !pulsePostTriggered ? (
-                      <p className="sidebar-pulse-timepoint__hint">
-                        {!duringOptions.length && !pulsePostTriggered
-                          ? 'During and Post'
-                          : !duringOptions.length
-                            ? 'During'
-                            : 'Post'}{' '}
-                        {user.role === 'admin' ? (
-                          <>
-                            {!duringOptions.length && !pulsePostTriggered ? 'unlock' : 'unlocks'} once started in{' '}
-                            <Link to={`/platform/clients/${platformClientOrgId}/rhythm-engine/configurations?tab=checkpoints`}>
-                              Configurations
-                            </Link>
-                            .
-                          </>
-                        ) : (
-                          <>{!duringOptions.length && !pulsePostTriggered ? 'unlock' : 'unlocks'} once an admin starts it.</>
-                        )}
-                      </p>
-                    ) : null}
                     {pulseTimepointError ? (
                       <p className="sidebar-pulse-timepoint__error">{pulseTimepointError}</p>
                     ) : null}

@@ -19,12 +19,12 @@ export const REPORT_CHAIN_STATE_STRATEGY = 'compute_on_read';
 
 export const NEXT_STEPS_STATIC_BLOCKS = {
   'Sponsorship Architecture Review': [
-    'Senior Leadership Sponsorship Diagnostic – half-day facilitated session with programme sponsors.',
-    'Sponsorship Behaviour Design – co-create visible sponsorship commitments for the programme lifecycle.',
+    'Senior Leadership Sponsorship Diagnostic – half-day facilitated session with program sponsors.',
+    'Sponsorship Behaviour Design – co-create visible sponsorship commitments for the program lifecycle.',
     // RED-070: product language, never "pulse".
     'Sponsorship Check-in – run a lightweight sponsorship check-in every 4 weeks.'
   ],
-  'Manager Enablement Programme': [
+  'Manager Enablement Program': [
     'Manager Readiness Bootcamp – targeted practical change-leadership session for manager cohort.',
     'Peer Learning Circles – monthly manager forums for live challenge-solving and safe escalation.',
     'Executive Air Cover Protocol – define manager decision rights and escalation boundaries.'
@@ -43,7 +43,7 @@ export const NEXT_STEPS_STATIC_BLOCKS = {
 
 export const NEXT_STEPS_DEFAULT_ORDER = [
   'Sponsorship Architecture Review',
-  'Manager Enablement Programme',
+  'Manager Enablement Program',
   'Change Portfolio Review',
   'Mid-Change Assessment',
 ];
