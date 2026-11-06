@@ -15,7 +15,7 @@ test('routes rhythm engine client pages to main platform dashboard', () => {
 test('routes rhythm engine subpages to main platform dashboard', () => {
   const target = sidebarBrandTargetForRoute({
     user: { organizationKind: 'platform', role: 'admin' },
-    pathname: '/platform/clients/abc123/rhythm-engine/users',
+    pathname: '/platform/clients/abc123/rhythm-engine/respondents',
     orgId: 'abc123',
   });
 

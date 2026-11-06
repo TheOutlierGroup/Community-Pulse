@@ -95,8 +95,10 @@ export default function App() {
                 {!IS_RHYTHM_ENGINE_SURFACE && <Route path="activity" element={<PlatformClientActivity />} />}
                 <Route path="rhythm-engine" element={<PlatformClientRhythmEngineShell />}>
                   <Route index element={<PlatformClientRhythmEngine />} />
-                  <Route path="users" element={<PlatformRhythmEngineInviteUsers />} />
-                  <Route path="settings" element={<PlatformRhythmEngineSettings />} />
+                  <Route path="respondents" element={<PlatformRhythmEngineInviteUsers />} />
+                  <Route path="configurations" element={<PlatformRhythmEngineSettings />} />
+                  <Route path="users" element={<Navigate to="../respondents" replace />} />
+                  <Route path="settings" element={<Navigate to="../configurations" replace />} />
                 </Route>
                 <Route path="pulse/*" element={<Navigate to="rhythm-engine" replace />} />
                 {!IS_RHYTHM_ENGINE_SURFACE && <Route path="account" element={<PlatformClientAccount />} />}

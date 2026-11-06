@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { EditorContent, useEditor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
 import { parseRecipientCsv } from '../utils/pulseInviteCsv.js';
-import { Bold, Download, Italic, Link2, List, ListOrdered, Mail, Trash2, Upload, UserPlus } from 'lucide-react';
+import BusinessLevelsModal from '../components/platform/BusinessLevelsModal.jsx';
+import { Download, Layers, Mail, Trash2, Upload, UserPlus } from 'lucide-react';
 
 /** Minimum gap between each send request to stay under typical email API rate limits (e.g. Resend ~2 rps). */
 const BULK_SEND_INTERVAL_MS = 700;
-const WELCOME_TEMPLATE_MAX_TEXT_LENGTH = 4000;
 
 function delay(ms) {
   return new Promise((resolve) => {
@@ -37,186 +34,6 @@ function formatSentAt(iso) {
   } catch {
     return iso;
   }
-}
-
-function stripHtmlToText(html) {
-  return String(html || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function defaultTemplateForAudience(audience) {
-  if (audience === 'manager') {
-    return {
-      subject: 'Rhythm Engine manager questionnaire — {{name}}',
-      bodyHtml:
-        '<p>Hi {{name}},</p><p>You have been invited to complete the manager Rhythm Engine questionnaire.</p><p style="margin: 1.2rem 0;"><a href="{{link}}" style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">Open Rhythm Engine</a></p>',
-    };
-  }
-  return {
-    subject: 'Rhythm Engine questionnaire — {{name}}',
-    bodyHtml:
-      '<p>Hi {{name}},</p><p>You have been invited to complete a short Rhythm Engine questionnaire.</p><p style="margin: 1.2rem 0;"><a href="{{link}}" style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">Open Rhythm Engine</a></p>',
-  };
-}
-
-function defaultWelcomeTemplateForAudience() {
-  return {
-    bodyHtml:
-      '<p>Welcome {{name}}!</p><p>Change can look many ways: from implementing a new payroll system to reorganising how a team collaborates, or even refining a single workflow to cut out unnecessary steps. As we move through this journey, it’s important that we hear from everyone; and as a manager, your perspective on how change is landing across your team is especially valuable.</p><p>There are no right or wrong answers – your honest perspective is what matters most.</p>',
-  };
-}
-
-function normalizeWelcomeTemplates(rawTemplates) {
-  const templates = rawTemplates && typeof rawTemplates === 'object' ? rawTemplates : {};
-  const normalizeRole = (role) => {
-    const fallback = defaultWelcomeTemplateForAudience(role);
-    const raw = templates[role] && typeof templates[role] === 'object' ? templates[role] : {};
-    const bodyHtml = String(raw.bodyHtml || '').trim();
-    const intro = String(raw.intro || '').trim();
-    const context = String(raw.context || '').trim();
-    return {
-      ...fallback,
-      ...raw,
-      bodyHtml: bodyHtml || (intro ? `<p>${intro}</p>${context ? `<p>${context}</p>` : ''}` : fallback.bodyHtml),
-    };
-  };
-  return {
-    staff: normalizeRole('staff'),
-    manager: normalizeRole('manager'),
-  };
-}
-
-function applyTemplatePlaceholders(template, replacements) {
-  let out = String(template || '');
-  const map = replacements && typeof replacements === 'object' ? replacements : {};
-  for (const [key, value] of Object.entries(map)) {
-    const tokenPattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
-    out = out.replace(tokenPattern, String(value ?? ''));
-  }
-  return out;
-}
-
-function formatDueDatePreview(value) {
-  const raw = String(value || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return '';
-  const parsed = new Date(`${raw}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-function EmailTemplateRichEditor({ value, onChange, disabled }) {
-  const editor = useEditor(
-    {
-      extensions: [
-        StarterKit.configure({
-          heading: false,
-          codeBlock: false,
-          blockquote: false,
-          horizontalRule: false,
-        }),
-        Placeholder.configure({
-          placeholder: 'Write email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders.',
-        }),
-      ],
-      content: value || '<p></p>',
-      editable: !disabled,
-      onUpdate: ({ editor: nextEditor }) => {
-        onChange(nextEditor.getHTML());
-      },
-    },
-    [disabled]
-  );
-
-  useEffect(() => {
-    if (!editor) return;
-    const next = value || '<p></p>';
-    if (next !== editor.getHTML()) {
-      editor.commands.setContent(next, false);
-    }
-  }, [editor, value]);
-
-  useEffect(() => {
-    if (!editor) return;
-    editor.setEditable(!disabled);
-  }, [editor, disabled]);
-
-  if (!editor) {
-    return <div className="task-card-modal__rte task-card-modal__rte--loading muted">Loading editor…</div>;
-  }
-
-  function setLink() {
-    const previous = editor.getAttributes('link').href;
-    const url = window.prompt('Link URL', previous || 'https://');
-    if (url === null) return;
-    const trimmed = url.trim();
-    if (!trimmed) {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
-      return;
-    }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: trimmed }).run();
-  }
-
-  return (
-    <div className={`task-card-modal__rte${disabled ? ' task-card-modal__rte--disabled' : ''}`}>
-      <div className="task-card-modal__rte-toolbar" role="toolbar" aria-label="Email template formatting">
-        <div className="task-card-modal__rte-toolbar-group">
-          <button
-            type="button"
-            className={`task-card-modal__rte-tool${editor.isActive('bold') ? ' is-active' : ''}`}
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            disabled={disabled}
-            aria-label="Bold"
-          >
-            <Bold size={16} strokeWidth={2} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className={`task-card-modal__rte-tool${editor.isActive('italic') ? ' is-active' : ''}`}
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            disabled={disabled}
-            aria-label="Italic"
-          >
-            <Italic size={16} strokeWidth={2} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className={`task-card-modal__rte-tool${editor.isActive('bulletList') ? ' is-active' : ''}`}
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            disabled={disabled}
-            aria-label="Bullet list"
-          >
-            <List size={16} strokeWidth={2} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className={`task-card-modal__rte-tool${editor.isActive('orderedList') ? ' is-active' : ''}`}
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-            disabled={disabled}
-            aria-label="Numbered list"
-          >
-            <ListOrdered size={16} strokeWidth={2} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className={`task-card-modal__rte-tool${editor.isActive('link') ? ' is-active' : ''}`}
-            onClick={setLink}
-            disabled={disabled}
-            aria-label="Insert link"
-          >
-            <Link2 size={16} strokeWidth={2} aria-hidden />
-          </button>
-        </div>
-      </div>
-      <EditorContent editor={editor} className="task-card-modal__rte-content" />
-    </div>
-  );
 }
 
 function InviteLinkSurveyStatus({ row }) {
@@ -346,7 +163,7 @@ function previousInviteTimepoint(timepoint) {
 }
 
 export default function PlatformPulseInviteUsers() {
-  const { orgId, org, clientLogoUrl, pulseTimepoint, pulseDuringSessionId, pulseTimepointOptions } = useOutletContext();
+  const { orgId, org, refreshOrg, pulseTimepoint, pulseDuringSessionId, pulseTimepointOptions } = useOutletContext();
   const { user } = useAuth();
   const { showToast } = useToast();
   const fileInputRef = useRef(null);
@@ -376,27 +193,7 @@ export default function PlatformPulseInviteUsers() {
   const [addGroupValues, setAddGroupValues] = useState([]);
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState('');
-  const [templateModalAudience, setTemplateModalAudience] = useState(null);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [templateSaving, setTemplateSaving] = useState(false);
-  const [templateResetting, setTemplateResetting] = useState(false);
-  const [templateTestSending, setTemplateTestSending] = useState(false);
-  const [templateError, setTemplateError] = useState('');
-  const [emailTemplates, setEmailTemplates] = useState({
-    staff: defaultTemplateForAudience('staff'),
-    manager: defaultTemplateForAudience('manager'),
-  });
-  const [editingTemplateSubject, setEditingTemplateSubject] = useState('');
-  const [editingTemplateBodyHtml, setEditingTemplateBodyHtml] = useState('<p></p>');
-  const [templateEditorMode, setTemplateEditorMode] = useState('edit');
-  const [welcomeTemplateModalAudience, setWelcomeTemplateModalAudience] = useState(null);
-  const [welcomeTemplatesLoading, setWelcomeTemplatesLoading] = useState(false);
-  const [welcomeTemplateSaving, setWelcomeTemplateSaving] = useState(false);
-  const [welcomeTemplateResetting, setWelcomeTemplateResetting] = useState(false);
-  const [welcomeTemplateError, setWelcomeTemplateError] = useState('');
-  const [welcomeTemplates, setWelcomeTemplates] = useState(() => normalizeWelcomeTemplates(null));
-  const [editingWelcomeTemplateBodyHtml, setEditingWelcomeTemplateBodyHtml] = useState('<p></p>');
-  const [welcomeTemplateEditorMode, setWelcomeTemplateEditorMode] = useState('edit');
+  const [businessLevelsOpen, setBusinessLevelsOpen] = useState(false);
   const [testDataOpen, setTestDataOpen] = useState(false);
   const [testDataBusy, setTestDataBusy] = useState(false);
   const [testDataError, setTestDataError] = useState('');
@@ -523,69 +320,9 @@ export default function PlatformPulseInviteUsers() {
     }
   }, [inviteRequestParams, missingDuringSession, orgId]);
 
-  const loadTemplates = useCallback(async () => {
-    setTemplatesLoading(true);
-    if (missingDuringSession) {
-      setEmailTemplates({
-        staff: defaultTemplateForAudience('staff'),
-        manager: defaultTemplateForAudience('manager'),
-      });
-      setTemplatesLoading(false);
-      return;
-    }
-    try {
-      const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates`, {
-        params: inviteRequestParams,
-      });
-      const templates = data?.templates || {};
-      setEmailTemplates({
-        staff: {
-          ...defaultTemplateForAudience('staff'),
-          ...(templates.staff || {}),
-        },
-        manager: {
-          ...defaultTemplateForAudience('manager'),
-          ...(templates.manager || {}),
-        },
-      });
-    } catch (err) {
-      showToast(err.response?.data?.error || 'Could not load email templates.', { variant: 'error' });
-    } finally {
-      setTemplatesLoading(false);
-    }
-  }, [inviteRequestParams, missingDuringSession, orgId, showToast]);
-
-  const loadWelcomeTemplates = useCallback(async () => {
-    setWelcomeTemplatesLoading(true);
-    if (missingDuringSession) {
-      setWelcomeTemplates(normalizeWelcomeTemplates(null));
-      setWelcomeTemplatesLoading(false);
-      return;
-    }
-    try {
-      const { data } = await api.get(
-        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/survey-start-templates`,
-        { params: inviteRequestParams }
-      );
-      setWelcomeTemplates(normalizeWelcomeTemplates(data?.templates));
-    } catch (err) {
-      showToast(err.response?.data?.error || 'Could not load welcome templates.', { variant: 'error' });
-    } finally {
-      setWelcomeTemplatesLoading(false);
-    }
-  }, [inviteRequestParams, missingDuringSession, orgId, showToast]);
-
   useEffect(() => {
     load();
   }, [load]);
-
-  useEffect(() => {
-    loadTemplates();
-  }, [loadTemplates]);
-
-  useEffect(() => {
-    loadWelcomeTemplates();
-  }, [loadWelcomeTemplates]);
 
   async function onFile(e) {
     const file = e.target.files?.[0];
@@ -629,12 +366,12 @@ export default function PlatformPulseInviteUsers() {
     fileInputRef.current?.click();
   }
 
-  // D-009: this used to only be reachable from Client Configurations, one
+  // D-009: this used to only be reachable from the client's CRM Settings, one
   // level removed from the Import CSV button it's meant to precede — moved
   // here so download-template-then-import-it is a single-page loop.
   async function downloadUserImportTemplate() {
     if (configuredGroupLabels.length === 0) {
-      showToast('Set the group levels for this client in Rhythm Engine settings before downloading the template.', {
+      showToast('Set up this client\'s business levels (Business levels button above) before downloading the template.', {
         variant: 'error',
       });
       return;
@@ -999,7 +736,7 @@ export default function PlatformPulseInviteUsers() {
         if (first?.error === 'invalid_manager_invite') message = 'Selected manager is not valid for this organization.';
         if (first?.error === 'manager_not_found') message = 'Manager reference could not be resolved.';
         if (first?.error === 'self_manager_not_allowed') message = 'A recipient cannot be their own manager.';
-        if (first?.error === 'invalid_group_levels') message = 'The team details do not match this client\'s group levels.';
+        if (first?.error === 'invalid_group_levels') message = 'The team details do not match this client\'s business levels.';
         showToast(message, { variant: 'error' });
         return;
       }
@@ -1010,228 +747,6 @@ export default function PlatformPulseInviteUsers() {
       setAddError(err.response?.data?.error || 'Could not add recipient.');
     } finally {
       setAddBusy(false);
-    }
-  }
-
-  function openTemplateModal(audience) {
-    const role = audience === 'manager' ? 'manager' : 'staff';
-    const template = emailTemplates[role] || defaultTemplateForAudience(role);
-    setTemplateModalAudience(role);
-    setTemplateError('');
-    setEditingTemplateSubject(String(template.subject || ''));
-    setEditingTemplateBodyHtml(String(template.bodyHtml || '<p></p>'));
-    setTemplateEditorMode('edit');
-  }
-
-  function closeTemplateModal() {
-    if (templateSaving || templateResetting) return;
-    setTemplateModalAudience(null);
-    setTemplateError('');
-  }
-
-  async function saveEmailTemplate(e) {
-    e.preventDefault();
-    if (!templateModalAudience) return;
-    const subject = String(editingTemplateSubject || '').trim();
-    if (!subject) {
-      setTemplateError('Subject is required.');
-      return;
-    }
-    if (subject.length > 200) {
-      setTemplateError('Subject must be 200 characters or less.');
-      return;
-    }
-    const bodyHtml = String(editingTemplateBodyHtml || '').trim();
-    if (!stripHtmlToText(bodyHtml)) {
-      setTemplateError('Body is required.');
-      return;
-    }
-
-    setTemplateSaving(true);
-    setTemplateError('');
-    try {
-      const { data } = await api.put(
-        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates`,
-        {
-          audience: templateModalAudience,
-          subject,
-          bodyHtml,
-        },
-        { params: inviteRequestParams }
-      );
-      const templates = data?.templates || {};
-      setEmailTemplates({
-        staff: {
-          ...defaultTemplateForAudience('staff'),
-          ...(templates.staff || {}),
-        },
-        manager: {
-          ...defaultTemplateForAudience('manager'),
-          ...(templates.manager || {}),
-        },
-      });
-      showToast(`${templateModalAudience === 'manager' ? 'Manager' : 'Staff'} email template saved.`, {
-        variant: 'success',
-      });
-      setTemplateModalAudience(null);
-    } catch (err) {
-      setTemplateError(err.response?.data?.error || 'Could not save email template.');
-    } finally {
-      setTemplateSaving(false);
-    }
-  }
-
-  async function sendTemplateTestEmail() {
-    if (!templateModalAudience) return;
-    const subject = String(editingTemplateSubject || '').trim();
-    if (!subject) {
-      setTemplateError('Subject is required.');
-      return;
-    }
-    if (subject.length > 200) {
-      setTemplateError('Subject must be 200 characters or less.');
-      return;
-    }
-    const bodyHtml = String(editingTemplateBodyHtml || '').trim();
-    if (!stripHtmlToText(bodyHtml)) {
-      setTemplateError('Body is required.');
-      return;
-    }
-    setTemplateError('');
-    setTemplateTestSending(true);
-    try {
-      const { data } = await api.post(
-        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates/send-test`,
-        {
-          audience: templateModalAudience,
-          subject,
-          bodyHtml,
-        },
-        { params: inviteRequestParams }
-      );
-      const sentTo = String(data?.to || user?.email || '').trim();
-      showToast(sentTo ? `Test email sent to ${sentTo}.` : 'Test email sent.', {
-        variant: 'success',
-      });
-    } catch (err) {
-      setTemplateError(apiErrorDetail(err, 'Could not send test email.'));
-    } finally {
-      setTemplateTestSending(false);
-    }
-  }
-
-  async function resetTemplateToTimepointDefault() {
-    if (!templateModalAudience) return;
-    const confirmed = window.confirm('Reset this template to the default for the current survey timepoint?');
-    if (!confirmed) return;
-    setTemplateError('');
-    setTemplateResetting(true);
-    try {
-      const { data } = await api.post(
-        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/templates/reset-default`,
-        { audience: templateModalAudience },
-        { params: inviteRequestParams }
-      );
-      const templates = data?.templates || {};
-      const nextTemplates = {
-        staff: {
-          ...defaultTemplateForAudience('staff'),
-          ...(templates.staff || {}),
-        },
-        manager: {
-          ...defaultTemplateForAudience('manager'),
-          ...(templates.manager || {}),
-        },
-      };
-      setEmailTemplates(nextTemplates);
-      const resetTemplate = nextTemplates[templateModalAudience] || defaultTemplateForAudience(templateModalAudience);
-      setEditingTemplateSubject(String(resetTemplate.subject || ''));
-      setEditingTemplateBodyHtml(String(resetTemplate.bodyHtml || '<p></p>'));
-      showToast(
-        `${templateModalAudience === 'manager' ? 'Manager' : 'Staff'} template reset to timepoint default.`,
-        { variant: 'success' }
-      );
-    } catch (err) {
-      setTemplateError(err.response?.data?.error || 'Could not reset template to default.');
-    } finally {
-      setTemplateResetting(false);
-    }
-  }
-
-  function openWelcomeTemplateModal(audience) {
-    const role = audience === 'manager' ? 'manager' : 'staff';
-    const template = welcomeTemplates[role] || defaultWelcomeTemplateForAudience(role);
-    setWelcomeTemplateModalAudience(role);
-    setWelcomeTemplateError('');
-    setEditingWelcomeTemplateBodyHtml(String(template.bodyHtml || '<p></p>'));
-    setWelcomeTemplateEditorMode('edit');
-  }
-
-  function closeWelcomeTemplateModal() {
-    if (welcomeTemplateSaving || welcomeTemplateResetting) return;
-    setWelcomeTemplateModalAudience(null);
-    setWelcomeTemplateError('');
-  }
-
-  async function saveWelcomeTemplate(e) {
-    e.preventDefault();
-    if (!welcomeTemplateModalAudience) return;
-    const bodyHtml = String(editingWelcomeTemplateBodyHtml || '').trim();
-    if (!stripHtmlToText(bodyHtml)) {
-      setWelcomeTemplateError('Body text is required.');
-      return;
-    }
-    if (bodyHtml.length > WELCOME_TEMPLATE_MAX_TEXT_LENGTH) {
-      setWelcomeTemplateError(`Body text must be ${WELCOME_TEMPLATE_MAX_TEXT_LENGTH} characters or less.`);
-      return;
-    }
-    setWelcomeTemplateSaving(true);
-    setWelcomeTemplateError('');
-    try {
-      const { data } = await api.put(
-        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/survey-start-templates`,
-        {
-          audience: welcomeTemplateModalAudience,
-          bodyHtml,
-        },
-        { params: inviteRequestParams }
-      );
-      setWelcomeTemplates(normalizeWelcomeTemplates(data?.templates));
-      showToast(`${welcomeTemplateModalAudience === 'manager' ? 'Manager' : 'Staff'} welcome template saved.`, {
-        variant: 'success',
-      });
-      setWelcomeTemplateModalAudience(null);
-    } catch (err) {
-      setWelcomeTemplateError(err.response?.data?.error || 'Could not save welcome template.');
-    } finally {
-      setWelcomeTemplateSaving(false);
-    }
-  }
-
-  async function resetWelcomeTemplateToTimepointDefault() {
-    if (!welcomeTemplateModalAudience) return;
-    const confirmed = window.confirm('Reset this welcome template to the default for the current survey timepoint?');
-    if (!confirmed) return;
-    setWelcomeTemplateError('');
-    setWelcomeTemplateResetting(true);
-    try {
-      const { data } = await api.post(
-        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/survey-start-templates/reset-default`,
-        { audience: welcomeTemplateModalAudience },
-        { params: inviteRequestParams }
-      );
-      const nextTemplates = normalizeWelcomeTemplates(data?.templates);
-      setWelcomeTemplates(nextTemplates);
-      const resetTemplate = nextTemplates[welcomeTemplateModalAudience] || defaultWelcomeTemplateForAudience(welcomeTemplateModalAudience);
-      setEditingWelcomeTemplateBodyHtml(String(resetTemplate.bodyHtml || '<p></p>'));
-      showToast(
-        `${welcomeTemplateModalAudience === 'manager' ? 'Manager' : 'Staff'} welcome template reset to timepoint default.`,
-        { variant: 'success' }
-      );
-    } catch (err) {
-      setWelcomeTemplateError(err.response?.data?.error || 'Could not reset welcome template to default.');
-    } finally {
-      setWelcomeTemplateResetting(false);
     }
   }
 
@@ -1389,38 +904,14 @@ export default function PlatformPulseInviteUsers() {
 
   if (!user) return null;
 
-  const previewName = 'Alex';
-  const previewLink = `https://app.employeepulse.app/rhythm-engine/${inviteTimepoint}/link/your-personal-token`;
-  const previewSubject = applyTemplatePlaceholders(editingTemplateSubject, {
-    name: previewName,
-    link: previewLink,
-    clientName: String(org?.name || ''),
-    clientname: String(org?.name || ''),
-    dueDate: formatDueDatePreview(dueDate) || dueDate || '',
-    duedate: formatDueDatePreview(dueDate) || dueDate || '',
-  });
-  const previewBodyHtml = applyTemplatePlaceholders(editingTemplateBodyHtml, {
-    name: previewName,
-    link: previewLink,
-    clientName: String(org?.name || ''),
-    clientname: String(org?.name || ''),
-    dueDate: formatDueDatePreview(dueDate) || dueDate || '',
-    duedate: formatDueDatePreview(dueDate) || dueDate || '',
-  });
-  const previewWelcomeBodyHtml = applyTemplatePlaceholders(editingWelcomeTemplateBodyHtml, {
-    name: previewName,
-    clientName: String(org?.name || ''),
-    clientname: String(org?.name || ''),
-  });
-
   return (
     <div className="pulse-prototype-page">
       <div className="pulse-platform-header">
         <div>
           <div className="pulse-platform-header__eyebrow">Client administration</div>
-          <h1 className="pulse-platform-header__title">Rhythm Engine link recipients</h1>
+          <h1 className="pulse-platform-header__title">Respondents</h1>
           <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-            Recipient list for <strong>{inviteTimepointText}</strong> survey.
+            Respondent list for <strong>{inviteTimepointText}</strong> survey.
           </p>
         </div>
         <div className="pulse-platform-header__right" style={{ flexWrap: 'wrap' }}>
@@ -1452,6 +943,18 @@ export default function PlatformPulseInviteUsers() {
               }}
             />
           </label>
+          {user.role === 'admin' ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ margin: 0 }}
+              onClick={() => setBusinessLevelsOpen(true)}
+              disabled={busyImport || bulkSending || copyingFromPre}
+            >
+              <Layers size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
+              Business levels
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn btn-ghost"
@@ -1509,6 +1012,14 @@ export default function PlatformPulseInviteUsers() {
         hidden
         disabled={busyImport || bulkSending || copyingFromPre}
         onChange={onFile}
+      />
+
+      <BusinessLevelsModal
+        open={businessLevelsOpen}
+        onClose={() => setBusinessLevelsOpen(false)}
+        orgId={orgId}
+        org={org}
+        refreshOrg={refreshOrg}
       />
 
       <ModalDialog
@@ -1677,230 +1188,6 @@ export default function PlatformPulseInviteUsers() {
             </button>
           </div>
         </form>
-      </ModalDialog>
-
-      <ModalDialog
-        open={Boolean(templateModalAudience)}
-        title={templateModalAudience === 'manager' ? 'Manager email template' : 'Staff email template'}
-        titleId="pulse-email-template-title"
-        onClose={closeTemplateModal}
-        dialogClassName="modal-dialog--pulse-template"
-      >
-        {templateModalAudience ? (
-          <form
-            onSubmit={saveEmailTemplate}
-            className="pulse-template-form"
-            style={{ padding: '0 0 0.25rem' }}
-          >
-            {templateError ? <p className="error" style={{ marginBottom: '1rem' }}>{templateError}</p> : null}
-            <div className="field">
-              <label htmlFor="pulse-template-subject">Subject</label>
-              <input
-                id="pulse-template-subject"
-                value={editingTemplateSubject}
-                onChange={(e) => setEditingTemplateSubject(e.target.value)}
-                placeholder="Email subject"
-                maxLength={200}
-                disabled={templateSaving}
-                required
-              />
-            </div>
-            <div className="pulse-template-mode-switch" role="tablist" aria-label="Template editor mode">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={templateEditorMode === 'edit'}
-                className={`pulse-template-mode-switch__pill${
-                  templateEditorMode === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
-                }`}
-                onClick={() => setTemplateEditorMode('edit')}
-                disabled={templateSaving}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={templateEditorMode === 'view'}
-                className={`pulse-template-mode-switch__pill${
-                  templateEditorMode === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
-                }`}
-                onClick={() => setTemplateEditorMode('view')}
-                disabled={templateSaving}
-              >
-                View
-              </button>
-            </div>
-            <div className="field pulse-template-body-field">
-              <label>{templateEditorMode === 'view' ? 'Preview' : 'Body'}</label>
-              {templateEditorMode === 'edit' ? (
-                <div className="pulse-template-editor">
-                  <EmailTemplateRichEditor
-                    value={editingTemplateBodyHtml}
-                    onChange={setEditingTemplateBodyHtml}
-                    disabled={templateSaving}
-                  />
-                </div>
-              ) : (
-                <div className="pulse-template-preview">
-                  <div className="pulse-template-preview__subject">{previewSubject || '(No subject)'}</div>
-                  <div className="pulse-template-preview__canvas">
-                    {clientLogoUrl ? (
-                      <div className="pulse-template-preview__logo-wrap">
-                        <img
-                          src={clientLogoUrl}
-                          alt={`${String(org?.name || 'Client')} logo`}
-                          className="pulse-template-preview__logo"
-                        />
-                      </div>
-                    ) : null}
-                    <div
-                      className="pulse-template-preview__body"
-                      dangerouslySetInnerHTML={{ __html: previewBodyHtml || '<p></p>' }}
-                    />
-                    <p className="pulse-template-preview__footer">
-                      If the button does not work, copy and paste this URL into your browser:
-                      <br />
-                      <span>{previewLink}</span>
-                    </p>
-                  </div>
-                </div>
-              )}
-              <p className="muted" style={{ marginTop: '0.45rem' }}>
-                Use placeholders: <code>{'{{name}}'}</code>, <code>{'{{link}}'}</code>, <code>{'{{dueDate}}'}</code>,
-                and <code>{'{{clientname}}'}</code>.
-              </p>
-            </div>
-            <p className="muted" style={{ margin: '0 0 0.75rem' }}>
-              Test emails will be sent to: <code>{String(user?.email || 'your account email')}</code>
-            </p>
-            <div className="modal-dialog__actions">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={sendTemplateTestEmail}
-                disabled={templateSaving || templateResetting || templateTestSending}
-                title={user?.email ? `Send to ${user.email}` : 'Send to your account email'}
-              >
-                {templateTestSending ? 'Sending test…' : 'Send test'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={resetTemplateToTimepointDefault}
-                disabled={templateSaving || templateResetting || templateTestSending}
-              >
-                {templateResetting ? 'Resetting…' : 'Reset to default'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={closeTemplateModal}
-                disabled={templateSaving || templateResetting || templateTestSending}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary modal-dialog__submit"
-                disabled={templateSaving || templateResetting || templateTestSending}
-              >
-                {templateSaving ? 'Saving…' : 'Save template'}
-              </button>
-            </div>
-          </form>
-        ) : null}
-      </ModalDialog>
-
-      <ModalDialog
-        open={Boolean(welcomeTemplateModalAudience)}
-        title={welcomeTemplateModalAudience === 'manager' ? 'Manager welcome template' : 'Staff welcome template'}
-        titleId="pulse-welcome-template-title"
-        onClose={closeWelcomeTemplateModal}
-        dialogClassName="modal-dialog--pulse-template"
-      >
-        {welcomeTemplateModalAudience ? (
-          <form
-            onSubmit={saveWelcomeTemplate}
-            className="pulse-template-form"
-            style={{ padding: '0 0 0.25rem' }}
-          >
-            {welcomeTemplateError ? <p className="error" style={{ marginBottom: '1rem' }}>{welcomeTemplateError}</p> : null}
-            <div className="pulse-template-mode-switch" role="tablist" aria-label="Welcome template editor mode">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={welcomeTemplateEditorMode === 'edit'}
-                className={`pulse-template-mode-switch__pill${
-                  welcomeTemplateEditorMode === 'edit' ? ' pulse-template-mode-switch__pill--active' : ''
-                }`}
-                onClick={() => setWelcomeTemplateEditorMode('edit')}
-                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={welcomeTemplateEditorMode === 'view'}
-                className={`pulse-template-mode-switch__pill${
-                  welcomeTemplateEditorMode === 'view' ? ' pulse-template-mode-switch__pill--active' : ''
-                }`}
-                onClick={() => setWelcomeTemplateEditorMode('view')}
-                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
-              >
-                View
-              </button>
-            </div>
-            {welcomeTemplateEditorMode === 'edit' ? (
-              <div className="field">
-                <label>Body</label>
-                <EmailTemplateRichEditor
-                  value={editingWelcomeTemplateBodyHtml}
-                  onChange={setEditingWelcomeTemplateBodyHtml}
-                  disabled={welcomeTemplateSaving || welcomeTemplateResetting}
-                />
-              </div>
-            ) : (
-              <div className="pulse-template-preview">
-                <div className="pulse-template-preview__canvas" style={{ textAlign: 'center' }}>
-                  <div
-                    className="pulse-template-preview__body"
-                    dangerouslySetInnerHTML={{ __html: previewWelcomeBodyHtml || '<p></p>' }}
-                  />
-                </div>
-              </div>
-            )}
-            <p className="muted" style={{ margin: '0.45rem 0 0.75rem' }}>
-              Optional placeholders: <code>{'{{name}}'}</code>, <code>{'{{clientname}}'}</code>
-            </p>
-            <div className="modal-dialog__actions">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={resetWelcomeTemplateToTimepointDefault}
-                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
-              >
-                {welcomeTemplateResetting ? 'Resetting…' : 'Reset to default'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={closeWelcomeTemplateModal}
-                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary modal-dialog__submit"
-                disabled={welcomeTemplateSaving || welcomeTemplateResetting}
-              >
-                {welcomeTemplateSaving ? 'Saving…' : 'Save template'}
-              </button>
-            </div>
-          </form>
-        ) : null}
       </ModalDialog>
 
       <ModalDialog
@@ -2147,8 +1434,8 @@ export default function PlatformPulseInviteUsers() {
             ))
           ) : (
             <p className="muted" style={{ marginTop: 0 }}>
-              To place recipients in teams, set up this client&apos;s group levels in Rhythm Engine
-              Settings first. Until then, recipients are grouped as &ldquo;Unassigned&rdquo;.
+              To place respondents in teams, set up this client&apos;s business levels first (Business
+              levels button on this page). Until then, respondents are grouped as &ldquo;Unassigned&rdquo;.
             </p>
           )}
           <div className="modal-dialog__actions">
@@ -2177,44 +1464,8 @@ export default function PlatformPulseInviteUsers() {
             gap: '0.65rem',
           }}
         >
-          <span>Recipients</span>
+          <span>Respondents</span>
           <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.45rem', alignItems: 'center' }}>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={templatesLoading || templateSaving || bulkSending || welcomeTemplateSaving}
-              onClick={() => openTemplateModal('staff')}
-              style={{ fontSize: '0.9rem' }}
-            >
-              Staff Email template
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={templatesLoading || templateSaving || bulkSending || welcomeTemplateSaving}
-              onClick={() => openTemplateModal('manager')}
-              style={{ fontSize: '0.9rem' }}
-            >
-              Manager email template
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={welcomeTemplatesLoading || welcomeTemplateSaving || bulkSending || templateSaving}
-              onClick={() => openWelcomeTemplateModal('staff')}
-              style={{ fontSize: '0.9rem' }}
-            >
-              Staff welcome template
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={welcomeTemplatesLoading || welcomeTemplateSaving || bulkSending || templateSaving}
-              onClick={() => openWelcomeTemplateModal('manager')}
-              style={{ fontSize: '0.9rem' }}
-            >
-              Manager welcome template
-            </button>
             <button
               type="button"
               className="btn btn-ghost"
@@ -2282,7 +1533,7 @@ export default function PlatformPulseInviteUsers() {
                   <tr>
                     <td colSpan={recipientsTableColumnCount} className="muted" style={{ padding: '1.25rem' }}>
                       {inviteTimepoint === 'pre' ? (
-                        'No recipients yet. Use Add or Import CSV.'
+                        'No respondents yet. Use Add or Import CSV.'
                       ) : (
                         <div style={{ display: 'grid', gap: '0.7rem' }}>
                           <span>

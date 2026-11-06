@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { CalendarClock, CircleCheck, CirclePause, Plus, TriangleAlert, Trash2 } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
+import RhythmEngineEmailTemplates from '../components/platform/RhythmEngineEmailTemplates.jsx';
+
+const CONFIG_TABS = [
+  { id: 'contract', label: 'Contract dates' },
+  { id: 'checkpoints', label: 'During checkpoints' },
+  { id: 'respondents', label: 'Respondents' },
+  { id: 'email-templates', label: 'Email templates' },
+];
+const CONFIG_TAB_IDS = new Set(CONFIG_TABS.map((tab) => tab.id));
 
 function formatCheckpointDate(dateKey) {
   const raw = String(dateKey || '').trim();
@@ -12,36 +21,6 @@ function formatCheckpointDate(dateKey) {
   const dt = new Date(`${raw}T00:00:00.000Z`);
   if (Number.isNaN(dt.getTime())) return raw;
   return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-const SUGGESTED_GROUP_LEVEL_LABELS = ['Business Unit', 'Division', 'Team'];
-
-function readClientSettings(settings) {
-  if (settings == null) return null;
-  let s = settings;
-  if (typeof s === 'string') {
-    try {
-      s = JSON.parse(s);
-    } catch {
-      return null;
-    }
-  }
-  if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
-  return s;
-}
-
-function readGroupLevels(settings) {
-  const parsed = readClientSettings(settings);
-  if (!parsed) return '';
-  const asNumber = Number.parseInt(String(parsed.groupLevels ?? ''), 10);
-  if (!Number.isInteger(asNumber) || asNumber < 1 || asNumber > 5) return '';
-  return String(asNumber);
-}
-
-function readGroupLevelLabels(settings) {
-  const parsed = readClientSettings(settings);
-  if (!parsed || !Array.isArray(parsed.groupLevelLabels)) return [];
-  return parsed.groupLevelLabels.slice(0, 5).map((label) => String(label ?? ''));
 }
 
 function toDateInputValue(iso) {
@@ -84,10 +63,20 @@ export default function PlatformPulseSettings() {
   const [carryForwardBusy, setCarryForwardBusy] = useState(false);
   const carryForwardEnabled = org?.settings?.pulseCarryForwardRecipients === true;
 
-  const [groupLevels, setGroupLevels] = useState(() => readGroupLevels(org?.settings));
-  const [groupLevelLabels, setGroupLevelLabels] = useState(() => readGroupLevelLabels(org?.settings));
-  const [groupLevelsBusy, setGroupLevelsBusy] = useState(false);
-  const [groupLevelsError, setGroupLevelsError] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab = CONFIG_TAB_IDS.has(requestedTab) ? requestedTab : CONFIG_TABS[0].id;
+
+  function changeTab(nextTab) {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set('tab', nextTab);
+        return next;
+      },
+      { replace: true }
+    );
+  }
 
   const [contractStart, setContractStart] = useState(() => toDateInputValue(licenseConfig?.contractStart));
   const [contractEnd, setContractEnd] = useState(() => toDateInputValue(licenseConfig?.contractEnd));
@@ -117,24 +106,6 @@ export default function PlatformPulseSettings() {
   const assessmentsConsumed = licenseConfig?.assessmentsConsumed ?? 0;
 
   useEffect(() => {
-    setGroupLevels(readGroupLevels(org?.settings));
-    setGroupLevelLabels(readGroupLevelLabels(org?.settings));
-  }, [org?.settings]);
-
-  useEffect(() => {
-    const count = Number.parseInt(groupLevels, 10);
-    if (!Number.isInteger(count) || count < 1 || count > 5) {
-      setGroupLevelLabels([]);
-      return;
-    }
-    setGroupLevelLabels((current) => {
-      const next = current.slice(0, count);
-      while (next.length < count) next.push('');
-      return next;
-    });
-  }, [groupLevels]);
-
-  useEffect(() => {
     setContractStart(toDateInputValue(licenseConfig?.contractStart));
     setContractEnd(toDateInputValue(licenseConfig?.contractEnd));
   }, [licenseConfig]);
@@ -144,7 +115,7 @@ export default function PlatformPulseSettings() {
   if (user.role !== 'admin') {
     return (
       <div className="pulse-prototype-page">
-        <p className="error">Only platform admins can manage Rhythm Engine point-in-time settings.</p>
+        <p className="error">Only platform admins can manage Rhythm Engine configurations.</p>
       </div>
     );
   }
@@ -229,35 +200,6 @@ export default function PlatformPulseSettings() {
     }
   }
 
-  async function saveGroupLevels(e) {
-    e.preventDefault();
-    const parsedGroupLevels = Number.parseInt(groupLevels, 10);
-    if (!Number.isInteger(parsedGroupLevels)) {
-      setGroupLevelsError('Select how many group levels this client has.');
-      return;
-    }
-    const normalizedLabels = groupLevelLabels
-      .slice(0, parsedGroupLevels)
-      .map((label) => String(label || '').trim());
-    if (normalizedLabels.some((label) => !label)) {
-      setGroupLevelsError('Provide a name for each group level.');
-      return;
-    }
-    setGroupLevelsBusy(true);
-    setGroupLevelsError('');
-    try {
-      await api.patch(`/api/platform/organizations/${orgId}`, {
-        settings: { groupLevels: parsedGroupLevels, groupLevelLabels: normalizedLabels },
-      });
-      await refreshOrg();
-      showToast('Group levels saved.', { variant: 'success' });
-    } catch (err) {
-      setGroupLevelsError(err.response?.data?.error || 'Could not save group levels.');
-    } finally {
-      setGroupLevelsBusy(false);
-    }
-  }
-
   async function saveContractDates(e) {
     e.preventDefault();
     setContractBusy(true);
@@ -281,236 +223,225 @@ export default function PlatformPulseSettings() {
       <div className="pulse-platform-header">
         <div>
           <div className="pulse-platform-header__eyebrow">Client administration</div>
-          <h1 className="pulse-platform-header__title">Point in time settings</h1>
+          <h1 className="pulse-platform-header__title">Configurations</h1>
           <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-            Create, delete, or set the date for During checkpoints. Pre and Post dates come from this
-            client&rsquo;s contract, set below. The Point in Time selector in the sidebar only switches
-            between existing checkpoints — manage them here.
+            Contract dates, checkpoints, respondent rules and email templates for this client&rsquo;s Rhythm
+            Engine. The Point in Time selector in the sidebar only switches between existing checkpoints;
+            manage them here.
           </p>
         </div>
-        <div className="pulse-platform-header__right">
+      </div>
+
+      <div
+        className="pulse-template-mode-switch"
+        role="tablist"
+        aria-label="Configuration sections"
+        style={{ marginBottom: '1rem' }}
+      >
+        {CONFIG_TABS.map((tab) => (
           <button
+            key={tab.id}
             type="button"
-            className="btn btn-primary"
-            onClick={() => setCreateConfirmOpen(true)}
-            disabled={pulseTimepointBusy}
+            role="tab"
+            id={`re-config-tab-${tab.id}`}
+            aria-selected={activeTab === tab.id}
+            aria-controls={`re-config-panel-${tab.id}`}
+            className={`pulse-template-mode-switch__pill${
+              activeTab === tab.id ? ' pulse-template-mode-switch__pill--active' : ''
+            }`}
+            onClick={() => changeTab(tab.id)}
           >
-            <Plus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
-            New &lsquo;During&rsquo; Checkpoint
+            {tab.label}
           </button>
-        </div>
+        ))}
       </div>
 
       {pulseTimepointError ? <p className="error">{pulseTimepointError}</p> : null}
 
-      <h2 className="pulse-settings-section-title">Contract dates</h2>
-      <p className="muted" style={{ margin: '0 0 0.6rem' }}>
-        Drives the Pre and Post checkpoint dates below.
-      </p>
-      <form onSubmit={saveContractDates} className="card pulse-settings-list">
-        {contractError ? <p className="error" style={{ marginTop: 0 }}>{contractError}</p> : null}
-        <div style={{ display: 'grid', gap: '0.9rem', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label htmlFor="pulse-contract-start">Contract start</label>
-            <input
-              id="pulse-contract-start"
-              type="date"
-              value={contractStart}
-              onChange={(e) => setContractStart(e.target.value)}
-              disabled={contractBusy}
-            />
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label htmlFor="pulse-contract-end">Contract end</label>
-            <input
-              id="pulse-contract-end"
-              type="date"
-              value={contractEnd}
-              onChange={(e) => setContractEnd(e.target.value)}
-              disabled={contractBusy}
-            />
-          </div>
-        </div>
-        <button type="submit" className="btn btn-ghost" disabled={contractBusy} style={{ marginTop: '0.9rem' }}>
-          {contractBusy ? 'Saving…' : 'Save contract dates'}
-        </button>
-      </form>
-
-      <h2 className="pulse-settings-section-title">Group levels</h2>
-      <p className="muted" style={{ margin: '0 0 0.6rem' }}>
-        How many organisational group levels does this client have (e.g. Business Unit, Division, Team)?
-      </p>
-      <form onSubmit={saveGroupLevels} className="card pulse-settings-list">
-        {groupLevelsError ? <p className="error" style={{ marginTop: 0 }}>{groupLevelsError}</p> : null}
-        <div className="field">
-          <label htmlFor="pulse-group-levels">Number of group levels</label>
-          <select
-            id="pulse-group-levels"
-            value={groupLevels}
-            onChange={(e) => setGroupLevels(e.target.value)}
-            disabled={groupLevelsBusy}
-            required
-          >
-            <option value="">Select group levels</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-          </select>
-        </div>
-        {Number.parseInt(groupLevels, 10) > 0 ? (
-          <div style={{ display: 'grid', gap: '0.55rem' }}>
-            {Array.from({ length: Number.parseInt(groupLevels, 10) }, (_, index) => (
-              <div className="field" key={`pulse-group-level-label-${index + 1}`} style={{ margin: 0 }}>
-                <label htmlFor={`pulse-group-level-label-${index + 1}`}>Group level {index + 1} label</label>
+      {activeTab === 'contract' ? (
+        <div role="tabpanel" id="re-config-panel-contract" aria-labelledby="re-config-tab-contract">
+          <p className="muted" style={{ margin: '0 0 0.6rem' }}>
+            Drives the Pre and Post checkpoint dates below.
+          </p>
+          <form onSubmit={saveContractDates} className="card pulse-settings-list">
+            {contractError ? <p className="error" style={{ marginTop: 0 }}>{contractError}</p> : null}
+            <div style={{ display: 'grid', gap: '0.9rem', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label htmlFor="pulse-contract-start">Contract start</label>
                 <input
-                  id={`pulse-group-level-label-${index + 1}`}
-                  value={groupLevelLabels[index] ?? ''}
-                  onChange={(e) =>
-                    setGroupLevelLabels((current) => {
-                      const next = [...current];
-                      next[index] = e.target.value;
-                      return next;
-                    })
-                  }
-                  placeholder={
-                    SUGGESTED_GROUP_LEVEL_LABELS[index] ? `e.g. ${SUGGESTED_GROUP_LEVEL_LABELS[index]}` : ''
-                  }
-                  disabled={groupLevelsBusy}
-                  required
+                  id="pulse-contract-start"
+                  type="date"
+                  value={contractStart}
+                  onChange={(e) => setContractStart(e.target.value)}
+                  disabled={contractBusy}
                 />
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label htmlFor="pulse-contract-end">Contract end</label>
+                <input
+                  id="pulse-contract-end"
+                  type="date"
+                  value={contractEnd}
+                  onChange={(e) => setContractEnd(e.target.value)}
+                  disabled={contractBusy}
+                />
+              </div>
+            </div>
+            <button type="submit" className="btn btn-ghost" disabled={contractBusy} style={{ marginTop: '0.9rem' }}>
+              {contractBusy ? 'Saving…' : 'Save contract dates'}
+            </button>
+          </form>
+
+          <h2 className="pulse-settings-section-title">Pre &amp; Post dates</h2>
+          <p className="muted" style={{ margin: '0 0 0.6rem' }}>
+            Pre and Post are single ongoing checkpoints, driven by the contract dates above.
+          </p>
+          <div className="card pulse-settings-list">
+            {[
+              { option: preOption, label: 'Pre' },
+              { option: completedOption, label: 'Post' },
+            ].map(({ option, label }) => (
+              <div key={label} className="pulse-settings-row">
+                <div className="pulse-settings-row__heading">
+                  <span className="pulse-settings-row__title">
+                    {label} · {option ? formatCheckpointDate(option.dateKey) : 'Not available yet'}
+                  </span>
+                  {option && !option.isContractDate ? (
+                    <span className="badge badge-draft">Contract date not set</span>
+                  ) : null}
+                </div>
+                {option && !option.isContractDate ? (
+                  <span className="muted" style={{ fontSize: '0.85rem' }}>
+                    Set the contract {label === 'Pre' ? 'start' : 'end'} date above.
+                  </span>
+                ) : null}
               </div>
             ))}
           </div>
-        ) : null}
-        <button type="submit" className="btn btn-ghost" disabled={groupLevelsBusy} style={{ marginTop: '0.9rem' }}>
-          {groupLevelsBusy ? 'Saving…' : 'Save group levels'}
-        </button>
-      </form>
-
-      <h2 className="pulse-settings-section-title">Pre &amp; Post dates</h2>
-      <p className="muted" style={{ margin: '0 0 0.6rem' }}>
-        Pre and Post are single ongoing checkpoints, driven by the contract dates above.
-      </p>
-      <div className="card pulse-settings-list">
-        {[
-          { option: preOption, label: 'Pre' },
-          { option: completedOption, label: 'Post' },
-        ].map(({ option, label }) => (
-          <div key={label} className="pulse-settings-row">
-            <div className="pulse-settings-row__heading">
-              <span className="pulse-settings-row__title">
-                {label} · {option ? formatCheckpointDate(option.dateKey) : 'Not available yet'}
-              </span>
-              {option && !option.isContractDate ? (
-                <span className="badge badge-draft">Contract date not set</span>
-              ) : null}
-            </div>
-            {option && !option.isContractDate ? (
-              <span className="muted" style={{ fontSize: '0.85rem' }}>
-                Set the contract {label === 'Pre' ? 'start' : 'end'} date above.
-              </span>
-            ) : null}
-          </div>
-        ))}
-      </div>
-
-      <h2 className="pulse-settings-section-title">During checkpoints</h2>
-      <div className="card pulse-settings-list">
-        {duringOptions.length === 0 ? (
-          <div className="pulse-settings-empty">
-            <p style={{ margin: 0, fontWeight: 600 }}>No During checkpoints yet</p>
-            <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-              Create one whenever you want a fresh mid-engagement read on how the rollout is landing — for
-              example partway through a change programme, after a major milestone, or before a go/no-go
-              decision. Each new checkpoint opens a clean During session for both staff and managers (closing
-              any previous one) and consumes one assessment against this client&rsquo;s licence, so only create
-              one when you&rsquo;re ready to invite recipients to it.
-            </p>
-          </div>
-        ) : (
-          duringOptions.map((option) => (
-            <div key={option.id} className="pulse-settings-row">
-              <div className="pulse-settings-row__heading">
-                <span className="pulse-settings-row__title">
-                  During · {formatCheckpointDate(option.dateKey)}
-                </span>
-                {option.isActive ? <span className="badge badge-active">Active</span> : null}
-                {option.labelDate ? <span className="badge badge-draft">Custom date</span> : null}
-              </div>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => (option.isActive ? handleDeactivate(option) : setActivateTarget(option))}
-                  disabled={pulseTimepointBusy}
-                >
-                  {option.isActive ? (
-                    <>
-                      <CirclePause size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                      Deactivate
-                    </>
-                  ) : (
-                    <>
-                      <CircleCheck size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                      Activate
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => openEditDate(option, 'During')}
-                  disabled={pulseTimepointBusy}
-                >
-                  <CalendarClock size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
-                  Edit date
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost pulse-settings-row__delete"
-                  onClick={() => setDeleteTarget(option)}
-                  disabled={pulseTimepointBusy}
-                  aria-label={`Delete during checkpoint ${formatCheckpointDate(option.dateKey)}`}
-                >
-                  <Trash2 size={16} strokeWidth={2} aria-hidden />
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      <h2 className="pulse-settings-section-title">Recipients</h2>
-      <div className="card pulse-settings-list">
-        <div className="pulse-settings-row">
-          <div className="pulse-settings-row__heading">
-            <span className="pulse-settings-row__title">Carry recipients forward automatically</span>
-            <p className="muted" style={{ margin: '0.3rem 0 0', fontWeight: 400 }}>
-              When on, a new During checkpoint starts pre-populated with everyone currently on Pre&rsquo;s
-              recipient list (and Post is seeded the same way, the first time it&rsquo;s still empty), so nobody
-              has to be re-entered at every stage. Turn this off to start each new checkpoint with an empty list
-              instead.
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            className="pulse-settings-toggle"
-            onClick={handleToggleCarryForward}
-            disabled={carryForwardBusy}
-            aria-pressed={carryForwardEnabled}
-            aria-checked={carryForwardEnabled}
-            aria-label={`Carry recipients forward automatically: ${carryForwardEnabled ? 'on' : 'off'}`}
-          >
-            <span className="pulse-settings-toggle__track" aria-hidden>
-              <span className="pulse-settings-toggle__thumb" />
-            </span>
-          </button>
         </div>
-      </div>
+      ) : null}
+
+      {activeTab === 'checkpoints' ? (
+        <div role="tabpanel" id="re-config-panel-checkpoints" aria-labelledby="re-config-tab-checkpoints">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-start', justifyContent: 'space-between', margin: '0 0 0.6rem' }}>
+            <p className="muted" style={{ margin: 0, flex: '1 1 20rem' }}>
+              Create, activate, delete, or set the date for During checkpoints.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setCreateConfirmOpen(true)}
+              disabled={pulseTimepointBusy}
+            >
+              <Plus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
+              New &lsquo;During&rsquo; Checkpoint
+            </button>
+          </div>
+          <div className="card pulse-settings-list">
+            {duringOptions.length === 0 ? (
+              <div className="pulse-settings-empty">
+                <p style={{ margin: 0, fontWeight: 600 }}>No During checkpoints yet</p>
+                <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+                  Create one whenever you want a fresh mid-engagement read on how the rollout is landing — for
+                  example partway through a change programme, after a major milestone, or before a go/no-go
+                  decision. Each new checkpoint opens a clean During session for both staff and managers (closing
+                  any previous one) and consumes one assessment against this client&rsquo;s licence, so only create
+                  one when you&rsquo;re ready to invite recipients to it.
+                </p>
+              </div>
+            ) : (
+              duringOptions.map((option) => (
+                <div key={option.id} className="pulse-settings-row">
+                  <div className="pulse-settings-row__heading">
+                    <span className="pulse-settings-row__title">
+                      During · {formatCheckpointDate(option.dateKey)}
+                    </span>
+                    {option.isActive ? <span className="badge badge-active">Active</span> : null}
+                    {option.labelDate ? <span className="badge badge-draft">Custom date</span> : null}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => (option.isActive ? handleDeactivate(option) : setActivateTarget(option))}
+                      disabled={pulseTimepointBusy}
+                    >
+                      {option.isActive ? (
+                        <>
+                          <CirclePause size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                          Deactivate
+                        </>
+                      ) : (
+                        <>
+                          <CircleCheck size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                          Activate
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => openEditDate(option, 'During')}
+                      disabled={pulseTimepointBusy}
+                    >
+                      <CalendarClock size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                      Edit date
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost pulse-settings-row__delete"
+                      onClick={() => setDeleteTarget(option)}
+                      disabled={pulseTimepointBusy}
+                      aria-label={`Delete during checkpoint ${formatCheckpointDate(option.dateKey)}`}
+                    >
+                      <Trash2 size={16} strokeWidth={2} aria-hidden />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === 'respondents' ? (
+        <div role="tabpanel" id="re-config-panel-respondents" aria-labelledby="re-config-tab-respondents">
+          <div className="card pulse-settings-list">
+            <div className="pulse-settings-row">
+              <div className="pulse-settings-row__heading">
+                <span className="pulse-settings-row__title">Carry respondents forward automatically</span>
+                <p className="muted" style={{ margin: '0.3rem 0 0', fontWeight: 400 }}>
+                  When on, a new During checkpoint starts pre-populated with everyone currently on Pre&rsquo;s
+                  respondent list (and Post is seeded the same way, the first time it&rsquo;s still empty), so nobody
+                  has to be re-entered at every stage. Turn this off to start each new checkpoint with an empty list
+                  instead.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                className="pulse-settings-toggle"
+                onClick={handleToggleCarryForward}
+                disabled={carryForwardBusy}
+                aria-pressed={carryForwardEnabled}
+                aria-checked={carryForwardEnabled}
+                aria-label={`Carry respondents forward automatically: ${carryForwardEnabled ? 'on' : 'off'}`}
+              >
+                <span className="pulse-settings-toggle__track" aria-hidden>
+                  <span className="pulse-settings-toggle__thumb" />
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === 'email-templates' ? (
+        <div role="tabpanel" id="re-config-panel-email-templates" aria-labelledby="re-config-tab-email-templates">
+          <RhythmEngineEmailTemplates />
+        </div>
+      ) : null}
 
       <ModalDialog
         open={createConfirmOpen}
@@ -525,7 +456,7 @@ export default function PlatformPulseSettings() {
             <TriangleAlert size={20} strokeWidth={2} aria-hidden style={{ flexShrink: 0, marginTop: '0.15rem' }} />
             <span>
               This opens a fresh During checkpoint. Existing checkpoints and their responses are kept. Recipients
-              for this new checkpoint will need to be invited separately under Users.
+              for this new checkpoint will need to be invited separately under Respondents.
             </span>
           </p>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.8rem' }}>
@@ -640,7 +571,7 @@ export default function PlatformPulseSettings() {
         <div style={{ padding: '0 0 1rem' }}>
           <p className="muted" style={{ margin: '0 0 0.8rem' }}>
             This only changes the date shown next to {dateEditTarget?.label} in the Point in Time selector and
-            this settings screen &mdash; it has no effect on which responses count toward it.
+            the Configurations screen &mdash; it has no effect on which responses count toward it.
           </p>
           <label className="field" style={{ margin: 0 }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Date</span>
