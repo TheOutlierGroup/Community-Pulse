@@ -2,7 +2,6 @@ import fs from 'fs';
 import { normalizeLegacyTemplatePlaceholders } from '../../services/templatePlaceholders.js';
 import { randomBytes, randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
-import multer from 'multer';
 import { requireBodyFields } from '../../middleware/validation.js';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath, orgLogoFilePath } from '../../config/storage.js';
@@ -13,7 +12,6 @@ import * as LicenseConfig from '../../models/LicenseConfig.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import * as PulseSession from '../../models/PulseSession.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
-import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import * as EntityFieldHistory from '../../models/EntityFieldHistory.js';
 import {
@@ -114,7 +112,6 @@ import {
   normalizeInviteImportRecipients,
   validateInviteImportRows,
 } from '../../services/pulseInviteImportValidation.js';
-import { parseHumanTestDocx } from '../../services/pulseTestDataDocImport.js';
 import { collectStaffInvitesNeedingManagerRole } from '../../services/pulseLinkRoleRepair.js';
 import {
   internalTimepointToPulseStage,
@@ -372,184 +369,6 @@ function validatePulseInviteDuringSession(timepointPhase, duringSessionId) {
   return 'duringSessionId is required when timepoint is during';
 }
 
-function testLikertFromBand(seed, offset, band = 'mid') {
-  const base = Math.sin((seed + 1) * 127.1 + (offset + 1) * 311.7) * 10000;
-  const unit = base - Math.floor(base);
-  if (band === 'high') return unit < 0.5 ? 4 : 5;
-  if (band === 'low') return unit < 0.5 ? 1 : 2;
-  if (band === 'high-mid') return unit < 0.33 ? 3 : unit < 0.66 ? 4 : 5;
-  if (band === 'low-mid') return unit < 0.33 ? 1 : unit < 0.66 ? 2 : 3;
-  return unit < 0.25 ? 2 : unit < 0.75 ? 3 : 4;
-}
-
-function buildTestSurveyStepAnswers(surveyRole, seed = 0) {
-  const prefix = surveyRole === 'manager' ? 'MQ' : 'Q';
-  const profileCycle = surveyRole === 'manager'
-    ? ['balanced', 'high-risk', 'manager-pressure', 'managers-resilient', 'chain-functioning']
-    : ['balanced', 'high-risk', 'motivated-lost', 'capable-wary', 'optimal'];
-  const profile = profileCycle[seed % profileCycle.length];
-  const adoptionBandByProfile = {
-    balanced: 'mid',
-    'high-risk': 'low',
-    'motivated-lost': 'high',
-    'capable-wary': 'low',
-    optimal: 'high',
-    'manager-pressure': 'low-mid',
-    'managers-resilient': 'high',
-    'chain-functioning': 'high',
-  };
-  const sponsorshipBandByProfile = {
-    balanced: 'mid',
-    'high-risk': 'low',
-    'motivated-lost': 'low',
-    'capable-wary': 'high',
-    optimal: 'high',
-    'manager-pressure': 'low-mid',
-    'managers-resilient': 'low-mid',
-    'chain-functioning': 'high',
-  };
-  const answers = {};
-  for (let i = 1; i <= 16; i += 1) {
-    const isAdoption = i <= 8;
-    const band = isAdoption
-      ? adoptionBandByProfile[profile] || 'mid'
-      : sponsorshipBandByProfile[profile] || 'mid';
-    answers[`${prefix}${i}`] = testLikertFromBand(seed, i, band);
-  }
-
-  if (surveyRole === 'manager') {
-    // Manager load-sensitive questions (MQ5, MQ6, MQ15, MQ16) need spread to exercise load reports.
-    if (profile === 'manager-pressure') {
-      answers.MQ5 = testLikertFromBand(seed, 105, 'low');
-      answers.MQ6 = testLikertFromBand(seed, 106, 'low');
-      answers.MQ15 = testLikertFromBand(seed, 115, 'low');
-      answers.MQ16 = testLikertFromBand(seed, 116, 'low-mid');
-    } else if (profile === 'managers-resilient') {
-      answers.MQ5 = testLikertFromBand(seed, 205, 'high');
-      answers.MQ6 = testLikertFromBand(seed, 206, 'high-mid');
-      answers.MQ15 = testLikertFromBand(seed, 215, 'high');
-      answers.MQ16 = testLikertFromBand(seed, 216, 'high-mid');
-    }
-  }
-  return { answers };
-}
-
-function normalizeGroupCountInput(rawCount) {
-  const parsed = Number.parseInt(String(rawCount ?? ''), 10);
-  if (!Number.isInteger(parsed) || parsed < 0) return 0;
-  return Math.min(parsed, 100);
-}
-
-function buildTestGroupValues(groupLabels, groupNames, index) {
-  return groupLabels.map((_, groupIndex) => {
-    const names = Array.isArray(groupNames?.[groupIndex])
-      ? groupNames[groupIndex].filter((n) => String(n ?? '').trim())
-      : [];
-    if (names.length === 0) return null;
-    return names[index % names.length];
-  });
-}
-
-function buildTestRecipients({ managerCount, staffCount, groupLabels, groupNames, datasetToken }) {
-  const recipients = [];
-  const managerEmails = [];
-  let absoluteIndex = 0;
-
-  for (let i = 0; i < managerCount; i += 1) {
-    const email = `test-manager-${datasetToken}-${i + 1}@example.com`;
-    managerEmails.push(email);
-    recipients.push({
-      name: `Test Manager ${i + 1}`,
-      email,
-      role: 'manager',
-      groupValues: buildTestGroupValues(groupLabels, groupNames, absoluteIndex),
-    });
-    absoluteIndex += 1;
-  }
-
-  for (let i = 0; i < staffCount; i += 1) {
-    const managerEmail = managerEmails[i % managerEmails.length];
-    recipients.push({
-      name: `Test Staff ${i + 1}`,
-      email: `test-staff-${datasetToken}-${i + 1}@example.com`,
-      role: 'staff',
-      managerId: managerEmail,
-      groupValues: buildTestGroupValues(groupLabels, groupNames, absoluteIndex),
-    });
-    absoluteIndex += 1;
-  }
-
-  return recipients;
-}
-
-function normalizeDisplayName(value) {
-  return String(value ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function buildDocImportInviteLookup(invites) {
-  const buckets = new Map();
-  const consumedInviteIds = new Set();
-  const pushKey = (role, normalizedName, invite) => {
-    if (!normalizedName) return;
-    const key = `${role}:${normalizedName}`;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(invite);
-  };
-  for (const invite of invites) {
-    const role = invite?.survey_role === 'manager' ? 'manager' : 'staff';
-    const normalizedName = normalizeDisplayName(invite?.display_name || '');
-    pushKey(role, normalizedName, invite);
-    const emailLocalPart = String(invite?.email || '').split('@')[0];
-    const normalizedEmailAlias = normalizeDisplayName(emailLocalPart);
-    if (normalizedEmailAlias && normalizedEmailAlias !== normalizedName) {
-      pushKey(role, normalizedEmailAlias, invite);
-    }
-  }
-  return { buckets, consumedInviteIds };
-}
-
-function consumeInviteMatch(lookup, role, name) {
-  if (!lookup || typeof lookup !== 'object') return null;
-  const buckets = lookup.buckets instanceof Map ? lookup.buckets : null;
-  const consumedInviteIds = lookup.consumedInviteIds instanceof Set ? lookup.consumedInviteIds : null;
-  if (!buckets || !consumedInviteIds) return null;
-
-  const consumeByKey = (normalizedKey) => {
-    if (!normalizedKey) return null;
-    const key = `${role}:${normalizedKey}`;
-    const bucket = buckets.get(key);
-    if (!Array.isArray(bucket) || bucket.length === 0) return null;
-    while (bucket.length > 0) {
-      const match = bucket.shift();
-      if (!match?.id || consumedInviteIds.has(match.id)) continue;
-      consumedInviteIds.add(match.id);
-      if (bucket.length === 0) buckets.delete(key);
-      return match;
-    }
-    buckets.delete(key);
-    return null;
-  };
-
-  const normalizedName = normalizeDisplayName(name);
-  if (!normalizedName) return null;
-
-  const exact = consumeByKey(normalizedName);
-  if (exact) return exact;
-
-  const tokens = normalizedName.split(' ').filter(Boolean);
-  for (let tokenCount = tokens.length - 1; tokenCount >= 1; tokenCount -= 1) {
-    const truncated = tokens.slice(0, tokenCount).join(' ');
-    const fallback = consumeByKey(truncated);
-    if (fallback) return fallback;
-  }
-
-  return null;
-}
-
 function normalizeManagerReference(value) {
   return String(value ?? '')
     .trim()
@@ -772,6 +591,34 @@ async function autoCarryForwardRecipientsForDuringCheckpoint(org, duringSessionI
 }
 
 const DEFAULT_PULSE_SESSION_PURPOSES = ['pre_project', 'during_project', 'completed_project'];
+
+/**
+ * Post is a bootstrap singleton session, so unlike During (which only exists
+ * once an admin creates a checkpoint) it has no creation event of its own.
+ * Admins now open it explicitly from Rhythm Engine Configurations, which
+ * stamps settings.pulsePostTriggeredAt. Until then the Post stage is locked:
+ * greyed out in the Point in Time selector, and the invite import/send
+ * routes refuse it.
+ *
+ * Clients that were already running Post before this gate existed have no
+ * stamp, so any Post invite whose link has already been sent also counts as
+ * triggered. Unsent rows don't count: carry-forward can seed Post's roster
+ * on During creation without anyone having opened Post.
+ */
+async function isPostTimepointTriggered(org) {
+  if (!org) return false;
+  if (org.settings?.pulsePostTriggeredAt) return true;
+  const postInvites = await PulseLinkInvite.listInviteRowsForOrg(org.id, { timepointPhase: 'post' });
+  return postInvites.some((row) => Boolean(row?.last_invited_at));
+}
+
+const POST_TIMEPOINT_LOCKED_ERROR =
+  'The Post assessment has not been opened yet. Open it from Rhythm Engine Configurations first.';
+
+async function postTimepointLockedError(org, timepointPhase) {
+  if (timepointPhase !== 'post') return null;
+  return (await isPostTimepointTriggered(org)) ? null : POST_TIMEPOINT_LOCKED_ERROR;
+}
 const DEFAULT_PULSE_SESSION_AUDIENCES = ['staff', 'manager'];
 
 // Respondent links only ever resolve for kind === 'client' orgs (see
@@ -857,54 +704,6 @@ async function createFreshActiveDuringSession(organizationId, name, audience) {
     }
   }
   throw new Error('Could not create active during-project session');
-}
-
-async function resolvePulseImportSessionForScope({
-  organizationId,
-  role,
-  stage,
-  duringSessionId,
-  sessionCache,
-}) {
-  const audience = role === 'manager' ? 'manager' : 'staff';
-  const cacheKey = `${audience}:${stage}:${String(duringSessionId || '')}`;
-  if (sessionCache?.has(cacheKey)) return sessionCache.get(cacheKey);
-
-  let resolved = null;
-  if (stage === 'mid' && duringSessionId) {
-    const selected = await PulseSession.getSessionById(duringSessionId, organizationId);
-    if (selected && String(selected.session_purpose || '').trim().toLowerCase() === 'during_project') {
-      if (selected.audience === audience) {
-        resolved = selected;
-      } else {
-        const sessions = await PulseSession.listSessionsForOrg(organizationId);
-        const targetRows = sessions.filter(
-          (session) =>
-            String(session?.session_purpose || '').trim().toLowerCase() === 'during_project'
-            && String(session?.audience || 'staff').trim().toLowerCase() === audience
-        );
-        if (targetRows.length > 0) {
-          const selectedAt = new Date(selected.created_at || 0).getTime();
-          const sorted = targetRows
-            .map((session) => {
-              const createdAt = new Date(session?.created_at || 0).getTime();
-              const distance = Number.isFinite(createdAt) && Number.isFinite(selectedAt)
-                ? Math.abs(createdAt - selectedAt)
-                : Number.MAX_SAFE_INTEGER;
-              return { session, distance };
-            })
-            .sort((a, b) => a.distance - b.distance);
-          resolved = sorted[0]?.session || null;
-        }
-      }
-    }
-  }
-
-  if (!resolved) {
-    resolved = await PulseSession.resolveSessionForPulseLink(organizationId, audience, stage);
-  }
-  if (sessionCache) sessionCache.set(cacheKey, resolved);
-  return resolved;
 }
 
 function pairedDuringSessionsForSelection(sessions, selectedSessionId) {
@@ -1414,11 +1213,6 @@ function normalizedGroupLevelLabelsFromSettings(settings) {
 }
 
 export function registerPlatformOrgRoutes(router) {
-  const testDataDocUpload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024, files: 1 },
-  });
-
   // PT-04: was a local role-only gate shadowing the shared middleware of
   // the same name. Uses the shared gate (role + platform-admin MFA) so
   // this file tracks the admin contract instead of drifting from it.
@@ -3238,7 +3032,12 @@ export function registerPlatformOrgRoutes(router) {
         console.error('Failed to lazy-init default pulse sessions:', e);
       }
     }
-    res.json({ sessions: sessions.map(publicPulseSessionRow) });
+    const postTriggered = await isPostTimepointTriggered(org);
+    res.json({
+      sessions: sessions.map(publicPulseSessionRow),
+      postTriggered,
+      postTriggeredAt: org.settings?.pulsePostTriggeredAt || null,
+    });
   });
 
   // INF-05: platform admins can raise (or clear) the respondent cap for an
@@ -3396,6 +3195,30 @@ export function registerPlatformOrgRoutes(router) {
       }
       return next(error);
     }
+  });
+
+  // Opens the Post assessment for this client (see isPostTimepointTriggered).
+  // One-way by design: once respondents can be invited to Post there is no
+  // safe "un-open" that wouldn't strand links already sent.
+  router.post('/organizations/:id/pulse-timepoints/post/trigger', requirePlatformAdminRole, async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const pulseError = pulseNotAvailableError(org);
+    if (pulseError) return res.status(403).json({ error: pulseError });
+    if (org.settings?.pulsePostTriggeredAt) {
+      return res.json({ postTriggered: true, postTriggeredAt: org.settings.pulsePostTriggeredAt });
+    }
+    const triggeredAt = new Date().toISOString();
+    const updated = await Organization.updateOrganizationSettings(org.id, { pulsePostTriggeredAt: triggeredAt });
+    if (!updated) return res.status(500).json({ error: 'Could not open the Post assessment' });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.PULSE_POST_TIMEPOINT_TRIGGER,
+      targetType: 'organization',
+      targetId: org.id,
+      targetOrganizationId: org.id,
+      metadata: { triggeredAt },
+    });
+    return res.json({ postTriggered: true, postTriggeredAt: triggeredAt });
   });
 
   // Toggle for autoCarryForwardRecipientsForDuringCheckpoint — lets admins
@@ -5105,8 +4928,19 @@ export function registerPlatformOrgRoutes(router) {
     if (recipients.length > 2000) {
       return res.status(400).json({ error: 'Too many rows at once (max 2000)' });
     }
+    const postLockedError = await postTimepointLockedError(org, timepointPhase);
+    if (postLockedError) return res.status(409).json({ error: postLockedError, reason: 'post_not_triggered' });
     const allowUnassignedStaff = parseTruthyQueryBool(req.query?.allowUnassignedStaff);
     const expectedGroupLevelLabels = normalizedGroupLevelLabelsFromSettings(org.settings);
+    // Respondents are placed in teams by business level; without levels every
+    // one of them lands in "Unassigned" and the People/Manager views are
+    // meaningless, so adding respondents waits until levels are set up.
+    if (expectedGroupLevelLabels.length === 0) {
+      return res.status(409).json({
+        error: 'Set up this client\'s business levels before adding respondents.',
+        reason: 'business_levels_required',
+      });
+    }
     const result = await upsertPulseInviteRecipients({
       organizationId: req.params.id,
       timepointPhase,
@@ -5117,233 +4951,6 @@ export function registerPlatformOrgRoutes(router) {
     });
     res.json(result);
   });
-
-  router.post('/organizations/:id/pulse-link-invites/test-data', async (req, res) => {
-    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
-    if (!org) return res.status(404).json({ error: 'Organization not found' });
-    const pulseTestDataError = pulseNotAvailableError(org);
-    if (pulseTestDataError) return res.status(403).json({ error: pulseTestDataError });
-
-    const managerCount = Number.parseInt(String(req.body?.managerCount ?? ''), 10);
-    const staffCount = Number.parseInt(String(req.body?.staffCount ?? ''), 10);
-    if (!Number.isInteger(managerCount) || managerCount < 0) {
-      return res.status(400).json({ error: 'managerCount must be a non-negative integer' });
-    }
-    if (!Number.isInteger(staffCount) || staffCount < 0) {
-      return res.status(400).json({ error: 'staffCount must be a non-negative integer' });
-    }
-    if (managerCount === 0 && staffCount === 0) {
-      return res.status(400).json({ error: 'At least one manager or staff user is required' });
-    }
-    if (staffCount > 0 && managerCount === 0) {
-      return res.status(400).json({ error: 'At least one manager is required when staffCount is greater than 0' });
-    }
-    if (managerCount + staffCount > 2000) {
-      return res.status(400).json({ error: 'Too many test users requested (max 2000)' });
-    }
-
-    const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
-    const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
-    const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
-    if (duringSessionError) return res.status(400).json({ error: duringSessionError });
-    const groupLabels = normalizedGroupLevelLabelsFromSettings(org.settings);
-    const rawGroupNames = Array.isArray(req.body?.groupNames) ? req.body.groupNames : [];
-    const normalizedGroupNames = groupLabels.map((_, index) => {
-      const level = Array.isArray(rawGroupNames[index]) ? rawGroupNames[index] : [];
-      return level.map((n) => String(n ?? '').trim()).filter(Boolean);
-    });
-    const datasetToken = randomUUID().replace(/-/g, '').slice(0, 12);
-
-    const recipients = buildTestRecipients({
-      managerCount,
-      staffCount,
-      groupLabels,
-      groupNames: normalizedGroupNames,
-      datasetToken,
-    });
-    const upsertResult = await upsertPulseInviteRecipients({
-      organizationId: req.params.id,
-      timepointPhase,
-      duringSessionId,
-      recipients,
-      allowUnassignedStaff: false,
-      expectedGroupLevelLabels: groupLabels,
-    });
-
-    const stage = internalTimepointToPulseStage(timepointPhase);
-    const sessionsByRole = new Map();
-    let completedResponses = 0;
-    const completionErrors = [];
-    for (let index = 0; index < upsertResult.upsertedRows.length; index += 1) {
-      const inviteRow = upsertResult.upsertedRows[index]?.invite;
-      if (!inviteRow) continue;
-      try {
-        const role = inviteRow.survey_role === 'manager' ? 'manager' : 'staff';
-        const session = await resolvePulseImportSessionForScope({
-          organizationId: req.params.id,
-          role,
-          stage,
-          duringSessionId,
-          sessionCache: sessionsByRole,
-        });
-        await PulseLinkResponse.ensureResponseRow(inviteRow.id, session.id, stage);
-        const step1 = buildTestSurveyStepAnswers(inviteRow.survey_role, index);
-        const completed = await PulseLinkResponse.completeResponse({
-          inviteId: inviteRow.id,
-          sessionId: session.id,
-          stage,
-          step1,
-          step2: {},
-          step3: {},
-          step4: {},
-          contributionStyle: null,
-        });
-        if (completed) completedResponses += 1;
-      } catch (error) {
-        completionErrors.push({
-          inviteId: inviteRow.id,
-          error: String(error?.message || 'response_completion_failed').slice(0, 200),
-        });
-      }
-    }
-
-    return res.json({
-      ok: true,
-      importedUsers: upsertResult.upserted,
-      importErrorCount: upsertResult.errorCount,
-      importErrors: upsertResult.errors,
-      completedResponses,
-      completionErrorCount: completionErrors.length,
-      completionErrors: completionErrors.slice(0, 20),
-      timepoint: stage,
-    });
-  });
-
-  router.post(
-    '/organizations/:id/pulse-link-invites/test-data/import-docx',
-    testDataDocUpload.single('file'),
-    async (req, res) => {
-      const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
-      if (!org) return res.status(404).json({ error: 'Organization not found' });
-      if (!req.file?.buffer) return res.status(400).json({ error: 'Attach a DOCX file first.' });
-
-      const fileName = String(req.file?.originalname || '').toLowerCase();
-      const mimeType = String(req.file?.mimetype || '').toLowerCase();
-      const validMime = mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      if (!fileName.endsWith('.docx') && !validMime) {
-        return res.status(400).json({ error: 'Only .docx files are supported for test-data import.' });
-      }
-
-      const timepointPhase = parsePulseInviteTimepoint(req.query?.timepoint);
-      const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
-      const dryRun = parseQueryBool(req.query?.dryRun, false);
-      const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
-      if (duringSessionError) return res.status(400).json({ error: duringSessionError });
-
-      let parsed;
-      try {
-        parsed = await parseHumanTestDocx(req.file.buffer);
-      } catch (error) {
-        return res.status(400).json({
-          error: String(error?.message || 'Could not parse DOCX file.').slice(0, 300),
-        });
-      }
-
-      const allRows = [...parsed.employeeRows, ...parsed.managerRows];
-      const stage = internalTimepointToPulseStage(timepointPhase);
-      const existingInvites = await PulseLinkInvite.listInviteRowsForOrg(req.params.id, {
-        timepointPhase,
-        duringSessionId,
-      });
-      const inviteLookup = buildDocImportInviteLookup(existingInvites);
-      const sessionsByRole = new Map();
-
-      const matchedRows = [];
-      const unmatchedRows = [];
-      for (const row of allRows) {
-        const invite = consumeInviteMatch(inviteLookup, row.role, row.name);
-        if (!invite) {
-          unmatchedRows.push({ name: row.name, role: row.role });
-          continue;
-        }
-        matchedRows.push({ row, invite });
-      }
-      if (dryRun) {
-        return res.json({
-          ok: true,
-          dryRun: true,
-          canImport: unmatchedRows.length === 0,
-          parsedEmployees: parsed.employeeRows.length,
-          parsedManagers: parsed.managerRows.length,
-          parsedTotal: parsed.totalRows,
-          matchedRows: matchedRows.length,
-          unmatchedCount: unmatchedRows.length,
-          unmatchedRows: unmatchedRows.slice(0, 50),
-          timepoint: stage,
-        });
-      }
-      if (unmatchedRows.length > 0) {
-        return res.status(400).json({
-          error: `${unmatchedRows.length} recipient(s) in the DOCX were not found in this client/timepoint.`,
-          unmatchedCount: unmatchedRows.length,
-          unmatchedRows: unmatchedRows.slice(0, 50),
-        });
-      }
-
-      let completedResponses = 0;
-      const completionErrors = [];
-      const matchedInviteIds = matchedRows.map(({ invite }) => invite.id).filter(Boolean);
-
-      for (const { row, invite } of matchedRows) {
-        try {
-          const session = await resolvePulseImportSessionForScope({
-            organizationId: req.params.id,
-            role: row.role,
-            stage,
-            duringSessionId,
-            sessionCache: sessionsByRole,
-          });
-          await PulseLinkResponse.ensureResponseRow(invite.id, session.id, stage);
-          const completed = await PulseLinkResponse.completeResponse({
-            inviteId: invite.id,
-            sessionId: session.id,
-            stage,
-            step1: { answers: row.answers },
-            step2: {},
-            step3: {},
-            step4: {},
-            contributionStyle: null,
-          });
-          if (completed) completedResponses += 1;
-        } catch (error) {
-          completionErrors.push({
-            name: row.name,
-            role: row.role,
-            inviteId: invite.id,
-            error: String(error?.message || 'response_completion_failed').slice(0, 200),
-          });
-        }
-      }
-
-      const verifiedCompletedRows = await PulseLinkResponse.countCompletedForInviteIds(matchedInviteIds);
-
-      return res.json({
-        ok: true,
-        parsedEmployees: parsed.employeeRows.length,
-        parsedManagers: parsed.managerRows.length,
-        parsedTotal: parsed.totalRows,
-        matchedRows: matchedRows.length,
-        completedResponses,
-        unmatchedCount: 0,
-        unmatchedRows: [],
-        completionErrorCount: completionErrors.length,
-        completionErrors: completionErrors.slice(0, 20),
-        verifiedCompletedRows,
-        verifiedPendingRows: Math.max(0, matchedRows.length - verifiedCompletedRows),
-        timepoint: stage,
-      });
-    }
-  );
 
   router.post('/organizations/:id/pulse-link-invites/repair-manager-role', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
@@ -5395,6 +5002,8 @@ export function registerPlatformOrgRoutes(router) {
     const duringSessionId = parsePulseInviteDuringSessionId(req.query?.duringSessionId);
     const duringSessionError = validatePulseInviteDuringSession(timepointPhase, duringSessionId);
     if (duringSessionError) return res.status(400).json({ error: duringSessionError });
+    const postLockedError = await postTimepointLockedError(org, timepointPhase);
+    if (postLockedError) return res.status(409).json({ error: postLockedError, reason: 'post_not_triggered' });
     const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId, {
       timepointPhase,
       duringSessionId,

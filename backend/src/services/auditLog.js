@@ -28,6 +28,7 @@ export const AUDIT_ACTIONS = Object.freeze({
   PULSE_DURING_CHECKPOINT_OPEN: 'pulse.during_checkpoint.open',
   PULSE_DURING_CHECKPOINT_DELETE: 'pulse.during_checkpoint.delete',
   PULSE_DURING_CHECKPOINT_STATUS_UPDATE: 'pulse.during_checkpoint.status_update',
+  PULSE_POST_TIMEPOINT_TRIGGER: 'pulse.post_timepoint.trigger',
   PULSE_RESPONDENT_CAP_OVERRIDE: 'pulse.respondent_cap.override',
   PULSE_SESSION_LABEL_DATE_UPDATE: 'pulse.session.label_date.update',
 

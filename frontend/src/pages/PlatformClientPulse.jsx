@@ -692,6 +692,7 @@ export default function PlatformClientPulse() {
     pulseDuringDate,
     pulseDuringSessionId,
     pulseTimepointOptions,
+    pulsePostTriggered,
     trendAnalysisVisible,
   } = useOutletContext();
   const location = useLocation();
@@ -2483,6 +2484,12 @@ export default function PlatformClientPulse() {
           loadReports();
         }}
         organization={org}
+        lockedStages={[
+          ...((Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : []).some((row) => row?.phase === 'during')
+            ? []
+            : ['mid']),
+          ...(pulsePostTriggered ? [] : ['post']),
+        ]}
       />
 
     </div>

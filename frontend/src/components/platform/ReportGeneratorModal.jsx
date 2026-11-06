@@ -15,7 +15,7 @@ const STAGE_OPTIONS = [
 
 const CHANGE_TYPE_OPTIONS = ['Technology', 'Restructure', 'Culture', 'Process', 'M&A', 'Other'];
 
-export default function ReportGeneratorModal({ open, onClose, organization }) {
+export default function ReportGeneratorModal({ open, onClose, organization, lockedStages = [] }) {
   const [stage, setStage] = useState('pre');
   const [format, setFormat] = useState('docx');
   const [programmeName, setProgrammeName] = useState('');
@@ -105,11 +105,14 @@ export default function ReportGeneratorModal({ open, onClose, organization }) {
           <label>
             Assessment Stage
             <select value={stage} onChange={(event) => setStage(event.target.value)}>
-              {STAGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              {STAGE_OPTIONS.map((option) => {
+                const locked = lockedStages.includes(option.value);
+                return (
+                  <option key={option.value} value={option.value} disabled={locked}>
+                    {locked ? `${option.label} · not started` : option.label}
+                  </option>
+                );
+              })}
             </select>
           </label>
           <label>

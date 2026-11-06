@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
-import { CalendarClock, CircleCheck, CirclePause, Plus, TriangleAlert, Trash2 } from 'lucide-react';
+import { CalendarClock, CircleCheck, CirclePause, Plus, TriangleAlert, Trash2, Unlock } from 'lucide-react';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
@@ -9,7 +9,7 @@ import RhythmEngineEmailTemplates from '../components/platform/RhythmEngineEmail
 
 const CONFIG_TABS = [
   { id: 'contract', label: 'Contract dates' },
-  { id: 'checkpoints', label: 'During checkpoints' },
+  { id: 'checkpoints', label: 'Checkpoints' },
   { id: 'respondents', label: 'Respondents' },
   { id: 'email-templates', label: 'Email templates' },
 ];
@@ -52,6 +52,8 @@ export default function PlatformPulseSettings() {
     deletePulseDuringTimepoint,
     toggleDuringCheckpointStatus,
     updatePulseSessionLabelDate,
+    pulsePostTriggered,
+    triggerPulsePost,
   } = useOutletContext();
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -60,6 +62,7 @@ export default function PlatformPulseSettings() {
   const [dateEditTarget, setDateEditTarget] = useState(null);
   const [dateEditValue, setDateEditValue] = useState('');
   const [activateTarget, setActivateTarget] = useState(null);
+  const [postTriggerConfirmOpen, setPostTriggerConfirmOpen] = useState(false);
   const [carryForwardBusy, setCarryForwardBusy] = useState(false);
   const carryForwardEnabled = org?.settings?.pulseCarryForwardRecipients === true;
 
@@ -165,6 +168,16 @@ export default function PlatformPulseSettings() {
       showToast(`During · ${label} activated.`, { variant: 'success' });
     } else {
       showToast(result?.error || 'Could not activate the checkpoint.', { variant: 'error' });
+    }
+  }
+
+  async function handleConfirmPostTrigger() {
+    const result = await triggerPulsePost();
+    setPostTriggerConfirmOpen(false);
+    if (result?.ok) {
+      showToast('Post assessment opened. You can now add and invite Post respondents.', { variant: 'success' });
+    } else {
+      showToast(result?.error || 'Could not open the Post assessment.', { variant: 'error' });
     }
   }
 
@@ -301,11 +314,17 @@ export default function PlatformPulseSettings() {
               { option: preOption, label: 'Pre' },
               { option: completedOption, label: 'Post' },
             ].map(({ option, label }) => (
-              <div key={label} className="pulse-settings-row">
+              <div
+                key={label}
+                className={`pulse-settings-row${label === 'Post' && !pulsePostTriggered ? ' pulse-settings-row--locked' : ''}`}
+              >
                 <div className="pulse-settings-row__heading">
                   <span className="pulse-settings-row__title">
                     {label} · {option ? formatCheckpointDate(option.dateKey) : 'Not available yet'}
                   </span>
+                  {label === 'Post' && !pulsePostTriggered ? (
+                    <span className="badge badge-draft">Not opened</span>
+                  ) : null}
                   {option && !option.isContractDate ? (
                     <span className="badge badge-draft">Contract date not set</span>
                   ) : null}
@@ -323,6 +342,11 @@ export default function PlatformPulseSettings() {
 
       {activeTab === 'checkpoints' ? (
         <div role="tabpanel" id="re-config-panel-checkpoints" aria-labelledby="re-config-tab-checkpoints">
+          <p className="muted" style={{ margin: '0 0 0.9rem' }}>
+            During and Post stay greyed out in the Point in Time selector, and closed to respondents, until they are
+            started here.
+          </p>
+          <h2 className="pulse-settings-section-title">During checkpoints</h2>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-start', justifyContent: 'space-between', margin: '0 0 0.6rem' }}>
             <p className="muted" style={{ margin: 0, flex: '1 1 20rem' }}>
               Create, activate, delete, or set the date for During checkpoints.
@@ -401,6 +425,41 @@ export default function PlatformPulseSettings() {
                 </div>
               ))
             )}
+          </div>
+
+          <h2 className="pulse-settings-section-title">Post assessment</h2>
+          <div className="card pulse-settings-list">
+            <div className={`pulse-settings-row${pulsePostTriggered ? '' : ' pulse-settings-row--locked'}`}>
+              <div style={{ flex: '1 1 20rem', minWidth: 0 }}>
+                <div className="pulse-settings-row__heading">
+                  <span className="pulse-settings-row__title">
+                    Post · {completedOption ? formatCheckpointDate(completedOption.dateKey) : 'Not available yet'}
+                  </span>
+                  {pulsePostTriggered ? (
+                    <span className="badge badge-active">Open</span>
+                  ) : (
+                    <span className="badge badge-draft">Not opened</span>
+                  )}
+                </div>
+                <p className="muted" style={{ margin: '0.3rem 0 0', fontWeight: 400 }}>
+                  {pulsePostTriggered
+                    ? 'Post respondents can be added and invited from the Respondents page.'
+                    : 'Open Post when the change has landed and you are ready to measure how it has embedded. Until then Post cannot be selected or invited.'}
+                </p>
+              </div>
+              {pulsePostTriggered ? null : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setPostTriggerConfirmOpen(true)}
+                  disabled={pulseTimepointBusy}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  <Unlock size={16} strokeWidth={2} aria-hidden style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                  Open Post assessment
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ) : null}
@@ -555,6 +614,43 @@ export default function PlatformPulseSettings() {
               disabled={pulseTimepointBusy}
             >
               {pulseTimepointBusy ? 'Activating…' : 'Activate checkpoint'}
+            </button>
+          </div>
+        </div>
+      </ModalDialog>
+
+      <ModalDialog
+        open={postTriggerConfirmOpen}
+        title="Open the Post assessment?"
+        titleId="pulse-trigger-post-title"
+        onClose={() => {
+          if (!pulseTimepointBusy) setPostTriggerConfirmOpen(false);
+        }}
+      >
+        <div style={{ padding: '0 0 1rem' }}>
+          <p style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+            <TriangleAlert size={20} strokeWidth={2} aria-hidden style={{ flexShrink: 0, marginTop: '0.15rem' }} />
+            <span>
+              Post becomes selectable in the Point in Time selector and respondents can be added and invited to it.
+              This cannot be undone from this screen.
+            </span>
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.8rem' }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setPostTriggerConfirmOpen(false)}
+              disabled={pulseTimepointBusy}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleConfirmPostTrigger}
+              disabled={pulseTimepointBusy}
+            >
+              {pulseTimepointBusy ? 'Opening…' : 'Open Post assessment'}
             </button>
           </div>
         </div>
