@@ -5,6 +5,7 @@ import { ToastProvider } from './components/shared/ToastProvider.jsx';
 import MfaReverifyProvider from './components/shared/MfaReverifyProvider.jsx';
 import { IS_RHYTHM_ENGINE_SURFACE } from './config/appSurface.js';
 import { lazyWithReload } from './utils/lazyWithReload.js';
+import NotFoundPanel from './components/shared/NotFoundPanel.jsx';
 
 // BRAND-02: this file is only ever bundled for the crm/all surfaces —
 // main.jsx sends the pulse build to AppRhythmEngine.jsx instead, at the
@@ -99,10 +100,14 @@ export default function App() {
                   <Route path="configurations" element={<PlatformRhythmEngineSettings />} />
                   <Route path="users" element={<Navigate to="../respondents" replace />} />
                   <Route path="settings" element={<Navigate to="../configurations" replace />} />
+                  <Route path="*" element={<NotFoundPanel />} />
                 </Route>
                 <Route path="pulse/*" element={<Navigate to="rhythm-engine" replace />} />
                 {!IS_RHYTHM_ENGINE_SURFACE && <Route path="account" element={<PlatformClientAccount />} />}
                 {!IS_RHYTHM_ENGINE_SURFACE && <Route path="my-account" element={<AccountPage standalone={false} />} />}
+                {/* The CRM client page is labelled Settings but lives at /account. */}
+                {!IS_RHYTHM_ENGINE_SURFACE && <Route path="settings" element={<Navigate to="../account" replace />} />}
+                <Route path="*" element={<NotFoundPanel />} />
               </Route>
               {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/clients" element={<PlatformClients />} />}
               {!IS_RHYTHM_ENGINE_SURFACE && <Route path="/platform/users" element={<PlatformUsers />} />}

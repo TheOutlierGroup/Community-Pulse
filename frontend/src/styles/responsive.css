@@ -6734,6 +6734,10 @@ input[type='range'] {
   border-bottom: 1px solid var(--border);
 }
 
+.pulse-clean-header__kpis--manager {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .pulse-clean-header__kpi {
   position: relative;
   padding: 0.75rem 0.85rem;
@@ -6791,6 +6795,7 @@ input[type='range'] {
 }
 
 .pulse-clean-header__kpi--verdict {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -6808,11 +6813,17 @@ input[type='range'] {
   border-radius: 8px;
   color: #ffffff;
   font-family: var(--pulse-font-ui);
-  font-size: 2rem;
-  line-height: 1;
+  /* Scales down instead of clipping in the narrow verdict cell (6 Nov
+     run-through: "NOT CLEARED" was cut off at narrow widths), and wraps
+     onto two lines as a last resort. */
+  font-size: clamp(1.05rem, 1.6vw + 0.45rem, 2rem);
+  line-height: 1.1;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  max-width: 100%;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .pulse-clean-header__verdict-pill--not-cleared {
@@ -8143,7 +8154,7 @@ input[type='range'] {
 .pulse-clean-dimensions__col-id { width: 104px; }
 .pulse-clean-dimensions__col-construct { width: auto; }
 .pulse-clean-dimensions__col-score { width: 88px; }
-.pulse-clean-dimensions__col-gap { width: 64px; }
+.pulse-clean-dimensions__col-gap { width: 84px; }
 .pulse-clean-dimensions__col-dim-avg { width: 88px; }
 
 .pulse-clean-dimensions__table--split .pulse-clean-dimensions__col-id { width: 56px; }

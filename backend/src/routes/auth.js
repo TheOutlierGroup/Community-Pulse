@@ -32,7 +32,6 @@ import { logAuditEvent } from '../services/auditLog.js';
 import {
   clientServiceCatalogFromPlatformSettings,
   enabledServicesFromOrganizationSettings,
-  normalizeClientServiceIds,
   clientPortalTierFromOrganizationSettings,
 } from '../services/clientServices.js';
 import { resolveBrandForOrganization, publicBrand } from '../services/licenseeBrand.js';
@@ -547,38 +546,10 @@ router.get('/me/organization-service-catalog', requireAuth, async (req, res) => 
   return res.json({ services });
 });
 
-router.patch('/me/organization-services', requireAuth, requireClientAdmin, async (req, res) => {
-  const body = req.body || {};
-  if (!Object.prototype.hasOwnProperty.call(body, 'services')) {
-    return res.status(400).json({ error: 'services is required' });
-  }
-  if (!Array.isArray(body.services)) {
-    return res.status(400).json({ error: 'services must be an array' });
-  }
-  const org = await Organization.getOrganization(req.user.organizationId);
-  if (!org || org.kind !== 'client') {
-    return res.status(404).json({ error: 'Organization not found' });
-  }
-  const baseSettings =
-    org.settings && typeof org.settings === 'object' && !Array.isArray(org.settings)
-      ? org.settings
-      : {};
-  const nextSettings = {
-    ...baseSettings,
-    services: normalizeClientServiceIds(
-      body.services,
-      clientServiceCatalogFromPlatformSettings(
-        (await Organization.getFirstOrganizationByKind('platform'))?.settings
-      ).map((service) => service.id)
-    ),
-  };
-  if (Object.prototype.hasOwnProperty.call(nextSettings, 'pulseEnabled')) {
-    delete nextSettings.pulseEnabled;
-  }
-  await Organization.updateOrganizationClient(org.id, { settings: nextSettings });
-  const full = await User.findUserByIdWithOrg(req.user.id);
-  res.json({ user: publicUser(full) });
-});
+// Client admins used to be able to PATCH their own organisation's services
+// from Your account, which let a client switch on Rhythm Engine (or mark
+// itself a licensee) without a licence. Services are commercial settings,
+// managed only by Outlier staff from the CRM client's Settings page.
 
 const orgLogoClientUpload = multer({
   storage: multer.memoryStorage(),

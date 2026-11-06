@@ -216,6 +216,22 @@ function formatPercentInt(value) {
   return `${Math.round(Number(value))}%`;
 }
 
+
+// Scenario A used to read "With 41% in High Risk and 0% overloaded manager
+// capacity, early compliance is unlikely…", listing a 0% figure as if it
+// were a problem. Only name the risks that are actually present.
+function doNothingScenarioText({ adoptionScore, sponsorshipScore, highRiskPercent, overloadedPercent }) {
+  const opening = `The change launches with Adoption at ${formatScore1(adoptionScore)}/40 and Sponsorship at ${formatScore1(sponsorshipScore)}/40.`;
+  const risks = [
+    Number(highRiskPercent) > 0 ? `${formatPercentInt(highRiskPercent)} of respondents in High Risk` : null,
+    Number(overloadedPercent) > 0 ? `${formatPercentInt(overloadedPercent)} of managers overloaded` : null,
+  ].filter(Boolean);
+  if (risks.length === 0) {
+    return `${opening} No respondents sit in High Risk and no managers are overloaded, but without reinforcement early compliance can still fade before it becomes sustained behaviour change.`;
+  }
+  return `${opening} With ${risks.join(' and ')}, early compliance is unlikely to convert into sustained behaviour change.`;
+}
+
 function buildExecutiveSummaryContent({
   adoptionScore,
   sponsorshipScore,
@@ -261,7 +277,7 @@ function buildExecutiveSummaryContent({
       textA:
         adoptionScore == null || sponsorshipScore == null
           ? 'The current pattern remains unresolved: readiness risks persist and rollout friction accumulates in the middle of the organisation.'
-          : `The change launches with Adoption at ${formatScore1(adoptionScore)}/40 and Sponsorship at ${formatScore1(sponsorshipScore)}/40. With ${formatPercentInt(highRiskPercent)} in High Risk${overloadedPercent == null ? '' : ` and ${formatPercentInt(overloadedPercent)} overloaded manager capacity`}, early compliance is unlikely to convert into sustained behaviour change.`,
+          : doNothingScenarioText({ adoptionScore, sponsorshipScore, highRiskPercent, overloadedPercent }),
       textB:
         'Momentum stalls in teams already under strain, and the absence of targeted reinforcement makes course-correction slower and more expensive.',
       outcome:
@@ -1188,15 +1204,18 @@ function actorDisplayLabel(user) {
 }
 
 function buildClientUserImportTemplateCsv(groupLevelLabels) {
+  // Only columns the importer actually reads (see parseRecipientCsv in
+  // frontend/src/utils/pulseInviteCsv.js), plus one per business level.
+  // Employment type, birth year, length of service and work location used
+  // to be here too, but nothing ever read or stored them, so asking clients
+  // to fill them in (birth year especially) collected personal data for no
+  // purpose. Templates downloaded earlier still import: unknown columns
+  // are ignored.
   const fixedHeaders = [
     'employee full name',
     'email address',
-    'employent type (FT/PT/Casual)',
     'Manager (Yes/No)',
     'Manager Email',
-    'birth year',
-    'Length of Service',
-    'Primary Work Location',
   ];
   const dynamicHeaders = (Array.isArray(groupLevelLabels) ? groupLevelLabels : [])
     .map((label) => String(label ?? '').trim())
@@ -3547,9 +3566,16 @@ export function registerPlatformOrgRoutes(router) {
     // Same filter-down protection as orgScoreSampleSizeMet, but scoped to
     // the employee/manager cohorts the dimension heatmap and perception-gap
     // analysis compare against each other.
-    const dimensionsSampleSizeMet =
-      employeeScoredRows.length >= DASHBOARD_MIN_SAMPLE_SIZE
-      && managerScoredRows.length >= DASHBOARD_MIN_SAMPLE_SIZE;
+    //
+    // Each audience is gated on its own size: an employee average only needs
+    // enough employees, a manager average enough managers. A single combined
+    // gate used to withhold employee figures (e.g. 10 employees) whenever
+    // managers were under the floor, which emptied the Trend Analysis
+    // employee dimension charts. Only the perception gap, which compares the
+    // two cohorts, needs both (dimensionsSampleSizeMet).
+    const employeeDimensionsSampleSizeMet = employeeScoredRows.length >= DASHBOARD_MIN_SAMPLE_SIZE;
+    const managerDimensionsSampleSizeMet = managerScoredRows.length >= DASHBOARD_MIN_SAMPLE_SIZE;
+    const dimensionsSampleSizeMet = employeeDimensionsSampleSizeMet && managerDimensionsSampleSizeMet;
     const averageFor = (values) => {
       if (!values.length) return null;
       return round1(values.reduce((sum, value) => sum + value, 0) / values.length);
@@ -3601,82 +3627,57 @@ export function registerPlatformOrgRoutes(router) {
       const employeeHighCount = employeeDimensionValues.filter((value) => value >= 4).length;
       const managerHighCount = managerDimensionValues.filter((value) => value >= 4).length;
 
-      // Below the sample-size floor, expose only structural fields
-      // (id/label/comparable/counts) — never the actual averages/gaps for
-      // what could be a tiny, re-identifiable group.
-      if (!dimensionsSampleSizeMet) {
-        return {
-          id: dimension.id,
-          label: dimension.employeeLabel,
-          managerLabel: dimension.managerLabel,
-          comparable,
-          sampleSizeMet: false,
-          employee: {
-            questionIds: dimension.employeeQuestions,
-            q1Avg: null,
-            q2Avg: null,
-            average: null,
-            count: employeeDimensionValues.length,
-            intraGap: null,
-            intraGapFlagged: false,
-          },
-          manager: {
-            questionIds: dimension.managerQuestions,
-            q1Avg: null,
-            q2Avg: null,
-            average: null,
-            count: managerDimensionValues.length,
-            intraGap: null,
-            intraGapFlagged: false,
-          },
-          perceptionGap: null,
-          perceptionGapFlagged: false,
-          energyAvg: null,
-          frictionAvg: null,
-          highEnergyPercent: null,
-          managerHighPercent: null,
-        };
-      }
-
+      // Below an audience's sample-size floor, expose only structural fields
+      // (question ids, counts) for that audience — never averages or gaps
+      // for what could be a tiny, re-identifiable group.
+      const employeeMet = employeeDimensionsSampleSizeMet;
+      const managerMet = managerDimensionsSampleSizeMet;
+      const bothMet = employeeMet && managerMet;
       return {
         id: dimension.id,
         label: dimension.employeeLabel,
         managerLabel: dimension.managerLabel,
         comparable,
-        sampleSizeMet: true,
+        sampleSizeMet: bothMet,
+        employeeSampleSizeMet: employeeMet,
+        managerSampleSizeMet: managerMet,
         employee: {
           questionIds: dimension.employeeQuestions,
-          q1Avg: employeeQ1Avg,
-          q2Avg: employeeQ2Avg,
-          average: employeeAvg,
+          q1Avg: employeeMet ? employeeQ1Avg : null,
+          q2Avg: employeeMet ? employeeQ2Avg : null,
+          average: employeeMet ? employeeAvg : null,
           count: employeeDimensionValues.length,
-          intraGap: employeeIntraGap,
+          intraGap: employeeMet ? employeeIntraGap : null,
           intraGapFlagged:
-            Number.isFinite(employeeIntraGap)
+            employeeMet
+            && Number.isFinite(employeeIntraGap)
             && employeeIntraGap >= INTRA_DIMENSION_DIVERGENCE_THRESHOLD,
         },
         manager: {
           questionIds: dimension.managerQuestions,
-          q1Avg: managerQ1Avg,
-          q2Avg: managerQ2Avg,
-          average: managerAvg,
+          q1Avg: managerMet ? managerQ1Avg : null,
+          q2Avg: managerMet ? managerQ2Avg : null,
+          average: managerMet ? managerAvg : null,
           count: managerDimensionValues.length,
-          intraGap: managerIntraGap,
+          intraGap: managerMet ? managerIntraGap : null,
           intraGapFlagged:
-            Number.isFinite(managerIntraGap)
+            managerMet
+            && Number.isFinite(managerIntraGap)
             && managerIntraGap >= INTRA_DIMENSION_DIVERGENCE_THRESHOLD,
         },
-        perceptionGap,
+        perceptionGap: bothMet ? perceptionGap : null,
         perceptionGapFlagged:
-          Number.isFinite(perceptionGap) && perceptionGap >= PERCEPTION_GAP_THRESHOLD,
-        energyAvg: employeeAvg,
-        frictionAvg: managerAvg,
-        highEnergyPercent:
-          employeeDimensionValues.length > 0
+          bothMet && Number.isFinite(perceptionGap) && perceptionGap >= PERCEPTION_GAP_THRESHOLD,
+        energyAvg: employeeMet ? employeeAvg : null,
+        frictionAvg: managerMet ? managerAvg : null,
+        highEnergyPercent: !employeeMet
+          ? null
+          : employeeDimensionValues.length > 0
             ? round1((employeeHighCount / employeeDimensionValues.length) * 100)
             : 0,
-        managerHighPercent:
-          managerDimensionValues.length > 0
+        managerHighPercent: !managerMet
+          ? null
+          : managerDimensionValues.length > 0
             ? round1((managerHighCount / managerDimensionValues.length) * 100)
             : 0,
       };
@@ -4462,6 +4463,8 @@ export function registerPlatformOrgRoutes(router) {
       minSampleSize: DASHBOARD_MIN_SAMPLE_SIZE,
       orgSampleSizeMet: orgScoreSampleSizeMet,
       dimensionsSampleSizeMet,
+      employeeDimensionsSampleSizeMet,
+      managerDimensionsSampleSizeMet,
       quadrants,
       managerLoad,
       dimensions,
@@ -4556,7 +4559,21 @@ export function registerPlatformOrgRoutes(router) {
       organizationId: org.id,
       mfaVerifiedAt: req.user.mfaVerifiedAt || null,
     });
-    const url = `${pulseBaseUrl}/sso/exchange?handoff=${encodeURIComponent(handoff.token)}&orgId=${encodeURIComponent(org.id)}`;
+    // Deep links (e.g. straight to Configurations) used to land on the
+    // Rhythm Engine home. Carry the requested page through, but only ever a
+    // page inside this same client's Rhythm Engine, so the parameter can't
+    // be turned into an open redirect.
+    const nextPrefix = `/platform/clients/${org.id}/rhythm-engine`;
+    const requestedNext = typeof req.body?.next === 'string' ? req.body.next.trim() : '';
+    const next =
+      requestedNext.startsWith(nextPrefix)
+      && /^[A-Za-z0-9/_\-?=&#.%]*$/.test(requestedNext)
+      && !requestedNext.includes('//')
+        ? requestedNext
+        : '';
+    const url = `${pulseBaseUrl}/sso/exchange?handoff=${encodeURIComponent(handoff.token)}&orgId=${encodeURIComponent(org.id)}${
+      next ? `&next=${encodeURIComponent(next)}` : ''
+    }`;
     res.json({
       url,
       expiresAt: handoff.expiresAt,
