@@ -118,6 +118,7 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
   const pulseTimepointBusy = Boolean(navContext?.pulseTimepointBusy);
   const pulseTimepointError = String(navContext?.pulseTimepointError || '');
   const trendAnalysisVisible = Boolean(navContext?.trendAnalysisVisible);
+  const pulsePostTriggered = navContext?.pulsePostTriggered === true;
   const preOption = pulseTimepointOptions.find((row) => row.phase === 'pre');
   const completedOption = pulseTimepointOptions.find((row) => row.phase === 'completed');
   const duringOptions = pulseTimepointOptions.filter((row) => row.phase === 'during');
@@ -280,11 +281,37 @@ export default function Navigation({ user, onLogout, variant = 'header', navCont
                           }`}
                         </option>
                       ))}
-                      {!duringOptions.length ? <option value="during">During</option> : null}
-                      <option value="completed">
-                        Post{completedOption ? ` · ${completedOption.label}` : ''}
+                      {!duringOptions.length ? (
+                        <option value="during" disabled>
+                          During · not started
+                        </option>
+                      ) : null}
+                      <option value="completed" disabled={!pulsePostTriggered}>
+                        {pulsePostTriggered
+                          ? `Post${completedOption ? ` · ${completedOption.label}` : ''}`
+                          : 'Post · not opened'}
                       </option>
                     </select>
+                    {!duringOptions.length || !pulsePostTriggered ? (
+                      <p className="sidebar-pulse-timepoint__hint">
+                        {!duringOptions.length && !pulsePostTriggered
+                          ? 'During and Post'
+                          : !duringOptions.length
+                            ? 'During'
+                            : 'Post'}{' '}
+                        {user.role === 'admin' ? (
+                          <>
+                            {!duringOptions.length && !pulsePostTriggered ? 'unlock' : 'unlocks'} once started in{' '}
+                            <Link to={`/platform/clients/${platformClientOrgId}/rhythm-engine/configurations?tab=checkpoints`}>
+                              Configurations
+                            </Link>
+                            .
+                          </>
+                        ) : (
+                          <>{!duringOptions.length && !pulsePostTriggered ? 'unlock' : 'unlocks'} once an admin starts it.</>
+                        )}
+                      </p>
+                    ) : null}
                     {pulseTimepointError ? (
                       <p className="sidebar-pulse-timepoint__error">{pulseTimepointError}</p>
                     ) : null}

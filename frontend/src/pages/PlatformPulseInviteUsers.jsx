@@ -183,6 +183,8 @@ export default function PlatformPulseInviteUsers() {
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
+  // The Add respondents modal covers both ways in: one at a time, or a CSV.
+  const [addMode, setAddMode] = useState('single');
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState('staff');
@@ -194,15 +196,6 @@ export default function PlatformPulseInviteUsers() {
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState('');
   const [businessLevelsOpen, setBusinessLevelsOpen] = useState(false);
-  const [testDataOpen, setTestDataOpen] = useState(false);
-  const [testDataBusy, setTestDataBusy] = useState(false);
-  const [testDataError, setTestDataError] = useState('');
-  const [testDataStaffCount, setTestDataStaffCount] = useState('0');
-  const [testDataManagerCount, setTestDataManagerCount] = useState('0');
-  const [testDataGroupCounts, setTestDataGroupCounts] = useState([]);
-  const [testDataGroupNames, setTestDataGroupNames] = useState([]);
-  const [testDataMode, setTestDataMode] = useState('generate');
-  const [testDataDocFile, setTestDataDocFile] = useState(null);
 
   const configuredGroupLabels = useMemo(() => {
     const labels = Array.isArray(org?.settings?.groupLevelLabels) ? org.settings.groupLevelLabels : [];
@@ -270,23 +263,11 @@ export default function PlatformPulseInviteUsers() {
     [copySourceTimepoint]
   );
   const recipientsTableColumnCount = 7 + configuredGroupLabels.length;
-
-  useEffect(() => {
-    if (!testDataOpen) return;
-    setTestDataGroupCounts((previous) =>
-      configuredGroupLabels.map((_, index) => {
-        const existing = Number.parseInt(String(previous[index] ?? ''), 10);
-        if (Number.isInteger(existing) && existing >= 0) return String(existing);
-        return '3';
-      })
-    );
-    setTestDataGroupNames((previous) =>
-      configuredGroupLabels.map((_, index) => {
-        const existing = previous[index];
-        return Array.isArray(existing) && existing.length > 0 ? existing : ['', '', ''];
-      })
-    );
-  }, [configuredGroupLabels, testDataOpen]);
+  // Respondents are placed in teams by business level, so none can be added
+  // (one at a time, by CSV, or copied from another stage) until the levels
+  // exist. The import route enforces the same rule server-side.
+  const businessLevelsMissing = configuredGroupLabels.length === 0;
+  const businessLevelsMissingMessage = 'Set up this client\'s business levels before adding respondents.';
 
   const load = useCallback(async (options = {}) => {
     const silent = Boolean(options.silent);
@@ -363,7 +344,25 @@ export default function PlatformPulseInviteUsers() {
 
   function openCsvPicker() {
     if (busyImport || bulkSending || copyingFromPre) return;
+    if (businessLevelsMissing) {
+      showToast(businessLevelsMissingMessage, { variant: 'error' });
+      return;
+    }
     fileInputRef.current?.click();
+  }
+
+  function openAddModal(mode = 'single') {
+    if (businessLevelsMissing) {
+      showToast(businessLevelsMissingMessage, { variant: 'error' });
+      return;
+    }
+    setAddMode(mode === 'import' ? 'import' : 'single');
+    setAddOpen(true);
+  }
+
+  function chooseCsvFromAddModal() {
+    closeAddModal();
+    openCsvPicker();
   }
 
   // D-009: this used to only be reachable from the client's CRM Settings, one
@@ -371,7 +370,7 @@ export default function PlatformPulseInviteUsers() {
   // here so download-template-then-import-it is a single-page loop.
   async function downloadUserImportTemplate() {
     if (configuredGroupLabels.length === 0) {
-      showToast('Set up this client\'s business levels (Business levels button above) before downloading the template.', {
+      showToast(businessLevelsMissingMessage, {
         variant: 'error',
       });
       return;
@@ -440,6 +439,10 @@ export default function PlatformPulseInviteUsers() {
 
   async function copyRecipientsFromPre() {
     if (!copySourceTimepoint) return;
+    if (businessLevelsMissing) {
+      showToast(businessLevelsMissingMessage, { variant: 'error' });
+      return;
+    }
     if (copySourceTimepoint === 'mid' && !copySourceDuringSessionId) {
       showToast('Select a During checkpoint before copying recipients from mid.', { variant: 'error' });
       return;
@@ -506,195 +509,15 @@ export default function PlatformPulseInviteUsers() {
     setAddRole('staff');
     setAddManagerInviteId('');
     setAddGroupValues([]);
-  }
-
-  function openTestDataModal() {
-    setTestDataError('');
-    setTestDataStaffCount('0');
-    setTestDataManagerCount('0');
-    setTestDataMode('generate');
-    setTestDataDocFile(null);
-    setTestDataOpen(true);
-  }
-
-  function closeTestDataModal() {
-    if (testDataBusy) return;
-    setTestDataOpen(false);
-    setTestDataError('');
-    setTestDataDocFile(null);
-  }
-
-  async function runDocxImport({ dryRun }) {
-    if (!testDataDocFile) {
-      setTestDataError('Select a DOCX file to import.');
-      return null;
-    }
-    const fileName = String(testDataDocFile.name || '').toLowerCase();
-    if (!fileName.endsWith('.docx')) {
-      setTestDataError('Only .docx files are supported.');
-      return null;
-    }
-    setTestDataBusy(true);
-    setTestDataError('');
-    try {
-      const formData = new FormData();
-      formData.append('file', testDataDocFile);
-      const { data } = await api.post(
-        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/test-data/import-docx`,
-        formData,
-        {
-          params: {
-            ...inviteRequestParams,
-            dryRun: dryRun ? '1' : '0',
-          },
-          headers: { 'Content-Type': 'multipart/form-data' },
-        }
-      );
-      return data;
-    } catch (err) {
-      const payload = err.response?.data;
-      const unmatchedRows = Array.isArray(payload?.unmatchedRows) ? payload.unmatchedRows : [];
-      const unmatchedPreview = unmatchedRows
-        .slice(0, 5)
-        .map((entry) => `${entry.name} (${entry.role})`)
-        .join(', ');
-      const baseMessage = payload?.error || 'Could not import DOCX test data.';
-      setTestDataError(unmatchedPreview ? `${baseMessage} Missing: ${unmatchedPreview}.` : baseMessage);
-      return null;
-    } finally {
-      setTestDataBusy(false);
-    }
-  }
-
-  async function runDocxPrecheck() {
-    const data = await runDocxImport({ dryRun: true });
-    if (!data) return;
-    const parsedTotal = Number(data?.parsedTotal || 0);
-    const matchedRows = Number(data?.matchedRows || 0);
-    const unmatchedCount = Number(data?.unmatchedCount || 0);
-    if (unmatchedCount > 0) {
-      showToast(
-        `Pre-check found ${unmatchedCount} missing recipient(s). Matched ${matchedRows}/${parsedTotal}.`,
-        { variant: 'error' }
-      );
-      return;
-    }
-    showToast(`Pre-check passed. All ${matchedRows}/${parsedTotal} recipients are present.`, {
-      variant: 'success',
-    });
-  }
-
-  async function submitTestData(e) {
-    e.preventDefault();
-    if (testDataMode === 'import-docx') {
-      const confirmed = window.confirm(
-        [
-          `Import "${testDataDocFile.name}" now?`,
-          '',
-          'This applies survey answers to existing recipients for this timepoint.',
-          'Rows with no matching recipient name will be skipped.',
-        ].join('\n')
-      );
-      if (!confirmed) return;
-      const data = await runDocxImport({ dryRun: false });
-      if (!data) return;
-      const parsedTotal = Number(data?.parsedTotal || 0);
-      const completedResponses = Number(data?.completedResponses || 0);
-      const unmatchedCount = Number(data?.unmatchedCount || 0);
-      const errorCount = Number(data?.completionErrorCount || 0);
-      const verifiedCompletedRows = Number(data?.verifiedCompletedRows || 0);
-      const verifiedPendingRows = Number(data?.verifiedPendingRows || 0);
-      const verificationText =
-        Number.isFinite(verifiedCompletedRows) && (verifiedCompletedRows > 0 || verifiedPendingRows > 0)
-          ? ` Verified completed: ${verifiedCompletedRows}/${parsedTotal}.`
-          : '';
-      showToast(
-        `Imported ${completedResponses}/${parsedTotal} responses (${unmatchedCount} unmatched, ${errorCount} errors).${verificationText}`,
-        { variant: errorCount > 0 ? 'error' : 'success' }
-      );
-      setTestDataOpen(false);
-      setTestDataDocFile(null);
-      await load();
-      return;
-    }
-
-    const staffCount = Number.parseInt(String(testDataStaffCount || '').trim(), 10);
-    const managerCount = Number.parseInt(String(testDataManagerCount || '').trim(), 10);
-    if (!Number.isInteger(staffCount) || staffCount < 0) {
-      setTestDataError('Staff count must be a non-negative whole number.');
-      return;
-    }
-    if (!Number.isInteger(managerCount) || managerCount < 0) {
-      setTestDataError('Manager count must be a non-negative whole number.');
-      return;
-    }
-    if (staffCount === 0 && managerCount === 0) {
-      setTestDataError('Enter at least one staff or manager user.');
-      return;
-    }
-    if (staffCount > 0 && managerCount === 0) {
-      setTestDataError('At least one manager is required when creating staff test users.');
-      return;
-    }
-    const parsedGroupNames = configuredGroupLabels.map((_, index) => {
-      const level = Array.isArray(testDataGroupNames[index]) ? testDataGroupNames[index] : [];
-      return level.map((n) => String(n ?? '').trim()).filter(Boolean);
-    });
-    const groupSummary = configuredGroupLabels
-      .map((label, index) => {
-        const names = parsedGroupNames[index];
-        return `${label}: ${names.length > 0 ? names.join(', ') : '(none)'}`;
-      })
-      .join('\n');
-    const confirmed = window.confirm(
-      [
-        'Create test data now?',
-        '',
-        `Managers: ${managerCount}`,
-        `Staff: ${staffCount}`,
-        configuredGroupLabels.length > 0 ? `Group names:\n${groupSummary}` : 'Groups: none configured',
-        '',
-        'This will create users and completed survey responses for this timepoint.',
-      ].join('\n')
-    );
-    if (!confirmed) return;
-
-    setTestDataBusy(true);
-    setTestDataError('');
-    try {
-      const { data } = await api.post(
-        `/api/platform/organizations/${orgId}/rhythm-engine-link-invites/test-data`,
-        {
-          staffCount,
-          managerCount,
-          groupNames: parsedGroupNames,
-        },
-        { params: inviteRequestParams }
-      );
-      const importedUsers = Number(data?.importedUsers || 0);
-      const completedResponses = Number(data?.completedResponses || 0);
-      const expectedTotal = staffCount + managerCount;
-      showToast(
-        `Created ${importedUsers} test users (${staffCount} staff, ${managerCount} managers; total requested ${expectedTotal}) and ${completedResponses} completed responses.`,
-        {
-        variant: 'success',
-      });
-      if (Number(data?.importErrorCount || 0) > 0 || Number(data?.completionErrorCount || 0) > 0) {
-        showToast('Some test records could not be imported/completed. Check server response logs.', {
-          variant: 'error',
-        });
-      }
-      setTestDataOpen(false);
-      await load();
-    } catch (err) {
-      setTestDataError(err.response?.data?.error || 'Could not create test data.');
-    } finally {
-      setTestDataBusy(false);
-    }
+    setAddMode('single');
   }
 
   async function submitAddRecipient(e) {
     e.preventDefault();
+    if (businessLevelsMissing) {
+      setAddError(businessLevelsMissingMessage);
+      return;
+    }
     const email = String(addEmail || '')
       .trim()
       .toLowerCase();
@@ -959,26 +782,6 @@ export default function PlatformPulseInviteUsers() {
             type="button"
             className="btn btn-ghost"
             style={{ margin: 0 }}
-            onClick={downloadUserImportTemplate}
-            disabled={templateDownloadBusy || busyImport || bulkSending || copyingFromPre}
-          >
-            <Download size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
-            {templateDownloadBusy ? 'Downloading…' : 'Download CSV template'}
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            style={{ margin: 0 }}
-            disabled={busyImport || bulkSending || copyingFromPre}
-            onClick={openCsvPicker}
-          >
-            <Upload size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
-            {busyImport ? 'Importing…' : 'Import CSV'}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ margin: 0 }}
             onClick={exportRecipientsCsv}
             disabled={loading || invites.length === 0 || busyImport || bulkSending || copyingFromPre}
           >
@@ -987,24 +790,35 @@ export default function PlatformPulseInviteUsers() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => setAddOpen(true)}
-            disabled={bulkSending || busyImport || copyingFromPre || testDataBusy}
+            onClick={() => openAddModal('single')}
+            disabled={bulkSending || busyImport || copyingFromPre || businessLevelsMissing}
+            title={businessLevelsMissing ? businessLevelsMissingMessage : undefined}
           >
             <UserPlus size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
-            Add
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={openTestDataModal}
-            disabled={bulkSending || busyImport || copyingFromPre || testDataBusy}
-          >
-            {testDataBusy ? 'Creating test data…' : 'Test Data'}
+            {busyImport ? 'Importing…' : 'Add respondents'}
           </button>
         </div>
       </div>
 
       {error && <p className="error">{error}</p>}
+      {businessLevelsMissing ? (
+        <div className="card pulse-respondents-blocked" role="status">
+          <Layers size={20} strokeWidth={1.75} aria-hidden style={{ flexShrink: 0 }} />
+          <div style={{ flex: '1 1 16rem' }}>
+            <p style={{ margin: 0, fontWeight: 600 }}>Business levels are not set up yet</p>
+            <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+              {user.role === 'admin'
+                ? 'Respondents are placed in teams by business level, so they can\'t be added until the levels are set up.'
+                : 'Respondents can\'t be added until an admin sets up this client\'s business levels.'}
+            </p>
+          </div>
+          {user.role === 'admin' ? (
+            <button type="button" className="btn btn-primary" onClick={() => setBusinessLevelsOpen(true)}>
+              Set up business levels
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <input
         ref={fileInputRef}
         type="file"
@@ -1021,174 +835,6 @@ export default function PlatformPulseInviteUsers() {
         org={org}
         refreshOrg={refreshOrg}
       />
-
-      <ModalDialog
-        open={testDataOpen}
-        title="Import test users and data"
-        titleId="pulse-test-data-title"
-        onClose={closeTestDataModal}
-      >
-        <form onSubmit={submitTestData} style={{ padding: '0 0 0.25rem' }}>
-          {testDataError ? <p className="error" style={{ marginBottom: '1rem' }}>{testDataError}</p> : null}
-          <div className="field">
-            <label htmlFor="pulse-test-data-mode">Import mode</label>
-            <select
-              id="pulse-test-data-mode"
-              value={testDataMode}
-              onChange={(e) => {
-                setTestDataMode(e.target.value === 'import-docx' ? 'import-docx' : 'generate');
-                setTestDataError('');
-              }}
-              disabled={testDataBusy}
-            >
-              <option value="generate">Generate synthetic test data</option>
-              <option value="import-docx">Import client DOCX answers</option>
-            </select>
-          </div>
-          {testDataMode === 'import-docx' ? (
-            <>
-              <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.5 }}>
-                Upload a client-provided Human Testing DOCX. The import matches names against existing recipients in this
-                timepoint and writes completed survey answers.
-              </p>
-              <div className="field">
-                <label htmlFor="pulse-test-data-docx-file">Human testing DOCX</label>
-                <input
-                  id="pulse-test-data-docx-file"
-                  type="file"
-                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  disabled={testDataBusy}
-                  onChange={(e) => {
-                    const nextFile = e.target.files?.[0] || null;
-                    setTestDataDocFile(nextFile);
-                    setTestDataError('');
-                  }}
-                />
-                <p className="muted" style={{ marginTop: '0.4rem' }}>
-                  Existing recipients only. Missing name matches are skipped.
-                </p>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="muted" style={{ margin: '0 0 1rem', lineHeight: 1.5 }}>
-                Create a full test dataset for this survey timepoint only ({inviteTimepointText}).
-                This will add users and mark survey answers as completed for each generated user. To see Trend
-                Analysis or cross-stage divergence flags, switch the timepoint above and repeat this for each stage
-                you want data for: generating it once does not carry across Pre, During and Post.
-              </p>
-              <div className="field">
-                <label htmlFor="pulse-test-data-staff-count">Number of staff</label>
-                <input
-                  id="pulse-test-data-staff-count"
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputMode="numeric"
-                  value={testDataStaffCount}
-                  onChange={(e) => setTestDataStaffCount(e.target.value)}
-                  disabled={testDataBusy}
-                  required={testDataMode === 'generate'}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="pulse-test-data-manager-count">Number of managers</label>
-                <input
-                  id="pulse-test-data-manager-count"
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputMode="numeric"
-                  value={testDataManagerCount}
-                  onChange={(e) => setTestDataManagerCount(e.target.value)}
-                  disabled={testDataBusy}
-                  required={testDataMode === 'generate'}
-                />
-                <p className="muted" style={{ marginTop: '0.4rem' }}>
-                  Total users created = staff + managers.
-                </p>
-              </div>
-              {configuredGroupLabels.map((label, levelIndex) => (
-                <div className="field" key={`pulse-test-group-names-${levelIndex}`}>
-                  <label>{label} names</label>
-                  <p className="muted" style={{ margin: '-0.2rem 0 0.5rem', fontSize: '0.8rem' }}>
-                    Enter the actual {label.toLowerCase()} names for this demo — users will be distributed across them.
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                    {(testDataGroupNames[levelIndex] ?? ['']).map((name, nameIndex) => (
-                      <div key={nameIndex} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                        <input
-                          type="text"
-                          placeholder={`${label} ${nameIndex + 1}`}
-                          value={name}
-                          onChange={(e) =>
-                            setTestDataGroupNames((prev) => {
-                              const next = prev.map((arr) => [...arr]);
-                              if (!Array.isArray(next[levelIndex])) next[levelIndex] = [];
-                              next[levelIndex][nameIndex] = e.target.value;
-                              return next;
-                            })}
-                          disabled={testDataBusy}
-                          style={{ flex: 1 }}
-                        />
-                        {(testDataGroupNames[levelIndex] ?? []).length > 1 ? (
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
-                            disabled={testDataBusy}
-                            onClick={() =>
-                              setTestDataGroupNames((prev) => {
-                                const next = prev.map((arr) => [...arr]);
-                                next[levelIndex] = next[levelIndex].filter((_, i) => i !== nameIndex);
-                                return next;
-                              })}
-                          >
-                            ✕
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ marginTop: '0.4rem', fontSize: '0.8rem' }}
-                    disabled={testDataBusy}
-                    onClick={() =>
-                      setTestDataGroupNames((prev) => {
-                        const next = prev.map((arr) => [...arr]);
-                        if (!Array.isArray(next[levelIndex])) next[levelIndex] = [];
-                        next[levelIndex] = [...next[levelIndex], ''];
-                        return next;
-                      })}
-                  >
-                    + Add {label}
-                  </button>
-                </div>
-              ))}
-            </>
-          )}
-          <div className="modal-dialog__actions">
-            <button type="button" className="btn btn-ghost" onClick={closeTestDataModal} disabled={testDataBusy}>
-              Cancel
-            </button>
-            {testDataMode === 'import-docx' ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={runDocxPrecheck}
-                disabled={testDataBusy}
-              >
-                Run pre-check
-              </button>
-            ) : null}
-            <button type="submit" className="btn btn-primary modal-dialog__submit" disabled={testDataBusy}>
-              {testDataBusy ? 'Working…' : testDataMode === 'import-docx' ? 'Import DOCX' : 'Create test data'}
-            </button>
-          </div>
-        </form>
-      </ModalDialog>
 
       <ModalDialog
         open={sendAllConfirmOpen}
@@ -1326,13 +972,64 @@ export default function PlatformPulseInviteUsers() {
 
       <ModalDialog
         open={addOpen}
-        title="Add recipient"
+        title="Add respondents"
         titleId="pulse-add-recipient-title"
         onClose={() => {
           if (addBusy) return;
           closeAddModal();
         }}
       >
+        <div className="pulse-template-mode-switch" role="tablist" aria-label="How to add respondents">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={addMode === 'single'}
+            className={`pulse-template-mode-switch__pill${addMode === 'single' ? ' pulse-template-mode-switch__pill--active' : ''}`}
+            onClick={() => setAddMode('single')}
+            disabled={addBusy}
+          >
+            Add one
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={addMode === 'import'}
+            className={`pulse-template-mode-switch__pill${addMode === 'import' ? ' pulse-template-mode-switch__pill--active' : ''}`}
+            onClick={() => setAddMode('import')}
+            disabled={addBusy}
+          >
+            Import CSV
+          </button>
+        </div>
+        {addMode === 'import' ? (
+          <div style={{ padding: '0 0 0.25rem' }}>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Download the template, fill in one row per respondent (name, email, manager yes/no, the manager&rsquo;s
+              email for staff rows, and a column per business level), then choose the file to import it into the{' '}
+              <strong>{inviteTimepointText}</strong> list.
+            </p>
+            <div className="modal-dialog__actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={downloadUserImportTemplate}
+                disabled={templateDownloadBusy || busyImport || bulkSending || copyingFromPre}
+              >
+                <Download size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
+                {templateDownloadBusy ? 'Downloading…' : 'Download CSV template'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary modal-dialog__submit"
+                onClick={chooseCsvFromAddModal}
+                disabled={busyImport || bulkSending || copyingFromPre}
+              >
+                <Upload size={18} strokeWidth={2} aria-hidden style={{ marginRight: 8, verticalAlign: 'middle' }} />
+                Choose CSV file
+              </button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={submitAddRecipient} style={{ padding: '0 0 0.25rem' }}>
           {addError ? <p className="error" style={{ marginBottom: '1rem' }}>{addError}</p> : null}
           <div className="field">
@@ -1432,12 +1129,7 @@ export default function PlatformPulseInviteUsers() {
                 />
               </div>
             ))
-          ) : (
-            <p className="muted" style={{ marginTop: 0 }}>
-              To place respondents in teams, set up this client&apos;s business levels first (Business
-              levels button on this page). Until then, respondents are grouped as &ldquo;Unassigned&rdquo;.
-            </p>
-          )}
+          ) : null}
           <div className="modal-dialog__actions">
             <button type="button" className="btn btn-ghost" onClick={closeAddModal} disabled={addBusy || bulkSending}>
               Cancel
@@ -1447,10 +1139,11 @@ export default function PlatformPulseInviteUsers() {
               className="btn btn-primary modal-dialog__submit"
               disabled={addBusy || bulkSending}
             >
-              {addBusy ? 'Adding…' : 'Add recipient'}
+              {addBusy ? 'Adding…' : 'Add respondent'}
             </button>
           </div>
         </form>
+        )}
       </ModalDialog>
 
       <div className="pulse-prototype-card">
@@ -1533,11 +1226,13 @@ export default function PlatformPulseInviteUsers() {
                   <tr>
                     <td colSpan={recipientsTableColumnCount} className="muted" style={{ padding: '1.25rem' }}>
                       {inviteTimepoint === 'pre' ? (
-                        'No respondents yet. Use Add or Import CSV.'
+                        businessLevelsMissing
+                          ? 'No respondents yet. Set up business levels to start adding them.'
+                          : 'No respondents yet. Use Add respondents to add them one at a time or import a CSV.'
                       ) : (
                         <div style={{ display: 'grid', gap: '0.7rem' }}>
                           <span>
-                            No recipients yet for {inviteTimepointText}. Copy from {copySourceTimepointText} or upload
+                            No respondents yet for {inviteTimepointText}. Copy from {copySourceTimepointText} or import
                             a new CSV list.
                           </span>
                           <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -1545,7 +1240,7 @@ export default function PlatformPulseInviteUsers() {
                               type="button"
                               className="btn btn-ghost"
                               onClick={copyRecipientsFromPre}
-                              disabled={copyingFromPre || busyImport || bulkSending}
+                              disabled={copyingFromPre || busyImport || bulkSending || businessLevelsMissing}
                             >
                               {copyingFromPre
                                 ? `Copying from ${copySourceTimepointText}…`
@@ -1554,10 +1249,10 @@ export default function PlatformPulseInviteUsers() {
                             <button
                               type="button"
                               className="btn btn-ghost"
-                              onClick={openCsvPicker}
-                              disabled={copyingFromPre || busyImport || bulkSending}
+                              onClick={() => openAddModal('import')}
+                              disabled={copyingFromPre || busyImport || bulkSending || businessLevelsMissing}
                             >
-                              Upload new CSV
+                              Import CSV
                             </button>
                           </div>
                         </div>

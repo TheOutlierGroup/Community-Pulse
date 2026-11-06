@@ -65,6 +65,10 @@ export default function PlatformClientLayout() {
   const [pulseIncludeManagerSelf, setPulseIncludeManagerSelf] = useState(false);
   const [pulseManagerOptions, setPulseManagerOptions] = useState([]);
   const [pulseTimepoint, setPulseTimepoint] = useState('pre');
+  // Post stays locked (greyed out in the Point in Time selector) until it is
+  // opened from Rhythm Engine Configurations; see isPostTimepointTriggered
+  // on the backend.
+  const [pulsePostTriggered, setPulsePostTriggered] = useState(false);
   const [pulseDuringDate, setPulseDuringDate] = useState('');
   const [pulseDuringSessionId, setPulseDuringSessionId] = useState('');
   const [pulseTimepointOptions, setPulseTimepointOptions] = useState([]);
@@ -116,6 +120,7 @@ export default function PlatformClientLayout() {
     setPulseDuringDate('');
     setPulseDuringSessionId('');
     setPulseTimepointOptions([]);
+    setPulsePostTriggered(false);
     setPulseTimepointError('');
   }, [orgId]);
 
@@ -123,6 +128,8 @@ export default function PlatformClientLayout() {
     if (!orgId) return [];
     const { data } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-sessions`);
     const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
+    const postTriggered = data?.postTriggered === true;
+    setPulsePostTriggered(postTriggered);
     // Pre/Post are driven by the client's contract, set at the CRM layer
     // (client Settings → Licence) — not editable from Rhythm Engine. Only
     // fall back to the session's own creation time when no contract date
@@ -188,7 +195,7 @@ export default function PlatformClientLayout() {
       const latestPre = options.find((row) => row.phase === 'pre');
       const activeDuring = options.find((row) => row.phase === 'during' && row.isActive);
       const latestDuring = options.find((row) => row.phase === 'during');
-      const latestCompleted = options.find((row) => row.phase === 'completed');
+      const latestCompleted = postTriggered ? options.find((row) => row.phase === 'completed') : null;
       const fallback = latestPre || activeDuring || latestDuring || latestCompleted;
       if (fallback) {
         setPulseTimepoint(fallback.phase);
@@ -286,6 +293,39 @@ export default function PlatformClientLayout() {
       setPulseTimepointBusy(false);
     }
   }, [orgId, loadPulseTimepoints]);
+
+  const triggerPulsePost = useCallback(async () => {
+    if (!orgId) return { ok: false, error: 'Missing organization.' };
+    setPulseTimepointBusy(true);
+    setPulseTimepointError('');
+    try {
+      await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-timepoints/post/trigger`);
+      await loadPulseTimepoints();
+      setPulseTimepoint('completed');
+      setPulseDuringDate('');
+      setPulseDuringSessionId('');
+      return { ok: true };
+    } catch (e) {
+      const message = e?.response?.data?.error || 'Could not open the Post assessment.';
+      setPulseTimepointError(message);
+      return { ok: false, error: message };
+    } finally {
+      setPulseTimepointBusy(false);
+    }
+  }, [orgId, loadPulseTimepoints]);
+
+  // Never leave a locked stage selected: Post before it is opened, or During
+  // once no checkpoint exists to show.
+  useEffect(() => {
+    const hasDuring = pulseTimepointOptions.some((row) => row.phase === 'during' && row.id);
+    const locked =
+      (pulseTimepoint === 'completed' && !pulsePostTriggered)
+      || (pulseTimepoint === 'during' && !hasDuring);
+    if (!locked) return;
+    setPulseTimepoint('pre');
+    setPulseDuringDate('');
+    setPulseDuringSessionId('');
+  }, [pulseTimepoint, pulsePostTriggered, pulseTimepointOptions]);
 
   useEffect(() => {
     if (pulseTimepoint !== 'during') return;
@@ -441,6 +481,7 @@ export default function PlatformClientLayout() {
       pulseTimepointOptions,
       pulseTimepointBusy,
       pulseTimepointError,
+      pulsePostTriggered,
       trendAnalysisVisible,
     }),
     [
@@ -454,6 +495,7 @@ export default function PlatformClientLayout() {
       pulseTimepointOptions,
       pulseTimepointBusy,
       pulseTimepointError,
+      pulsePostTriggered,
       trendAnalysisVisible,
     ]
   );
@@ -509,6 +551,8 @@ export default function PlatformClientLayout() {
           deletePulseDuringTimepoint,
           toggleDuringCheckpointStatus,
           updatePulseSessionLabelDate,
+          pulsePostTriggered,
+          triggerPulsePost,
           trendAnalysisVisible,
         }}
       />
