@@ -277,6 +277,13 @@ function heatTone(value) {
   return 'h1';
 }
 
+function formatSignedGap(value) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const rounded = Math.round(value * 10) / 10;
+  if (rounded === 0) return '0.0';
+  return `${rounded > 0 ? '+' : '\u2212'}${Math.abs(rounded).toFixed(1)}`;
+}
+
 function scoreTone(value, threshold = 28) {
   if (value == null || !Number.isFinite(value)) return 'neutral';
   if (value >= threshold) return 'positive';
@@ -299,17 +306,19 @@ function renderDimensionGroup(dimension) {
   const dimAvg = (Number.isFinite(empAvg) && Number.isFinite(mgrAvg))
     ? (empAvg + mgrAvg) / 2
     : (Number.isFinite(empAvg) ? empAvg : (Number.isFinite(mgrAvg) ? mgrAvg : null));
+  // Signed as manager minus employee, so "+1.2" means managers rate the
+  // question higher than their employees do. Flagging uses the size only.
   const computeQGap = (e, m) => (
     dimension.comparable && Number.isFinite(e) && Number.isFinite(m)
-      ? Math.abs(e - m)
+      ? m - e
       : null
   );
   const q1Gap = computeQGap(dimension.employee.q1Avg, dimension.manager.q1Avg);
   const q2Gap = computeQGap(dimension.employee.q2Avg, dimension.manager.q2Avg);
   const q1GapFlagged =
-    !suppressSignals && q1Gap != null && q1Gap >= PERCEPTION_GAP_THRESHOLD;
+    !suppressSignals && q1Gap != null && Math.abs(q1Gap) >= PERCEPTION_GAP_THRESHOLD;
   const q2GapFlagged =
-    !suppressSignals && q2Gap != null && q2Gap >= PERCEPTION_GAP_THRESHOLD;
+    !suppressSignals && q2Gap != null && Math.abs(q2Gap) >= PERCEPTION_GAP_THRESHOLD;
   const empQ1Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 0);
   const empQ2Label = dimensionQuestionLabel(dimension.employeeQuestionIds, 'Q', 1);
   const mgrQ1Label = dimensionQuestionLabel(dimension.managerQuestionIds, 'MQ', 0);
@@ -376,7 +385,7 @@ function renderDimensionGroup(dimension) {
           </span>
         </td>
         <td className={q1GapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
-          {q1Gap != null ? formatScore(q1Gap) : '—'}
+          {formatSignedGap(q1Gap)}
         </td>
         <td rowSpan={2} className="pulse-clean-dimensions__dim-avg-cell">
           <span className={heatClass(dimAvg, ['pulse-clean-dimensions__heat--dim', perceptionFlagged ? 'pulse-clean-dimensions__heat--flagged' : ''].filter(Boolean).join(' '))}>
@@ -407,7 +416,7 @@ function renderDimensionGroup(dimension) {
           </span>
         </td>
         <td className={q2GapFlagged ? 'pulse-clean-dimensions__gap pulse-clean-dimensions__gap--flagged' : 'pulse-clean-dimensions__gap'}>
-          {q2Gap != null ? formatScore(q2Gap) : '—'}
+          {formatSignedGap(q2Gap)}
         </td>
       </tr>
     </Fragment>
@@ -1618,15 +1627,24 @@ export default function PlatformClientPulse() {
           </div>
         ) : null}
 
-        <div className={`pulse-clean-header__kpis${showingFullDashboard ? ' pulse-clean-header__kpis--with-verdict' : ''}`}>
+        <div
+          className={`pulse-clean-header__kpis${showingFullDashboard ? ' pulse-clean-header__kpis--with-verdict' : ''}${
+            managerFocusedTopCard ? ' pulse-clean-header__kpis--manager' : ''
+          }`}
+        >
           <div className="pulse-clean-header__kpi">
-            <p className="pulse-clean-header__kpi-label">Total Responses</p>
+            {/* Manager View is manager-only, so its single response tile is the
+                manager count; the Employee/Manager split tiles below only make
+                sense on the organisation-wide views. */}
+            <p className="pulse-clean-header__kpi-label">{managerFocusedTopCard ? 'Manager Responses' : 'Total Responses'}</p>
             <p className="pulse-clean-header__kpi-value">{topCardTotalResponses}</p>
             <p className="pulse-clean-header__kpi-meta">of {topCardInvitedTotal} invited</p>
             <p className={`pulse-clean-header__kpi-delta pulse-clean-header__kpi-delta--${deltaTone(topCardParticipationRate)}`}>
               {formatPercent(topCardParticipationRate)}
             </p>
           </div>
+          {managerFocusedTopCard ? null : (
+          <>
           <div className="pulse-clean-header__kpi">
             <p className="pulse-clean-header__kpi-label">Employee Responses</p>
             <p className="pulse-clean-header__kpi-value">{topCardEmployeeResponses}</p>
@@ -1640,6 +1658,8 @@ export default function PlatformClientPulse() {
               {formatPercent(kpis.managerParticipationRate)}
             </p>
           </div>
+          </>
+          )}
           {showTopSummaryScoreKpis ? (
             <>
               <div className="pulse-clean-header__kpi">
@@ -1739,7 +1759,7 @@ export default function PlatformClientPulse() {
               <p className="pulse-org-overview__blurb">{adoptionOverviewBlurb}</p>
               {Number.isFinite(adoptionScore) ? (
                 <p className="pulse-org-overview__threshold-context">
-                  The 28-point threshold represents an average question score of 3.5 across all eight adoption dimensions &mdash; the point at which the cohort as a whole is leaning positively rather than sitting on the fence. This score is {adoptionScore >= threshold ? 'above' : 'below'} it.
+                  The 28-point threshold represents an average score of 3.5 across the eight adoption questions (two for each of the four dimensions, 1A to 1D) &mdash; the point at which the cohort as a whole is leaning positively rather than sitting on the fence. This score is {adoptionScore >= threshold ? 'above' : 'below'} it.
                 </p>
               ) : null}
               <div className="pulse-org-overview__measures">
@@ -1778,7 +1798,7 @@ export default function PlatformClientPulse() {
               <p className="pulse-org-overview__blurb">{sponsorshipOverviewBlurb}</p>
               {Number.isFinite(sponsorshipScore) ? (
                 <p className="pulse-org-overview__threshold-context">
-                  The 28-point threshold represents an average question score of 3.5 across all eight sponsorship dimensions &mdash; the point at which the cohort as a whole is leaning positively rather than sitting on the fence. This score is {sponsorshipScore >= threshold ? 'above' : 'below'} it.
+                  The 28-point threshold represents an average score of 3.5 across the eight sponsorship questions (two for each of the four dimensions, 2A to 2D) &mdash; the point at which the cohort as a whole is leaning positively rather than sitting on the fence. This score is {sponsorshipScore >= threshold ? 'above' : 'below'} it.
                 </p>
               ) : null}
               <div className="pulse-org-overview__measures">
@@ -1861,8 +1881,8 @@ export default function PlatformClientPulse() {
               ) : (
                 <p className="pulse-sa-card__explainer" role="note">
                   Insufficient data — this view has fewer than {minSampleSize} respondents, so quadrant
-                  and score results are hidden to keep individual responses confidential. Broaden the manager
-                  filter to see results.
+                  and score results are hidden to keep individual responses confidential. Results will
+                  appear once at least {minSampleSize} responses are completed.
                 </p>
               )}
             </div>
@@ -2245,10 +2265,21 @@ export default function PlatformClientPulse() {
               with no explanation. */}
           {dashboard?.dimensionsSampleSizeMet === false ? (
             <p className="pulse-sa-card__explainer" role="note" style={{ marginTop: 0 }}>
-              Dimension scores are withheld to keep individual responses confidential. They are shown
-              once at least {minSampleSize} employees and {minSampleSize} managers have responded
-              (currently {kpis.completedEmployees ?? 0} employees and {kpis.completedManagers ?? 0}{' '}
-              {Number(kpis.completedManagers) === 1 ? 'manager' : 'managers'}).
+              {(() => {
+                const employeesWithheld = dashboard?.employeeDimensionsSampleSizeMet === false;
+                const managersWithheld = dashboard?.managerDimensionsSampleSizeMet === false;
+                const employeeCount = kpis.completedEmployees ?? 0;
+                const managerCount = kpis.completedManagers ?? 0;
+                const managerWord = Number(managerCount) === 1 ? 'manager' : 'managers';
+                const employeeWord = Number(employeeCount) === 1 ? 'employee' : 'employees';
+                if (employeesWithheld && managersWithheld) {
+                  return `Dimension scores are withheld to keep individual responses confidential. Each group's scores appear once at least ${minSampleSize} of that group have responded (currently ${employeeCount} ${employeeWord} and ${managerCount} ${managerWord}).`;
+                }
+                if (managersWithheld) {
+                  return `Manager scores and gaps are withheld to keep individual responses confidential. They appear once at least ${minSampleSize} managers have responded (currently ${managerCount}).`;
+                }
+                return `Employee scores and gaps are withheld to keep individual responses confidential. They appear once at least ${minSampleSize} employees have responded (currently ${employeeCount}).`;
+              })()}
             </p>
           ) : null}
           {dimensionHeatmapRows.length === 0 ? (
@@ -2272,7 +2303,9 @@ export default function PlatformClientPulse() {
                         <th>Question / Construct</th>
                         <th>Emp</th>
                         <th>Mgr</th>
-                        <th>Gap</th>
+                        <th title="Manager score minus employee score. Positive: managers rate it higher than employees.">
+                          Gap (Mgr&minus;Emp)
+                        </th>
                         <th>Dim avg</th>
                       </tr>
                     </thead>

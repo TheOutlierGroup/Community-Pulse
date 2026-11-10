@@ -48,9 +48,6 @@ export default function AccountPage({ standalone = true }) {
   const [companyLogoBusy, setCompanyLogoBusy] = useState(false);
   const [serviceCatalog, setServiceCatalog] = useState([]);
   const [orgServices, setOrgServices] = useState([]);
-  const [orgServicesBusy, setOrgServicesBusy] = useState(false);
-  const [orgServicesError, setOrgServicesError] = useState('');
-  const [orgServicesMessage, setOrgServicesMessage] = useState('');
 
   useEffect(() => {
     if (!loading && !user) navigate('/');
@@ -258,7 +255,6 @@ export default function AccountPage({ standalone = true }) {
       : user.organizationName || 'Client organization';
 
   const displayPreview = [firstName, lastName].filter(Boolean).join(' ').trim() || user.email;
-  const canManageOrgServices = user.organizationKind === 'client' && user.role === 'admin';
   const selectedOrgServices = serviceCatalog.filter((service) => orgServices.includes(service.id));
 
   async function saveNames(e) {
@@ -506,34 +502,6 @@ export default function AccountPage({ standalone = true }) {
     }
   }
 
-  function toggleOrgService(serviceId) {
-    const id = String(serviceId || '').trim().toLowerCase();
-    if (!id) return;
-    setOrgServices((current) =>
-      current.includes(id)
-        ? current.filter((service) => service !== id)
-        : [...current, id]
-    );
-  }
-
-  async function saveOrganizationServices(e) {
-    e.preventDefault();
-    setOrgServicesError('');
-    setOrgServicesMessage('');
-    setOrgServicesBusy(true);
-    try {
-      const { data } = await api.patch('/api/auth/me/organization-services', {
-        services: orgServices,
-      });
-      setCurrentUser(data.user);
-      setOrgServicesMessage('Organization services saved.');
-    } catch (err) {
-      setOrgServicesError(err.response?.data?.error || 'Could not save organization services.');
-    } finally {
-      setOrgServicesBusy(false);
-    }
-  }
-
   const content = (
     <>
       <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -611,56 +579,21 @@ export default function AccountPage({ standalone = true }) {
         <div className="card" style={{ marginTop: '1rem' }}>
           <h2 className="settings-section-title">Organization services</h2>
           <p className="muted" style={{ marginTop: 0 }}>
-            {canManageOrgServices
-              ? 'Manage the services your client is paying for. Only Rhythm Engine changes app behavior.'
-              : 'These are the services enabled for your client. Only Rhythm Engine changes app behavior.'}
+            The services enabled for your organisation. To change them, contact your Outlier account manager.
           </p>
-          {canManageOrgServices && orgServicesError ? (
-            <p className="error" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
-              {orgServicesError}
-            </p>
-          ) : null}
-          {canManageOrgServices && orgServicesMessage ? (
-            <p className="muted" style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
-              {orgServicesMessage}
-            </p>
-          ) : null}
-          <form onSubmit={saveOrganizationServices}>
-            <div style={{ display: 'grid', gap: '0.65rem' }}>
-              {serviceCatalog.length === 0 ? (
-                <p className="muted" style={{ margin: 0 }}>
-                  No services are defined yet in platform settings.
+          <div style={{ display: 'grid', gap: '0.4rem' }}>
+            {selectedOrgServices.length ? (
+              selectedOrgServices.map((service) => (
+                <p key={service.id} style={{ margin: 0 }}>
+                  {service.name}
                 </p>
-              ) : canManageOrgServices ? (
-                serviceCatalog.map((service) => (
-                  <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={orgServices.includes(service.id)}
-                      onChange={() => toggleOrgService(service.id)}
-                      disabled={orgServicesBusy}
-                    />
-                    <span>{service.name}</span>
-                  </label>
-                ))
-              ) : selectedOrgServices.length ? (
-                selectedOrgServices.map((service) => (
-                  <p key={service.id} className="muted" style={{ margin: 0 }}>
-                    {service.name}
-                  </p>
-                ))
-              ) : (
-                <p className="muted" style={{ margin: 0 }}>
-                  No services added yet.
-                </p>
-              )}
-            </div>
-            {canManageOrgServices ? (
-              <button type="submit" className="btn btn-ghost" disabled={orgServicesBusy} style={{ marginTop: '0.9rem' }}>
-                Save services
-              </button>
-            ) : null}
-          </form>
+              ))
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>
+                No services enabled.
+              </p>
+            )}
+          </div>
         </div>
       ) : null}
     </>

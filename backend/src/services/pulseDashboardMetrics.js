@@ -293,6 +293,9 @@ function sponsorshipDeficitAnchor({
   return receivedScore <= capacityScore ? 'received' : 'capacity';
 }
 
+const NO_QUADRANT_SCORE_CARD_TEXT =
+  'No responses have been scored for this view yet, so there is no organisation-level quadrant to report.';
+
 export function buildAdoptionScoreCardSignal({
   clientName,
   adoptionScore,
@@ -304,10 +307,14 @@ export function buildAdoptionScoreCardSignal({
 }) {
   const scoreText = formatScoreOutOf40(adoptionScore);
   const modalQuadrantLabel = safeQuadrantName(modalQuadrant ?? currentQuadrant);
-  const fallback = renderPromptTemplate(
-    SCORE_CARD_SIGNAL_PROMPTS.adoption.fallback,
-    { modal_quadrant: modalQuadrantLabel }
-  );
+  // With no scored responses there is no quadrant, and the template used
+  // to read "placing it within the Unknown quadrant".
+  const fallback = modalQuadrantLabel === 'Unknown'
+    ? NO_QUADRANT_SCORE_CARD_TEXT
+    : renderPromptTemplate(
+      SCORE_CARD_SIGNAL_PROMPTS.adoption.fallback,
+      { modal_quadrant: modalQuadrantLabel }
+    );
   const blurb = fallback;
   const promptContext = {
     clientName: String(clientName || '').trim() || null,
@@ -361,10 +368,14 @@ export function buildSponsorshipScoreCardSignal({
   const receivedText = formatScoreOutOf20(receivedScore);
   const capacityText = formatScoreOutOf20(capacityScore);
   const modalQuadrantLabel = safeQuadrantName(modalQuadrant ?? currentQuadrant);
-  const fallback = renderPromptTemplate(
-    SCORE_CARD_SIGNAL_PROMPTS.sponsorship.fallback,
-    { modal_quadrant: modalQuadrantLabel }
-  );
+  // With no scored responses there is no quadrant, and the template used
+  // to read "placing it within the Unknown quadrant".
+  const fallback = modalQuadrantLabel === 'Unknown'
+    ? NO_QUADRANT_SCORE_CARD_TEXT
+    : renderPromptTemplate(
+      SCORE_CARD_SIGNAL_PROMPTS.sponsorship.fallback,
+      { modal_quadrant: modalQuadrantLabel }
+    );
   const blurb = fallback;
   const promptContext = {
     clientName: String(clientName || '').trim() || null,

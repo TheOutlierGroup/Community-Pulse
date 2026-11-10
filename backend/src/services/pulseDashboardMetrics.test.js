@@ -672,3 +672,14 @@ test('quadrant signal words a tie as a tie and does not show green for a High Ri
   assert.match(text, /an equal 50% sit in High Risk/);
   assert.notEqual(out.bannerVariant, 'green');
 });
+
+test('score card blurbs never name an "Unknown" quadrant when there is no data', () => {
+  const adoption = buildAdoptionScoreCardSignal({ clientName: 'Acme', adoptionScore: null, currentQuadrant: null });
+  const sponsorship = buildSponsorshipScoreCardSignal({ clientName: 'Acme', sponsorshipScore: null, currentQuadrant: null });
+  for (const signal of [adoption, sponsorship]) {
+    assert.doesNotMatch(signal.blurb, /Unknown/);
+    assert.match(signal.blurb, /No responses have been scored/);
+  }
+  const scored = buildAdoptionScoreCardSignal({ clientName: 'Acme', adoptionScore: 30, currentQuadrant: 'Optimal', modalQuadrant: 'Optimal' });
+  assert.match(scored.blurb, /within the Optimal quadrant/);
+});

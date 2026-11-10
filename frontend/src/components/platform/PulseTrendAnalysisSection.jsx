@@ -350,7 +350,7 @@ export default function PulseTrendAnalysisSection({
     && (!Number.isFinite(currentStage?.dimensions?.manager?.['1C'])
       || !Number.isFinite(currentStage?.dimensions?.manager?.['2D']));
   const section6Signal = managerDimensionsWithheldNow
-    ? '<strong>Manager dimension scores are withheld at the current stage: fewer than 5 employees or managers responded.</strong>'
+    ? '<strong>Manager dimension scores are withheld at the current stage: fewer than 5 managers responded.</strong>'
     : sectionSignals?.section6;
   const section7Signal = managerWithheldNow ? `<strong>${withheldManagerLine}</strong>` : sectionSignals?.section7;
   const section8Signal = Boolean(currentStage) && !Number.isFinite(currentStage?.perceptionGap)
@@ -399,7 +399,7 @@ export default function PulseTrendAnalysisSection({
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={primarySeriesData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-              <XAxis dataKey="stage" tick={{ fill: '#71717a', fontSize: 11 }} />
+              <XAxis dataKey="stage" interval={0} tick={{ fill: '#71717a', fontSize: 11 }} />
               <YAxis domain={[0, 40]} tick={{ fill: '#71717a', fontSize: 11 }} />
               <Tooltip formatter={(value) => formatScore(value, 1)} />
               <ReferenceLine y={28} stroke="#8a95a8" strokeDasharray="4 4" />
@@ -459,7 +459,7 @@ export default function PulseTrendAnalysisSection({
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={subScoreSeriesData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-              <XAxis dataKey="stage" tick={{ fill: '#71717a', fontSize: 11 }} />
+              <XAxis dataKey="stage" interval={0} tick={{ fill: '#71717a', fontSize: 11 }} />
               <YAxis domain={[0, 20]} tick={{ fill: '#71717a', fontSize: 11 }} />
               <Tooltip formatter={(value) => formatScore(value, 1)} />
               <ReferenceLine y={14} stroke="#8a95a8" strokeDasharray="4 4" />
@@ -488,7 +488,7 @@ export default function PulseTrendAnalysisSection({
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={loadBandSeriesData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-              <XAxis dataKey="stage" tick={{ fill: '#71717a', fontSize: 11 }} />
+              <XAxis dataKey="stage" interval={0} tick={{ fill: '#71717a', fontSize: 11 }} />
               <YAxis domain={[0, 100]} tick={{ fill: '#71717a', fontSize: 11 }} />
               <Tooltip formatter={(value) => `${Math.round(value || 0)}%`} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -565,7 +565,7 @@ export default function PulseTrendAnalysisSection({
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={managerSaturationSeriesData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis dataKey="stage" tick={{ fill: '#71717a', fontSize: 11 }} />
+                <XAxis dataKey="stage" interval={0} tick={{ fill: '#71717a', fontSize: 11 }} />
                 <YAxis domain={[1, 5]} tick={{ fill: '#71717a', fontSize: 11 }} />
                 <Tooltip formatter={(value) => formatScore(value, 1)} />
                 <Line type="monotone" dataKey="value" name="Change Saturation avg" stroke="#4a90d9" strokeWidth={2} dot />
@@ -577,7 +577,7 @@ export default function PulseTrendAnalysisSection({
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={managerWellbeingSeriesData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                <XAxis dataKey="stage" tick={{ fill: '#71717a', fontSize: 11 }} />
+                <XAxis dataKey="stage" interval={0} tick={{ fill: '#71717a', fontSize: 11 }} />
                 <YAxis domain={[1, 5]} tick={{ fill: '#71717a', fontSize: 11 }} />
                 <Tooltip formatter={(value) => formatScore(value, 1)} />
                 <Line type="monotone" dataKey="value" name="Manager Wellbeing avg" stroke="#c47a4a" strokeWidth={2} dot />
@@ -604,7 +604,7 @@ export default function PulseTrendAnalysisSection({
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={chainSeriesData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-              <XAxis dataKey="stage" tick={{ fill: '#71717a', fontSize: 11 }} />
+              <XAxis dataKey="stage" interval={0} tick={{ fill: '#71717a', fontSize: 11 }} />
               <YAxis domain={[0, 100]} tick={{ fill: '#71717a', fontSize: 11 }} />
               <Tooltip formatter={(value) => `${Math.round(value || 0)}%`} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -634,7 +634,7 @@ export default function PulseTrendAnalysisSection({
           <ResponsiveContainer width="100%" height={220}>
             <ComposedChart data={perceptionGapSeriesData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-              <XAxis dataKey="stage" tick={{ fill: '#71717a', fontSize: 11 }} />
+              <XAxis dataKey="stage" interval={0} tick={{ fill: '#71717a', fontSize: 11 }} />
               <YAxis domain={[1, 5]} tick={{ fill: '#71717a', fontSize: 11 }} />
               <Tooltip formatter={(value) => formatScore(value, 1)} />
               <Line type="monotone" dataKey="employee" name="Employee sponsorship avg" stroke="#4a90d9" strokeWidth={2} dot />

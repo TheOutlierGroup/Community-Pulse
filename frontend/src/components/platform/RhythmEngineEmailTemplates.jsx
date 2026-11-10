@@ -104,7 +104,7 @@ function EmailTemplateRichEditor({ value, onChange, disabled }) {
           horizontalRule: false,
         }),
         Placeholder.configure({
-          placeholder: 'Write email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders.',
+          placeholder: 'Write email body. Use {{name}}, {{link}}, {{dueDate}}, {{clientName}} and {{contactInfo}} placeholders.',
         }),
       ],
       content: value || '<p></p>',
@@ -594,27 +594,27 @@ export default function RhythmEngineEmailTemplates() {
   }
 
   const previewName = 'Alex';
+  // Same fallback the server uses when the client has no report contact.
+  const previewContactInfo = String(org?.report_contact || '').trim() || 'your project lead';
   const previewLink = `https://app.employeepulse.app/rhythm-engine/${inviteTimepoint}/link/your-personal-token`;
   const previewSubject = applyTemplatePlaceholders(editingTemplateSubject, {
     name: previewName,
     link: previewLink,
     clientName: String(org?.name || ''),
-    clientname: String(org?.name || ''),
     dueDate: formatDueDatePreview(dueDate) || dueDate || '',
-    duedate: formatDueDatePreview(dueDate) || dueDate || '',
+    contactInfo: previewContactInfo,
   });
   const previewBodyHtml = applyTemplatePlaceholders(editingTemplateBodyHtml, {
     name: previewName,
     link: previewLink,
     clientName: String(org?.name || ''),
-    clientname: String(org?.name || ''),
     dueDate: formatDueDatePreview(dueDate) || dueDate || '',
-    duedate: formatDueDatePreview(dueDate) || dueDate || '',
+    contactInfo: previewContactInfo,
   });
   const previewWelcomeBodyHtml = applyTemplatePlaceholders(editingWelcomeTemplateBodyHtml, {
     name: previewName,
     clientName: String(org?.name || ''),
-    clientname: String(org?.name || ''),
+    contactInfo: previewContactInfo,
   });
 
   return (
@@ -743,8 +743,10 @@ export default function RhythmEngineEmailTemplates() {
                 </div>
               )}
               <p className="muted" style={{ marginTop: '0.45rem' }}>
-                Use placeholders: <code>{'{{name}}'}</code>, <code>{'{{link}}'}</code>, <code>{'{{dueDate}}'}</code>,
-                and <code>{'{{clientname}}'}</code>.
+                Placeholders: <code>{'{{name}}'}</code> (respondent&rsquo;s name), <code>{'{{link}}'}</code> (their
+                personal survey link), <code>{'{{dueDate}}'}</code>, <code>{'{{clientName}}'}</code> and{' '}
+                <code>{'{{contactInfo}}'}</code> (the client&rsquo;s report contact, or &ldquo;your project lead&rdquo; if
+                none is set). Capitalisation doesn&rsquo;t matter: <code>{'{{clientname}}'}</code> works too.
               </p>
             </div>
             <p className="muted" style={{ margin: '0 0 0.75rem' }}>
@@ -848,7 +850,8 @@ export default function RhythmEngineEmailTemplates() {
               </div>
             )}
             <p className="muted" style={{ margin: '0.45rem 0 0.75rem' }}>
-              Optional placeholders: <code>{'{{name}}'}</code>, <code>{'{{clientname}}'}</code>
+              Optional placeholders: <code>{'{{name}}'}</code>, <code>{'{{clientName}}'}</code> and{' '}
+              <code>{'{{contactInfo}}'}</code>. Capitalisation doesn&rsquo;t matter.
             </p>
             <div className="modal-dialog__actions">
               <button

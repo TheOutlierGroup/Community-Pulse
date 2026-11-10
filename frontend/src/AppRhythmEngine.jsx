@@ -4,6 +4,7 @@ import { AuthProvider } from './components/shared/Auth.jsx';
 import { ToastProvider } from './components/shared/ToastProvider.jsx';
 import MfaReverifyProvider from './components/shared/MfaReverifyProvider.jsx';
 import { lazyWithReload } from './utils/lazyWithReload.js';
+import NotFoundPanel from './components/shared/NotFoundPanel.jsx';
 
 /**
  * BRAND-02: the Rhythm Engine build's own route tree.
@@ -75,8 +76,10 @@ export default function AppRhythmEngine() {
                   <Route path="configurations" element={<PlatformRhythmEngineSettings />} />
                   <Route path="users" element={<Navigate to="../respondents" replace />} />
                   <Route path="settings" element={<Navigate to="../configurations" replace />} />
+                  <Route path="*" element={<NotFoundPanel />} />
                 </Route>
                 <Route path="pulse/*" element={<Navigate to="rhythm-engine" replace />} />
+                <Route path="*" element={<NotFoundPanel />} />
               </Route>
               <Route path="/account" element={<AccountPage />} />
               <Route path="/settings" element={<Navigate to="/account" replace />} />

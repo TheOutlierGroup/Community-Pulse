@@ -22,15 +22,34 @@ export default function PulseSsoExchange() {
   // which token this component instance has already started exchanging so
   // any re-invocation for the same token is a no-op.
   const startedForTokenRef = useRef('');
+  // BUG (6 Nov run-through): this effect used to cancel its own in-flight
+  // exchange from its cleanup. setUserFromLogin and navigate change identity
+  // when the auth provider finishes its own start-up check, which re-ran the
+  // effect, flagged the first run cancelled, and then bailed out early on the
+  // "already started" guard above. The exchange returned 200 but nothing ever
+  // navigated, leaving the page stuck on "Signing you in…". The callbacks are
+  // now read through refs, the effect depends only on the token, and only a
+  // real unmount stops the redirect.
+  const setUserFromLoginRef = useRef(setUserFromLogin);
+  const navigateRef = useRef(navigate);
+  setUserFromLoginRef.current = setUserFromLogin;
+  navigateRef.current = navigate;
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const handoffToken = params.get('handoff') || '';
   const queryOrgId = params.get('orgId') || '';
+  const queryNext = params.get('next') || '';
 
   useEffect(() => {
-    if (handoffToken && startedForTokenRef.current === handoffToken) return undefined;
+    if (handoffToken && startedForTokenRef.current === handoffToken) return;
     startedForTokenRef.current = handoffToken;
-    let cancelled = false;
 
     async function runExchange() {
       if (!handoffToken) {
@@ -41,8 +60,8 @@ export default function PulseSsoExchange() {
         const { data } = await api.post('/api/auth/rhythm-engine-handoff/exchange', {
           token: handoffToken,
         });
-        if (cancelled) return;
-        setUserFromLogin(data);
+        if (!mountedRef.current) return;
+        setUserFromLoginRef.current(data);
 
         const targetOrgId = data.targetOrganizationId || queryOrgId;
         // An Enterprise-tier client's own admin lands here the same way a
@@ -53,21 +72,22 @@ export default function PulseSsoExchange() {
         // narrower tree (see AppRhythmEngine.jsx) and would otherwise leave
         // them on a blank page.
         if ((isWorkspaceUser(data.user) || isEnterpriseClientSelfUser(data.user)) && targetOrgId) {
-          navigate(`/platform/clients/${targetOrgId}/rhythm-engine`, { replace: true });
+          const home = `/platform/clients/${targetOrgId}/rhythm-engine`;
+          // Honour a deep link (e.g. Configurations) only when it stays
+          // inside this client's Rhythm Engine.
+          const deepLink = queryNext.startsWith(home) && !queryNext.includes('//') ? queryNext : '';
+          navigateRef.current(deepLink || home, { replace: true });
           return;
         }
-        navigate(getPostLoginPath(data.user), { replace: true });
+        navigateRef.current(getPostLoginPath(data.user), { replace: true });
       } catch (e) {
-        if (cancelled) return;
+        if (!mountedRef.current) return;
         setError(e?.response?.data?.error || 'Could not complete secure sign in.');
       }
     }
 
     runExchange();
-    return () => {
-      cancelled = true;
-    };
-  }, [handoffToken, queryOrgId, navigate, setUserFromLogin]);
+  }, [handoffToken, queryOrgId, queryNext]);
 
   return (
     <Layout user={null} onLogout={logout} hideHeader>

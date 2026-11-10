@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useNavigate, useOutletContext } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { normalizeServices } from './platformClientUtils.js';
 import api from '../services/api.js';
 import { IS_CRM_SURFACE, rhythmEngineAppBaseUrl } from '../config/appSurface.js';
@@ -8,6 +8,7 @@ export default function PlatformClientPulseShell() {
   const ctx = useOutletContext();
   const { org, orgId } = ctx || {};
   const navigate = useNavigate();
+  const location = useLocation();
   const [handoffFailed, setHandoffFailed] = useState(false);
   const enabledServices = normalizeServices(org?.settings);
   const pulseEnabled = enabledServices.includes('pulse');
@@ -24,7 +25,9 @@ export default function PlatformClientPulseShell() {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-handoff-link`);
+        const { data } = await api.post(`/api/platform/organizations/${orgId}/rhythm-engine-handoff-link`, {
+          next: `${location.pathname}${location.search}${location.hash}`,
+        });
         if (cancelled) return;
         if (data?.url) {
           window.location.replace(data.url);
@@ -38,6 +41,7 @@ export default function PlatformClientPulseShell() {
     return () => {
       cancelled = true;
     };
+    // location is read once for the deep link; the page is replaced on success.
   }, [org, orgId, pulseEnabled, handoffFailed]);
 
   if (!org || !pulseEnabled) return null;
