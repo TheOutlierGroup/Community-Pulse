@@ -39,6 +39,19 @@ function inviteInstanceKeyForScope(timepointPhase, options = {}) {
   return `session:${duringSessionId}`;
 }
 
+// A team is a manager plus their direct reports, and takes the manager's
+// groups (team model, 5 Nov 2026). People View and the team breakdowns
+// already read a staff member's team from their manager's invite, so the
+// recipient list shows the same thing rather than whatever was stored on
+// the staff row itself. Staff with no manager keep their own values.
+function inviteTeamGroupValues(row) {
+  const isStaff = (row.survey_role || 'staff') !== 'manager';
+  if (isStaff && row.manager_invite_id && Object.prototype.hasOwnProperty.call(row, 'manager_group_level_values')) {
+    return row.manager_group_level_values;
+  }
+  return row.group_level_values;
+}
+
 export function publicInviteRow(row) {
   if (!row) return null;
   const completedAt = row.survey_completed_at ?? null;
@@ -61,7 +74,7 @@ export function publicInviteRow(row) {
     managerInviteId: row.manager_invite_id || null,
     managerName: row.manager_display_name || null,
     managerEmail: row.manager_email || null,
-    groupValues: normalizeGroupLevelValues(row.group_level_values),
+    groupValues: normalizeGroupLevelValues(inviteTeamGroupValues(row)),
     lastInvitedAt: row.last_invited_at,
     createdAt: row.created_at,
     surveyStatus,
@@ -82,6 +95,7 @@ export async function listInvitesForOrg(organizationId, options = {}) {
             pli.group_level_values,
             mgr.display_name AS manager_display_name,
             mgr.email AS manager_email,
+            mgr.group_level_values AS manager_group_level_values,
             pli.last_invited_at,
             pli.created_at,
             (SELECT MAX(plr.completed_at)

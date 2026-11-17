@@ -121,6 +121,48 @@ test('assembleReportData returns stable matrix, percentages, and invite totals f
   assert.ok(Array.isArray(out.teams));
 });
 
+test('assembleReportData takes Teams in Scope from managers only, ignoring group values typed on staff', async () => {
+  // Team model (5 Nov 2026): a team is a manager plus their direct
+  // reports, and takes the manager's groups. Sara's stored values say
+  // "Frontend", but she reports to Mike's Backend team, so the breakdown
+  // counts her there and Teams in Scope must not list Frontend.
+  const responses = [
+    { id: 'r1', invite_id: 'staff-1', manager_invite_id: 'mgr-1', role: 'employee', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('Q', 4) },
+    { id: 'r2', invite_id: 'mgr-1', manager_invite_id: null, role: 'admin', source_type: 'pulse_link', completed_at: '2026-01-10T10:00:00.000Z', ...buildSteps('MQ', 5) },
+  ];
+
+  const assembleReportData = createAssembleReportData({
+    reportMinResponses: 2,
+    reportStageMap: { pre: 'pre', mid: 'during', post: 'completed' },
+    pulseSessionModel: {
+      async listSessionsForOrg() {
+        return [{ id: 's1', session_purpose: 'pre_project' }];
+      },
+    },
+    listSessionResponsesFn: async () => ({ rows: responses }),
+    userModel: { async countActiveUsersByRoleForOrg() { return { employee: 0, admin: 0 }; } },
+    pulseLinkInviteModel: {
+      async listInviteRowsForOrg() {
+        return [
+          { id: 'mgr-1', survey_role: 'manager', display_name: 'Mike',
+            group_level_values: ['Engineering', 'Backend'], manager_display_name: null },
+          { id: 'staff-1', survey_role: 'staff', display_name: 'Sara',
+            group_level_values: ['Engineering', 'Frontend'], manager_invite_id: 'mgr-1', manager_display_name: 'Mike' },
+        ];
+      },
+    },
+  });
+
+  const out = await assembleReportData({
+    organization: { id: 'org-1', name: 'Client A' },
+    stage: 'pre',
+  });
+
+  assert.equal(out.totals.teams_in_scope, 'Backend');
+  assert.doesNotMatch(String(out.totals.teams_in_scope), /Frontend/);
+  assert.deepEqual(out.teams.map((team) => team.name), ['Backend']);
+});
+
 test('assembleReportData names teams from group_level_values, not manager personal name', async () => {
   // Two staff respondents and a manager, all on the "Backend" team
   // ('Engineering > Backend' in group_level_values). Manager Mike is
