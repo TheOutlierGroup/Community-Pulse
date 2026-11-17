@@ -265,3 +265,15 @@ test('a generated report contains no "pulse" or "anonym" wording, and a High Ris
   assert.doesNotMatch(text, /has the motivation to change/);
   assert.match(text, /does not yet have either the readiness to absorb this change or the sponsorship conditions/);
 });
+
+test('G17: a team load band withheld by the manager cohort floor reads "Insufficient data"', async () => {
+  const reportData = makeReportData();
+  reportData.manager.sample_size_met = false;
+  reportData.teams = reportData.teams.map((team) => ({ ...team, sample_size_met: true, manager_load_band: null }));
+  const buffer = await buildReportDocx({ reportData, signals });
+  const text = await extractDocxText(buffer);
+  const alphaRow = text.slice(text.indexOf('Team Alpha'), text.indexOf('Team Bravo'));
+  assert.match(alphaRow, /Insufficient data/);
+  assert.doesNotMatch(alphaRow, /Sustainable|Stretched/);
+  assert.match(text, /until at least 5 managers across the organisation have responded/);
+});

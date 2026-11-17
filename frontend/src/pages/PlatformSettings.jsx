@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -123,6 +123,10 @@ function templateTimepointLabel(value) {
 }
 
 function EmailTemplateRichEditor({ value, onChange, disabled, placeholder }) {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const placeholderRef = useRef(placeholder);
+  placeholderRef.current = placeholder;
   const editor = useEditor(
     {
       extensions: [
@@ -133,17 +137,22 @@ function EmailTemplateRichEditor({ value, onChange, disabled, placeholder }) {
           horizontalRule: false,
         }),
         Placeholder.configure({
-          placeholder:
-            placeholder || 'Write email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders.',
+          placeholder: () =>
+            placeholderRef.current
+            || 'Write email body. Use {{name}}, {{link}}, {{dueDate}}, and {{clientname}} placeholders.',
         }),
       ],
       content: value || '<p></p>',
       editable: !disabled,
       onUpdate: ({ editor: nextEditor }) => {
-        onChange(nextEditor.getHTML());
+        onChangeRef.current(nextEditor.getHTML());
       },
     },
-    [disabled, placeholder]
+    // Empty dependency list: re-creating the editor when `disabled` flipped
+    // (true while templates load, false once they arrive) destroyed it
+    // mid-render and blanked the page on a direct load or refresh of this
+    // tab. Editability is synced by the effect below instead.
+    []
   );
 
   useEffect(() => {

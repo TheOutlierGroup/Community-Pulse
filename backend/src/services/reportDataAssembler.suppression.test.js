@@ -137,6 +137,32 @@ test("PT-01: a suppressed team never exposes its lead manager's load band", asyn
   assert.equal(solo.manager_load_band, null, 'lead manager load band must be withheld');
 });
 
+test('G17: team load bands are withheld when fewer than the floor of managers responded', async () => {
+  // GuideRun shape: two managers, each team above its own floor. The
+  // report said manager load "remains unmeasured" while the team table
+  // still showed "Alpha: Sustainable" and "Beta: Stretched", which are
+  // those two managers' own answers.
+  const invites = [
+    invite({ id: 'mgr-a', role: 'manager', team: 'Alpha' }),
+    invite({ id: 'mgr-b', role: 'manager', team: 'Beta' }),
+  ];
+  const rows = [
+    makeRow({ role: 'admin', value: 4, inviteId: 'mgr-a' }),
+    makeRow({ role: 'admin', value: 2, inviteId: 'mgr-b' }),
+    ...Array.from({ length: 6 }, () => makeRow({ role: 'employee', value: 4, managerInviteId: 'mgr-a' })),
+    ...Array.from({ length: 6 }, () => makeRow({ role: 'employee', value: 3, managerInviteId: 'mgr-b' })),
+  ];
+
+  const data = await assemble({ rows, invites });
+
+  assert.equal(data.manager.sample_size_met, false);
+  for (const name of ['Alpha', 'Beta']) {
+    const team = data.teams.find((t) => t.name === name);
+    assert.equal(team.sample_size_met, true, `${name} clears its own floor`);
+    assert.equal(team.manager_load_band, null, `${name} load band must be withheld`);
+  }
+});
+
 test('PT-01: manager-cohort aggregates are withheld when too few managers responded', async () => {
   // 10 staff + 2 managers clears an org-wide floor of 4 while the manager
   // cohort is still two identifiable people.
