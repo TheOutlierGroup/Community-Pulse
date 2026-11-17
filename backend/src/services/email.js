@@ -136,6 +136,9 @@ export function getPulseInviteDefaultTemplate(audience, organizationName) {
             Open Rhythm Engine
           </a>
         </p>
+        <p style="color: #555; line-height: 1.6;">
+          Your personal details were provided by your organisation solely to run this questionnaire. Because you lead a team, your answers about the support you receive, your capacity to lead change and your workload may be shown to your organisation’s Rhythm Engine administrators alongside your team’s results. This only happens once at least 5 people in your team and at least 5 managers across your organisation have responded. Your team members’ answers are only ever reported in groups of 5 or more.
+        </p>
         ${contactParagraph}
       `
       : `
