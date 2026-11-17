@@ -293,7 +293,12 @@ export function createAssembleReportData({
         const teamQuadrant = adoption != null && sponsorship != null
           ? classifyQuadrant(adoption, sponsorship)
           : null;
-        const managerLoadScore = sampleSizeMet
+        // G17 / RED-064: the load band is the lead manager's own answer, so
+        // it also needs the manager cohort floor (5+ managers responding
+        // org-wide), as the dashboard's Manager View already requires. With
+        // only two managers, two named teams' bands were their two answers,
+        // while the same report said manager load remained unmeasured.
+        const managerLoadScore = sampleSizeMet && managerSampleSizeMet
           ? team.managerSelf?.scored?.sponsorshipLoadScore ?? null
           : null;
         const managerLoadBand = managerLoadScore != null

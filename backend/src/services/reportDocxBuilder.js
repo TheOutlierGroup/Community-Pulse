@@ -936,7 +936,7 @@ const QUADRANT_BG = {
   high_risk: COLOUR.scoreRedBg,
 };
 
-function teamBreakdownTable(teams) {
+function teamBreakdownTable(teams, { managerCohortMet = true } = {}) {
   const headers = ['Team', 'Responses', 'Adoption', 'Sponsorship', 'Quadrant', 'Manager Load'];
   const rows = teams.map((team) => {
     // PT-01: a team held back by the sample-size floor says so, rather
@@ -982,7 +982,11 @@ function teamBreakdownTable(teams) {
       },
       {
         _styled: true,
-        text: team.manager_load_band || withheld,
+        // G17: a team can clear its own floor while the manager cohort
+        // (5+ managers org-wide) has not, so its load band is withheld for
+        // that reason alone; say so rather than show a bare dash.
+        text: team.manager_load_band
+          || (!managerCohortMet && team.manager_count > 0 ? 'Insufficient data' : withheld),
         bold: true,
         color: COLOUR.text,
         shading: LOAD_BAND_BG[team.manager_load_band] || COLOUR.white,
@@ -1014,7 +1018,7 @@ function teamSuppressionNote(reportData) {
   const min = reportData?.suppression?.min_sample_size ?? 5;
   const suppressed = reportData?.suppression?.suppressed_team_count ?? 0;
   // RED-070: Rhythm Engine responses are confidential, not anonymous.
-  const base = `To keep individual responses confidential, scores are withheld for any team with fewer than ${min} responses. Manager Load reflects the team's lead manager and is withheld on the same basis.`;
+  const base = `To keep individual responses confidential, scores are withheld for any team with fewer than ${min} responses. Manager Load reflects the team's lead manager and is withheld on the same basis, and until at least ${min} managers across the organisation have responded.`;
   if (!suppressed) return base;
   const plural = suppressed === 1 ? 'team is' : 'teams are';
   return `${base} ${suppressed} ${plural} shown as "Insufficient data" on that basis.`;
@@ -1614,7 +1618,7 @@ export async function buildReportDocx({
             h1('Team-Level Breakdown'),
             body('The table below disaggregates the org-wide scores into a per-team view. Compare each team\'s Adoption and Sponsorship against the readiness threshold (28/40) and the org averages above to identify outliers requiring tailored intervention sequencing.'),
             spacer(80),
-            teamBreakdownTable(reportData.teams),
+            teamBreakdownTable(reportData.teams, { managerCohortMet: reportData?.manager?.sample_size_met !== false }),
             spacer(80),
             bodySmallItalic(teamSuppressionNote(reportData)),
             spacer(120),
