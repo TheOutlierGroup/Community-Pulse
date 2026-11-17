@@ -283,12 +283,19 @@ export function createAssembleReportData({
     const teamBreakdown = [...teamGroupMap.values()]
       .map((team) => {
         const responses = team.responses;
-        const sampleSizeMet = responses.length >= minSampleSize;
-        const adoption = sampleSizeMet && responses.length
-          ? round1(responses.reduce((sum, e) => sum + e.scored.adoption, 0) / responses.length)
+        // N2 (H1, 17 Nov 2026): the 5-person minimum counts staff answers
+        // only, and team scores are staff-only, matching People View. The
+        // manager's own answers used to count towards both, so a team of
+        // 4 staff plus its manager cleared the floor and published its
+        // scores, and every team's scores differed from the dashboard.
+        // The manager's self-response still drives the load band below.
+        const staffResponses = responses.filter((e) => e.audience === 'staff');
+        const sampleSizeMet = staffResponses.length >= minSampleSize;
+        const adoption = sampleSizeMet
+          ? round1(staffResponses.reduce((sum, e) => sum + e.scored.adoption, 0) / staffResponses.length)
           : null;
-        const sponsorship = sampleSizeMet && responses.length
-          ? round1(responses.reduce((sum, e) => sum + e.scored.sponsorship, 0) / responses.length)
+        const sponsorship = sampleSizeMet
+          ? round1(staffResponses.reduce((sum, e) => sum + e.scored.sponsorship, 0) / staffResponses.length)
           : null;
         const teamQuadrant = adoption != null && sponsorship != null
           ? classifyQuadrant(adoption, sponsorship)

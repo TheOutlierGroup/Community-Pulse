@@ -201,3 +201,34 @@ test('G17: the team fallback does not count withheld teams as above threshold', 
     else process.env.ANTHROPIC_API_KEY = prevKey;
   }
 });
+
+test('H1: withheld teams are not sent to the AI commentary', async () => {
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  const prevFetch = global.fetch;
+  const requests = [];
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  global.fetch = async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: 'Commentary.' }] }) };
+  };
+  try {
+    const data = buildReportData();
+    data.teams = [
+      { name: 'Accounts', sample_size_met: false, response_count: 5, adoption_score: null, sponsorship_score: null },
+      { name: 'Fleet', sample_size_met: true, response_count: 6, adoption_score: 31, sponsorship_score: 30, adoption_status: 'HIGH', sponsorship_status: 'HIGH' },
+    ];
+    await generateReportSignals(data);
+    assert.ok(requests.length > 0);
+    for (const body of requests) {
+      const content = body.messages[0].content;
+      assert.doesNotMatch(content, /Accounts/);
+      assert.match(content, /Fleet/);
+      assert.match(content, /"withheld_team_count": 1/);
+      assert.match(body.system, /never name them/);
+    }
+  } finally {
+    if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = prevKey;
+    global.fetch = prevFetch;
+  }
+});

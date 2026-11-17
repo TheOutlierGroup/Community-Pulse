@@ -3701,7 +3701,14 @@ export function registerPlatformOrgRoutes(router) {
       // their direct reports (employees) — with too few of them it stops
       // being an aggregate and starts being individually identifiable, so
       // it's gated the same way as the org-wide and dimension breakdowns.
-      const managerTeamSampleSizeMet = managerScored.length >= DASHBOARD_MIN_SAMPLE_SIZE;
+      // N2: the floor counts staff answers only. With "include manager
+      // self" on, the manager's own response is averaged in but must not
+      // lift a team of 4 staff over the floor.
+      const managerTeamStaffCount = managerCompletedRows
+        .filter((row) => row?.invite_id !== manager.id)
+        .map((row) => responseScoresOutOf40(row))
+        .filter((s) => s.valid && s.adoption != null && s.sponsorship != null).length;
+      const managerTeamSampleSizeMet = managerTeamStaffCount >= DASHBOARD_MIN_SAMPLE_SIZE;
       const managerAdoption =
         managerTeamSampleSizeMet && managerScored.length > 0
           ? round1(managerScored.reduce((sum, s) => sum + s.adoption, 0) / managerScored.length)
@@ -4052,6 +4059,7 @@ export function registerPlatformOrgRoutes(router) {
     // suppression policy and keeps the policy in one place with the rest
     // of this gate.
     const sampleSizeMetTeamRows = sortedTeamRows.filter((row) => row.chainState != null);
+    const withheldShownTeamCount = teamRowsLimited.filter((row) => row.chainState == null).length;
     // RED-064: no AI or fallback commentary is written about a cohort too
     // small to report on; it would describe the withheld figures in prose.
     const sponsorshipSignals = !managerCohortSampleSizeMet ? null : buildSponsorshipSectionSignals({
@@ -4073,6 +4081,7 @@ export function registerPlatformOrgRoutes(router) {
       teams: {
         rows: sampleSizeMetTeamRows,
         shownRows: teamRowsLimited.filter((row) => row.chainState != null),
+        withheldCount: sortedTeamRows.length - sampleSizeMetTeamRows.length,
       },
     });
     const sponsorshipAnalysis = {
@@ -4167,7 +4176,15 @@ export function registerPlatformOrgRoutes(router) {
         totalCellCount: crossMatrixTotal,
       },
       section5: {
-        cardLabel: `Section 4 — Team-Level Sponsorship Chain Breakdown · Showing ${teamRowsLimited.length} of ${sortedTeamRows.length} teams`,
+        // H1 follow-up: the insight below only describes teams that cleared
+        // the floor, so the header says how many of the shown teams are
+        // withheld, and both add up to the same total.
+        cardLabel: `Section 4 — Team-Level Sponsorship Chain Breakdown · Showing ${teamRowsLimited.length} of ${sortedTeamRows.length} teams${
+          withheldShownTeamCount > 0
+            ? ` (${withheldShownTeamCount} withheld: fewer than ${DASHBOARD_MIN_SAMPLE_SIZE} staff responses)`
+            : ''
+        }`,
+        withheldCount: sortedTeamRows.length - sampleSizeMetTeamRows.length,
         explainer:
           'Maps the sponsorship chain state to each team — distinguishing teams with local failure from those experiencing the broader organisational pattern, and identifying which teams require targeted pre-launch engagement.',
         rows: teamRowsLimited,

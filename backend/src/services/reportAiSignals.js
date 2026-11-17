@@ -16,11 +16,16 @@ const FALLBACK = {
     'Use the team-level breakdown to target enablement at the teams furthest from the readiness threshold rather than treating the org as a single block.',
 };
 
-function teamsFallbackText(reportData) {
-  // Teams below the sample floor have no scores or statuses; counting them
-  // as "above the threshold" would state withheld data as a result.
-  const teams = (Array.isArray(reportData?.teams) ? reportData.teams : [])
+// Teams below the sample floor have no scores or statuses. They are left
+// out of every piece of commentary: counting them as "above the threshold"
+// would state withheld data as a result, and naming them is what H1 found.
+function reportableTeams(reportData) {
+  return (Array.isArray(reportData?.teams) ? reportData.teams : [])
     .filter((t) => t.sample_size_met !== false && t.adoption_score != null && t.sponsorship_score != null);
+}
+
+function teamsFallbackText(reportData) {
+  const teams = reportableTeams(reportData);
   if (teams.length === 0) return FALLBACK.teams;
   const belowAdoption = teams.filter((t) => t.adoption_status === 'LOW').length;
   const belowSponsorship = teams.filter((t) => t.sponsorship_status === 'LOW').length;
@@ -47,6 +52,7 @@ const HOUSE_STYLE_RULES = `- Write in Australian English (e.g. "organisation", "
 - Never use the word "pulse" in any form (not "pulse check", "pulse survey" or "Sponsorship Pulse"). Call the measures Adoption Readiness and Sponsorship Credibility, and a repeat assessment a "check-in" or "follow-up assessment".
 - Describe responses as confidential. Never call them anonymous or refer to anonymity.
 - A null value, or a block marked sample_size_met: false, is withheld because too few people responded. Never state, estimate or imply a withheld figure, and never describe it as 0% or zero. If it matters, say it is withheld to keep responses confidential.
+- Only the teams listed in DATA.teams may be named. Teams counted in withheld_team_count are withheld: never name them, guess which they are, or describe their results.
 - Plain prose only: no markdown, no asterisks, no hash headings, no bullet symbols, no bold or italic markers.
 - The DATA includes "stage" and "stage_context". Describe the findings as that stage only. A Mid-Change or Post-Change assessment is never a baseline and never "ahead of launch".`;
 
@@ -233,7 +239,12 @@ export async function generateReportSignals(reportData) {
     readiness: reportData.readiness,
     dimensions: reportData.dimensions,
     manager: reportData.manager,
-    teams: reportData.teams,
+    // H1: a withheld team is not named or described anywhere in the
+    // commentary, matching the dashboard. Only teams that cleared the
+    // staff floor are sent; the rest are a bare count.
+    teams: reportableTeams(reportData),
+    withheld_team_count: (Array.isArray(reportData.teams) ? reportData.teams : []).length
+      - reportableTeams(reportData).length,
     alerts: reportData.alerts.map((alert) => alert.title),
     next_steps_priority_order: nextStepsOrder,
   };

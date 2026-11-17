@@ -744,6 +744,7 @@ function managerCohortAveragesSignal({
 function teamChainBreakdownSignal({
   allRows,
   shownRows,
+  withheldCount = 0,
 }) {
   const fallback = SCORE_CARD_SIGNAL_PROMPTS.teamChainBreakdown.fallback;
   const allTeams = Array.isArray(allRows) ? allRows : [];
@@ -775,7 +776,13 @@ function teamChainBreakdownSignal({
     )
     .join('; ');
 
-  const spreadSentence = `${failedBothCount} of ${allTeams.length} teams are in Sponsorship Failed at Both Levels, while ${functioningCount} are Chain Functioning, so pre-launch sequencing must prioritize fragile teams before broad enablement.`;
+  // allTeams holds only teams that cleared the floor; say so, so the count
+  // reconciles with the table header's total.
+  const withheld = Number(withheldCount) > 0 ? Number(withheldCount) : 0;
+  const teamsPhrase = withheld > 0
+    ? `${allTeams.length} reportable teams (${withheld} further team${withheld === 1 ? ' is' : 's are'} withheld to keep responses confidential)`
+    : `${allTeams.length} teams`;
+  const spreadSentence = `${failedBothCount} of ${teamsPhrase} are in Sponsorship Failed at Both Levels, while ${functioningCount} are Chain Functioning, so pre-launch sequencing must prioritize fragile teams before broad enablement.`;
   const text = highestUrgency
     ? `<strong>${highestUrgency.teamName} is the highest urgency team because it combines Sponsorship Failed at Both Levels with ${highestUrgency.loadBand}, which signals simultaneous structural sponsorship failure and constrained execution capacity.</strong> ${spreadSentence}`
     : `<strong>No team currently combines Sponsorship Failed at Both Levels with At Capacity or Overloaded load.</strong> ${spreadSentence}`;
@@ -900,6 +907,7 @@ export function buildSponsorshipSectionSignals({
   const teamSignal = teamChainBreakdownSignal({
     allRows: teamRows,
     shownRows: shownTeamRows,
+    withheldCount: teams?.withheldCount,
   });
   const weakerSubScore = received <= capacity ? 'Sponsorship Received' : 'Sponsorship Capacity';
   const managerAdoptionScore = Number(header?.managerAdoptionScore);

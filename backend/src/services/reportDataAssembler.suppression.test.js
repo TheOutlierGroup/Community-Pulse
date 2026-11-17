@@ -163,6 +163,49 @@ test('G17: team load bands are withheld when fewer than the floor of managers re
   }
 });
 
+test('H1 / N2: 4 staff plus the manager does not clear the team floor', async () => {
+  // Harbourline Accounts: 4 staff responses and the manager's own.
+  const invites = [
+    invite({ id: 'mgr-acc', role: 'manager', team: 'Accounts' }),
+    invite({ id: 'mgr-big', role: 'manager', team: 'Fleet' }),
+  ];
+  const rows = [
+    makeRow({ role: 'admin', value: 4, inviteId: 'mgr-acc' }),
+    ...Array.from({ length: 4 }, () => makeRow({ role: 'employee', value: 4, managerInviteId: 'mgr-acc' })),
+    ...Array.from({ length: 6 }, () => makeRow({ role: 'employee', value: 4, managerInviteId: 'mgr-big' })),
+  ];
+
+  const data = await assemble({ rows, invites });
+  const accounts = data.teams.find((t) => t.name === 'Accounts');
+
+  assert.equal(accounts.response_count, 5, 'counts stay, to explain the suppression');
+  assert.equal(accounts.employee_count, 4);
+  assert.equal(accounts.sample_size_met, false);
+  assert.equal(accounts.adoption_score, null);
+  assert.equal(accounts.sponsorship_score, null);
+  assert.equal(accounts.quadrant, null);
+  assert.equal(accounts.manager_load_band, null);
+});
+
+test("H1 / N2: team scores average staff answers only, not the manager's own", async () => {
+  // Harbourline Service: 5 staff and the manager. The manager scores
+  // differently, so including them would move the team's averages.
+  const invites = [invite({ id: 'mgr-svc', role: 'manager', team: 'Service' })];
+  const staffOnly = [
+    ...Array.from({ length: 5 }, () => makeRow({ role: 'employee', value: 3, managerInviteId: 'mgr-svc' })),
+  ];
+  const withManager = [...staffOnly, makeRow({ role: 'admin', value: 1, inviteId: 'mgr-svc' })];
+
+  const a = await assemble({ rows: staffOnly, invites });
+  const b = await assemble({ rows: withManager, invites });
+  const svcA = a.teams.find((t) => t.name === 'Service');
+  const svcB = b.teams.find((t) => t.name === 'Service');
+
+  assert.equal(svcB.sample_size_met, true);
+  assert.equal(svcB.adoption_score, svcA.adoption_score);
+  assert.equal(svcB.sponsorship_score, svcA.sponsorship_score);
+});
+
 test('PT-01: manager-cohort aggregates are withheld when too few managers responded', async () => {
   // 10 staff + 2 managers clears an org-wide floor of 4 while the manager
   // cohort is still two identifiable people.

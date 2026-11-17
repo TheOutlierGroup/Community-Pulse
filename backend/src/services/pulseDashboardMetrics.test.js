@@ -683,3 +683,25 @@ test('score card blurbs never name an "Unknown" quadrant when there is no data',
   const scored = buildAdoptionScoreCardSignal({ clientName: 'Acme', adoptionScore: 30, currentQuadrant: 'Optimal', modalQuadrant: 'Optimal' });
   assert.match(scored.blurb, /within the Optimal quadrant/);
 });
+
+test('H1 follow-up: the team insight states how many teams are withheld', () => {
+  const rows = [
+    { teamName: 'Service', chainState: 'Sponsorship Failed at Both Levels', loadBand: 'Overloaded', receivedAvg: 2.5, capacityAvg: 2.4 },
+    { teamName: 'Fleet', chainState: 'Sponsorship Failed at Both Levels', loadBand: 'Stretched', receivedAvg: 2.6, capacityAvg: 2.5 },
+    { teamName: 'Sales', chainState: 'Chain Functioning', loadBand: 'Sustainable', receivedAvg: 4.0, capacityAvg: 4.1 },
+    { teamName: 'Ops', chainState: 'Breaking at Manager Level', loadBand: 'Stretched', receivedAvg: 3.2, capacityAvg: 3.1 },
+  ];
+  const base = {
+    header: { clientName: 'Harbourline Group', stage: 'pre', threshold: 28, managerCount: 5, managerAdoptionScore: 25, managerSponsorshipScore: 23 },
+    subScores: { received: { avg: 12, threshold: 14 }, capacity: { avg: 11, threshold: 14 } },
+    load: { bands: [] },
+    chain: { states: [] },
+    crossMatrix: { rows: [] },
+  };
+  const withheld = buildSponsorshipSectionSignals({ ...base, teams: { rows, shownRows: rows, withheldCount: 1 } });
+  assert.match(withheld.teams.text, /2 of 4 reportable teams \(1 further team is withheld to keep responses confidential\)/);
+  assert.doesNotMatch(withheld.teams.text, /Accounts/);
+
+  const none = buildSponsorshipSectionSignals({ ...base, teams: { rows, shownRows: rows } });
+  assert.match(none.teams.text, /2 of 4 teams are in Sponsorship Failed at Both Levels/);
+});
