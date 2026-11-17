@@ -133,10 +133,14 @@ function getLinkToken(req) {
     return templates;
   }
 
-  function pulseSurveyStartFallbackTemplate() {
+  function pulseSurveyStartFallbackTemplate(role) {
+    const base =
+      '<p>Welcome {{name}}!</p><p>Change can look many ways: from implementing a new payroll system to reorganising how a team collaborates, or even refining a single workflow to cut out unnecessary steps. As we move through this journey, it’s important that we hear from everyone; and as a manager, your perspective on how change is landing across your team is especially valuable.</p><p>There are no right or wrong answers – your honest perspective is what matters most.</p>';
     return {
       bodyHtml:
-        '<p>Welcome {{name}}!</p><p>Change can look many ways: from implementing a new payroll system to reorganising how a team collaborates, or even refining a single workflow to cut out unnecessary steps. As we move through this journey, it’s important that we hear from everyone; and as a manager, your perspective on how change is landing across your team is especially valuable.</p><p>There are no right or wrong answers – your honest perspective is what matters most.</p>',
+        role === 'manager'
+          ? `${base}<p>As a manager, your answers about the support you receive and your capacity to lead change may be shown alongside your team’s results. Your team’s answers are only ever reported in groups of 5 or more.</p>`
+          : base,
     };
   }
 

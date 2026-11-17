@@ -231,7 +231,13 @@ export function createAssembleReportData({
       return UNASSIGNED_TEAM_LABEL;
     };
 
+    // A team is a manager plus their direct reports, and takes the
+    // manager's groups. Staff rows are counted in their manager's team by
+    // the breakdown below, so only manager invites define the teams here;
+    // reading staff rows let group values typed on a staff member list a
+    // team that the breakdown never shows.
     const teams = [...new Set(linkInviteRows
+      .filter((invite) => invite?.survey_role === 'manager')
       .map(deriveTeamNameForInvite)
       .filter(Boolean))];
 

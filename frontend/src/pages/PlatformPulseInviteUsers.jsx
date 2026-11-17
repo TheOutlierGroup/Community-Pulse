@@ -217,6 +217,11 @@ export default function PlatformPulseInviteUsers() {
     [invites]
   );
 
+  const addSelectedManagerGroupValues = useMemo(() => {
+    const manager = managerOptions.find((option) => option.id === addManagerInviteId);
+    return manager ? manager.groupValues : [];
+  }, [managerOptions, addManagerInviteId]);
+
   const sendableInviteIds = useMemo(
     () => invites.filter((r) => r.surveyStatus !== 'completed').map((r) => r.id),
     [invites]
@@ -542,8 +547,11 @@ export default function PlatformPulseInviteUsers() {
       const recipient = { name, email, role: addRole };
       if (addRole === 'staff') recipient.managerInviteId = addManagerInviteId;
       if (configuredGroupLabels.length > 0) {
+        // Staff take their manager's groups (team model, 5 Nov 2026), so
+        // only managers' own entries are sent from the form.
+        const sourceValues = addRole === 'staff' ? addSelectedManagerGroupValues : addGroupValues;
         recipient.groupValues = configuredGroupLabels.map(
-          (_, index) => String(addGroupValues[index] ?? '').trim() || null
+          (_, index) => String(sourceValues[index] ?? '').trim() || null
         );
       }
       const { data } = await api.post(
@@ -1074,21 +1082,7 @@ export default function PlatformPulseInviteUsers() {
               <select
                 id="pulse-add-manager"
                 value={addManagerInviteId}
-                onChange={(e) => {
-                  const nextManagerId = e.target.value;
-                  setAddManagerInviteId(nextManagerId);
-                  // Staff usually sit in their manager's team: start from the
-                  // manager's values, without overwriting anything typed.
-                  const manager = managerOptions.find((option) => option.id === nextManagerId);
-                  if (manager) {
-                    setAddGroupValues((previous) =>
-                      configuredGroupLabels.map((_, index) => {
-                        const typed = String(previous[index] ?? '').trim();
-                        return typed || String(manager.groupValues[index] ?? '').trim();
-                      })
-                    );
-                  }
-                }}
+                onChange={(e) => setAddManagerInviteId(e.target.value)}
                 required
                 disabled={managerOptions.length === 0}
               >
@@ -1108,16 +1102,30 @@ export default function PlatformPulseInviteUsers() {
               ) : null}
             </div>
           ) : null}
+          {configuredGroupLabels.length > 0 && addRole === 'staff' ? (
+            <p className="muted" style={{ margin: '0 0 0.75rem' }}>
+              Staff are part of their manager&rsquo;s team, so these come from the selected manager. To
+              change them, edit the manager.
+            </p>
+          ) : null}
           {configuredGroupLabels.length > 0 ? (
             configuredGroupLabels.map((label, index) => (
               <div className="field" key={`add-group-${label}`}>
                 <label htmlFor={`pulse-add-group-${index}`}>
-                  {label} <span className="muted">(optional)</span>
+                  {label}
+                  {addRole === 'staff' ? null : <span className="muted"> (optional)</span>}
                 </label>
                 <input
                   id={`pulse-add-group-${index}`}
-                  value={addGroupValues[index] ?? ''}
+                  value={
+                    addRole === 'staff'
+                      ? addSelectedManagerGroupValues[index] ?? ''
+                      : addGroupValues[index] ?? ''
+                  }
+                  readOnly={addRole === 'staff'}
+                  aria-readonly={addRole === 'staff'}
                   onChange={(e) => {
+                    if (addRole === 'staff') return;
                     const { value } = e.target;
                     setAddGroupValues((previous) => {
                       const next = configuredGroupLabels.map((_, i) => previous[i] ?? '');
@@ -1125,7 +1133,13 @@ export default function PlatformPulseInviteUsers() {
                       return next;
                     });
                   }}
-                  placeholder={`e.g. ${label} name`}
+                  placeholder={
+                    addRole !== 'staff'
+                      ? `e.g. ${label} name`
+                      : addManagerInviteId
+                        ? 'Not set for this manager'
+                        : 'Select a manager first'
+                  }
                 />
               </div>
             ))

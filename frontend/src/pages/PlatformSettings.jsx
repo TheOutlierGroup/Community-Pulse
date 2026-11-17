@@ -65,7 +65,7 @@ function defaultTemplateForAudience(audience) {
     return {
       subject: 'Rhythm Engine manager questionnaire',
       bodyHtml:
-        '<p>Hi {{name}},</p><p>You have been invited to complete the manager Rhythm Engine questionnaire.</p><p style="margin: 1.2rem 0;"><a href="{{link}}" style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">Open Rhythm Engine</a></p>',
+        '<p>Hi {{name}},</p><p>You have been invited to complete the manager Rhythm Engine questionnaire.</p><p style="margin: 1.2rem 0;"><a href="{{link}}" style="display: inline-block; padding: 0.75rem 1.5rem; background: #ffcc80; color: #1c1917; font-weight: 600; text-decoration: none; border-radius: 8px;">Open Rhythm Engine</a></p><p>Your personal details were provided by your organisation solely to run this questionnaire. Because you lead a team, your answers about the support you receive, your capacity to lead change and your workload may be shown to your organisation’s Rhythm Engine administrators alongside your team’s results. This only happens once at least 5 people in your team and at least 5 managers across your organisation have responded. Your team members’ answers are only ever reported in groups of 5 or more.</p>',
     };
   }
   return {
@@ -104,10 +104,14 @@ function normalizeLicenseeWelcomeTemplate(raw) {
   };
 }
 
-function defaultWelcomeTemplateForAudience() {
+const MANAGER_WELCOME_PRIVACY_PARAGRAPH =
+  '<p>As a manager, your answers about the support you receive and your capacity to lead change may be shown alongside your team’s results. Your team’s answers are only ever reported in groups of 5 or more.</p>';
+
+function defaultWelcomeTemplateForAudience(audience) {
+  const base =
+    '<p>Welcome {{name}}!</p><p>Change can look many ways: from implementing a new payroll system to reorganising how a team collaborates, or even refining a single workflow to cut out unnecessary steps. As we move through this journey, it’s important that we hear from everyone; and as a manager, your perspective on how change is landing across your team is especially valuable.</p><p>There are no right or wrong answers – your honest perspective is what matters most.</p>';
   return {
-    bodyHtml:
-      '<p>Welcome {{name}}!</p><p>Change can look many ways: from implementing a new payroll system to reorganising how a team collaborates, or even refining a single workflow to cut out unnecessary steps. As we move through this journey, it’s important that we hear from everyone; and as a manager, your perspective on how change is landing across your team is especially valuable.</p><p>There are no right or wrong answers – your honest perspective is what matters most.</p>',
+    bodyHtml: audience === 'manager' ? `${base}${MANAGER_WELCOME_PRIVACY_PARAGRAPH}` : base,
   };
 }
 
