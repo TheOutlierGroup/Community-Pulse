@@ -150,3 +150,54 @@ test('RED-070: AI text is sanitised and the prompts carry the stage and language
     global.fetch = prevFetch;
   }
 });
+
+test('G17: key findings never report a withheld manager cohort as 0%', async () => {
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const data = buildReportData();
+    data.manager.sample_size_met = false;
+    data.manager.min_sample_size = 5;
+    data.manager.load_distribution = data.manager.load_distribution.map((b) => ({ ...b, percent: null, count: null }));
+    data.manager.sponsorship_chain_distribution = data.manager.sponsorship_chain_distribution.map((s) => ({ ...s, percent: null, count: null }));
+    data.alerts = [];
+    const out = await generateReportSignals(data);
+    const text = out.keyFindings.join('\n');
+    assert.doesNotMatch(text, /\d+% of managers/);
+    assert.match(text, /withheld to keep responses confidential: fewer than 5 managers responded/);
+  } finally {
+    if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = prevKey;
+  }
+});
+
+test('G17: key findings still report manager percentages above the floor', async () => {
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const out = await generateReportSignals(buildReportData({ overloadedPercent: 12, failedChainPercent: 18 }));
+    const text = out.keyFindings.join('\n');
+    assert.match(text, /12% of managers are in the Overloaded load band/);
+    assert.match(text, /18% of managers are in the failed sponsorship chain state/);
+  } finally {
+    if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = prevKey;
+  }
+});
+
+test('G17: the team fallback does not count withheld teams as above threshold', async () => {
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const data = buildReportData();
+    data.teams = [
+      { name: 'Alpha', sample_size_met: false, adoption_score: null, sponsorship_score: null, adoption_status: null, sponsorship_status: null },
+      { name: 'Beta', sample_size_met: false, adoption_score: null, sponsorship_score: null, adoption_status: null, sponsorship_status: null },
+    ];
+    const out = await generateReportSignals(data);
+    assert.doesNotMatch(out.teams, /sit above the 28\/40 readiness threshold/);
+  } finally {
+    if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = prevKey;
+  }
+});

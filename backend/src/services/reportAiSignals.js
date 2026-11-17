@@ -17,7 +17,10 @@ const FALLBACK = {
 };
 
 function teamsFallbackText(reportData) {
-  const teams = Array.isArray(reportData?.teams) ? reportData.teams : [];
+  // Teams below the sample floor have no scores or statuses; counting them
+  // as "above the threshold" would state withheld data as a result.
+  const teams = (Array.isArray(reportData?.teams) ? reportData.teams : [])
+    .filter((t) => t.sample_size_met !== false && t.adoption_score != null && t.sponsorship_score != null);
   if (teams.length === 0) return FALLBACK.teams;
   const belowAdoption = teams.filter((t) => t.adoption_status === 'LOW').length;
   const belowSponsorship = teams.filter((t) => t.sponsorship_status === 'LOW').length;
@@ -43,6 +46,7 @@ const HOUSE_STYLE_RULES = `- Write in Australian English (e.g. "organisation", "
 - Never use an em dash (—). Use a comma, colon, or a new sentence instead.
 - Never use the word "pulse" in any form (not "pulse check", "pulse survey" or "Sponsorship Pulse"). Call the measures Adoption Readiness and Sponsorship Credibility, and a repeat assessment a "check-in" or "follow-up assessment".
 - Describe responses as confidential. Never call them anonymous or refer to anonymity.
+- A null value, or a block marked sample_size_met: false, is withheld because too few people responded. Never state, estimate or imply a withheld figure, and never describe it as 0% or zero. If it matters, say it is withheld to keep responses confidential.
 - Plain prose only: no markdown, no asterisks, no hash headings, no bullet symbols, no bold or italic markers.
 - The DATA includes "stage" and "stage_context". Describe the findings as that stage only. A Mid-Change or Post-Change assessment is never a baseline and never "ahead of launch".`;
 
@@ -165,12 +169,26 @@ function keyFindingsFromData(reportData) {
   findings.push(
     `Sponsorship Credibility is ${reportData.readiness.sponsorship_score}/40 (${reportData.readiness.sponsorship_status}).`
   );
+  // G17 / PT-01: below the manager cohort floor the load and chain
+  // percentages are withheld (null). `|| 0` used to print them as "0% of
+  // managers", stating hidden data as a measured result. Say they are
+  // withheld instead, in one line.
   const overloaded = reportData.manager.load_distribution.find((band) => band.name === 'Overloaded');
-  findings.push(`${overloaded?.percent || 0}% of managers are in the Overloaded load band.`);
   const chainFailed = reportData.manager.sponsorship_chain_distribution.find(
     (state) => state.name === 'Sponsorship Failed at Both Levels'
   );
-  findings.push(`${chainFailed?.percent || 0}% of managers are in the failed sponsorship chain state.`);
+  const managerWithheld = reportData.manager.sample_size_met === false
+    || overloaded?.percent == null
+    || chainFailed?.percent == null;
+  if (managerWithheld) {
+    const min = reportData.manager.min_sample_size ?? reportData.suppression?.min_sample_size ?? 5;
+    findings.push(
+      `Manager load and sponsorship chain results are withheld to keep responses confidential: fewer than ${min} managers responded.`
+    );
+  } else {
+    findings.push(`${overloaded.percent}% of managers are in the Overloaded load band.`);
+    findings.push(`${chainFailed.percent}% of managers are in the failed sponsorship chain state.`);
+  }
   findings.push(
     `${reportData.alerts.length} priority alert${reportData.alerts.length === 1 ? '' : 's'} identified for intervention sequencing.`
   );
