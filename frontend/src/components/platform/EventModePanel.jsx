@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Presentation } from 'lucide-react';
 import api from '../../services/api.js';
 import { useToast } from '../shared/ToastProvider.jsx';
@@ -64,8 +64,48 @@ function previewTheme(primary, secondary) {
  * Event mode settings for one client. Only platform staff see this panel;
  * the server enforces the same rule on save.
  */
-export default function EventModePanel({ orgId, clientLogoUrl, hasLogo }) {
+export default function EventModePanel({ orgId, clientLogoUrl, hasLogo, onLogoChanged }) {
   const { showToast } = useToast();
+  const logoInputRef = useRef(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+
+  // Same client logo as the CRM Settings page (one logo per client), so
+  // Event mode can be fully set up from the Rhythm Engine app too.
+  async function onLogoFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Logo must be 2 MB or smaller.', { variant: 'error' });
+      return;
+    }
+    setLogoBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('logo', file);
+      await api.post(`/api/platform/organizations/${orgId}/logo`, fd);
+      await onLogoChanged?.();
+      showToast('Client logo updated.', { variant: 'success' });
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not upload logo.', { variant: 'error' });
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
+  async function removeLogo() {
+    if (!window.confirm('Remove this client’s logo? It is also removed from the client workspace.')) return;
+    setLogoBusy(true);
+    try {
+      await api.delete(`/api/platform/organizations/${orgId}/logo`);
+      await onLogoChanged?.();
+      showToast('Client logo removed.', { variant: 'success' });
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not remove logo.', { variant: 'error' });
+    } finally {
+      setLogoBusy(false);
+    }
+  }
   const [state, setState] = useState(null);
   const [form, setForm] = useState(null);
   const [stage, setStage] = useState('pre');
@@ -198,13 +238,48 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo }) {
           tab) and redeploy. You can still fill in and save everything below in the meantime.
         </p>
       ) : null}
-      {!hasLogo ? (
-        <p className="event-mode-panel__warn">No client logo uploaded yet. Add one in Client logo below.</p>
-      ) : null}
       {error ? <p className="error">{error}</p> : null}
 
       <form onSubmit={onSaveDetails} className="event-mode-panel__grid">
         <div className="event-mode-panel__fields">
+          <div className="event-mode-field">
+            <span className="event-mode-field__label">Client logo</span>
+            <div className="event-mode-logo-row">
+              <div className="event-mode-logo-row__preview">
+                {hasLogo && clientLogoUrl ? (
+                  <img src={clientLogoUrl} alt="Client logo" />
+                ) : (
+                  <span className="muted">No logo yet</span>
+                )}
+              </div>
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                className="visually-hidden"
+                onChange={onLogoFile}
+                disabled={logoBusy}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={logoBusy}
+                onClick={() => logoInputRef.current?.click()}
+              >
+                {logoBusy ? 'Working…' : hasLogo ? 'Change logo' : 'Upload logo'}
+              </button>
+              {hasLogo ? (
+                <button type="button" className="btn btn-ghost" disabled={logoBusy} onClick={removeLogo}>
+                  Remove
+                </button>
+              ) : null}
+            </div>
+            <span className="event-mode-field__hint">
+              Shown at the top of the survey and on the dashboard. JPG, PNG, GIF or WebP, up to 2 MB. This is the same
+              logo used in the client workspace.
+            </span>
+          </div>
+
           <label className="event-mode-field">
             <span className="event-mode-field__label">Change name</span>
             <input

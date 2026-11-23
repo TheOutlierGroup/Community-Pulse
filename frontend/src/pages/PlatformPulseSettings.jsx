@@ -6,6 +6,7 @@ import { useAuth } from '../components/shared/Auth.jsx';
 import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
 import RhythmEngineEmailTemplates from '../components/platform/RhythmEngineEmailTemplates.jsx';
+import EventModePanel from '../components/platform/EventModePanel.jsx';
 
 const CONFIG_TABS = [
   { id: 'contract', label: 'Contract dates' },
@@ -13,7 +14,8 @@ const CONFIG_TABS = [
   { id: 'respondents', label: 'Respondents' },
   { id: 'email-templates', label: 'Email templates' },
 ];
-const CONFIG_TAB_IDS = new Set(CONFIG_TABS.map((tab) => tab.id));
+// Event mode is a platform-staff tool, so its tab is only added for them.
+const EVENT_MODE_TAB = { id: 'event-mode', label: 'Event mode' };
 
 function formatCheckpointDate(dateKey) {
   const raw = String(dateKey || '').trim();
@@ -54,8 +56,12 @@ export default function PlatformPulseSettings() {
     updatePulseSessionLabelDate,
     pulsePostTriggered,
     triggerPulsePost,
+    clientLogoUrl,
+    bumpClientLogo,
   } = useOutletContext();
   const { user } = useAuth();
+  const showEventModeTab = user?.organizationKind === 'platform' && org?.kind === 'client';
+  const configTabs = showEventModeTab ? [...CONFIG_TABS, EVENT_MODE_TAB] : CONFIG_TABS;
   const { showToast } = useToast();
   const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -68,7 +74,7 @@ export default function PlatformPulseSettings() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const activeTab = CONFIG_TAB_IDS.has(requestedTab) ? requestedTab : CONFIG_TABS[0].id;
+  const activeTab = configTabs.some((tab) => tab.id === requestedTab) ? requestedTab : configTabs[0].id;
 
   function changeTab(nextTab) {
     setSearchParams(
@@ -251,7 +257,7 @@ export default function PlatformPulseSettings() {
         aria-label="Configuration sections"
         style={{ marginBottom: '1rem' }}
       >
-        {CONFIG_TABS.map((tab) => (
+        {configTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -499,6 +505,20 @@ export default function PlatformPulseSettings() {
       {activeTab === 'email-templates' ? (
         <div role="tabpanel" id="re-config-panel-email-templates" aria-labelledby="re-config-tab-email-templates">
           <RhythmEngineEmailTemplates />
+        </div>
+      ) : null}
+
+      {activeTab === 'event-mode' && showEventModeTab ? (
+        <div role="tabpanel" id="re-config-panel-event-mode" aria-labelledby="re-config-tab-event-mode">
+          <EventModePanel
+            orgId={orgId}
+            clientLogoUrl={clientLogoUrl}
+            hasLogo={Boolean(org?.company_logo_filename)}
+            onLogoChanged={async () => {
+              await refreshOrg?.();
+              bumpClientLogo?.();
+            }}
+          />
         </div>
       ) : null}
 
