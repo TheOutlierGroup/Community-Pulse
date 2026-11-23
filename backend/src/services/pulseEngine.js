@@ -2,11 +2,23 @@ import { normalizePulseStage } from './pulseStage.js';
 
 export const READINESS_THRESHOLD = 28;
 export const SPONSORSHIP_SUBSCORE_DEFAULT_THRESHOLD = 14;
-export const SPONSORSHIP_LOAD_BAND_DEFAULTS = {
-  sustainableMin: 8,
-  stretchedMin: 6,
-  atCapacityMin: 4,
+/**
+ * Manager Load (Study Reference Guide, section 4.3): MQ5 + MQ6 + MQ15 +
+ * MQ16, each 1 to 5, so 4 to 20, higher meaning more capacity.
+ * Sustainable 16-20, Stretched 11-15, At Capacity 6-10, Overloaded 4-5.
+ *
+ * The Manager View, its overload alert and the Word report used to band a
+ * two-question score (MQ15 + MQ16 out of 10, cut-offs 8 / 6 / 4), which
+ * ignored change saturation (MQ5, MQ6) and disagreed with the team table
+ * on the same screen. Every Manager Load figure now uses this one scale.
+ */
+export const MANAGER_LOAD_BAND_DEFAULTS = {
+  sustainableMin: 16,
+  stretchedMin: 11,
+  atCapacityMin: 6,
 };
+/** Kept for existing imports; the same 4-to-20 scale. */
+export const SPONSORSHIP_LOAD_BAND_DEFAULTS = MANAGER_LOAD_BAND_DEFAULTS;
 
 /**
  * Resolves an org's own Sponsorship Analysis overrides (received/capacity
@@ -32,11 +44,17 @@ export function sponsorshipConfigFromOrgSettings(settings) {
     source.loadBandBoundaries && typeof source.loadBandBoundaries === 'object'
       ? source.loadBandBoundaries
       : {};
-  const loadBandBoundaries = {
-    sustainableMin: Number(boundaries.sustainableMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.sustainableMin),
-    stretchedMin: Number(boundaries.stretchedMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.stretchedMin),
-    atCapacityMin: Number(boundaries.atCapacityMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.atCapacityMin),
-  };
+  // Custom cut-offs saved on the old 10-point scale (sustainableMin 10 or
+  // less) would put almost everyone in Sustainable on the 20-point scale,
+  // so they are ignored in favour of the Study Reference Guide bands.
+  const customOnTwentyScale = Number(boundaries.sustainableMin) > 10;
+  const loadBandBoundaries = customOnTwentyScale
+    ? {
+        sustainableMin: Number(boundaries.sustainableMin),
+        stretchedMin: Number(boundaries.stretchedMin ?? MANAGER_LOAD_BAND_DEFAULTS.stretchedMin),
+        atCapacityMin: Number(boundaries.atCapacityMin ?? MANAGER_LOAD_BAND_DEFAULTS.atCapacityMin),
+      }
+    : { ...MANAGER_LOAD_BAND_DEFAULTS };
   const teamTableDisplayLimit = Number(source.teamTableDisplayLimit ?? 50);
   const aiSignalsEnabled = source.aiSignalsEnabled !== false;
   return {
@@ -542,21 +560,20 @@ function answerIdForIndex(audience, index) {
   return normalizeAudience(audience) === 'manager' ? `MQ${n}` : `Q${n}`;
 }
 
-function scoreBandForManagerLoad(load) {
-  if (load >= 16) return 'Sustainable';
-  if (load >= 11) return 'Stretched';
-  if (load >= 6) return 'At Capacity';
-  return 'Overloaded';
-}
-
-export function scoreBandForSponsorshipLoad(load, boundaries = SPONSORSHIP_LOAD_BAND_DEFAULTS) {
-  const sustainableMin = Number(boundaries?.sustainableMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.sustainableMin);
-  const stretchedMin = Number(boundaries?.stretchedMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.stretchedMin);
-  const atCapacityMin = Number(boundaries?.atCapacityMin ?? SPONSORSHIP_LOAD_BAND_DEFAULTS.atCapacityMin);
+/** Band a four-question Manager Load score (4 to 20). */
+export function scoreBandForManagerLoad(load, boundaries = MANAGER_LOAD_BAND_DEFAULTS) {
+  const sustainableMin = Number(boundaries?.sustainableMin ?? MANAGER_LOAD_BAND_DEFAULTS.sustainableMin);
+  const stretchedMin = Number(boundaries?.stretchedMin ?? MANAGER_LOAD_BAND_DEFAULTS.stretchedMin);
+  const atCapacityMin = Number(boundaries?.atCapacityMin ?? MANAGER_LOAD_BAND_DEFAULTS.atCapacityMin);
   if (load >= sustainableMin) return 'Sustainable';
   if (load >= stretchedMin) return 'Stretched';
   if (load >= atCapacityMin) return 'At Capacity';
   return 'Overloaded';
+}
+
+/** Kept for existing imports: bands a four-question Manager Load score. */
+export function scoreBandForSponsorshipLoad(load, boundaries = MANAGER_LOAD_BAND_DEFAULTS) {
+  return scoreBandForManagerLoad(load, boundaries);
 }
 
 export function classifySponsorshipChainState(
@@ -705,8 +722,8 @@ export function computeSurveyScores({ audience, answers, stage = 'pre' }) {
     sponsorshipReceivedScore,
     sponsorshipCapacityScore,
     sponsorshipLoadScore,
-    sponsorshipLoadBand:
-      sponsorshipLoadScore == null ? null : scoreBandForSponsorshipLoad(sponsorshipLoadScore),
+    // Same band as managerLoadBand: Manager Load is always the four-question score.
+    sponsorshipLoadBand: managerLoad == null ? null : scoreBandForManagerLoad(managerLoad),
     sponsorshipChainState:
       sponsorshipReceivedScore == null || sponsorshipCapacityScore == null
         ? null

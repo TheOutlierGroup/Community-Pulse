@@ -305,9 +305,9 @@ test('assembleReportData labels a team with no group values as Unassigned, never
 // and always use the platform defaults, so a customised org's report and
 // live dashboard silently disagreed on the exact same manager responses.
 test('assembleReportData applies an org\'s own sponsorshipAnalysisConfig overrides, not just the platform defaults', async () => {
-  // Five managers answering MQ15/MQ16 = 4 each -> sponsorshipLoadScore = 8.
-  // Platform default loadBandBoundaries.sustainableMin is 8, so 8 lands in
-  // Sustainable. A per-org override raising sustainableMin to 9 should
+  // Five managers answering 4 to everything -> Manager Load (MQ5 + MQ6 +
+  // MQ15 + MQ16) = 16. The default sustainableMin is 16, so 16 lands in
+  // Sustainable. A per-org override raising sustainableMin to 17 should
   // reclassify the same responses into Stretched instead.
   const managerRows = Array.from({ length: 5 }, () => makeRow({ role: 'admin', value: 4 }));
 
@@ -346,7 +346,7 @@ test('assembleReportData applies an org\'s own sponsorshipAnalysisConfig overrid
     organization: {
       id: 'org-1',
       name: 'Client A',
-      settings: { sponsorshipAnalysisConfig: { loadBandBoundaries: { sustainableMin: 9 } } },
+      settings: { sponsorshipAnalysisConfig: { loadBandBoundaries: { sustainableMin: 17 } } },
     },
     stage: 'pre',
   });
