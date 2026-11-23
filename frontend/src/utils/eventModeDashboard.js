@@ -26,6 +26,21 @@ export const EVENT_QUADRANT_COPY = {
   },
 };
 
+/** Post stage subtitles, in the past tense. */
+export const EVENT_QUADRANT_POST_SUBTITLES = {
+  Optimal: 'People felt ready and saw senior leaders backing the change.',
+  'Motivated but Lost': "People felt ready, but didn't see senior leaders backing the change.",
+  'Capable but Wary': "People trusted senior leaders, but didn't feel ready.",
+  'High Risk': "People didn't feel ready, and didn't trust senior leaders to back the change.",
+};
+
+/** Organisation view tile questions by stage. */
+export function eventTileQuestions(isPost) {
+  return isPost
+    ? { adoption: 'Were your people ready?', sponsorship: 'Did people see leaders backing the change?' }
+    : { adoption: 'Are your people ready?', sponsorship: 'Do people see leaders backing the change?' };
+}
+
 /** Post stage: the change has happened, so actions look to the next one. */
 export const EVENT_QUADRANT_POST_ACTIONS = {
   Optimal: 'Lock in what worked, and keep leaders visible.',
