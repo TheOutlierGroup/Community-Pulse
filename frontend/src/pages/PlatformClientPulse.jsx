@@ -18,6 +18,8 @@ import {
   EVENT_LOAD_COPY,
   EVENT_QUADRANT_COPY,
   EVENT_QUADRANT_POST_ACTIONS,
+  EVENT_QUADRANT_POST_SUBTITLES,
+  eventTileQuestions,
   limitGroupedRowsByRisk,
   rankChainRowsByRisk,
 } from '../utils/eventModeDashboard.js';
@@ -25,6 +27,12 @@ import '../styles/eventMode.css';
 
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
+const QUADRANT_DESCRIPTORS_POST = {
+  'Optimal': ['Both adoption readiness and sponsorship credibility were strong.', 'The organisation absorbed and sustained the change.'],
+  'High Risk': ['Both adoption readiness and sponsorship credibility were weak.', 'Fundamental conditions for successful change were not in place.'],
+  'Motivated but Lost': ['People were willing to change but lacked credible leadership support.', 'Sponsorship was the primary risk.'],
+  'Capable but Wary': ['Leadership drove the change credibly,', 'but the workforce needed more support to build readiness.'],
+};
 const QUADRANT_DESCRIPTORS = {
   'Optimal': ['Both adoption readiness and sponsorship credibility are strong.', 'The organisation is positioned to absorb and sustain the change.'],
   'High Risk': ['Both adoption readiness and sponsorship credibility are weak.', 'Fundamental conditions for successful change are not in place.'],
@@ -1841,7 +1849,11 @@ export default function PlatformClientPulse() {
                         : ''}
                     </p>
                   ) : null}
-                  {headlineCopy ? <p className="event-dash-tile__text">{headlineCopy.subtitle}</p> : null}
+                  {headlineCopy ? (
+                    <p className="event-dash-tile__text">
+                      {isPostStage ? EVENT_QUADRANT_POST_SUBTITLES[headlineQuadrant.name] || headlineCopy.subtitle : headlineCopy.subtitle}
+                    </p>
+                  ) : null}
                   {headlineCopy ? (
                     <p className="event-dash-tile__action">
                       {isPostStage ? EVENT_QUADRANT_POST_ACTIONS[headlineQuadrant.name] || headlineCopy.action : headlineCopy.action}
@@ -1861,8 +1873,8 @@ export default function PlatformClientPulse() {
               )}
             </article>
             {[
-              ['Are your people ready?', 'Adoption readiness', adoptionScore],
-              ['Do people see leaders backing the change?', 'Sponsorship credibility', sponsorshipScore],
+              [eventTileQuestions(isPostStage).adoption, 'Adoption readiness', adoptionScore],
+              [eventTileQuestions(isPostStage).sponsorship, 'Sponsorship credibility', sponsorshipScore],
             ].map(([question, measure, score]) => (
               <article key={measure} className="card event-dash-tile">
                 <p className="event-dash-tile__label">{question}</p>
@@ -1897,7 +1909,11 @@ export default function PlatformClientPulse() {
                     <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
                     <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
                     {EVENT_QUADRANT_COPY[quadrant.name] ? (
-                      <p className="pulse-clean-readiness__quadrant-desc">{EVENT_QUADRANT_COPY[quadrant.name].subtitle}</p>
+                      <p className="pulse-clean-readiness__quadrant-desc">
+                        {isPostStage
+                          ? EVENT_QUADRANT_POST_SUBTITLES[quadrant.name]
+                          : EVENT_QUADRANT_COPY[quadrant.name].subtitle}
+                      </p>
                     ) : null}
                   </div>
                 ))}
@@ -1943,7 +1959,7 @@ export default function PlatformClientPulse() {
           <section className="pulse-org-overview">
             <article className="card pulse-org-overview__score-card">
               <div className="pulse-org-overview__header">
-                <h3 className="pulse-org-overview__title">Are your people ready?</h3>
+                <h3 className="pulse-org-overview__title">{isPostStage ? 'Were your people ready?' : 'Are your people ready?'}</h3>
                 <span className="pulse-org-overview__corner-badge" aria-label="Card marker A">A</span>
               </div>
               <p
@@ -1982,7 +1998,9 @@ export default function PlatformClientPulse() {
             </article>
             <article className="card pulse-org-overview__score-card">
               <div className="pulse-org-overview__header">
-                <h3 className="pulse-org-overview__title">Can your managers drive the change?</h3>
+                <h3 className="pulse-org-overview__title">
+                  {isPostStage ? 'Did your managers drive the change?' : 'Can your managers drive the change?'}
+                </h3>
                 <span className="pulse-org-overview__corner-badge" aria-label="Card marker B">B</span>
               </div>
               <p
@@ -2060,11 +2078,11 @@ export default function PlatformClientPulse() {
                       >
                         <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
                         <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
-                        {QUADRANT_DESCRIPTORS[quadrant.name] ? (
+                        {(isPostStage ? QUADRANT_DESCRIPTORS_POST : QUADRANT_DESCRIPTORS)[quadrant.name] ? (
                           <p className="pulse-clean-readiness__quadrant-desc">
-                            {QUADRANT_DESCRIPTORS[quadrant.name][0]}
+                            {(isPostStage ? QUADRANT_DESCRIPTORS_POST : QUADRANT_DESCRIPTORS)[quadrant.name][0]}
                             <br />
-                            {QUADRANT_DESCRIPTORS[quadrant.name][1]}
+                            {(isPostStage ? QUADRANT_DESCRIPTORS_POST : QUADRANT_DESCRIPTORS)[quadrant.name][1]}
                           </p>
                         ) : null}
                       </div>

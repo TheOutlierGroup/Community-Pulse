@@ -146,6 +146,12 @@ export const EVENT_SURVEY_COPY = {
   },
 };
 
+const HALFWAY_NOTE = {
+  pre: "**You're halfway.** The next questions are about how senior leaders support change here.",
+  mid: "**You're halfway.** The next questions are about how senior leaders are supporting this change.",
+  post: "**You're halfway.** The next questions are about how senior leaders supported this change.",
+};
+
 function stageKey(stage) {
   const raw = String(stage || '').trim().toLowerCase();
   if (raw === 'mid' || raw === 'during') return 'mid';
@@ -166,7 +172,7 @@ export function eventSurveyCopy(audience, stage) {
   return {
     intro: isManager ? copy.managerIntro : copy.staffIntro,
     transition: isManager ? MANAGER_INSTRUCTION : STAFF_INSTRUCTION,
-    halfwayNote: "**You're halfway.** The next questions are about how senior leaders support this change.",
+    halfwayNote: HALFWAY_NOTE[stageKey(stage)],
     reflection: copy.reflection,
   };
 }
