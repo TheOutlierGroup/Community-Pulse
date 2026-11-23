@@ -25,6 +25,12 @@ export const CHANGE_CONTEXT_LABELS = {
   howUsed: 'How your feedback will be used',
   whenHearBack: "When you'll hear back",
 };
+/** Context labels by stage: after the change it reads "What changed". */
+export function changeContextLabel(field, stage) {
+  if (field === 'whatIsChanging' && normalizeStage(stage) === 'post') return 'What changed';
+  return CHANGE_CONTEXT_LABELS[field];
+}
+
 export const CHANGE_CONTEXT_MAX_LENGTH = {
   whatIsChanging: 400,
   whyAsking: 400,
@@ -123,7 +129,7 @@ export function eventModeInviteBlock(organization, stage, env = process.env) {
   if (!isEventModeActive(organization, env)) return null;
   const missing = missingChangeContextFields(organization.settings?.eventMode, stage);
   if (!missing.length) return null;
-  const labels = missing.map((field) => (field === 'changeName' ? 'Change name' : CHANGE_CONTEXT_LABELS[field]));
+  const labels = missing.map((field) => (field === 'changeName' ? 'Change name' : changeContextLabel(field, stage)));
   return {
     error: `Event mode is on for this client, so the change context must be filled in before invites go out. Missing for the ${normalizeStage(stage)} survey: ${labels.join(', ')}.`,
     eventModeChangeContextMissing: missing,
@@ -288,6 +294,7 @@ export function respondentEventModePayload(organization, stage, { logoUrl = null
   return {
     active: true,
     wordingVersion: WORDING_VERSION_EVENT,
+    stage: normalizeStage(stage),
     clientName: String(organization.name || '').trim() || null,
     changeName: normalized.changeName || null,
     closingNote: normalized.closingNote || null,

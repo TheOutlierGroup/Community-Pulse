@@ -11,13 +11,13 @@ Placeholders such as `{{changeName}}` come from the new Change context fields (p
 ## Part A. Decisions this document raises
 
 1. **"Anonymous" is probably not accurate.** The pre and mid survey intros tell respondents their answers are "anonymous". Personal links are tied to a named invite, so responses can be linked to a person in the database even though dashboards never show individuals. The dashboards already say "confidential". **Recommendation:** say "confidential" everywhere. Because this corrects an inaccurate promise, I classed it as a fix that goes live for everyone. Confirm.
-2. **Three statements assume the respondent struggled or hit trouble.** Mid Q16 ("my struggles during this change are being met..."), post Q16 ("When I struggled...") and mid MQ10 ("Now that this program has hit difficulty..."). Someone who did not struggle, or a program with no difficulty, cannot answer honestly. Proposed wording uses "If..." or "When... gets difficult".
+2. **Three statements assume the respondent struggled or hit trouble.** Mid Q16 ("my struggles during this change are being met..."), post Q16 ("When I struggled...") and mid MQ10 ("Now that this programme has hit difficulty..."). Someone who did not struggle, or a programme with no difficulty, cannot answer honestly. Proposed wording uses "If..." or "When... gets difficult".
 3. **Double questions that cannot simply be split.** Each theme scores exactly two statements, so splitting one into two would change the scoring. In each case I picked one idea:
    - **Q4** "organised **and** manageable": proposed keeps "well organised".
    - **MQ4** "performance **and** morale": proposed keeps "performing well". **You decide: performance or morale?**
    - **MQ16** "skills **and** tools": proposed keeps "skills". **Confirm.**
 4. **Consistent terms.** Proposed wording uses "senior leaders" throughout. The current text switches between "leaders", "senior leaders" and "leadership". It also uses "staff" rather than "employee" everywhere respondents and clients see it.
-5. **Spelling.** "program" is kept. It is standard Australian usage.
+5. **Spelling.** Changed from "program" to "programme" after the Post retest (24 Nov 2026), in survey text for all clients and in the event-v1 wording.
 
 ### Fixes that go live for everyone (not behind Event mode)
 
@@ -80,7 +80,7 @@ Per your instruction, pure fixes ship to all clients. My proposed list is below.
 | Q3 | So far in this change, the new ways of working are taking hold; we're not drifting back to how things were. | So far, the **new ways of working are sticking**. |
 | Q4 | This change is being delivered in a way that feels organised and manageable. | This change is being **delivered in a way that feels organised and manageable**. *(revised)* |
 | Q5 | The number of things shifting at once during this change feels manageable; I am not overwhelmed. | The **amount of change happening at once feels manageable** to me. |
-| Q6 | My team is managing its workload alongside this change; we are not struggling to keep up with both. | My team is **keeping up with its normal work** alongside this change. |
+| Q6 | My team is managing its workload alongside this change; we are not struggling to keep up with both. | My team has had **room to take on this change** without dropping something else. *(revised 24 Nov: tense only, same meaning as Pre)* |
 | Q7 | My direct manager is actively helping me work through this change; they engage with what it means for me, not just pass on information. | My manager **talks with me about what this change means for me**, rather than just passing on information. |
 | Q8 | When I have raised concerns during this change, I have felt genuinely heard, not just managed. | When I've raised concerns about this change, I've **felt genuinely listened to**. |
 | Q9 | Senior leaders are doing more than announcing this change; I can see them visibly living it themselves. | Senior leaders are **visibly living this change** themselves. |
@@ -98,10 +98,10 @@ Per your instruction, pure fixes ship to all clients. My proposed list is below.
 |---|---|---|
 | Q1 | During this change, I was given enough support to genuinely perform well in the new way, not just go through the motions. | During this change, I got **enough support to genuinely work well** in the new way. |
 | Q2 | Throughout this change, I felt I had enough capacity (time, energy and headspace) to properly learn and adapt. | Throughout this change, I had **the time, energy and headspace to learn and adapt**. |
-| Q3 | The changes introduced through this program have stuck; we have not drifted back to how things were before. | The **changes from this program have stuck**. |
+| Q3 | The changes introduced through this programme have stuck; we have not drifted back to how things were before. | The **changes from this programme have stuck**. |
 | Q4 | This change was delivered in a way that felt organised and manageable throughout. | This change was **delivered in a way that felt organised and manageable**. *(revised)* |
-| Q5 | The pace and volume of change during this program felt manageable; I was not overwhelmed by how much was shifting at once. | The **amount of change happening at once felt manageable** to me. |
-| Q6 | My team maintained enough bandwidth throughout this change to absorb it without other priorities seriously suffering. | My team **kept up with its normal work** throughout this change. |
+| Q5 | The pace and volume of change during this programme felt manageable; I was not overwhelmed by how much was shifting at once. | The **amount of change happening at once felt manageable** to me. |
+| Q6 | My team maintained enough bandwidth throughout this change to absorb it without other priorities seriously suffering. | My team had **room to take on this change** without dropping something else. *(revised 24 Nov: tense only, same meaning as Pre)* |
 | Q7 | My direct manager actively helped me work through this change; they engaged with what it meant for me, not just passed on information. | My manager **talked with me about what this change meant for me**, rather than just passing on information. |
 | Q8 | When I raised concerns during this change, I felt genuinely heard; not just managed. | When I raised concerns about this change, I **felt genuinely listened to**. |
 | Q9 | Senior leaders did more than announce this change; I saw them visibly living it themselves throughout. | Senior leaders **visibly lived this change** themselves throughout. |
@@ -130,7 +130,7 @@ Per your instruction, pure fixes ship to all clients. My proposed list is below.
 | MQ7 · Upward enablement | I feel I have enough authority and autonomy to make the decisions needed to support my team through change; I'm not constantly waiting for approval. | I have **the authority to make the decisions** my team needs during change, without constantly waiting for approval. |
 | MQ8 · Upward enablement | When I raise concerns about a change with senior leadership, I feel they genuinely engage with my input rather than just proceeding regardless. | When I raise concerns with senior leaders, they **genuinely engage with my input**. |
 | MQ9 · Senior sponsorship visibility | Senior leadership in this organisation are visibly modelling the changes they're asking people to make, not just advocating for them. | Senior leaders here **visibly model the changes** they ask of others. |
-| MQ10 · Senior sponsorship visibility | When change programs hit difficulty, I can count on senior leaders to remain visible and engaged; not to step back and leave managers to manage the fallout. | When change gets difficult, I can count on senior leaders to **stay visible rather than leave managers to handle it**. |
+| MQ10 · Senior sponsorship visibility | When change programmes hit difficulty, I can count on senior leaders to remain visible and engaged; not to step back and leave managers to manage the fallout. | When change gets difficult, I can count on senior leaders to **stay visible rather than leave managers to handle it**. |
 | MQ11 · Strategic alignment | The rationale for changes I'm asked to lead is clearly explained to me; I understand the why well enough to explain it convincingly to my team. | I **understand why changes are happening** well enough to explain them convincingly to my team. |
 | MQ12 · Strategic alignment | There is alignment among senior leaders about this change; I don't receive conflicting messages or priorities from different parts of leadership. | Senior leaders **give consistent messages** about this change. |
 | MQ13 · Implementation autonomy | I'm given enough flexibility to adapt how a change is implemented for my team's specific context; it's not entirely prescribed from above. | I have **the flexibility to adapt how change is rolled out** for my team. |
@@ -151,7 +151,7 @@ Per your instruction, pure fixes ship to all clients. My proposed list is below.
 | MQ7 | I feel I have enough authority and autonomy to make the decisions needed to support my team through this change; I am not constantly waiting for approval. | I have **the authority to make the decisions** my team needs during this change, without constantly waiting for approval. |
 | MQ8 | When I raise concerns about this change with senior leadership, I feel they genuinely engage with my input rather than just proceeding regardless. | When I raise concerns about this change, senior leaders **genuinely engage with my input**. |
 | MQ9 | Senior leadership in this organisation are visibly modelling this change, not just advocating for it. | Senior leaders are **visibly modelling this change**, not just advocating for it. |
-| MQ10 | Now that this program has hit difficulty, senior leaders are remaining visible and engaged; they are not stepping back and leaving managers to manage the fallout. *(assumes difficulty, see Decision 2)* | When this change gets difficult, senior leaders **stay visible rather than leave managers to handle it**. |
+| MQ10 | Now that this programme has hit difficulty, senior leaders are remaining visible and engaged; they are not stepping back and leaving managers to manage the fallout. *(assumes difficulty, see Decision 2)* | When this change gets difficult, senior leaders **stay visible rather than leave managers to handle it**. |
 | MQ11 | The rationale for this change has been clearly explained to me; I understand the why well enough to explain it convincingly to my team. | I **understand why this change is happening** well enough to explain it convincingly to my team. |
 | MQ12 | There is alignment among senior leaders about this change; I am not receiving conflicting messages or priorities from different parts of leadership. | Senior leaders are **giving consistent messages** about this change. |
 | MQ13 | I am being given enough flexibility to adapt how this change is implemented for my team's specific context; it is not entirely prescribed from above. | I have **the flexibility to adapt how this change is rolled out** for my team. |
@@ -172,7 +172,7 @@ Per your instruction, pure fixes ship to all clients. My proposed list is below.
 | MQ7 | I felt I had enough authority and autonomy to make the decisions needed to support my team through this change; I was not constantly waiting for approval. | I had **the authority to make the decisions** my team needed during this change, without constantly waiting for approval. |
 | MQ8 | When I raised concerns about this change with senior leadership, I felt they genuinely engaged with my input rather than just proceeding regardless. | When I raised concerns about this change, senior leaders **genuinely engaged with my input**. |
 | MQ9 | Senior leadership visibly modelled this change throughout; they did not just advocate for it. | Senior leaders **visibly modelled this change** throughout, not just advocated for it. |
-| MQ10 | When this program hit difficulty, senior leaders remained visible and engaged; they did not step back and leave managers to manage the fallout. | When this change got difficult, senior leaders **stayed visible rather than leaving managers to handle it**. |
+| MQ10 | When this programme hit difficulty, senior leaders remained visible and engaged; they did not step back and leave managers to manage the fallout. | When this change got difficult, senior leaders **stayed visible rather than leaving managers to handle it**. |
 | MQ11 | The rationale for this change was clearly explained to me; I understood the why well enough to explain it convincingly to my team. | I **understood why this change was happening** well enough to explain it convincingly to my team. |
 | MQ12 | There was alignment among senior leaders about this change; I did not receive conflicting messages or priorities from different parts of leadership. | Senior leaders **gave consistent messages** about this change. |
 | MQ13 | I was given enough flexibility to adapt how this change was implemented for my team's specific context; it was not entirely prescribed from above. | I had **the flexibility to adapt how this change was rolled out** for my team. |
@@ -204,8 +204,8 @@ Proposed order, top to bottom: client logo, heading, Change context block, confi
 | Pre · Manager | Before this change starts, we want to understand manager readiness and support conditions. Your responses are anonymous and used in aggregate only. | Before this change starts, we want to know how ready you feel to lead your team through it, and what support you need. |
 | Mid · Staff | This change is now underway, and we want to understand how it is going for you. Your honest responses are anonymous and will help the organisation focus support where needed. | This change is now underway. We want to know how it's going for you, so support goes where it's needed. |
 | Mid · Manager | This change is now underway. We want to understand how you are experiencing it as a manager, where pressure is highest, and what support is most useful right now. | This change is now underway. We want to know how it's going for you as a manager, where pressure is highest, and what support would help most right now. |
-| Post · Staff | This change program has now concluded. We want to understand how it went for you: what worked, what was hard, and what the experience has left you with. | This change program has finished. We want to know how it went for you: what worked and what was hard. |
-| Post · Manager | This change program has now concluded. We want to understand how it went from your perspective as a manager and what should be different next time. | This change program has finished. We want to know how it went for you as a manager, and what should be different next time. |
+| Post · Staff | This change programme has now concluded. We want to understand how it went for you: what worked, what was hard, and what the experience has left you with. | This change programme has finished. We want to know how it went for you: what worked and what was hard. |
+| Post · Manager | This change programme has now concluded. We want to understand how it went from your perspective as a manager and what should be different next time. | This change programme has finished. We want to know how it went for you as a manager, and what should be different next time. |
 
 The "anonymous" sentences are removed because the fixed confidentiality line replaces them (Decision 1).
 
@@ -231,7 +231,7 @@ The "anonymous" sentences are removed because the fixed confidentiality line rep
 | Body (Event mode) | *(stage message, or fixed staff message)* | **What happens next:** {{howUsed}}<br>**You'll hear back by {{whenHearBack}}.** |
 | Body: pre (fallback) | Thank you for completing the pre-change survey. This baseline will be used to compare progress at mid and post stages. | Your answers set the starting point. We'll ask again partway through the change to see what has improved. |
 | Body: mid (fallback) | Thank you for completing the mid-change survey. Your responses help track what is improving and what still needs attention while delivery is live. | Your answers show what's improving and what still needs attention while the change is underway. |
-| Body: post (fallback) | Thank you for completing the post-change survey. Your reflections will help the organisation learn from this program and prepare better for the next one. | Your reflections will help the organisation learn from this program and do the next one better. |
+| Body: post (fallback) | Thank you for completing the post-change survey. Your reflections will help the organisation learn from this programme and prepare better for the next one. | Your reflections will help the organisation learn from this programme and do the next one better. |
 
 ### E4. Other respondent messages
 

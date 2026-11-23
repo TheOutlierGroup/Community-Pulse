@@ -40,6 +40,11 @@ const FIELDS = [
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 
+// After the change (Post), "What's changing" reads "What changed".
+function fieldLabel(field, stage) {
+  return field.id === 'whatIsChanging' && stage === 'post' ? 'What changed' : field.label;
+}
+
 function emptyContext() {
   return Object.fromEntries(STAGES.map((s) => [s.id, Object.fromEntries(FIELDS.map((f) => [f.id, '']))]));
 }
@@ -353,7 +358,7 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo, onLogoCh
             const value = stageContext[field.id] || '';
             return (
               <label key={field.id} className="event-mode-field">
-                <span className="event-mode-field__label">{field.label}</span>
+                <span className="event-mode-field__label">{fieldLabel(field, stage)}</span>
                 <textarea
                   rows={field.max > 200 ? 2 : 1}
                   value={value}
@@ -388,7 +393,7 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo, onLogoCh
             <dl className="change-context">
               {FIELDS.map((field) => (
                 <div key={field.id} className="change-context__row">
-                  <dt>{field.label}</dt>
+                  <dt>{fieldLabel(field, stage)}</dt>
                   <dd>{stageContext[field.id] || <span className="muted">Not filled in yet</span>}</dd>
                 </div>
               ))}

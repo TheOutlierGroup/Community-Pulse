@@ -14,7 +14,8 @@ test('a baked-in platform name in an inherited subject and body becomes {{client
     },
     'Outlier'
   );
-  assert.equal(out.subject, 'Rhythm Engine manager questionnaire — {{clientName}}');
+  // E5: the dash separator is also normalised to ": ".
+  assert.equal(out.subject, 'Rhythm Engine manager questionnaire: {{clientName}}');
   assert.equal(out.bodyHtml, '<p>You have been invited to the questionnaire for <strong>{{clientName}}</strong>.</p>');
 });
 
@@ -28,7 +29,7 @@ test('the platform name is only rebound where the generator placed it', () => {
 
 test('a template already using {{clientName}} is unchanged', () => {
   const template = {
-    subject: 'Rhythm Engine questionnaire — {{clientName}}',
+    subject: 'Rhythm Engine questionnaire: {{clientName}}',
     bodyHtml: '<p>For <strong>{{clientName}}</strong>.</p>',
   };
   assert.deepEqual(rebindPlatformNameToClientToken(template, 'Outlier'), template);
@@ -36,4 +37,14 @@ test('a template already using {{clientName}} is unchanged', () => {
 
 test('RED-067: the neutral team label is a fixed word, never a person', () => {
   assert.equal(UNASSIGNED_TEAM_LABEL, 'Unassigned');
+});
+
+test('E5: a saved platform default subject with a long dash reads back with a colon', () => {
+  const out = rebindPlatformNameToClientToken(
+    { subject: 'Rhythm Engine questionnaire — {{clientName}}', bodyHtml: '<p>x</p>' },
+    'Outlier'
+  );
+  assert.equal(out.subject, 'Rhythm Engine questionnaire: {{clientName}}');
+  const noName = rebindPlatformNameToClientToken({ subject: 'Survey — {{clientName}}', bodyHtml: '' }, '');
+  assert.equal(noName.subject, 'Survey: {{clientName}}');
 });

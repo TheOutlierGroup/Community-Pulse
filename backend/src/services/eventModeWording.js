@@ -32,7 +32,9 @@ export const EVENT_STAFF_STATEMENTS = {
     Q3: 'So far, the **new ways of working are sticking**.',
     Q4: 'This change is being **delivered in a way that feels organised and manageable**.',
     Q5: 'The **amount of change happening at once feels manageable** to me.',
-    Q6: 'My team is **keeping up with its normal work** alongside this change.',
+    // Same meaning as Pre Q6 (room to take on change without dropping
+    // something else), in the present: tense only (Post retest, 24 Nov 2026).
+    Q6: 'My team has had **room to take on this change** without dropping something else.',
     Q7: 'My manager **talks with me about what this change means for me**, rather than just passing on information.',
     Q8: "When I've raised concerns about this change, I've **felt genuinely listened to**.",
     Q9: 'Senior leaders are **visibly living this change** themselves.',
@@ -47,10 +49,10 @@ export const EVENT_STAFF_STATEMENTS = {
   post: {
     Q1: 'During this change, I got **enough support to genuinely work well** in the new way.',
     Q2: 'Throughout this change, I had **the time, energy and headspace to learn and adapt**.',
-    Q3: 'The **changes from this program have stuck**.',
+    Q3: 'The **changes from this programme have stuck**.',
     Q4: 'This change was **delivered in a way that felt organised and manageable**.',
     Q5: 'The **amount of change happening at once felt manageable** to me.',
-    Q6: 'My team **kept up with its normal work** throughout this change.',
+    Q6: 'My team had **room to take on this change** without dropping something else.',
     Q7: 'My manager **talked with me about what this change meant for me**, rather than just passing on information.',
     Q8: 'When I raised concerns about this change, I **felt genuinely listened to**.',
     Q9: 'Senior leaders **visibly lived this change** themselves throughout.',
@@ -138,9 +140,9 @@ export const EVENT_SURVEY_COPY = {
     reflection: "Your answers show what's improving and what still needs attention while the change is underway.",
   },
   post: {
-    staffIntro: 'This change program has finished. We want to know how it went for you: what worked and what was hard.',
-    managerIntro: 'This change program has finished. We want to know how it went for you as a manager, and what should be different next time.',
-    reflection: 'Your reflections will help the organisation learn from this program and do the next one better.',
+    staffIntro: 'This change programme has finished. We want to know how it went for you: what worked and what was hard.',
+    managerIntro: 'This change programme has finished. We want to know how it went for you as a manager, and what should be different next time.',
+    reflection: 'Your reflections will help the organisation learn from this programme and do the next one better.',
   },
 };
 

@@ -46,3 +46,12 @@ test('grouped rows keep the riskiest top-level groups and their expanded childre
   const all = limitGroupedRowsByRisk(rows, { showAll: true });
   assert.deepEqual(all.rows.map((r) => r.key), ['b', 'd', 'a', 'a1', 'c']);
 });
+
+import { EVENT_QUADRANT_POST_ACTIONS } from './eventModeDashboard.js';
+
+test('post-stage actions exist for every quadrant and avoid launch language', () => {
+  for (const name of Object.keys(EVENT_QUADRANT_COPY)) {
+    assert.ok(EVENT_QUADRANT_POST_ACTIONS[name], name);
+    assert.doesNotMatch(EVENT_QUADRANT_POST_ACTIONS[name], /rollout|launch|Proceed/i);
+  }
+});

@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { createPulseLinkRoutes } from './pulseLink.js';
+import { hashInviteToken } from '../security/inviteToken.js';
+
+const validHashes = new Set([hashInviteToken('good-1')]);
 
 // Event guests share one venue Wi-Fi address. 60 people x 9 requests each
 // must not trip the limiter, while one link hammering the API still does.
@@ -54,14 +57,28 @@ test('a single link is still limited', async () => {
   });
 });
 
-test('repeated bad links from one address are slowed down', async () => {
-  await withServer(buildApp(), async (base) => {
-    const statuses = [];
+test('repeated bad links are slowed down, but valid links from the same address still work', async () => {
+  // One app instance; the invite model accepts only "good-*" links.
+  const router = createPulseLinkRoutes({
+    pulseLinkInviteModel: {
+      findByTokenHash: async (hash) => (validHashes.has(hash) ? { id: 'i', organization_id: 'o', token_hash: hash } : null),
+    },
+    organizationModel: { getOrganization: async () => ({ id: 'o', kind: 'client', settings: {} }) },
+  });
+  const app = express();
+  app.use('/api/pulse-link', router);
+  await withServer(app, async (base) => {
+    const bad = [];
     for (let i = 0; i < 40; i += 1) {
-      statuses.push((await fetch(`${base}/api/pulse-link/themes?token=wrong-${i}`)).status);
+      bad.push((await fetch(`${base}/api/pulse-link/themes?token=wrong-${i}`)).status);
     }
-    assert.equal(statuses[0], 401);
-    assert.equal(statuses[29], 401);
-    assert.equal(statuses[39], 429);
+    assert.equal(bad[0], 401);
+    assert.equal(bad[29], 401);
+    assert.equal(bad[39], 429, 'brake engaged for bad links');
+    // Valid link from the same address is not refused (403 here = past the
+    // link check, stopped later by the test org having no service).
+    const good = await fetch(`${base}/api/pulse-link/themes?token=good-1`);
+    assert.notEqual(good.status, 429);
+    assert.equal(good.status, 403);
   });
 });

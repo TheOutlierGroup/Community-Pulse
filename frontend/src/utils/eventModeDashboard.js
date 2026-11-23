@@ -26,6 +26,14 @@ export const EVENT_QUADRANT_COPY = {
   },
 };
 
+/** Post stage: the change has happened, so actions look to the next one. */
+export const EVENT_QUADRANT_POST_ACTIONS = {
+  Optimal: 'Lock in what worked, and keep leaders visible.',
+  'Motivated but Lost': 'Rebuild leadership follow-through before the next change.',
+  'Capable but Wary': 'Address capacity and support before the next change.',
+  'High Risk': 'Review what went wrong before the next change.',
+};
+
 /** Keyed by the backend chain-state names. */
 export const EVENT_CHAIN_COPY = {
   'Chain Functioning': 'Managers are getting support from senior leaders, and have the capacity to pass it on.',
