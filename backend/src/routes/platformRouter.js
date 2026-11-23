@@ -71,6 +71,9 @@ if (isPulseSurface) {
       /^\/me(\/notifications)?$/.test(path)
       || /^\/organizations\/[^/]+$/.test(path)
       || /^\/organizations\/[^/]+\/logo$/.test(path)
+      // Event mode settings: read by the Rhythm Engine dashboards and
+      // edited from Configurations, so the pulse surface must serve it.
+      || /^\/organizations\/[^/]+\/event-mode$/.test(path)
       || /^\/organizations\/[^/]+\/pulse-dashboard$/.test(path)
       || /^\/organizations\/[^/]+\/pulse-link-invites(?:\/.*)?$/.test(path)
       || /^\/organizations\/[^/]+\/pulse-sessions(?:\/.*)?$/.test(path)

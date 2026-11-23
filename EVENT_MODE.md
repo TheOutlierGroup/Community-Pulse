@@ -6,8 +6,8 @@ A temporary, per-client presentation layer for Rhythm Engine, built for a launch
 
 Two switches must both be on:
 
-1. **Server:** `EVENT_MODE_AVAILABLE=true` in the backend environment. Off by default.
-2. **Client:** platform staff open the client's **Settings** page and use **Event mode → Turn on**. Practitioner and Enterprise client admins cannot change it (enforced by the API).
+1. **Server:** `EVENT_MODE_AVAILABLE=true` in the backend environment of **both** web services (`pulse-crm-web` and `pulse-app-web`). Off by default.
+2. **Client:** platform staff open the client's **Rhythm Engine → Configurations → Event mode** tab (in either the CRM or the Rhythm Engine app) and use **Turn on**. The tab is only shown to platform staff, and the API enforces the same rule. The client logo can be uploaded from the same tab.
 
 There is no automatic end date. Turning the toggle off restores the standard experience immediately and keeps all Event mode settings, so turning it back on restores the full setup.
 

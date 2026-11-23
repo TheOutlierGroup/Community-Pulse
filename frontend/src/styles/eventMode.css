@@ -693,3 +693,35 @@
 .event-mode-dash.pulse-prototype-page {
   padding-top: 0;
 }
+
+.event-mode-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.event-mode-logo-row__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 140px;
+  height: 52px;
+  padding: 0.35rem 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+
+.event-mode-logo-row__preview img {
+  max-height: 40px;
+  max-width: 180px;
+  object-fit: contain;
+}
+
+.event-mode-logo-row .btn {
+  min-height: 38px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.88rem;
+}
