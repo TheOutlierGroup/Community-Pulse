@@ -27,3 +27,19 @@ test('detects light button text', () => {
   assert.equal(brandUsesLightText({ onPrimary: '#ffffff' }), true);
   assert.equal(brandUsesLightText({ onPrimary: '#1c1917' }), false);
 });
+
+import { hoverColor, previewThemeFromColors, contrastRatio } from './eventModeTheme.js';
+
+test('hover lightens near-black brands and darkens the rest', () => {
+  assert.notEqual(hoverColor('#023003'), '#022b03');
+  assert.ok(contrastRatio(hoverColor('#023003'), '#023003') > 1.15, 'visible change on bottle green');
+  assert.equal(hoverColor('#ffffff'), '#e6e6e6');
+});
+
+test('admin preview derives readable text the way the server does', () => {
+  const theme = previewThemeFromColors('#ffeb3b', '#b08d57');
+  assert.equal(theme.onPrimary, '#1c1917');
+  assert.ok(contrastRatio(theme.primaryText, '#ffffff') >= 4.5);
+  assert.ok(contrastRatio(theme.secondaryText, '#ffffff') >= 4.5);
+  assert.equal(previewThemeFromColors('nope'), null);
+});

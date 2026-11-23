@@ -147,3 +147,71 @@ test('logo needs a valid respondent token', async () => {
   const res = await request(router, '/api/pulse-link/logo');
   assert.equal(res.status, 401);
 });
+
+test('small-organisation minimum: a fresh session is told 3 and the promise is recorded', async () => {
+  const promises = [];
+  const invite = {
+    id: 'invite-1', organization_id: 'org-1', token_hash: hashInviteToken(RAW_TOKEN),
+    survey_role: 'staff', timepoint_phase: 'pre', display_name: 'Sam',
+  };
+  const router = createPulseLinkRoutes({
+    env: { EVENT_MODE_AVAILABLE: 'true' },
+    organizationModel: {
+      getOrganization: async () => ({
+        id: 'org-1', kind: 'client', name: 'Acme',
+        settings: { services: ['pulse'], eventMode: ACTIVE, smallOrgMinimum: { enabled: true, enabledAt: '2026-11-24T00:00:00Z' } },
+      }),
+      getFirstOrganizationByKind: async () => null,
+    },
+    pulseLinkInviteModel: { findByTokenHash: async () => invite },
+    pulseSessionModel: {
+      resolveSessionForPulseLink: async () => ({ id: 's1', status: 'active', audience: 'staff', respondent_cap_override: 1000 }),
+      hasCompletedLinkResponseForInvite: async () => false,
+      countCompletedRespondentsForSession: async () => ({ total: 0 }),
+    },
+    pulseLinkResponseModel: {
+      getResponse: async () => null,
+      ensureResponseRow: async () => {},
+      listResponsesForSession: async () => [{ invite_id: 'other', stage: 'pre', promised_min_group_size: 3 }],
+      setPromisedMinGroupSize: async (_i, _s, v) => {
+        promises.push(v);
+        return v;
+      },
+    },
+  });
+  const res = await request(router, `/api/pulse-link/active-session?token=${RAW_TOKEN}`);
+  assert.match(res.body.eventMode.confidentiality, /groups of 3 or more/);
+  assert.equal(res.body.eventMode.minGroupSize, 3);
+  assert.deepEqual(promises, [3]);
+});
+
+test('small-organisation minimum: a session already told 5 keeps telling 5', async () => {
+  const invite = {
+    id: 'invite-1', organization_id: 'org-1', token_hash: hashInviteToken(RAW_TOKEN),
+    survey_role: 'staff', timepoint_phase: 'pre', display_name: 'Sam',
+  };
+  const router = createPulseLinkRoutes({
+    env: { EVENT_MODE_AVAILABLE: 'true' },
+    organizationModel: {
+      getOrganization: async () => ({
+        id: 'org-1', kind: 'client', name: 'Acme',
+        settings: { services: ['pulse'], eventMode: ACTIVE, smallOrgMinimum: { enabled: true, enabledAt: '2026-11-24T00:00:00Z' } },
+      }),
+      getFirstOrganizationByKind: async () => null,
+    },
+    pulseLinkInviteModel: { findByTokenHash: async () => invite },
+    pulseSessionModel: {
+      resolveSessionForPulseLink: async () => ({ id: 's1', status: 'active', audience: 'staff', respondent_cap_override: 1000 }),
+      hasCompletedLinkResponseForInvite: async () => false,
+      countCompletedRespondentsForSession: async () => ({ total: 0 }),
+    },
+    pulseLinkResponseModel: {
+      getResponse: async () => null,
+      ensureResponseRow: async () => {},
+      listResponsesForSession: async () => [{ invite_id: 'early', stage: 'pre', promised_min_group_size: null }],
+      setPromisedMinGroupSize: async (_i, _s, v) => v,
+    },
+  });
+  const res = await request(router, `/api/pulse-link/active-session?token=${RAW_TOKEN}`);
+  assert.match(res.body.eventMode.confidentiality, /groups of 5 or more/);
+});

@@ -21,6 +21,7 @@ import {
 import { listUsersForOrg } from '../../models/User.js';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { orgLogoFilePath } from '../../config/storage.js';
+import { mirrorOrgLogo } from '../../services/orgLogoStore.js';
 import { brandUploadLimiter } from '../../middleware/sensitiveRateLimit.js';
 import {
   handleOrgLogoPlatformUpload, sendOrgLogoFileOr404, assertClientOrganizationPlatformForUser,
@@ -218,6 +219,7 @@ router.post('/organisations/:id/promote', async (req, res) => {
         const base = `org-${clientOrg.id}${ext}`;
         const bytes = await fs.promises.readFile(orgLogoFilePath(prospect.logo_filename));
         await fs.promises.writeFile(orgLogoFilePath(base), bytes);
+        await mirrorOrgLogo(base, bytes);
         await Organization.setCompanyLogoFilename(clientOrg.id, base);
       } catch (e) {
         console.error('Failed to carry prospect logo to new client:', e);

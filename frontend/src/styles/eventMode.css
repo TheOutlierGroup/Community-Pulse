@@ -725,3 +725,55 @@
   padding: 0.4rem 0.9rem;
   font-size: 0.88rem;
 }
+
+/* Mobile-first survey (event guests on phones). */
+@media (max-width: 600px) {
+  .event-survey__hero {
+    margin-bottom: 0.75rem !important;
+    padding-top: 0.5rem;
+  }
+
+  .event-survey__hero .event-survey__logo {
+    max-height: 44px;
+  }
+
+  /* Keep "Start the survey" on screen while the change context is read. */
+  .event-survey__start {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0 -1rem -1rem;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, var(--surface) 75%, rgba(255, 255, 255, 0));
+  }
+
+  .event-survey .change-context {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .event-survey .change-context dd {
+    font-size: 0.88rem;
+  }
+}
+
+.event-dash-tile__method {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.event-dash-alert {
+  margin: 0.5rem 0 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  background: rgba(229, 34, 53, 0.08);
+  border-left: 4px solid var(--pulse-red);
+  color: var(--text);
+}
+
+.event-mode-field__hint--missing {
+  color: #92400e;
+  font-weight: 600;
+}

@@ -60,6 +60,11 @@ export default function SurveyQuestionStep({
                 );
               })}
             </div>
+            <p className="survey-scale__legend" aria-hidden="true">
+              <span>Strongly disagree</span>
+              <span>Neither</span>
+              <span>Strongly agree</span>
+            </p>
           </div>
         );
       })}

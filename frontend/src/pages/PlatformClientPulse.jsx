@@ -37,7 +37,6 @@ import {
 const DIMENSION_ORDER = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'];
 const PERCEPTION_GAP_THRESHOLD = 1.5;
 const INTRA_DIMENSION_DIVERGENCE_THRESHOLD = 1.5;
-const PERCEPTION_GAP_MIN_SAMPLES = 5;
 const DIMENSION_COMPARISON_META = {
   '1A': {
     sharedConstruct: 'Does the team have skills to absorb the change?',
@@ -875,8 +874,8 @@ export default function PlatformClientPulse() {
       const employeeCount = Number.isFinite(base?.employee?.count) ? base.employee.count : 0;
       const managerCount = Number.isFinite(base?.manager?.count) ? base.manager.count : 0;
       const signalsSuppressed =
-        employeeCount < PERCEPTION_GAP_MIN_SAMPLES
-        || managerCount < PERCEPTION_GAP_MIN_SAMPLES;
+        employeeCount < minSampleSize
+        || managerCount < minSampleSize;
       return {
         id,
         employeeLabel: base.label || '--',
@@ -918,7 +917,7 @@ export default function PlatformClientPulse() {
             : (gap != null && gap >= PERCEPTION_GAP_THRESHOLD),
       };
     });
-  }, [dimensions]);
+  }, [dimensions, minSampleSize]);
   const dimensionHeatmapColumns = useMemo(() => {
     const midpoint = Math.ceil(dimensionHeatmapRows.length / 2);
     return [dimensionHeatmapRows.slice(0, midpoint), dimensionHeatmapRows.slice(midpoint)];
@@ -1661,7 +1660,7 @@ export default function PlatformClientPulse() {
             </p>
           </div>
           <p className="event-dash-header__responses">
-            <strong>{topCardTotalResponses}</strong> of {topCardInvitedTotal} responded ({formatPercent(topCardParticipationRate)})
+            <strong>{formatPercent(topCardParticipationRate)} responded</strong> ({topCardTotalResponses} of {topCardInvitedTotal})
             {managerFocusedTopCard ? null : (
               <>
                 <br />
@@ -1821,14 +1820,29 @@ export default function PlatformClientPulse() {
               {orgSampleSizeMet ? (
                 <>
                   <p className="event-dash-tile__value">
-                    {headlineQuadrant.name}{' '}
-                    <small>
-                      {launchStatusLabel}
-                      {headlineQuadrant.fromOrgAverage ? ` · ${formatPercent(headlineQuadrant.percent)} of respondents` : ''}
-                    </small>
+                    {headlineQuadrant.name} <small>{launchStatusLabel}</small>
                   </p>
+                  {/* E6: the headline is the organisation's average-score
+                      classification, which can differ from the largest
+                      group of individuals. Say so, rather than printing
+                      that quadrant's share and inviting "why High Risk if
+                      Optimal is biggest?". */}
+                  {headlineQuadrant.fromOrgAverage ? (
+                    <p className="event-dash-tile__method">
+                      Based on average scores across everyone.
+                      {dominantQuadrant?.name && dominantQuadrant.name !== headlineQuadrant.name
+                        ? ` Largest group: ${dominantQuadrant.name} (${formatPercent(dominantQuadrant.percent)}).`
+                        : ''}
+                    </p>
+                  ) : null}
                   {headlineCopy ? <p className="event-dash-tile__text">{headlineCopy.subtitle}</p> : null}
                   {headlineCopy ? <p className="event-dash-tile__action">{headlineCopy.action}</p> : null}
+                  {!managerCohortWithheld && overloadedPercent > 10 ? (
+                    <p className="event-dash-alert" role="alert">
+                      <strong>Critical: {formatPercent(overloadedPercent)} of managers are overloaded.</strong> Do not
+                      launch without addressing manager load first.
+                    </p>
+                  ) : null}
                 </>
               ) : (
                 <p className="event-dash-tile__text">
@@ -1838,7 +1852,7 @@ export default function PlatformClientPulse() {
             </article>
             {[
               ['Are your people ready?', 'Adoption readiness', adoptionScore],
-              ['Can your managers drive the change?', 'Sponsorship credibility', sponsorshipScore],
+              ['Do people see leaders backing the change?', 'Sponsorship credibility', sponsorshipScore],
             ].map(([question, measure, score]) => (
               <article key={measure} className="card event-dash-tile">
                 <p className="event-dash-tile__label">{question}</p>

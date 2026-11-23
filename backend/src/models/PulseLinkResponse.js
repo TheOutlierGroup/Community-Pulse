@@ -159,3 +159,18 @@ export async function countCompletedForInviteIds(inviteIds) {
   );
   return rows[0]?.n ?? 0;
 }
+
+/**
+ * Records the minimum group size this respondent was told on the survey,
+ * once: an existing promise is never changed. Returns the stored value.
+ */
+export async function setPromisedMinGroupSize(inviteId, sessionId, value) {
+  const { rows } = await query(
+    `UPDATE pulse_link_responses
+       SET promised_min_group_size = COALESCE(promised_min_group_size, $3)
+     WHERE invite_id = $1 AND session_id = $2
+     RETURNING promised_min_group_size`,
+    [inviteId, sessionId, value]
+  );
+  return rows[0]?.promised_min_group_size ?? null;
+}

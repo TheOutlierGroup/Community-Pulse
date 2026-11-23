@@ -27,7 +27,7 @@ function formatSentAt(iso) {
   if (!iso) return null;
   try {
     const d = new Date(iso);
-    return d.toLocaleString(undefined, {
+    return d.toLocaleString('en-AU', {
       dateStyle: 'medium',
       timeStyle: 'short',
     });

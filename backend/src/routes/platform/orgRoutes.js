@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { requireBodyFields } from '../../middleware/validation.js';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath, orgLogoFilePath } from '../../config/storage.js';
+import { ensureOrgLogoLocal, forgetOrgLogo, mirrorOrgLogo } from '../../services/orgLogoStore.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
 import * as Invite from '../../models/Invite.js';
@@ -52,6 +53,7 @@ import {
   sendPulseInviteEmail,
 } from '../../services/email.js';
 import { sendOrganizationInvite, orgInviteExpiryDate } from '../../services/orgInvite.js';
+import { minimumForStageRows, smallOrgMinimumPayload } from '../../services/confidentialityMinimum.js';
 import {
   adminEventModePayload,
   eventModeInviteBlock,
@@ -1702,6 +1704,7 @@ export function registerPlatformOrgRoutes(router) {
       const base = `org-${org.id}${ext || '.png'}`;
       try {
         await fs.promises.writeFile(orgLogoFilePath(base), req.file.buffer);
+        await mirrorOrgLogo(base, req.file.buffer);
         const updated = await Organization.setCompanyLogoFilename(org.id, base);
         if (updated) org = updated;
       } catch (e) {
@@ -2003,6 +2006,7 @@ export function registerPlatformOrgRoutes(router) {
       try {
         fs.unlinkSync(logoPath);
       } catch { /* file may already be gone */ }
+      await forgetOrgLogo(org.company_logo_filename);
     }
     const deleted = await Organization.deleteOrganization(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'Organization not found' });
@@ -2980,10 +2984,42 @@ export function registerPlatformOrgRoutes(router) {
     res.json({ eventMode: adminEventModePayload(updated || org) });
   });
 
+  // ── Small-organisation minimum group size (Outlier admins only) ─────
+  router.get('/organizations/:id/small-org-minimum', async (req, res) => {
+    if (req.user?.organizationKind !== 'platform') return res.status(404).json({ error: 'Not found' });
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    res.json({ smallOrgMinimum: smallOrgMinimumPayload(org) });
+  });
+
+  router.put('/organizations/:id/small-org-minimum', async (req, res) => {
+    if (req.user?.organizationKind !== 'platform' || req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Only Outlier admins can change the minimum group size.' });
+    }
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org || org.kind !== 'client') return res.status(404).json({ error: 'Organization not found' });
+    if (typeof req.body?.enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be true or false' });
+    }
+    const current = smallOrgMinimumPayload(org);
+    const next = req.body.enabled
+      ? { enabled: true, enabledAt: current.enabled && current.enabledAt ? current.enabledAt : new Date().toISOString() }
+      : { enabled: false, enabledAt: null };
+    const updated = await Organization.updateOrganizationSettings(org.id, { smallOrgMinimum: next });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.ORG_SMALL_ORG_MINIMUM_UPDATE,
+      targetType: 'organization',
+      targetId: org.id,
+      targetOrganizationId: org.id,
+      metadata: { enabled: next.enabled },
+    });
+    res.json({ smallOrgMinimum: smallOrgMinimumPayload(updated || org) });
+  });
+
   router.get('/organizations/:id/logo', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org || !org.company_logo_filename) return res.status(404).end();
-    sendOrgLogoFileOr404(res, org.company_logo_filename);
+    await sendOrgLogoFileOr404(res, org.company_logo_filename);
   });
 
   router.post('/organizations/:id/user-import-template', async (req, res) => {
@@ -3030,11 +3066,13 @@ export function registerPlatformOrgRoutes(router) {
       if (org.company_logo_filename && org.company_logo_filename !== base) {
         try {
           await fs.promises.unlink(orgLogoFilePath(org.company_logo_filename));
+          await forgetOrgLogo(org.company_logo_filename);
         } catch {
           /* ignore */
         }
       }
       await fs.promises.writeFile(orgLogoFilePath(base), req.file.buffer);
+      await mirrorOrgLogo(base, req.file.buffer);
       const updated = await Organization.setCompanyLogoFilename(org.id, base);
       auditFromRequest(req)({
         action: AUDIT_ACTIONS.ORG_LOGO_UPLOAD,
@@ -3057,6 +3095,7 @@ export function registerPlatformOrgRoutes(router) {
     if (prev) {
       try {
         await fs.promises.unlink(orgLogoFilePath(prev));
+        await forgetOrgLogo(prev);
       } catch {
         /* ignore */
       }
@@ -3480,6 +3519,10 @@ export function registerPlatformOrgRoutes(router) {
             )
           ).flat()
         : [];
+    // Normally 5; 3 for a small organisation an Outlier admin has opted in,
+    // but only when every response in this stage started after that switch
+    // (see services/confidentialityMinimum.js).
+    const minSampleSize = minimumForStageRows(org.settings, currentRows);
     const scopedCurrentRows = filterRowsForManagerScope(
       currentRows,
       selectedManagerIdSet,
@@ -3495,7 +3538,7 @@ export function registerPlatformOrgRoutes(router) {
     // sponsorship, quadrant distribution). Prevents a narrow manager
     // filter (e.g. down to a single manager) from exposing that small
     // group's actual scores — see DASHBOARD_MIN_SAMPLE_SIZE.
-    const orgScoreSampleSizeMet = currentScored.length >= DASHBOARD_MIN_SAMPLE_SIZE;
+    const orgScoreSampleSizeMet = currentScored.length >= minSampleSize;
 
     const adoptionScore =
       orgScoreSampleSizeMet && currentScored.length > 0
@@ -3576,7 +3619,7 @@ export function registerPlatformOrgRoutes(router) {
     // withheld, so one manager's own band ("Stretched 100%") was visible in
     // the dashboard data and fed Scenario A's "0% overloaded" line. Same
     // floor as the rest of the manager cohort.
-    const managerLoadSampleSizeMet = completedManagerRows.length >= DASHBOARD_MIN_SAMPLE_SIZE;
+    const managerLoadSampleSizeMet = completedManagerRows.length >= minSampleSize;
     const managerLoad = {
       total: completedManagerRows.length,
       sampleSizeMet: managerLoadSampleSizeMet,
@@ -3606,8 +3649,8 @@ export function registerPlatformOrgRoutes(router) {
     // managers were under the floor, which emptied the Trend Analysis
     // employee dimension charts. Only the perception gap, which compares the
     // two cohorts, needs both (dimensionsSampleSizeMet).
-    const employeeDimensionsSampleSizeMet = employeeScoredRows.length >= DASHBOARD_MIN_SAMPLE_SIZE;
-    const managerDimensionsSampleSizeMet = managerScoredRows.length >= DASHBOARD_MIN_SAMPLE_SIZE;
+    const employeeDimensionsSampleSizeMet = employeeScoredRows.length >= minSampleSize;
+    const managerDimensionsSampleSizeMet = managerScoredRows.length >= minSampleSize;
     const dimensionsSampleSizeMet = employeeDimensionsSampleSizeMet && managerDimensionsSampleSizeMet;
     const averageFor = (values) => {
       if (!values.length) return null;
@@ -3741,7 +3784,7 @@ export function registerPlatformOrgRoutes(router) {
         .filter((row) => row?.invite_id !== manager.id)
         .map((row) => responseScoresOutOf40(row))
         .filter((s) => s.valid && s.adoption != null && s.sponsorship != null).length;
-      const managerTeamSampleSizeMet = managerTeamStaffCount >= DASHBOARD_MIN_SAMPLE_SIZE;
+      const managerTeamSampleSizeMet = managerTeamStaffCount >= minSampleSize;
       const managerAdoption =
         managerTeamSampleSizeMet && managerScored.length > 0
           ? round1(managerScored.reduce((sum, s) => sum + s.adoption, 0) / managerScored.length)
@@ -3835,7 +3878,7 @@ export function registerPlatformOrgRoutes(router) {
     // same floor (reportDataAssembler.js managerSampleSizeMet); the Manager
     // View now does too, for the score tiles, sub-scores, load bands, chain
     // states, the load x chain matrix and the team table.
-    const managerCohortSampleSizeMet = managerRespondentCount >= DASHBOARD_MIN_SAMPLE_SIZE;
+    const managerCohortSampleSizeMet = managerRespondentCount >= minSampleSize;
     if (!managerCohortSampleSizeMet) {
       // A team's load band is its lead manager's own answer: withheld with
       // the rest of the cohort's figures.
@@ -4061,7 +4104,7 @@ export function registerPlatformOrgRoutes(router) {
     if (!managerCohortSampleSizeMet) {
       verdictState = 'insufficient_data';
       verdictHeadline = 'Not enough manager responses to show this view.';
-      verdictBody = `Manager results are shown once at least ${DASHBOARD_MIN_SAMPLE_SIZE} managers have responded, so no individual's answers can be identified.`;
+      verdictBody = `Manager results are shown once at least ${minSampleSize} managers have responded, so no individual's answers can be identified.`;
     } else if (!receivedBelowThreshold && !capacityBelowThreshold) {
       verdictState = 'functioning';
       verdictHeadline = 'The sponsorship chain is functioning.';
@@ -4154,7 +4197,7 @@ export function registerPlatformOrgRoutes(router) {
         managerAdoptionAvg,
         managerSponsorshipAvg,
         sampleSizeMet: managerCohortSampleSizeMet,
-        minSampleSize: DASHBOARD_MIN_SAMPLE_SIZE,
+        minSampleSize: minSampleSize,
       },
       section1: {
         cardLabel: 'AVG SCORE OVERVIEW · MANAGER COHORT ONLY',
@@ -4214,7 +4257,7 @@ export function registerPlatformOrgRoutes(router) {
         // withheld, and both add up to the same total.
         cardLabel: `Section 4 — Team-Level Sponsorship Chain Breakdown · Showing ${teamRowsLimited.length} of ${sortedTeamRows.length} teams${
           withheldShownTeamCount > 0
-            ? ` (${withheldShownTeamCount} withheld: fewer than ${DASHBOARD_MIN_SAMPLE_SIZE} staff responses)`
+            ? ` (${withheldShownTeamCount} withheld: fewer than ${minSampleSize} staff responses)`
             : ''
         }`,
         withheldCount: sortedTeamRows.length - sampleSizeMetTeamRows.length,
@@ -4382,7 +4425,7 @@ export function registerPlatformOrgRoutes(router) {
       }
     }
 
-    const perceptionGapMinSamples = PERCEPTION_GAP_ANALYSIS_MIN_SAMPLES;
+    const perceptionGapMinSamples = minSampleSize;
     // Same employee/manager cohort gate as dimensionsSampleSizeMet above —
     // reused directly so this can never drift out of sync with what
     // `dimensions` itself already suppresses.
@@ -4459,7 +4502,7 @@ export function registerPlatformOrgRoutes(router) {
           || ((optimalQuadrant?.percent || 0) < 25),
         completedTotal,
       })
-      : { sampleSizeMet: false, minSampleSize: DASHBOARD_MIN_SAMPLE_SIZE };
+      : { sampleSizeMet: false, minSampleSize: minSampleSize };
 
     schedulePulseAlertNotifications({
       clientOrgId: org.id,
@@ -4510,7 +4553,7 @@ export function registerPlatformOrgRoutes(router) {
       // narrative; dimensionsSampleSizeMet gates the dimensions heatmap and
       // perceptionGapAnalysis; each byManager row carries its own
       // sampleSizeMet for that manager's team.
-      minSampleSize: DASHBOARD_MIN_SAMPLE_SIZE,
+      minSampleSize: minSampleSize,
       orgSampleSizeMet: orgScoreSampleSizeMet,
       dimensionsSampleSizeMet,
       employeeDimensionsSampleSizeMet,

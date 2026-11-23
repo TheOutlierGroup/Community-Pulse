@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import fs from 'fs';
 import path from 'path';
 import { ensureStorageDirs, orgLogoFilePath } from '../config/storage.js';
+import { ensureOrgLogoLocal } from '../services/orgLogoStore.js';
 import {
   isEventModeActive,
   respondentEventModePayload,
@@ -10,6 +11,11 @@ import {
   WORDING_VERSION_EVENT,
 } from '../services/eventMode.js';
 import { eventStatementText, eventSurveyCopy } from '../services/eventModeWording.js';
+import {
+  minimumToPromise,
+  smallOrgMinimumEnabled,
+  STANDARD_MINIMUM,
+} from '../services/confidentialityMinimum.js';
 import * as Organization from '../models/Organization.js';
 import * as PulseSession from '../models/PulseSession.js';
 import * as PulseLinkInvite from '../models/PulseLinkInvite.js';
@@ -50,18 +56,36 @@ export function createPulseLinkRoutes({
   getQuestionsForAudienceFn = getQuestionsForAudience,
   getSurveyCopyForAudienceFn = getSurveyCopyForAudience,
   env = process.env,
+  ensureOrgLogoLocalFn = ensureOrgLogoLocal,
 } = {}) {
   const router = Router();
 
-  const pulseLinkLimiter = rateLimit({
+  // Respondents at an event usually share one venue Wi-Fi address. A single
+  // per-address limit of 200 requests per 15 minutes let only about 22
+  // people through (each survey takes ~9 requests) before everyone else got
+  // "Too many requests". The main limit is now per respondent link (hashed
+  // token), with a far higher per-address ceiling kept as a backstop
+  // against anyone hammering the endpoint without a token.
+  const RATE_MESSAGE = { error: 'Too many requests. Please wait a few minutes and try again.' };
+  const pulseLinkTokenLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 200,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+    message: RATE_MESSAGE,
+    skip: (req) => !getLinkToken(req),
+    keyGenerator: (req) => `link:${hashInviteToken(getLinkToken(req))}`,
+  });
+  const pulseLinkAddressLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: (req) => (getLinkToken(req) ? 5000 : 200),
+    standardHeaders: false,
+    legacyHeaders: false,
+    message: RATE_MESSAGE,
   });
 
-  router.use(pulseLinkLimiter);
+  router.use(pulseLinkAddressLimiter);
+  router.use(pulseLinkTokenLimiter);
 
 function getLinkToken(req) {
   const q = req.query?.token;
@@ -210,7 +234,21 @@ function getLinkToken(req) {
       .replace(/\{\{\s*contactinfo\s*\}\}/gi, contactInfo);
   }
 
-  async function resolveSurveyCopyWithTemplate(organization, audience, stage, respondentInvite = null) {
+  // Welcome text must state the minimum group size this respondent was
+  // promised. Templates written by hand say "groups of 5 or more"; when a
+  // lower minimum was promised, that phrase is corrected to match.
+  function applyPromisedMinimum(html, minGroup) {
+    if (!html || minGroup === STANDARD_MINIMUM) return html;
+    return String(html).replace(/groups of 5 or more/gi, `groups of ${minGroup} or more`);
+  }
+
+  async function resolveSurveyCopyWithTemplate(
+    organization,
+    audience,
+    stage,
+    respondentInvite = null,
+    minGroup = STANDARD_MINIMUM
+  ) {
     const baseCopy = getSurveyCopyForAudienceFn(audience, stage);
     let platformSettings = null;
     if (typeof organizationModel.getFirstOrganizationByKind === 'function') {
@@ -225,7 +263,10 @@ function getLinkToken(req) {
     );
     const copy = {
       ...baseCopy,
-      welcomeHtml: applyWelcomeTemplatePlaceholders(surveyStart.bodyHtml, organization, respondentInvite),
+      welcomeHtml: applyPromisedMinimum(
+        applyWelcomeTemplatePlaceholders(surveyStart.bodyHtml, organization, respondentInvite),
+        minGroup
+      ),
     };
     if (!isEventModeActive(organization, env)) return copy;
     // Event mode: approved wording replaces the intro, instruction and
@@ -240,20 +281,46 @@ function getLinkToken(req) {
     };
   }
 
-  function questionsForLink(organization, audience, stage) {
-    const questions = getQuestionsForAudienceFn(audience, stage);
-    if (!isEventModeActive(organization, env)) return questions;
-    const overrides = eventStatementText(audience, stage) || {};
-    return questions.map((question) => ({ ...question, text: overrides[question.id] || question.text }));
+  // Respondents only need each statement's id and text. Internal fields
+  // (theory labels, section, dimension, load flags) stay server-side (G26).
+  /**
+   * Records (once) and returns the minimum group size this respondent is
+   * told. 5 unless an Outlier admin turned on the small-organisation
+   * minimum and nobody else in this session was already told 5.
+   */
+  async function promisedMinimumForLink(organization, invite, session, stage) {
+    if (!session || !invite) return STANDARD_MINIMUM;
+    if (typeof pulseLinkResponseModel.setPromisedMinGroupSize !== 'function') return STANDARD_MINIMUM;
+    const existing = await pulseLinkResponseModel.getResponse(invite.id, session.id);
+    if (existing?.promised_min_group_size) return Number(existing.promised_min_group_size);
+    let value = STANDARD_MINIMUM;
+    if (smallOrgMinimumEnabled(organization?.settings)) {
+      const sessionRows = await pulseLinkResponseModel.listResponsesForSession(session.id);
+      const others = sessionRows.filter(
+        (row) => String(row.invite_id) !== String(invite.id) && (row.stage || 'pre') === stage
+      );
+      value = minimumToPromise(organization.settings, others);
+    }
+    await pulseLinkResponseModel.ensureResponseRow(invite.id, session.id, stage);
+    const stored = await pulseLinkResponseModel.setPromisedMinGroupSize(invite.id, session.id, value);
+    return Number(stored) || value;
   }
 
-  function eventModeForLink(organization, audience, stage) {
+  function questionsForLink(organization, audience, stage) {
+    const overrides = isEventModeActive(organization, env) ? eventStatementText(audience, stage) || {} : {};
+    return getQuestionsForAudienceFn(audience, stage).map((question) => ({
+      id: question.id,
+      text: overrides[question.id] || question.text,
+    }));
+  }
+
+  function eventModeForLink(organization, audience, stage, minGroup = STANDARD_MINIMUM) {
     const payload = respondentEventModePayload(organization, stage, { env });
     if (!payload) return null;
-    const minGroup = payload.minGroupSize;
     return {
       ...payload,
       hasLogo: Boolean(organization?.company_logo_filename),
+      minGroupSize: minGroup,
       confidentiality:
         audience === 'manager'
           ? `**Your answers are confidential.** Your answers about the support you receive and your capacity to lead change may be shown alongside your team's results. Your team's answers are only ever reported in groups of ${minGroup} or more.`
@@ -443,7 +510,14 @@ function sessionJsonForLink(session) {
     if (!capCheck.ok) {
       return res.status(403).json(capCheck.body);
     }
-    const copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage, req.pulseLinkInvite);
+    const minGroup = await promisedMinimumForLink(req.pulseLinkOrganization, req.pulseLinkInvite, session, stage);
+    const copy = await resolveSurveyCopyWithTemplate(
+      req.pulseLinkOrganization,
+      audience,
+      stage,
+      req.pulseLinkInvite,
+      minGroup
+    );
     let brand = null;
     try {
       // INF-06: respondents see the licensee's brand on white-labeled
@@ -459,7 +533,7 @@ function sessionJsonForLink(session) {
       stage,
       copy,
       brand,
-      eventMode: eventModeForLink(req.pulseLinkOrganization, audience, stage),
+      eventMode: eventModeForLink(req.pulseLinkOrganization, audience, stage, minGroup),
     });
   });
 
@@ -474,6 +548,7 @@ function sessionJsonForLink(session) {
     if (!isEventModeActive(org, env) || !org.company_logo_filename) return res.status(404).end();
     try {
       const safeName = path.basename(String(org.company_logo_filename));
+      await ensureOrgLogoLocalFn(safeName);
       const full = path.resolve(orgLogoFilePath(safeName));
       const { orgLogosDir } = ensureStorageDirs();
       const rel = path.relative(path.resolve(orgLogosDir), full);
@@ -525,7 +600,14 @@ function sessionJsonForLink(session) {
       await pulseLinkResponseModel.markSurveyStarted(req.pulseLinkInvite.id, session.id);
       row = await pulseLinkResponseModel.getResponse(req.pulseLinkInvite.id, session.id);
     }
-    const copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage, req.pulseLinkInvite);
+    const minGroup = await promisedMinimumForLink(req.pulseLinkOrganization, req.pulseLinkInvite, session, stage);
+    const copy = await resolveSurveyCopyWithTemplate(
+      req.pulseLinkOrganization,
+      audience,
+      stage,
+      req.pulseLinkInvite,
+      minGroup
+    );
     res.json({
       session: sessionJsonForLink(session),
       stage,

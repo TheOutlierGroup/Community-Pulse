@@ -13,7 +13,7 @@ import {
 } from './pulseEngine.js';
 import { calculateLargestRemainderPercentages } from './pulseDashboardMetrics.js';
 import { REPORT_MIN_RESPONSES, REPORT_STAGE_MAP } from './reportConfig.js';
-import { DASHBOARD_MIN_SAMPLE_SIZE } from './pulseDashboardScope.js';
+import { minimumForStageRows } from './confidentialityMinimum.js';
 
 const UNASSIGNED_TEAM_LABEL = 'Unassigned';
 
@@ -81,9 +81,10 @@ export function createAssembleReportData({
   reportMinResponses = REPORT_MIN_RESPONSES,
   reportStageMap = REPORT_STAGE_MAP,
   readinessThreshold = READINESS_THRESHOLD,
-  // PT-01: same floor the dashboard enforces, imported rather than
-  // redeclared so the two surfaces cannot drift apart again.
-  minSampleSize = DASHBOARD_MIN_SAMPLE_SIZE,
+  // PT-01: same floor the dashboard enforces. Left null, it is worked out
+  // per stage exactly as the dashboard does (5, or 3 for an opted-in small
+  // organisation whose stage started after the switch); tests may pin it.
+  minSampleSize: pinnedMinSampleSize = null,
 } = {}) {
   return async function assembleReportData({
     organization,
@@ -98,6 +99,7 @@ export function createAssembleReportData({
     const rows = (
       await Promise.all(stageSessions.map((session) => listSessionResponsesFn(session.id)))
     ).flatMap((result) => result.rows || []);
+    const minSampleSize = pinnedMinSampleSize ?? minimumForStageRows(organization?.settings, rows);
 
     const fromMs = dateFrom ? new Date(dateFrom).getTime() : null;
     const toMs = dateTo ? new Date(dateTo).getTime() : null;
