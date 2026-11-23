@@ -81,6 +81,31 @@ export function hoverColor(hex) {
   return toHex({ r: rgb.r * 0.9, g: rgb.g * 0.9, b: rgb.b * 0.9 });
 }
 
+function mix(hexA, hexB, weightA) {
+  const a = hexToRgb(hexA);
+  const b = hexToRgb(hexB);
+  if (!a || !b) return hexA;
+  const w = Math.max(0, Math.min(1, weightA));
+  return toHex({ r: a.r * w + b.r * (1 - w), g: a.g * w + b.g * (1 - w), b: a.b * w + b.b * (1 - w) });
+}
+
+/** Soft panel colour: a light tint of the secondary (or primary) colour. */
+export function surfaceTint(hex) {
+  return HEX_RE.test(String(hex || '')) ? mix(hex, '#ffffff', 0.12) : '#f6f7f5';
+}
+
+/**
+ * Outline for unselected answers: a muted version of the primary colour,
+ * darkened until it reaches 3:1 against white (WCAG non-text contrast).
+ */
+export function outlineColor(hex) {
+  let candidate = HEX_RE.test(String(hex || '')) ? mix(hex, '#7a807a', 0.3) : '#7a807a';
+  for (let i = 0; i < 20 && contrastRatio(candidate, '#ffffff') < 3; i += 1) {
+    candidate = mix(candidate, '#000000', 0.9);
+  }
+  return candidate;
+}
+
 /** Theme for the admin preview, computed the same way the server does. */
 export function previewThemeFromColors(primary, secondary) {
   if (!HEX_RE.test(String(primary || ''))) return null;
@@ -113,6 +138,9 @@ export function brandStyleVars(theme) {
     '--brand-text': text,
     '--brand-secondary': theme.secondaryColor || primary,
     '--brand-secondary-text': theme.secondaryText || text,
+    '--brand-on-secondary': readableTextColor(theme.secondaryColor || primary),
+    '--brand-surface': surfaceTint(theme.secondaryColor || primary),
+    '--brand-outline': outlineColor(primary),
   };
 }
 

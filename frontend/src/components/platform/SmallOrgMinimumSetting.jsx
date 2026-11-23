@@ -34,9 +34,10 @@ export default function SmallOrgMinimumSetting({ orgId }) {
     const next = !state.enabled;
     const message = next
       ? `Report results for groups of ${state.smallOrgMinimum} or more for this client?\n\n` +
-        `Only survey stages that start from now on are affected. Anyone who has already opened a stage was told ` +
-        `"${state.standardMinimum} or more", so that stage stays at ${state.standardMinimum}. New respondents are told ` +
-        `the lower minimum on the survey.`
+        `This only affects survey stages nobody has opened yet. In those stages, respondents and invite emails say ` +
+        `"${state.smallOrgMinimum} or more", and results show for groups of ${state.smallOrgMinimum} or more.\n\n` +
+        `A stage that is already underway does not change: everyone in it, including people who open it later, is told ` +
+        `"${state.standardMinimum} or more", and its results stay at ${state.standardMinimum}.`
       : `Go back to groups of ${state.standardMinimum} or more for this client? Every result will use ${state.standardMinimum} again.`;
     if (!window.confirm(message)) return;
     setBusy(true);
@@ -69,9 +70,10 @@ export default function SmallOrgMinimumSetting({ orgId }) {
         </span>
         <p className="muted" style={{ margin: '0.3rem 0 0', fontWeight: 400 }}>
           Normally results are only shown for groups of {state.standardMinimum} or more. Turn this on for a small client
-          so teams of {state.smallOrgMinimum} or 4 get results. It only applies to survey stages started after it is turned
-          on: anyone already told &ldquo;{state.standardMinimum} or more&rdquo; keeps that protection, and the survey tells
-          new respondents the lower number.
+          so teams of {state.smallOrgMinimum} or 4 get results. It only affects survey stages nobody has opened yet: there,
+          the survey and invite emails say &ldquo;{state.smallOrgMinimum} or more&rdquo;. A stage already underway is
+          unchanged: everyone in it, including people who open it later, is told &ldquo;{state.standardMinimum} or
+          more&rdquo; and its results stay at {state.standardMinimum}.
           {state.enabled && since ? ` On since ${since}.` : ''}
         </p>
       </div>

@@ -43,3 +43,12 @@ test('admin preview derives readable text the way the server does', () => {
   assert.ok(contrastRatio(theme.secondaryText, '#ffffff') >= 4.5);
   assert.equal(previewThemeFromColors('nope'), null);
 });
+
+import { surfaceTint, outlineColor } from './eventModeTheme.js';
+
+test('derived surface is a light tint and the outline reaches 3:1', () => {
+  assert.ok(contrastRatio(surfaceTint('#b08d57'), '#023003') > 10, 'parchment-like tint reads with green text');
+  for (const c of ['#023003', '#ffeb3b', '#e52235', '#0b5d6b']) {
+    assert.ok(contrastRatio(outlineColor(c), '#ffffff') >= 3, `outline for ${c}`);
+  }
+});

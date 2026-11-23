@@ -32,6 +32,7 @@ export const CHANGE_CONTEXT_MAX_LENGTH = {
   whenHearBack: 160,
 };
 export const CHANGE_NAME_MAX_LENGTH = 80;
+export const CLOSING_NOTE_MAX_LENGTH = 200;
 
 /** Wording version saved on each response so mixed results stay readable. */
 export const WORDING_VERSION_CURRENT = 'current';
@@ -83,6 +84,7 @@ export function normalizeEventModeSettings(raw) {
   return {
     enabled: source.enabled === true,
     changeName: cleanText(source.changeName, CHANGE_NAME_MAX_LENGTH),
+    closingNote: cleanText(source.closingNote, CLOSING_NOTE_MAX_LENGTH),
     primaryColor: cleanColor(source.primaryColor),
     secondaryColor: cleanColor(source.secondaryColor),
     changeContext,
@@ -211,6 +213,14 @@ export function validateEventModeInput(body, existing) {
     next.changeName = cleanText(raw, CHANGE_NAME_MAX_LENGTH);
   }
 
+  if (input.closingNote !== undefined) {
+    const raw = String(input.closingNote ?? '');
+    if (raw.trim().length > CLOSING_NOTE_MAX_LENGTH) {
+      errors.push(`Thank-you note must be ${CLOSING_NOTE_MAX_LENGTH} characters or fewer.`);
+    }
+    next.closingNote = cleanText(raw, CLOSING_NOTE_MAX_LENGTH);
+  }
+
   for (const key of ['primaryColor', 'secondaryColor']) {
     if (input[key] === undefined) continue;
     const raw = String(input[key] ?? '').trim();
@@ -280,6 +290,7 @@ export function respondentEventModePayload(organization, stage, { logoUrl = null
     wordingVersion: WORDING_VERSION_EVENT,
     clientName: String(organization.name || '').trim() || null,
     changeName: normalized.changeName || null,
+    closingNote: normalized.closingNote || null,
     changeContext: normalized.changeContext[normalizeStage(stage)],
     theme: brandTheme(normalized),
     logoUrl,

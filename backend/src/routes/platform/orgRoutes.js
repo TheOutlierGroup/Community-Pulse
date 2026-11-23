@@ -13,6 +13,7 @@ import * as LicenseConfig from '../../models/LicenseConfig.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import * as PulseSession from '../../models/PulseSession.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
+import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import * as EntityFieldHistory from '../../models/EntityFieldHistory.js';
 import {
@@ -53,8 +54,16 @@ import {
   sendPulseInviteEmail,
 } from '../../services/email.js';
 import { sendOrganizationInvite, orgInviteExpiryDate } from '../../services/orgInvite.js';
-import { minimumForStageRows, smallOrgMinimumPayload } from '../../services/confidentialityMinimum.js';
 import {
+  minimumForStageRows,
+  minimumToPromise,
+  smallOrgMinimumEnabled,
+  smallOrgMinimumPayload,
+  STANDARD_MINIMUM,
+} from '../../services/confidentialityMinimum.js';
+import {
+  brandTheme,
+  isEventModeActive,
   adminEventModePayload,
   eventModeInviteBlock,
   validateEventModeInput,
@@ -5153,6 +5162,25 @@ export function registerPlatformOrgRoutes(router) {
       platformOrg?.name
     );
     const dueDate = pulseInviteDueDateForScope(org.settings, timepointPhase, duringSessionId);
+    // The email must promise the same minimum group size the survey will
+    // show this person (see services/confidentialityMinimum.js).
+    let minGroupSize = STANDARD_MINIMUM;
+    if (smallOrgMinimumEnabled(org.settings)) {
+      try {
+        const session = await PulseSession.resolveSessionForPulseLink(org.id, audience, inviteStage, {
+          allowCreate: false,
+        });
+        const rows = session ? await PulseLinkResponse.listResponsesForSession(session.id) : [];
+        minGroupSize = minimumToPromise(
+          org.settings,
+          rows.filter((row) => String(row.invite_id) !== String(invite.id) && (row.stage || 'pre') === inviteStage)
+        );
+      } catch (e) {
+        console.error('Could not work out the minimum group size for an invite; using the standard minimum:', e);
+        minGroupSize = STANDARD_MINIMUM;
+      }
+    }
+    const inviteTheme = isEventModeActive(org) ? brandTheme(org.settings?.eventMode) : null;
     try {
       await sendPulseInviteEmail(invite.email, invite.display_name, linkUrl, org.name, {
         audience,
@@ -5162,6 +5190,9 @@ export function registerPlatformOrgRoutes(router) {
         contactInfo: org.report_contact,
         clientLogoFilename: org.company_logo_filename,
         clientLogoAlt: org.name,
+        minGroupSize,
+        buttonColor: inviteTheme?.primaryColor || null,
+        buttonTextColor: inviteTheme?.onPrimary || null,
       });
     } catch (e) {
       console.error('Rhythm Engine link invite send failed:', e);
