@@ -57,6 +57,7 @@ export async function completeResponse({
   step3,
   step4,
   contributionStyle,
+  wordingVersion = 'current',
 }) {
   const normalizedStage = normalizePulseStage(stage);
   const { rows } = await query(
@@ -68,6 +69,7 @@ export async function completeResponse({
        step3_data = $6::jsonb,
        step4_data = $7::jsonb,
        contribution_style = $8,
+       wording_version = $9,
        survey_started_at = COALESCE(survey_started_at, NOW()),
        consent_recorded_at = COALESCE(consent_recorded_at, NOW()),
        completed_at = NOW(),
@@ -83,6 +85,7 @@ export async function completeResponse({
       JSON.stringify(step3 || {}),
       JSON.stringify(step4 || {}),
       contributionStyle,
+      String(wordingVersion || 'current').slice(0, 32),
     ]
   );
   return rows[0] || null;

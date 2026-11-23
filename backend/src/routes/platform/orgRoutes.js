@@ -53,6 +53,11 @@ import {
 } from '../../services/email.js';
 import { sendOrganizationInvite, orgInviteExpiryDate } from '../../services/orgInvite.js';
 import {
+  adminEventModePayload,
+  eventModeInviteBlock,
+  validateEventModeInput,
+} from '../../services/eventMode.js';
+import {
   classifyQuadrant,
   classifySponsorshipChainState,
   DIMENSIONS,
@@ -2947,6 +2952,34 @@ export function registerPlatformOrgRoutes(router) {
     });
   });
 
+  // ── Event mode (temporary per-client presentation layer) ──────────────
+  router.get('/organizations/:id/event-mode', async (req, res) => {
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    res.json({ eventMode: adminEventModePayload(org) });
+  });
+
+  // Platform staff only (not Practitioner or Enterprise client admins): the
+  // toggle changes what a client's respondents and stakeholders see.
+  router.put('/organizations/:id/event-mode', async (req, res) => {
+    if (req.user?.organizationKind !== 'platform') {
+      return res.status(403).json({ error: 'Only platform staff can change Event mode.' });
+    }
+    const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    const result = validateEventModeInput(req.body || {}, org.settings?.eventMode);
+    if (result.errors) return res.status(400).json({ error: result.errors.join(' '), errors: result.errors });
+    const updated = await Organization.updateOrganizationSettings(org.id, { eventMode: result.value });
+    auditFromRequest(req)({
+      action: AUDIT_ACTIONS.ORG_EVENT_MODE_UPDATE,
+      targetType: 'organization',
+      targetId: org.id,
+      targetOrganizationId: org.id,
+      metadata: { enabled: result.value.enabled },
+    });
+    res.json({ eventMode: adminEventModePayload(updated || org) });
+  });
+
   router.get('/organizations/:id/logo', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org || !org.company_logo_filename) return res.status(404).end();
@@ -5021,6 +5054,8 @@ export function registerPlatformOrgRoutes(router) {
     if (duringSessionError) return res.status(400).json({ error: duringSessionError });
     const postLockedError = await postTimepointLockedError(org, timepointPhase);
     if (postLockedError) return res.status(409).json({ error: postLockedError, reason: 'post_not_triggered' });
+    const eventModeBlock = eventModeInviteBlock(org, timepointPhase);
+    if (eventModeBlock) return res.status(409).json({ ...eventModeBlock, reason: 'event_mode_change_context_missing' });
     const invite = await PulseLinkInvite.getInviteInOrg(req.params.inviteId, orgId, {
       timepointPhase,
       duringSessionId,

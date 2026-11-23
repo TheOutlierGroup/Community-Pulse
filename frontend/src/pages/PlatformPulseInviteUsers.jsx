@@ -648,6 +648,9 @@ export default function PlatformPulseInviteUsers() {
         } catch (e) {
           failed += 1;
           lastSendError = e;
+          // Event mode blocks every send for this stage until the change
+          // context is filled in, so stop rather than retry each recipient.
+          if (e?.response?.data?.reason === 'event_mode_change_context_missing') break;
         }
         if (i < snapshot.length - 1) {
           await delay(BULK_SEND_INTERVAL_MS);

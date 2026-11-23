@@ -1750,6 +1750,83 @@ a:hover {
   font-weight: 700;
 }
 
+.theme-row--missing {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger);
+}
+
+.theme-row__missing-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.survey-section-note {
+  margin: 0.6rem 0 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: rgba(var(--accent-rgb), 0.18);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+/* Agreement scale: number plus its words on every option, so respondents
+   never have to remember what 1 or 5 means. */
+.survey-scale {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.survey-scale__option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 0.4rem 0.3rem;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: normal;
+  text-align: center;
+}
+
+.survey-scale__option.btn-primary,
+.survey-scale__option.btn-ghost {
+  min-width: 0;
+  padding: 0.4rem 0.3rem;
+  border-radius: 10px;
+  letter-spacing: 0;
+}
+
+.survey-scale__option.btn-primary::after {
+  display: none;
+}
+
+.survey-scale__option.btn-ghost {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.survey-scale__value {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.survey-scale__label {
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+@media (max-width: 420px) {
+  .survey-scale__label {
+    font-size: 0.62rem;
+  }
+}
+
 input[type='range'] {
   width: 100%;
   accent-color: var(--accent);

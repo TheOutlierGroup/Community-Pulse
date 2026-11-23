@@ -1,5 +1,15 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import fs from 'fs';
+import path from 'path';
+import { ensureStorageDirs, orgLogoFilePath } from '../config/storage.js';
+import {
+  isEventModeActive,
+  respondentEventModePayload,
+  WORDING_VERSION_CURRENT,
+  WORDING_VERSION_EVENT,
+} from '../services/eventMode.js';
+import { eventStatementText, eventSurveyCopy } from '../services/eventModeWording.js';
 import * as Organization from '../models/Organization.js';
 import * as PulseSession from '../models/PulseSession.js';
 import * as PulseLinkInvite from '../models/PulseLinkInvite.js';
@@ -39,6 +49,7 @@ export function createPulseLinkRoutes({
   buildPersonalReflectionFn = buildPersonalReflection,
   getQuestionsForAudienceFn = getQuestionsForAudience,
   getSurveyCopyForAudienceFn = getSurveyCopyForAudience,
+  env = process.env,
 } = {}) {
   const router = Router();
 
@@ -166,12 +177,13 @@ function getLinkToken(req) {
     const fallback = pulseSurveyStartDefaultTemplateFromSettings(platformSettings, role, stage);
     const templates = pulseInviteTemplateBucketByTimepoint(settings?.pulseInviteSurveyStartTemplates, stage);
     const raw = templates && typeof templates === 'object' ? templates[role] : null;
-    if (!raw || typeof raw !== 'object') return fallback;
+    if (!raw || typeof raw !== 'object') return { ...fallback, isCustom: false };
     const bodyHtml = typeof raw.bodyHtml === 'string' ? raw.bodyHtml.trim() : '';
     const intro = typeof raw.intro === 'string' ? raw.intro.trim() : '';
     const context = typeof raw.context === 'string' ? raw.context.trim() : '';
     return {
       bodyHtml: bodyHtml || (intro ? `<p>${intro}</p>${context ? `<p>${context}</p>` : ''}` : fallback.bodyHtml),
+      isCustom: Boolean(bodyHtml || intro),
     };
   }
 
@@ -211,9 +223,41 @@ function getLinkToken(req) {
       stage,
       platformSettings
     );
-    return {
+    const copy = {
       ...baseCopy,
       welcomeHtml: applyWelcomeTemplatePlaceholders(surveyStart.bodyHtml, organization, respondentInvite),
+    };
+    if (!isEventModeActive(organization, env)) return copy;
+    // Event mode: approved wording replaces the intro, instruction and
+    // thank-you text. The client's own welcome template is still shown,
+    // but only when they actually wrote one; the long built-in fallback is
+    // dropped because the change context block now covers that ground.
+    return {
+      ...copy,
+      ...eventSurveyCopy(audience, stage),
+      welcomeHtml: surveyStart.isCustom ? copy.welcomeHtml : null,
+      respondentName: String(respondentInvite?.display_name || '').trim() || null,
+    };
+  }
+
+  function questionsForLink(organization, audience, stage) {
+    const questions = getQuestionsForAudienceFn(audience, stage);
+    if (!isEventModeActive(organization, env)) return questions;
+    const overrides = eventStatementText(audience, stage) || {};
+    return questions.map((question) => ({ ...question, text: overrides[question.id] || question.text }));
+  }
+
+  function eventModeForLink(organization, audience, stage) {
+    const payload = respondentEventModePayload(organization, stage, { env });
+    if (!payload) return null;
+    const minGroup = payload.minGroupSize;
+    return {
+      ...payload,
+      hasLogo: Boolean(organization?.company_logo_filename),
+      confidentiality:
+        audience === 'manager'
+          ? `**Your answers are confidential.** Your answers about the support you receive and your capacity to lead change may be shown alongside your team's results. Your team's answers are only ever reported in groups of ${minGroup} or more.`
+          : `**Your individual answers are confidential and never shown to your manager.** Results are only reported for groups of ${minGroup} or more people.`,
     };
   }
 
@@ -338,7 +382,7 @@ function getLinkToken(req) {
     if (!validateRequestedStage(req, stage)) {
       return res.status(400).json({ error: `Invite is for ${stage} stage` });
     }
-    const questions = getQuestionsForAudienceFn(audience, stage);
+    const questions = questionsForLink(req.pulseLinkOrganization, audience, stage);
     let copy = getSurveyCopyForAudienceFn(audience, stage);
     try {
       copy = await resolveSurveyCopyWithTemplate(req.pulseLinkOrganization, audience, stage, req.pulseLinkInvite);
@@ -415,7 +459,42 @@ function sessionJsonForLink(session) {
       stage,
       copy,
       brand,
+      eventMode: eventModeForLink(req.pulseLinkOrganization, audience, stage),
     });
+  });
+
+  /**
+   * Event mode only: the client's own logo for the survey header. Scoped to
+   * a verified respondent token (never by organisation id), so it cannot be
+   * used to enumerate client logos, and it is unavailable outside Event mode
+   * so switching the toggle off restores today's exposure exactly.
+   */
+  router.get('/logo', requirePulseLink, async (req, res) => {
+    const org = req.pulseLinkOrganization;
+    if (!isEventModeActive(org, env) || !org.company_logo_filename) return res.status(404).end();
+    try {
+      const safeName = path.basename(String(org.company_logo_filename));
+      const full = path.resolve(orgLogoFilePath(safeName));
+      const { orgLogosDir } = ensureStorageDirs();
+      const rel = path.relative(path.resolve(orgLogosDir), full);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) return res.status(403).end();
+      if (!fs.existsSync(full)) return res.status(404).end();
+      const ext = path.extname(safeName).toLowerCase();
+      const type =
+        ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
+          : ext === '.gif' ? 'image/gif'
+            : ext === '.webp' ? 'image/webp'
+              : ext === '.svg' ? 'image/svg+xml'
+                : 'image/png';
+      res.setHeader('Content-Type', type);
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (type === 'image/svg+xml') res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+      return res.sendFile(full);
+    } catch (error) {
+      console.error('Failed to serve client logo for event mode:', error);
+      return res.status(500).end();
+    }
   });
 
   router.get('/response', requirePulseLink, async (req, res) => {
@@ -614,6 +693,9 @@ function sessionJsonForLink(session) {
     step3,
     step4,
     contributionStyle: contribution.style,
+    wordingVersion: isEventModeActive(req.pulseLinkOrganization, env)
+      ? WORDING_VERSION_EVENT
+      : WORDING_VERSION_CURRENT,
   });
 
   const reflection = buildPersonalReflectionFn(step1, step2, step3, step4, contribution);
