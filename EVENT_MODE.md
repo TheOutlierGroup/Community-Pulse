@@ -52,3 +52,13 @@ plus `eventActive` / `isEvent` branches in `PublicPulse.jsx`, `PlatformClientPul
 - Survey intros say "confidential" instead of "anonymous"
 - Staff thank-you screen uses the stage-specific message
 - Long dashes removed from the expired-link message and "Insufficient data" text
+
+## Related: small-organisation minimum group size
+
+Separate from Event mode. Outlier admins (platform org, admin role) can turn on **Configurations → Respondents → "Small organisation: report groups of 3 or more"** for a client. Nobody else sees or can change it (API enforced, audit logged as `org.small_org_minimum.update`).
+
+- Each link response records the minimum that respondent was told (`pulse_link_responses.promised_min_group_size`, migration 089).
+- Dashboards and reports use the strictest promise in each group: responses from before this existed, and signed-in employee responses, count as 5.
+- So it only lowers the minimum for survey stages that start after it is turned on. A stage already underway keeps telling new respondents 5 and keeps reporting at 5.
+- The survey's confidentiality line, and any welcome text saying "groups of 5 or more", show the minimum actually promised.
+- Turning it off returns every result to 5 immediately.

@@ -37,7 +37,6 @@ import {
 const DIMENSION_ORDER = ['1A', '1B', '1C', '1D', '2A', '2B', '2C', '2D'];
 const PERCEPTION_GAP_THRESHOLD = 1.5;
 const INTRA_DIMENSION_DIVERGENCE_THRESHOLD = 1.5;
-const PERCEPTION_GAP_MIN_SAMPLES = 5;
 const DIMENSION_COMPARISON_META = {
   '1A': {
     sharedConstruct: 'Does the team have skills to absorb the change?',
@@ -875,8 +874,8 @@ export default function PlatformClientPulse() {
       const employeeCount = Number.isFinite(base?.employee?.count) ? base.employee.count : 0;
       const managerCount = Number.isFinite(base?.manager?.count) ? base.manager.count : 0;
       const signalsSuppressed =
-        employeeCount < PERCEPTION_GAP_MIN_SAMPLES
-        || managerCount < PERCEPTION_GAP_MIN_SAMPLES;
+        employeeCount < minSampleSize
+        || managerCount < minSampleSize;
       return {
         id,
         employeeLabel: base.label || '--',
@@ -918,7 +917,7 @@ export default function PlatformClientPulse() {
             : (gap != null && gap >= PERCEPTION_GAP_THRESHOLD),
       };
     });
-  }, [dimensions]);
+  }, [dimensions, minSampleSize]);
   const dimensionHeatmapColumns = useMemo(() => {
     const midpoint = Math.ceil(dimensionHeatmapRows.length / 2);
     return [dimensionHeatmapRows.slice(0, midpoint), dimensionHeatmapRows.slice(midpoint)];

@@ -13,6 +13,7 @@ export const AUDIT_ACTIONS = Object.freeze({
   ORG_LOGO_UPLOAD: 'org.logo.upload',
   ORG_LOGO_DELETE: 'org.logo.delete',
   ORG_EVENT_MODE_UPDATE: 'org.event_mode.update',
+  ORG_SMALL_ORG_MINIMUM_UPDATE: 'org.small_org_minimum.update',
 
   USER_INVITE_SEND: 'user.invite.send',
   USER_INVITE_RESEND: 'user.invite.resend',

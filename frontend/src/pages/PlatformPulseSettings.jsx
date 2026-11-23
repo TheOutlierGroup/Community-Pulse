@@ -7,6 +7,8 @@ import { useToast } from '../components/shared/ToastProvider.jsx';
 import ModalDialog from '../components/shared/ModalDialog.jsx';
 import RhythmEngineEmailTemplates from '../components/platform/RhythmEngineEmailTemplates.jsx';
 import EventModePanel from '../components/platform/EventModePanel.jsx';
+import SmallOrgMinimumSetting from '../components/platform/SmallOrgMinimumSetting.jsx';
+import '../styles/eventMode.css';
 
 const CONFIG_TABS = [
   { id: 'contract', label: 'Contract dates' },
@@ -61,6 +63,7 @@ export default function PlatformPulseSettings() {
   } = useOutletContext();
   const { user } = useAuth();
   const showEventModeTab = user?.organizationKind === 'platform' && org?.kind === 'client';
+  const isOutlierAdmin = user?.organizationKind === 'platform' && user?.role === 'admin';
   const configTabs = showEventModeTab ? [...CONFIG_TABS, EVENT_MODE_TAB] : CONFIG_TABS;
   const { showToast } = useToast();
   const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
@@ -498,6 +501,7 @@ export default function PlatformPulseSettings() {
                 </span>
               </button>
             </div>
+            {isOutlierAdmin && org?.kind === 'client' ? <SmallOrgMinimumSetting orgId={orgId} /> : null}
           </div>
         </div>
       ) : null}

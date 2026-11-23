@@ -33,6 +33,7 @@ function mapLinkRowToUnifiedResponse(r) {
     manager_display_name: r.manager_display_name || null,
     manager_email: r.manager_email || null,
     source_type: 'pulse_link',
+    promised_min_group_size: r.promised_min_group_size ?? null,
   };
 }
 
