@@ -2,6 +2,7 @@ import { Router } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { ensureStorageDirs, orgLogoFilePath } from '../config/storage.js';
+import { ensureOrgLogoLocal } from '../services/orgLogoStore.js';
 import * as Organization from '../models/Organization.js';
 import { resolveBrandForOrganization, publicBrand } from '../services/licenseeBrand.js';
 
@@ -20,6 +21,7 @@ router.get('/licensees/:id/logo', async (req, res) => {
       return res.status(404).end();
     }
     const safeName = path.basename(org.company_logo_filename);
+    await ensureOrgLogoLocal(safeName);
     const full = path.resolve(orgLogoFilePath(safeName));
     const { orgLogosDir } = ensureStorageDirs();
     const root = path.resolve(orgLogosDir);

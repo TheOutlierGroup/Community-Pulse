@@ -3,6 +3,7 @@ import path from 'path';
 import multer from 'multer';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath, ensureStorageDirs, orgLogoFilePath } from '../../config/storage.js';
+import { ensureOrgLogoLocal } from '../../services/orgLogoStore.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
 import * as ClientWorkTask from '../../models/ClientWorkTask.js';
@@ -253,8 +254,11 @@ export function sendAvatarFileOr404(res, filename) {
   res.sendFile(full);
 }
 
-export function sendOrgLogoFileOr404(res, filename) {
+export async function sendOrgLogoFileOr404(res, filename) {
   const safeName = path.basename(filename);
+  // Restores the logo from the database when this service's disk lacks it
+  // (CRM and Rhythm Engine services have separate disks).
+  await ensureOrgLogoLocal(safeName);
   const full = path.resolve(orgLogoFilePath(safeName));
   const { orgLogosDir } = ensureStorageDirs();
   const root = path.resolve(orgLogosDir);

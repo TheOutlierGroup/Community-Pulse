@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../services/api.js';
 import { useAuth } from '../components/shared/Auth.jsx';
@@ -11,7 +11,14 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import EmphasisText from '../components/employee/EmphasisText.jsx';
 import { missingQuestionIds, missingAnswersMessage } from '../utils/surveyText.js';
 import { brandStyleVars, brandUsesLightText } from '../utils/eventModeTheme.js';
-import { eventSectionHeading, eventProgressPercent, EVENT_SURVEY_MINUTES } from '../utils/eventSurvey.js';
+import {
+  eventSectionHeading,
+  answeredProgressPercent,
+  EVENT_SURVEY_MINUTES,
+  readAnswerDraft,
+  writeAnswerDraft,
+  clearAnswerDraft,
+} from '../utils/eventSurvey.js';
 import '../styles/eventMode.css';
 
 const EXPIRED_OR_INVALID_LINK_RE = /invalid or expired link/i;
@@ -82,7 +89,10 @@ export default function PublicPulse() {
   const [brand, setBrand] = useState(null);
   const [eventMode, setEventMode] = useState(null);
   const [missingIds, setMissingIds] = useState([]);
+  const [logoFailed, setLogoFailed] = useState(false);
+  const cardRef = useRef(null);
   const isEvent = Boolean(eventMode?.active);
+  const draftKey = token ? `re-survey-draft:${stage || 'default'}:${token}` : null;
   // RED-069: the survey tab carries the Practitioner's own name where one is
   // configured, otherwise Rhythm Engine; never the platform owner's name.
   // Event mode: the change name (or the client's name) instead.
@@ -91,10 +101,13 @@ export default function PublicPulse() {
       || String(brand?.displayName || '').trim()
       || 'Rhythm Engine'
   );
-  const logoSrc = isEvent && eventMode.hasLogo
+  // A client logo that fails to load falls back to the standard mark rather
+  // than leaving a broken image and empty space above the card.
+  const useClientLogo = isEvent && eventMode.hasLogo && !logoFailed;
+  const logoSrc = useClientLogo
     ? `/api/rhythm-engine-link/logo?token=${encodeURIComponent(token || '')}`
     : brand?.logoUrl || rhythmEngineLogo;
-  const logoAlt = isEvent && eventMode.hasLogo
+  const logoAlt = useClientLogo
     ? `${eventMode.clientName || 'Client'} logo`
     : brand?.displayName || 'Rhythm Engine';
   const themeStyle = isEvent ? brandStyleVars(eventMode.theme) : {};
@@ -131,8 +144,13 @@ export default function PublicPulse() {
       const rRes = await api.get('/api/rhythm-engine-link/response', linkParams);
       const r = rRes.data.response;
       setSurveyCopy(rRes.data.copy || tRes.data.copy || null);
-      setShowWelcomeIntro(!shouldSkipWelcomeIntro(r));
-      setAnswers(extractAnswers(r));
+      const draft = r.completedAt ? {} : readAnswerDraft(draftKey);
+      setShowWelcomeIntro(!shouldSkipWelcomeIntro(r) && Object.keys(draft).length === 0);
+      // Answers given since the last Continue live only in this tab until
+      // the section is saved, so a locked phone or discarded tab used to
+      // lose them. Restore them from this tab's draft (server answers win).
+      const serverAnswers = extractAnswers(r);
+      setAnswers(r.completedAt ? serverAnswers : { ...draft, ...serverAnswers });
       if (r.completedAt) {
         setStep(5);
         if (r.reflection) setReflection(r.reflection);
@@ -143,7 +161,20 @@ export default function PublicPulse() {
       if (handlePossibleCapReached(e)) return;
       setError(e.response?.data?.error || 'Could not load Rhythm Engine.');
     }
-  }, [token, linkParams]);
+  }, [token, linkParams, draftKey]);
+
+  useEffect(() => {
+    if (draftKey && Object.keys(answers).length) writeAnswerDraft(draftKey, answers);
+  }, [draftKey, answers]);
+
+  function scrollToCardTop() {
+    window.setTimeout(() => {
+      const el = cardRef.current;
+      if (!el || typeof el.getBoundingClientRect !== 'function') return;
+      const top = el.getBoundingClientRect().top + window.scrollY - 12;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }, 0);
+  }
 
   useEffect(() => {
     load();
@@ -182,6 +213,7 @@ export default function PublicPulse() {
         linkParams
       );
       setStep(nextStep);
+      scrollToCardTop();
     } catch (e) {
       setError(e.response?.data?.error || 'Save failed.');
     } finally {
@@ -209,6 +241,8 @@ export default function PublicPulse() {
         linkParams
       );
       setReflection(data.reflection);
+      clearAnswerDraft(draftKey);
+      scrollToCardTop();
       setStep(5);
     } catch (e) {
       if (handlePossibleCapReached(e)) return;
@@ -224,6 +258,7 @@ export default function PublicPulse() {
     try {
       await api.post('/api/rhythm-engine-link/survey-started', stage ? { stage } : {}, linkParams);
       setShowWelcomeIntro(false);
+      scrollToCardTop();
     } catch (e) {
       if (handlePossibleCapReached(e)) return;
       setError(e.response?.data?.error || 'Could not continue.');
@@ -250,6 +285,7 @@ export default function PublicPulse() {
             src={logoSrc}
             alt={logoAlt}
             className={isEvent ? 'login-logo event-survey__logo' : 'login-logo'}
+            onError={useClientLogo ? () => setLogoFailed(true) : undefined}
             width={isEvent ? undefined : PUBLIC_PULSE_LOGO.width}
             height={isEvent ? undefined : PUBLIC_PULSE_LOGO.height}
           />
@@ -283,6 +319,7 @@ export default function PublicPulse() {
             src={logoSrc}
             alt={logoAlt}
             className={isEvent ? 'login-logo event-survey__logo' : 'login-logo'}
+            onError={useClientLogo ? () => setLogoFailed(true) : undefined}
             width={isEvent ? undefined : PUBLIC_PULSE_LOGO.width}
             height={isEvent ? undefined : PUBLIC_PULSE_LOGO.height}
           />
@@ -328,16 +365,18 @@ export default function PublicPulse() {
   return (
     <Layout user={null} onLogout={logout} hideHeader>
       <div className={shellClass} style={themeStyle}>
-      <div className="login-hero" style={loginHeroBelowLogo}>
+      <div className={`login-hero${isEvent ? ' event-survey__hero' : ''}`} style={loginHeroBelowLogo}>
         <img
           src={logoSrc}
           alt={logoAlt}
           className={isEvent ? 'login-logo event-survey__logo' : 'login-logo'}
+          onError={useClientLogo ? () => setLogoFailed(true) : undefined}
           width={isEvent ? undefined : PUBLIC_PULSE_LOGO.width}
           height={isEvent ? undefined : PUBLIC_PULSE_LOGO.height}
         />
       </div>
       <div
+        ref={cardRef}
         className={`card login-card${isEvent ? ' event-survey' : ''}`}
         style={{ maxWidth: 640, margin: '0 auto 2rem' }}
       >
@@ -369,7 +408,7 @@ export default function PublicPulse() {
               {questions.length || 16} statements · about {EVENT_SURVEY_MINUTES} minutes
             </p>
             {error ? <p className="error" style={{ marginBottom: '1rem' }}>{error}</p> : null}
-            <div className="btn-row" style={{ justifyContent: 'center', marginTop: '0.25rem' }}>
+            <div className="btn-row event-survey__start" style={{ justifyContent: 'center', marginTop: '0.25rem' }}>
               <button
                 type="button"
                 className="btn btn-primary"
@@ -437,10 +476,13 @@ export default function PublicPulse() {
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-valuenow={eventProgressPercent(step)}
+                aria-valuenow={answeredProgressPercent(answers, questions)}
                 aria-label="Survey progress"
               >
-                <div className="event-survey__progress-bar" style={{ width: `${eventProgressPercent(step)}%` }} />
+                <div
+                  className="event-survey__progress-bar"
+                  style={{ width: `${answeredProgressPercent(answers, questions)}%` }}
+                />
               </div>
             ) : null}
             {step <= 4 && changeContextBlock ? (
@@ -452,7 +494,7 @@ export default function PublicPulse() {
             {error && <p className="error">{error}</p>}
             {step >= 1 && step <= 4 && (
               <SurveyQuestionStep
-                title={<EmphasisText text={eventSectionHeading(step, questions.length || 16)} />}
+                title={<EmphasisText text={eventSectionHeading(step, questions.length || 16, answers, questions)} />}
                 subtitle={surveyCopy?.transition}
                 note={step === 3 ? surveyCopy?.halfwayNote : null}
                 questions={questions.slice((step - 1) * 4, step * 4)}
@@ -467,7 +509,10 @@ export default function PublicPulse() {
             )}
             <div className="btn-row">
               {step > 1 && step < 5 && (
-                <button type="button" className="btn btn-ghost" onClick={() => setStep(step - 1)}>
+                <button type="button" className="btn btn-ghost" onClick={() => {
+                    setStep(step - 1);
+                    scrollToCardTop();
+                  }}>
                   Back
                 </button>
               )}
@@ -513,7 +558,10 @@ export default function PublicPulse() {
 
             <div className="btn-row">
               {step > 1 && step < 5 && (
-                <button type="button" className="btn btn-ghost" onClick={() => setStep(step - 1)}>
+                <button type="button" className="btn btn-ghost" onClick={() => {
+                    setStep(step - 1);
+                    scrollToCardTop();
+                  }}>
                   Back
                 </button>
               )}

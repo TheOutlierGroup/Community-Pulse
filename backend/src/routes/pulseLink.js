@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import fs from 'fs';
 import path from 'path';
 import { ensureStorageDirs, orgLogoFilePath } from '../config/storage.js';
+import { ensureOrgLogoLocal } from '../services/orgLogoStore.js';
 import {
   isEventModeActive,
   respondentEventModePayload,
@@ -50,18 +51,36 @@ export function createPulseLinkRoutes({
   getQuestionsForAudienceFn = getQuestionsForAudience,
   getSurveyCopyForAudienceFn = getSurveyCopyForAudience,
   env = process.env,
+  ensureOrgLogoLocalFn = ensureOrgLogoLocal,
 } = {}) {
   const router = Router();
 
-  const pulseLinkLimiter = rateLimit({
+  // Respondents at an event usually share one venue Wi-Fi address. A single
+  // per-address limit of 200 requests per 15 minutes let only about 22
+  // people through (each survey takes ~9 requests) before everyone else got
+  // "Too many requests". The main limit is now per respondent link (hashed
+  // token), with a far higher per-address ceiling kept as a backstop
+  // against anyone hammering the endpoint without a token.
+  const RATE_MESSAGE = { error: 'Too many requests. Please wait a few minutes and try again.' };
+  const pulseLinkTokenLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 200,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Too many requests. Please wait a few minutes and try again.' },
+    message: RATE_MESSAGE,
+    skip: (req) => !getLinkToken(req),
+    keyGenerator: (req) => `link:${hashInviteToken(getLinkToken(req))}`,
+  });
+  const pulseLinkAddressLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: (req) => (getLinkToken(req) ? 5000 : 200),
+    standardHeaders: false,
+    legacyHeaders: false,
+    message: RATE_MESSAGE,
   });
 
-  router.use(pulseLinkLimiter);
+  router.use(pulseLinkAddressLimiter);
+  router.use(pulseLinkTokenLimiter);
 
 function getLinkToken(req) {
   const q = req.query?.token;
@@ -240,11 +259,14 @@ function getLinkToken(req) {
     };
   }
 
+  // Respondents only need each statement's id and text. Internal fields
+  // (theory labels, section, dimension, load flags) stay server-side (G26).
   function questionsForLink(organization, audience, stage) {
-    const questions = getQuestionsForAudienceFn(audience, stage);
-    if (!isEventModeActive(organization, env)) return questions;
-    const overrides = eventStatementText(audience, stage) || {};
-    return questions.map((question) => ({ ...question, text: overrides[question.id] || question.text }));
+    const overrides = isEventModeActive(organization, env) ? eventStatementText(audience, stage) || {} : {};
+    return getQuestionsForAudienceFn(audience, stage).map((question) => ({
+      id: question.id,
+      text: overrides[question.id] || question.text,
+    }));
   }
 
   function eventModeForLink(organization, audience, stage) {
@@ -474,6 +496,7 @@ function sessionJsonForLink(session) {
     if (!isEventModeActive(org, env) || !org.company_logo_filename) return res.status(404).end();
     try {
       const safeName = path.basename(String(org.company_logo_filename));
+      await ensureOrgLogoLocalFn(safeName);
       const full = path.resolve(orgLogoFilePath(safeName));
       const { orgLogosDir } = ensureStorageDirs();
       const rel = path.relative(path.resolve(orgLogosDir), full);

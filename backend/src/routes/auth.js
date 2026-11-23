@@ -8,6 +8,7 @@ import { requireBodyFields } from '../middleware/validation.js';
 import { uploadAvatarMiddleware } from '../middleware/avatarUpload.js';
 import multer from 'multer';
 import { avatarFilePath, ensureStorageDirs, orgLogoFilePath } from '../config/storage.js';
+import { ensureOrgLogoLocal, forgetOrgLogo, mirrorOrgLogo } from '../services/orgLogoStore.js';
 import { extensionForUpload } from '../middleware/avatarUpload.js';
 import * as User from '../models/User.js';
 import * as Invite from '../models/Invite.js';
@@ -567,6 +568,7 @@ router.get('/me/organization-logo', requireAuth, async (req, res) => {
   const org = await Organization.getOrganization(req.user.organizationId);
   if (!org?.company_logo_filename) return res.status(404).end();
   const safeName = path.basename(org.company_logo_filename);
+  await ensureOrgLogoLocal(safeName);
   const full = path.resolve(orgLogoFilePath(safeName));
   const { orgLogosDir } = ensureStorageDirs();
   const root = path.resolve(orgLogosDir);
@@ -615,6 +617,8 @@ router.post(
         }
       }
       fs.writeFileSync(orgLogoFilePath(base), req.file.buffer);
+      await mirrorOrgLogo(base, req.file.buffer);
+      if (prev && prev !== base) await forgetOrgLogo(prev);
       await Organization.setCompanyLogoFilename(orgId, base);
     } catch (e) {
       console.error(e);
@@ -634,6 +638,7 @@ router.delete('/me/organization-logo', requireAuth, requireClientAdmin, async (r
     } catch {
       /* ignore */
     }
+    await forgetOrgLogo(prev);
   }
   const full = await User.findUserByIdWithOrg(req.user.id);
   res.json({ user: publicUser(full) });

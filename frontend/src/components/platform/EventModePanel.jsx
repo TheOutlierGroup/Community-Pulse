@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Presentation } from 'lucide-react';
 import api from '../../services/api.js';
 import { useToast } from '../shared/ToastProvider.jsx';
-import { brandStyleVars, brandUsesLightText } from '../../utils/eventModeTheme.js';
+import { brandStyleVars, brandUsesLightText, previewThemeFromColors } from '../../utils/eventModeTheme.js';
 import '../../styles/eventMode.css';
 
 const STAGES = [
@@ -42,22 +42,6 @@ const HEX_RE = /^#[0-9a-f]{6}$/i;
 
 function emptyContext() {
   return Object.fromEntries(STAGES.map((s) => [s.id, Object.fromEntries(FIELDS.map((f) => [f.id, '']))]));
-}
-
-function previewTheme(primary, secondary) {
-  if (!HEX_RE.test(primary || '')) return null;
-  const r = parseInt(primary.slice(1, 3), 16) / 255;
-  const g = parseInt(primary.slice(3, 5), 16) / 255;
-  const b = parseInt(primary.slice(5, 7), 16) / 255;
-  const lin = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  const lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-  const onWhite = 1.05 / (lum + 0.05);
-  const onBlack = (lum + 0.05) / 0.05;
-  return {
-    primaryColor: primary,
-    onPrimary: onWhite >= onBlack ? '#ffffff' : '#1c1917',
-    secondaryColor: HEX_RE.test(secondary || '') ? secondary : null,
-  };
 }
 
 /**
@@ -138,7 +122,7 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo, onLogoCh
   }, [orgId, applyServer]);
 
   const theme = useMemo(
-    () => (form ? previewTheme(form.primaryColor, form.secondaryColor) : null),
+    () => (form ? previewThemeFromColors(form.primaryColor, form.secondaryColor) : null),
     [form]
   );
 
@@ -289,7 +273,13 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo, onLogoCh
               placeholder="e.g. New rostering system"
               onChange={(e) => setForm({ ...form, changeName: e.target.value })}
             />
-            <span className="event-mode-field__hint">Shown as the survey heading. Required before invites go out.</span>
+            {form.changeName.trim() ? (
+              <span className="event-mode-field__hint">Shown as the survey heading. Required before invites go out.</span>
+            ) : (
+              <span className="event-mode-field__hint event-mode-field__hint--missing">
+                Required: invites for every stage are blocked until this is filled in.
+              </span>
+            )}
           </label>
 
           <div className="event-mode-colours">

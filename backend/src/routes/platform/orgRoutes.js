@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { requireBodyFields } from '../../middleware/validation.js';
 import { extensionForUpload } from '../../middleware/avatarUpload.js';
 import { avatarFilePath, orgLogoFilePath } from '../../config/storage.js';
+import { ensureOrgLogoLocal, forgetOrgLogo, mirrorOrgLogo } from '../../services/orgLogoStore.js';
 import * as Organization from '../../models/Organization.js';
 import * as User from '../../models/User.js';
 import * as Invite from '../../models/Invite.js';
@@ -1702,6 +1703,7 @@ export function registerPlatformOrgRoutes(router) {
       const base = `org-${org.id}${ext || '.png'}`;
       try {
         await fs.promises.writeFile(orgLogoFilePath(base), req.file.buffer);
+        await mirrorOrgLogo(base, req.file.buffer);
         const updated = await Organization.setCompanyLogoFilename(org.id, base);
         if (updated) org = updated;
       } catch (e) {
@@ -2003,6 +2005,7 @@ export function registerPlatformOrgRoutes(router) {
       try {
         fs.unlinkSync(logoPath);
       } catch { /* file may already be gone */ }
+      await forgetOrgLogo(org.company_logo_filename);
     }
     const deleted = await Organization.deleteOrganization(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'Organization not found' });
@@ -2983,7 +2986,7 @@ export function registerPlatformOrgRoutes(router) {
   router.get('/organizations/:id/logo', async (req, res) => {
     const org = await assertClientOrganizationPlatformForUser(req.params.id, req.user);
     if (!org || !org.company_logo_filename) return res.status(404).end();
-    sendOrgLogoFileOr404(res, org.company_logo_filename);
+    await sendOrgLogoFileOr404(res, org.company_logo_filename);
   });
 
   router.post('/organizations/:id/user-import-template', async (req, res) => {
@@ -3030,11 +3033,13 @@ export function registerPlatformOrgRoutes(router) {
       if (org.company_logo_filename && org.company_logo_filename !== base) {
         try {
           await fs.promises.unlink(orgLogoFilePath(org.company_logo_filename));
+          await forgetOrgLogo(org.company_logo_filename);
         } catch {
           /* ignore */
         }
       }
       await fs.promises.writeFile(orgLogoFilePath(base), req.file.buffer);
+      await mirrorOrgLogo(base, req.file.buffer);
       const updated = await Organization.setCompanyLogoFilename(org.id, base);
       auditFromRequest(req)({
         action: AUDIT_ACTIONS.ORG_LOGO_UPLOAD,
@@ -3057,6 +3062,7 @@ export function registerPlatformOrgRoutes(router) {
     if (prev) {
       try {
         await fs.promises.unlink(orgLogoFilePath(prev));
+        await forgetOrgLogo(prev);
       } catch {
         /* ignore */
       }

@@ -7,6 +7,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import { orgLogoFilePath, reportFilePath } from '../config/storage.js';
+import { ensureOrgLogoLocal } from './orgLogoStore.js';
 import * as GeneratedReport from '../models/GeneratedReport.js';
 import * as Organization from '../models/Organization.js';
 import { assembleReportData } from './reportDataAssembler.js';
@@ -42,6 +43,7 @@ async function loadCompanyLogoBuffer(organization) {
   if (!filename) return null;
   try {
     const safeName = path.basename(String(filename));
+    await ensureOrgLogoLocal(safeName);
     const full = orgLogoFilePath(safeName);
     if (!fsSync.existsSync(full)) return null;
     return await fs.readFile(full);
@@ -77,6 +79,7 @@ async function resolveReportBrand(organization) {
       const filename = licenseeOrg?.company_logo_filename;
       if (filename) {
         const safeName = path.basename(String(filename));
+        await ensureOrgLogoLocal(safeName);
         const full = orgLogoFilePath(safeName);
         try {
           if (fsSync.existsSync(full)) {

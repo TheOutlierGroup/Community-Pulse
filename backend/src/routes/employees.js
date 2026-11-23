@@ -75,7 +75,8 @@ export function createEmployeeRoutes({
       return res.status(403).json({ error: 'Employees only' });
     }
     const stage = parsePulseStageFromRequest(req, 'pre');
-    const questions = getQuestionsForAudienceFn('staff', stage);
+    // Only id and text reach the browser; theory labels stay server-side (G26).
+    const questions = getQuestionsForAudienceFn('staff', stage).map((q) => ({ id: q.id, text: q.text }));
     const copy = getSurveyCopyForAudienceFn('staff', stage);
     res.json({ questions, copy, stage });
   });

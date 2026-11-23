@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
 import { orgLogoFilePath } from '../config/storage.js';
+import { ensureOrgLogoLocal } from './orgLogoStore.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -114,8 +115,8 @@ export function getPulseInviteDefaultTemplate(audience, organizationName) {
   const orgPlain = organizationName ? String(organizationName).trim() : 'your organization';
   const subject =
     role === 'manager'
-      ? `Rhythm Engine manager questionnaire — ${orgPlain}`
-      : `Rhythm Engine questionnaire — ${orgPlain}`;
+      ? `Rhythm Engine manager questionnaire: ${orgPlain}`
+      : `Rhythm Engine questionnaire: ${orgPlain}`;
   const contactParagraph = `
         <p style="color: #888; font-size: 0.85rem; line-height: 1.5;">
           It should take no more than 5 minutes to complete, and your response is needed by {{dueDate}}.
@@ -369,6 +370,9 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
   // client's employees, so when the client has not uploaded their own
   // logo it falls back to the Rhythm Engine mark — not Outlier's, which
   // is reserved for Outlier account emails (password reset, welcome).
+  // Restore the client logo from the database if this service's disk
+  // does not have it (CRM and Rhythm Engine services have separate disks).
+  if (options?.clientLogoFilename) await ensureOrgLogoLocal(options.clientLogoFilename);
   const { logoBlock, attachments } = buildClientEmailLogoParts(
     options?.clientLogoFilename,
     options?.clientLogoAlt || orgPlain,
