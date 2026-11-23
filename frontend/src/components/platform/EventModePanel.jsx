@@ -192,8 +192,10 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo }) {
       </p>
       {!state.available ? (
         <p className="event-mode-panel__warn">
-          Event mode is switched off on this server, so nothing here is visible to respondents yet. Ask for{' '}
-          <code>EVENT_MODE_AVAILABLE=true</code> to be set.
+          {state.enabled ? 'Event mode is turned on for this client, but' : 'Note:'} the server-wide switch is off, so
+          respondents and dashboards still see the standard experience. To use Event mode, set{' '}
+          <code>EVENT_MODE_AVAILABLE=true</code> in the server environment (on Render: each web service, Environment
+          tab) and redeploy. You can still fill in and save everything below in the meantime.
         </p>
       ) : null}
       {!hasLogo ? (
@@ -232,12 +234,14 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo }) {
                   <input
                     type="text"
                     value={form[key]}
-                    placeholder="#1a73e8"
+                    placeholder="e.g. #1a73e8"
                     maxLength={7}
                     onChange={(e) => setForm({ ...form, [key]: e.target.value.trim() })}
                   />
                 </span>
-                <span className="event-mode-field__hint">{hint}. Text colour on top is picked automatically.</span>
+                <span className="event-mode-field__hint">
+                  {HEX_RE.test(form[key]) ? `${hint}.` : `${hint}. Not set yet.`} Text colour on top is picked automatically.
+                </span>
               </label>
             ))}
           </div>

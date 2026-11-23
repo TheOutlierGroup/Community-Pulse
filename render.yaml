@@ -75,6 +75,10 @@ services:
         sync: false
       - key: ENFORCE_HTTPS
         value: "true"
+      # Event mode master switch (see EVENT_MODE.md). Leave unset or not
+      # "true" to keep Event mode off for every client on this service.
+      - key: EVENT_MODE_AVAILABLE
+        sync: false
       # Same secret the retention cron sends as Authorization: Bearer …
       - key: PRIVACY_MAINTENANCE_SECRET
         sync: false
@@ -133,6 +137,10 @@ services:
         sync: false
       - key: ENFORCE_HTTPS
         value: "true"
+      # Event mode master switch (see EVENT_MODE.md). Leave unset or not
+      # "true" to keep Event mode off for every client on this service.
+      - key: EVENT_MODE_AVAILABLE
+        sync: false
     disk:
       name: pulse-app-disk
       mountPath: /var/pulse-storage
