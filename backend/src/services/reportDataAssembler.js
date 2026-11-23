@@ -7,7 +7,7 @@ import {
   DIMENSIONS,
   classifyQuadrant,
   classifySponsorshipChainState,
-  scoreBandForSponsorshipLoad,
+  scoreBandForManagerLoad,
   scoreResponseFromSteps,
   sponsorshipConfigFromOrgSettings,
 } from './pulseEngine.js';
@@ -174,8 +174,9 @@ export function createAssembleReportData({
     for (const entry of managerRows) {
     const received = entry.scored.sponsorshipReceivedScore;
     const capacity = entry.scored.sponsorshipCapacityScore;
-    const load = entry.scored.sponsorshipLoadScore;
-    const loadBand = scoreBandForSponsorshipLoad(load, sponsorshipConfig.loadBandBoundaries);
+    // Manager Load: MQ5 + MQ6 + MQ15 + MQ16 (4 to 20), Study Reference Guide 4.3.
+    const load = entry.scored.managerLoad;
+    const loadBand = scoreBandForManagerLoad(load, sponsorshipConfig.loadBandBoundaries);
     const chainState = classifySponsorshipChainState(received, capacity, {
       receivedThreshold: sponsorshipConfig.receivedThreshold,
       capacityThreshold: sponsorshipConfig.capacityThreshold,
@@ -308,10 +309,10 @@ export function createAssembleReportData({
         // only two managers, two named teams' bands were their two answers,
         // while the same report said manager load remained unmeasured.
         const managerLoadScore = sampleSizeMet && managerSampleSizeMet
-          ? team.managerSelf?.scored?.sponsorshipLoadScore ?? null
+          ? team.managerSelf?.scored?.managerLoad ?? null
           : null;
         const managerLoadBand = managerLoadScore != null
-          ? scoreBandForSponsorshipLoad(managerLoadScore, sponsorshipConfig.loadBandBoundaries)
+          ? scoreBandForManagerLoad(managerLoadScore, sponsorshipConfig.loadBandBoundaries)
           : null;
         return {
           name: team.name,

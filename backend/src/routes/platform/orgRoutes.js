@@ -13,6 +13,7 @@ import * as LicenseConfig from '../../models/LicenseConfig.js';
 import * as PasswordResetToken from '../../models/PasswordResetToken.js';
 import * as PulseSession from '../../models/PulseSession.js';
 import * as PulseLinkInvite from '../../models/PulseLinkInvite.js';
+import * as PulseLinkResponse from '../../models/PulseLinkResponse.js';
 import * as PlatformUserClientAssignment from '../../models/PlatformUserClientAssignment.js';
 import * as EntityFieldHistory from '../../models/EntityFieldHistory.js';
 import {
@@ -53,8 +54,16 @@ import {
   sendPulseInviteEmail,
 } from '../../services/email.js';
 import { sendOrganizationInvite, orgInviteExpiryDate } from '../../services/orgInvite.js';
-import { minimumForStageRows, smallOrgMinimumPayload } from '../../services/confidentialityMinimum.js';
 import {
+  minimumForStageRows,
+  minimumToPromise,
+  smallOrgMinimumEnabled,
+  smallOrgMinimumPayload,
+  STANDARD_MINIMUM,
+} from '../../services/confidentialityMinimum.js';
+import {
+  brandTheme,
+  isEventModeActive,
   adminEventModePayload,
   eventModeInviteBlock,
   validateEventModeInput,
@@ -65,7 +74,7 @@ import {
   DIMENSIONS,
   READINESS_THRESHOLD,
   getSurveyCopyForAudience,
-  scoreBandForSponsorshipLoad,
+  scoreBandForManagerLoad,
   scoreResponseFromSteps,
   sponsorshipConfigFromOrgSettings,
   sponsorshipLoadBandOrder,
@@ -3523,6 +3532,7 @@ export function registerPlatformOrgRoutes(router) {
     // but only when every response in this stage started after that switch
     // (see services/confidentialityMinimum.js).
     const minSampleSize = minimumForStageRows(org.settings, currentRows);
+    const sponsorshipConfig = sponsorshipConfigFromOrgSettings(org.settings);
     const scopedCurrentRows = filterRowsForManagerScope(
       currentRows,
       selectedManagerIdSet,
@@ -3608,8 +3618,8 @@ export function registerPlatformOrgRoutes(router) {
     };
     for (const row of completedManagerRows) {
       const scored = responseScoresOutOf40(row);
-      if (!scored.valid || !scored.managerLoadBand) continue;
-      managerLoadCounts[scored.managerLoadBand] += 1;
+      if (!scored.valid || scored.managerLoad == null) continue;
+      managerLoadCounts[scoreBandForManagerLoad(scored.managerLoad, sponsorshipConfig.loadBandBoundaries)] += 1;
     }
     const loadBandNames = ['Sustainable', 'Stretched', 'At Capacity', 'Overloaded'];
     const managerLoadBandCounts = loadBandNames.map((name) => managerLoadCounts[name]);
@@ -3811,7 +3821,9 @@ export function registerPlatformOrgRoutes(router) {
         );
         if (managerSelfRow) {
           const selfScore = responseScoresOutOf40(managerSelfRow);
-          loadBand = selfScore.valid ? selfScore.managerLoadBand || null : null;
+          loadBand = selfScore.valid && selfScore.managerLoad != null
+            ? scoreBandForManagerLoad(selfScore.managerLoad, sponsorshipConfig.loadBandBoundaries)
+            : null;
         }
       }
 
@@ -3836,7 +3848,6 @@ export function registerPlatformOrgRoutes(router) {
       };
     });
 
-    const sponsorshipConfig = sponsorshipConfigFromOrgSettings(org.settings);
     const managerInviteMap = new Map(managerOptions.map((row) => [row.id, row]));
     const managerSelfMetrics = completedManagerRows
       .map((row) => {
@@ -3847,9 +3858,10 @@ export function registerPlatformOrgRoutes(router) {
         const managerProfile = managerInviteMap.get(managerId) || null;
         const receivedScore = scored.sponsorshipReceivedScore;
         const capacityScore = scored.sponsorshipCapacityScore;
-        const loadScore = scored.sponsorshipLoadScore;
+        // Manager Load: MQ5 + MQ6 + MQ15 + MQ16 (4 to 20), Study Reference Guide 4.3.
+        const loadScore = scored.managerLoad;
         if (receivedScore == null || capacityScore == null || loadScore == null) return null;
-        const loadBand = scoreBandForSponsorshipLoad(loadScore, sponsorshipConfig.loadBandBoundaries);
+        const loadBand = scoreBandForManagerLoad(loadScore, sponsorshipConfig.loadBandBoundaries);
         const chainState = classifySponsorshipChainState(receivedScore, capacityScore, {
           receivedThreshold: sponsorshipConfig.receivedThreshold,
           capacityThreshold: sponsorshipConfig.capacityThreshold,
@@ -5153,6 +5165,25 @@ export function registerPlatformOrgRoutes(router) {
       platformOrg?.name
     );
     const dueDate = pulseInviteDueDateForScope(org.settings, timepointPhase, duringSessionId);
+    // The email must promise the same minimum group size the survey will
+    // show this person (see services/confidentialityMinimum.js).
+    let minGroupSize = STANDARD_MINIMUM;
+    if (smallOrgMinimumEnabled(org.settings)) {
+      try {
+        const session = await PulseSession.resolveSessionForPulseLink(org.id, audience, inviteStage, {
+          allowCreate: false,
+        });
+        const rows = session ? await PulseLinkResponse.listResponsesForSession(session.id) : [];
+        minGroupSize = minimumToPromise(
+          org.settings,
+          rows.filter((row) => String(row.invite_id) !== String(invite.id) && (row.stage || 'pre') === inviteStage)
+        );
+      } catch (e) {
+        console.error('Could not work out the minimum group size for an invite; using the standard minimum:', e);
+        minGroupSize = STANDARD_MINIMUM;
+      }
+    }
+    const inviteTheme = isEventModeActive(org) ? brandTheme(org.settings?.eventMode) : null;
     try {
       await sendPulseInviteEmail(invite.email, invite.display_name, linkUrl, org.name, {
         audience,
@@ -5162,6 +5193,9 @@ export function registerPlatformOrgRoutes(router) {
         contactInfo: org.report_contact,
         clientLogoFilename: org.company_logo_filename,
         clientLogoAlt: org.name,
+        minGroupSize,
+        buttonColor: inviteTheme?.primaryColor || null,
+        buttonTextColor: inviteTheme?.onPrimary || null,
       });
     } catch (e) {
       console.error('Rhythm Engine link invite send failed:', e);

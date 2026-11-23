@@ -5,9 +5,14 @@ import { createPulseLinkRoutes } from './pulseLink.js';
 
 // Event guests share one venue Wi-Fi address. 60 people x 9 requests each
 // must not trip the limiter, while one link hammering the API still does.
-function buildApp() {
+function buildApp({ validLinks = false } = {}) {
+  // Valid links resolve to an invite (the request then stops at the
+  // service check with 403); invalid links get 401.
   const router = createPulseLinkRoutes({
-    pulseLinkInviteModel: { findByTokenHash: async () => null },
+    pulseLinkInviteModel: {
+      findByTokenHash: async () => (validLinks ? { id: 'i', organization_id: 'o', token_hash: 'h' } : null),
+    },
+    organizationModel: { getOrganization: async () => ({ id: 'o', kind: 'client', settings: {} }) },
   });
   const app = express();
   app.use(express.json());
@@ -27,7 +32,7 @@ async function withServer(app, fn) {
 }
 
 test('many respondents on one address are not rate limited', async () => {
-  await withServer(buildApp(), async (base) => {
+  await withServer(buildApp({ validLinks: true }), async (base) => {
     let limited = 0;
     for (let person = 0; person < 60; person += 1) {
       for (let i = 0; i < 9; i += 1) {
@@ -40,11 +45,23 @@ test('many respondents on one address are not rate limited', async () => {
 });
 
 test('a single link is still limited', async () => {
-  await withServer(buildApp(), async (base) => {
+  await withServer(buildApp({ validLinks: true }), async (base) => {
     let last = 0;
     for (let i = 0; i < 205; i += 1) {
       last = (await fetch(`${base}/api/pulse-link/themes?token=same-guest`)).status;
     }
     assert.equal(last, 429);
+  });
+});
+
+test('repeated bad links from one address are slowed down', async () => {
+  await withServer(buildApp(), async (base) => {
+    const statuses = [];
+    for (let i = 0; i < 40; i += 1) {
+      statuses.push((await fetch(`${base}/api/pulse-link/themes?token=wrong-${i}`)).status);
+    }
+    assert.equal(statuses[0], 401);
+    assert.equal(statuses[29], 401);
+    assert.equal(statuses[39], 429);
   });
 });

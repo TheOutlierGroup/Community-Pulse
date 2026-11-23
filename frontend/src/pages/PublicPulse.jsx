@@ -8,13 +8,10 @@ import Step5Reflection from '../components/employee/Step5Reflection.jsx';
 import rhythmEngineLogo from '../images/rhythm-engine-logo.png';
 import { normalizePulseStage } from '../utils/pulseStage.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
-import EmphasisText from '../components/employee/EmphasisText.jsx';
+import EventSurveyFlow from '../components/employee/EventSurveyFlow.jsx';
 import { missingQuestionIds, missingAnswersMessage } from '../utils/surveyText.js';
 import { brandStyleVars, brandUsesLightText } from '../utils/eventModeTheme.js';
 import {
-  eventSectionHeading,
-  answeredProgressPercent,
-  EVENT_SURVEY_MINUTES,
   readAnswerDraft,
   writeAnswerDraft,
   clearAnswerDraft,
@@ -90,6 +87,8 @@ export default function PublicPulse() {
   const [eventMode, setEventMode] = useState(null);
   const [missingIds, setMissingIds] = useState([]);
   const [logoFailed, setLogoFailed] = useState(false);
+  const [responseLoaded, setResponseLoaded] = useState(false);
+  const progressTimer = useRef(null);
   const cardRef = useRef(null);
   const isEvent = Boolean(eventMode?.active);
   const draftKey = token ? `re-survey-draft:${stage || 'default'}:${token}` : null;
@@ -151,6 +150,7 @@ export default function PublicPulse() {
       // lose them. Restore them from this tab's draft (server answers win).
       const serverAnswers = extractAnswers(r);
       setAnswers(r.completedAt ? serverAnswers : { ...draft, ...serverAnswers });
+      setResponseLoaded(true);
       if (r.completedAt) {
         setStep(5);
         if (r.reflection) setReflection(r.reflection);
@@ -252,6 +252,40 @@ export default function PublicPulse() {
     }
   }
 
+  // Event mode saves on every tap (debounced) without moving the section,
+  // so answers survive a locked phone or a closed tab. Failures are silent:
+  // the device copy still holds the answers and Submit sends them all.
+  function saveProgress(nextAnswers, sectionStep) {
+    if (!session || !token) return;
+    window.clearTimeout(progressTimer.current);
+    progressTimer.current = window.setTimeout(() => {
+      const payload = buildStepPayload(questions, nextAnswers);
+      api
+        .put(
+          `/api/rhythm-engine-link/response/step/${Math.min(Math.max(sectionStep, 1), 4)}`,
+          { ...payload, ...(stage ? { stage } : {}) },
+          linkParams
+        )
+        .catch(() => {});
+    }, 400);
+  }
+
+  async function startEventSurvey() {
+    setIntroStartBusy(true);
+    setError('');
+    try {
+      await api.post('/api/rhythm-engine-link/survey-started', stage ? { stage } : {}, linkParams);
+      setShowWelcomeIntro(false);
+      return true;
+    } catch (e) {
+      if (handlePossibleCapReached(e)) return false;
+      setError(e.response?.data?.error || 'Could not continue.');
+      return false;
+    } finally {
+      setIntroStartBusy(false);
+    }
+  }
+
   async function onWelcomeStart() {
     setIntroStartBusy(true);
     setError('');
@@ -343,24 +377,39 @@ export default function PublicPulse() {
     );
   }
 
-  const eventContextRows = isEvent
-    ? [
-        ["What's changing", eventMode.changeContext?.whatIsChanging],
-        ["Why we're asking you", eventMode.changeContext?.whyAsking],
-        ['How your feedback will be used', eventMode.changeContext?.howUsed],
-        ["When you'll hear back", eventMode.changeContext?.whenHearBack],
-      ].filter(([, value]) => value)
-    : [];
-  const changeContextBlock = eventContextRows.length ? (
-    <dl className="change-context">
-      {eventContextRows.map(([label, value]) => (
-        <div key={label} className="change-context__row">
-          <dt>{label}</dt>
-          <dd>{value}</dd>
+  if (isEvent && session && responseLoaded) {
+    const missing = missingQuestionIds(questions, answers);
+    const initialScreen = showWelcomeIntro
+      ? 'welcome'
+      : Math.max(0, missing.length ? questions.findIndex((q) => q.id === missing[0]) : questions.length - 1);
+    return (
+      <Layout user={null} onLogout={logout} hideHeader>
+        <div className={shellClass} style={themeStyle}>
+          <EventSurveyFlow
+            eventMode={eventMode}
+            surveyCopy={surveyCopy}
+            surveyAudience={surveyAudience}
+            questions={questions}
+            answers={answers}
+            initialScreen={initialScreen}
+            onAnswer={onAnswer}
+            onSaveProgress={saveProgress}
+            onStart={startEventSurvey}
+            startBusy={introStartBusy}
+            onComplete={complete}
+            busy={busy}
+            error={error}
+            done={step === 5}
+            logoSrc={logoSrc}
+            showLogo={useClientLogo}
+            onLogoError={() => setLogoFailed(true)}
+            poweredBy={String(brand?.displayName || '').trim() || 'Rhythm Engine'}
+          />
         </div>
-      ))}
-    </dl>
-  ) : null;
+      </Layout>
+    );
+  }
+
 
   return (
     <Layout user={null} onLogout={logout} hideHeader>
@@ -382,44 +431,6 @@ export default function PublicPulse() {
       >
         {!session && error && <p className="error">{error}</p>}
         {!session && !error && <p className="muted">Loading questionnaire…</p>}
-
-        {session && showWelcomeIntro && isEvent && (
-          <div style={{ textAlign: 'center' }}>
-            <p className="event-survey__eyebrow">
-              <strong>{eventMode.changeName || eventMode.clientName || 'Rhythm Engine'}</strong> · Your feedback
-            </p>
-            {surveyCopy?.respondentName ? (
-              <p className="event-survey__greeting">Welcome, {surveyCopy.respondentName}</p>
-            ) : null}
-            {surveyCopy?.intro ? <p className="event-survey__intro">{surveyCopy.intro}</p> : null}
-            {changeContextBlock}
-            {surveyCopy?.welcomeHtml ? (
-              <div
-                className="event-survey__welcome-extra"
-                dangerouslySetInnerHTML={{ __html: surveyCopy.welcomeHtml }}
-              />
-            ) : null}
-            {eventMode.confidentiality ? (
-              <p className="event-survey__confidential">
-                <EmphasisText text={eventMode.confidentiality} />
-              </p>
-            ) : null}
-            <p className="event-survey__time">
-              {questions.length || 16} statements · about {EVENT_SURVEY_MINUTES} minutes
-            </p>
-            {error ? <p className="error" style={{ marginBottom: '1rem' }}>{error}</p> : null}
-            <div className="btn-row event-survey__start" style={{ justifyContent: 'center', marginTop: '0.25rem' }}>
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={introStartBusy}
-                onClick={() => onWelcomeStart()}
-              >
-                {introStartBusy ? 'Starting…' : 'Start the survey'}
-              </button>
-            </div>
-          </div>
-        )}
 
         {session && showWelcomeIntro && !isEvent && (
           <div style={{ textAlign: 'center' }}>
@@ -466,73 +477,6 @@ export default function PublicPulse() {
               </button>
             </div>
           </div>
-        )}
-
-        {session && !showWelcomeIntro && isEvent && (
-          <>
-            {step <= 4 ? (
-              <div
-                className="event-survey__progress"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={answeredProgressPercent(answers, questions)}
-                aria-label="Survey progress"
-              >
-                <div
-                  className="event-survey__progress-bar"
-                  style={{ width: `${answeredProgressPercent(answers, questions)}%` }}
-                />
-              </div>
-            ) : null}
-            {step <= 4 && changeContextBlock ? (
-              <details className="event-survey__why">
-                <summary>Why this survey</summary>
-                {changeContextBlock}
-              </details>
-            ) : null}
-            {error && <p className="error">{error}</p>}
-            {step >= 1 && step <= 4 && (
-              <SurveyQuestionStep
-                title={<EmphasisText text={eventSectionHeading(step, questions.length || 16, answers, questions)} />}
-                subtitle={surveyCopy?.transition}
-                note={step === 3 ? surveyCopy?.halfwayNote : null}
-                questions={questions.slice((step - 1) * 4, step * 4)}
-                startQuestionNumber={(step - 1) * 4 + 1}
-                answers={answers}
-                missingIds={missingIds}
-                onAnswer={onAnswer}
-              />
-            )}
-            {step === 5 && (
-              <Step5Reflection reflection={reflection} surveyCopy={surveyCopy} eventMode={eventMode} />
-            )}
-            <div className="btn-row">
-              {step > 1 && step < 5 && (
-                <button type="button" className="btn btn-ghost" onClick={() => {
-                    setStep(step - 1);
-                    scrollToCardTop();
-                  }}>
-                  Back
-                </button>
-              )}
-              {step < 4 && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={busy}
-                  onClick={() => saveStep(step + 1)}
-                >
-                  Continue
-                </button>
-              )}
-              {step === 4 && (
-                <button type="button" className="btn btn-primary" disabled={busy} onClick={complete}>
-                  {busy ? 'Submitting…' : 'Submit my answers'}
-                </button>
-              )}
-            </div>
-          </>
         )}
 
         {session && !showWelcomeIntro && !isEvent && (

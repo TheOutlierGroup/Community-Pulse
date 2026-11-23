@@ -67,3 +67,15 @@ test('drafts round-trip and ignore junk', () => {
   assert.equal(store.has('k'), false);
   assert.deepEqual(readAnswerDraft('k', undefined), {});
 });
+
+test('drafts expire after 14 days and survive as a wrapped record', () => {
+  const store = new Map();
+  const storage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, v),
+    removeItem: (k) => store.delete(k),
+  };
+  writeAnswerDraft('k', { Q3: 2 }, storage, 1000);
+  assert.deepEqual(readAnswerDraft('k', storage, 2000), { Q3: 2 });
+  assert.deepEqual(readAnswerDraft('k', storage, 1000 + 15 * 24 * 60 * 60 * 1000), {});
+});

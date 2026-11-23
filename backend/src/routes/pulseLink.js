@@ -78,12 +78,25 @@ export function createPulseLinkRoutes({
   });
   const pulseLinkAddressLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: (req) => (getLinkToken(req) ? 5000 : 200),
+    max: (req) => (getLinkToken(req) ? 20000 : 200),
     standardHeaders: false,
     legacyHeaders: false,
     message: RATE_MESSAGE,
   });
+  // Brake on link guessing: only rejected links ("Invalid or expired link",
+  // missing token) count, so real respondents never touch this limit, while
+  // one address trying many bad links is slowed after 30 in 15 minutes.
+  const pulseLinkBadTokenLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: false,
+    legacyHeaders: false,
+    message: RATE_MESSAGE,
+    requestWasSuccessful: (_req, res) => res.statusCode !== 401,
+    skipSuccessfulRequests: true,
+  });
 
+  router.use(pulseLinkBadTokenLimiter);
   router.use(pulseLinkAddressLimiter);
   router.use(pulseLinkTokenLimiter);
 
@@ -314,13 +327,22 @@ function getLinkToken(req) {
     }));
   }
 
-  function eventModeForLink(organization, audience, stage, minGroup = STANDARD_MINIMUM) {
+  // The respondent's own team (the last business level on their invite),
+  // shown as a chip on the Event mode welcome screen. Never anyone else's.
+  function teamNameForInvite(invite) {
+    const levels = Array.isArray(invite?.group_level_values) ? invite.group_level_values : [];
+    const named = levels.map((v) => String(v ?? '').trim()).filter(Boolean);
+    return named.length ? named[named.length - 1].slice(0, 80) : null;
+  }
+
+  function eventModeForLink(organization, audience, stage, minGroup = STANDARD_MINIMUM, invite = null) {
     const payload = respondentEventModePayload(organization, stage, { env });
     if (!payload) return null;
     return {
       ...payload,
       hasLogo: Boolean(organization?.company_logo_filename),
       minGroupSize: minGroup,
+      teamName: teamNameForInvite(invite),
       confidentiality:
         audience === 'manager'
           ? `**Your answers are confidential.** Your answers about the support you receive and your capacity to lead change may be shown alongside your team's results. Your team's answers are only ever reported in groups of ${minGroup} or more.`
@@ -533,7 +555,7 @@ function sessionJsonForLink(session) {
       stage,
       copy,
       brand,
-      eventMode: eventModeForLink(req.pulseLinkOrganization, audience, stage, minGroup),
+      eventMode: eventModeForLink(req.pulseLinkOrganization, audience, stage, minGroup, req.pulseLinkInvite),
     });
   });
 

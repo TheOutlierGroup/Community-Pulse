@@ -110,6 +110,49 @@ export function formatDueDateForEmail(value) {
 // template fresh. {{contactInfo}} now resolves through
 // sendPulseInviteEmail's templateReplacements, backed by the org's own
 // report_contact where one is configured.
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+
+/**
+ * Plain-text subject. A dash used as a separator (" — " or " – ") becomes
+ * ": ", so a saved template written with the old "questionnaire — Client"
+ * subject no longer sends a long dash.
+ */
+export function normalizeInviteSubject(subject) {
+  return String(subject || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+[\u2014\u2013]\s+/g, ': ')
+    .replace(/[\u2014\u2013]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+}
+
+/**
+ * When a client uses the small-organisation minimum, the invite states the
+ * minimum group size this person will be told on the survey, replacing the
+ * standard "5" wherever the template promises it.
+ */
+export function applyPromisedMinimumToInvite(html, minGroupSize) {
+  const n = Number(minGroupSize);
+  if (!Number.isInteger(n) || n === 5) return html;
+  return String(html || '').replace(
+    /(at least )5( people| managers)|(groups of )5( or more)/gi,
+    (match, a1, a2, g1, g2) => (a1 ? `${a1}${n}${a2}` : `${g1}${n}${g2}`)
+  );
+}
+
+/** Event mode: the invite button takes the client's brand colour. */
+export function applyInviteBranding(html, options = {}) {
+  const bg = HEX_COLOR_RE.test(String(options?.buttonColor || '')) ? options.buttonColor : null;
+  const fg = HEX_COLOR_RE.test(String(options?.buttonTextColor || '')) ? options.buttonTextColor : null;
+  if (!bg) return html;
+  return String(html || '').replace(
+    /background:\s*#ffcc80;\s*color:\s*#1c1917;/gi,
+    `background: ${bg}; color: ${fg || '#ffffff'};`
+  );
+}
+
 export function getPulseInviteDefaultTemplate(audience, organizationName) {
   const role = audience === 'manager' ? 'manager' : 'staff';
   const orgPlain = organizationName ? String(organizationName).trim() : 'your organization';
@@ -350,20 +393,15 @@ export async function sendPulseInviteEmail(to, displayName, pulseUrl, organizati
     contactInfo,
     contactinfo: contactInfo,
   };
-  const subjectPlain = applyTemplatePlaceholders(
-    subjectTemplate,
-    templateReplacements,
-    { escapeValues: false }
-  )
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[\r\n]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 200) || defaultTemplate.subject;
-  const renderedBodyHtml = applyTemplatePlaceholders(
-    bodyTemplateHtml,
-    templateReplacements,
-    { escapeValues: true }
+  const subjectPlain = normalizeInviteSubject(
+    applyTemplatePlaceholders(subjectTemplate, templateReplacements, { escapeValues: false })
+  ) || defaultTemplate.subject;
+  const renderedBodyHtml = applyInviteBranding(
+    applyPromisedMinimumToInvite(
+      applyTemplatePlaceholders(bodyTemplateHtml, templateReplacements, { escapeValues: true }),
+      options?.minGroupSize
+    ),
+    options
   );
   const renderedBodyWithButton = ensureInviteCtaButton(renderedBodyHtml);
   // BRAND-01: a survey invitation is a Rhythm Engine communication to a

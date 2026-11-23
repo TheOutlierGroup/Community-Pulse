@@ -100,6 +100,7 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo, onLogoCh
     setState(em);
     setForm({
       changeName: em.changeName || '',
+      closingNote: em.closingNote || '',
       primaryColor: em.primaryColor || '',
       secondaryColor: em.secondaryColor || '',
       changeContext: { ...emptyContext(), ...(em.changeContext || {}) },
@@ -154,6 +155,7 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo, onLogoCh
     save(
       {
         changeName: form.changeName,
+        closingNote: form.closingNote,
         primaryColor: form.primaryColor,
         secondaryColor: form.secondaryColor,
         changeContext: form.changeContext,
@@ -280,6 +282,20 @@ export default function EventModePanel({ orgId, clientLogoUrl, hasLogo, onLogoCh
                 Required: invites for every stage are blocked until this is filled in.
               </span>
             )}
+          </label>
+
+          <label className="event-mode-field">
+            <span className="event-mode-field__label">Thank-you note (optional)</span>
+            <input
+              type="text"
+              value={form.closingNote}
+              maxLength={200}
+              placeholder="e.g. Head back to your team huddle. The reveal starts once everyone is in."
+              onChange={(e) => setForm({ ...form, closingNote: e.target.value })}
+            />
+            <span className="event-mode-field__hint">
+              Shown highlighted on the thank-you screen, after what happens next. Leave blank to hide it.
+            </span>
           </label>
 
           <div className="event-mode-colours">

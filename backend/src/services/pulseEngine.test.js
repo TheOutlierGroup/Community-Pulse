@@ -345,7 +345,8 @@ test('sponsorshipConfigFromOrgSettings falls back to platform defaults with no o
   const config = sponsorshipConfigFromOrgSettings(null);
   assert.equal(config.receivedThreshold, 14);
   assert.equal(config.capacityThreshold, 14);
-  assert.deepEqual(config.loadBandBoundaries, { sustainableMin: 8, stretchedMin: 6, atCapacityMin: 4 });
+  // Manager Load is MQ5 + MQ6 + MQ15 + MQ16 (4 to 20): Study Reference Guide 4.3.
+  assert.deepEqual(config.loadBandBoundaries, { sustainableMin: 16, stretchedMin: 11, atCapacityMin: 6 });
   assert.equal(config.teamTableDisplayLimit, 50);
   assert.equal(config.aiSignalsEnabled, true);
 });
@@ -358,12 +359,17 @@ test('sponsorshipConfigFromOrgSettings applies a partial override without losing
   const config = sponsorshipConfigFromOrgSettings({
     sponsorshipAnalysisConfig: {
       receivedThreshold: 16,
-      loadBandBoundaries: { sustainableMin: 9 },
+      loadBandBoundaries: { sustainableMin: 17 },
       aiSignalsEnabled: false,
     },
   });
   assert.equal(config.receivedThreshold, 16);
   assert.equal(config.capacityThreshold, 14); // untouched default
-  assert.deepEqual(config.loadBandBoundaries, { sustainableMin: 9, stretchedMin: 6, atCapacityMin: 4 });
+  assert.deepEqual(config.loadBandBoundaries, { sustainableMin: 17, stretchedMin: 11, atCapacityMin: 6 });
+  // Cut-offs saved on the old 10-point scale are ignored, not misapplied.
+  const legacy = sponsorshipConfigFromOrgSettings({
+    sponsorshipAnalysisConfig: { loadBandBoundaries: { sustainableMin: 9, stretchedMin: 6, atCapacityMin: 4 } },
+  });
+  assert.deepEqual(legacy.loadBandBoundaries, { sustainableMin: 16, stretchedMin: 11, atCapacityMin: 6 });
   assert.equal(config.aiSignalsEnabled, false);
 });

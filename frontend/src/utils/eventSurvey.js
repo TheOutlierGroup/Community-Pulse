@@ -51,34 +51,53 @@ export function answeredProgressPercent(answers, questions) {
   return Math.round((answeredCount(answers, questions) / total) * 100);
 }
 
-// ── Per-tab answer drafts ────────────────────────────────────────────────
-// sessionStorage stays with the tab (it survives a locked phone, a reload
-// or a discarded-and-restored tab) and never reaches other tabs, devices
-// or the server. Every access is guarded: storage can be unavailable.
+// ── Answer drafts on this device ─────────────────────────────────────────
+// localStorage (not sessionStorage), so tapping the invite link again opens
+// a new tab that still has the answers. Keyed by the respondent's own link,
+// expires after 14 days, cleared on submit, and never sent anywhere. Every
+// access is guarded: storage can be unavailable.
 
-export function readAnswerDraft(key, storage = globalThis.sessionStorage) {
+const DRAFT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+function defaultStorage() {
+  try {
+    return globalThis.localStorage || null;
+  } catch {
+    return null;
+  }
+}
+
+function validAnswers(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw).filter(([id, v]) => /^M?Q\d{1,2}$/.test(id) && Number.isInteger(v) && v >= 1 && v <= 5)
+  );
+}
+
+export function readAnswerDraft(key, storage = defaultStorage(), now = Date.now()) {
   if (!key || !storage) return {};
   try {
     const parsed = JSON.parse(storage.getItem(key) || '{}');
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([id, v]) => /^M?Q\d{1,2}$/.test(id) && Number.isInteger(v) && v >= 1 && v <= 5)
-    );
+    if (parsed && typeof parsed === 'object' && 'answers' in parsed) {
+      if (!Number.isFinite(parsed.savedAt) || now - parsed.savedAt > DRAFT_TTL_MS) return {};
+      return validAnswers(parsed.answers);
+    }
+    return validAnswers(parsed);
   } catch {
     return {};
   }
 }
 
-export function writeAnswerDraft(key, answers, storage = globalThis.sessionStorage) {
+export function writeAnswerDraft(key, answers, storage = defaultStorage(), now = Date.now()) {
   if (!key || !storage) return;
   try {
-    storage.setItem(key, JSON.stringify(answers || {}));
+    storage.setItem(key, JSON.stringify({ savedAt: now, answers: answers || {} }));
   } catch {
     /* storage full or blocked: drafts are a convenience only */
   }
 }
 
-export function clearAnswerDraft(key, storage = globalThis.sessionStorage) {
+export function clearAnswerDraft(key, storage = defaultStorage()) {
   if (!key || !storage) return;
   try {
     storage.removeItem(key);
