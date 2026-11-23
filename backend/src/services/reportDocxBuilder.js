@@ -1018,7 +1018,7 @@ function teamSuppressionNote(reportData) {
   const min = reportData?.suppression?.min_sample_size ?? 5;
   const suppressed = reportData?.suppression?.suppressed_team_count ?? 0;
   // RED-070: Rhythm Engine responses are confidential, not anonymous.
-  const base = `To keep individual responses confidential, scores are withheld for any team with fewer than ${min} responses. Manager Load reflects the team's lead manager and is withheld on the same basis, and until at least ${min} managers across the organisation have responded.`;
+  const base = `To keep individual responses confidential, team scores use staff responses only, and are withheld for any team with fewer than ${min} staff responses. Manager Load reflects the team's lead manager and is withheld on the same basis, and until at least ${min} managers across the organisation have responded.`;
   if (!suppressed) return base;
   const plural = suppressed === 1 ? 'team is' : 'teams are';
   return `${base} ${suppressed} ${plural} shown as "Insufficient data" on that basis.`;
