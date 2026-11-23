@@ -10,6 +10,17 @@ import {
   readDownloadErrorMessage,
 } from '../components/platform/reportGeneratorHelpers.js';
 import { crmAppBaseUrl } from '../config/appSurface.js';
+import { brandStyleVars, brandUsesLightText } from '../utils/eventModeTheme.js';
+import {
+  EVENT_CHAIN_COPY,
+  EVENT_HEADINGS,
+  EVENT_LIST_LIMIT,
+  EVENT_LOAD_COPY,
+  EVENT_QUADRANT_COPY,
+  limitGroupedRowsByRisk,
+  rankChainRowsByRisk,
+} from '../utils/eventModeDashboard.js';
+import '../styles/eventMode.css';
 
 const PULSE_DASHBOARD_RETRY_DELAYS_MS = [500, 1200, 2500, 4500];
 const QUADRANT_ORDER = ['Motivated but Lost', 'Optimal', 'High Risk', 'Capable but Wary'];
@@ -693,6 +704,7 @@ export default function PlatformClientPulse() {
   const {
     org,
     orgId,
+    clientLogoUrl,
     pulseSelectedManagerIds: selectedManagerIds,
     setPulseSelectedManagerIds,
     pulseIncludeManagerSelf: includeManagerSelf,
@@ -709,6 +721,29 @@ export default function PlatformClientPulse() {
   const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // Event mode (temporary per-client presentation layer): compact, branded
+  // dashboard with plain-English labels and capped lists.
+  const [eventModeInfo, setEventModeInfo] = useState(null);
+  const [eventShowAllTeams, setEventShowAllTeams] = useState(false);
+  const [eventShowAllChainTeams, setEventShowAllChainTeams] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setEventModeInfo(null);
+    if (!orgId) return undefined;
+    api
+      .get(`/api/platform/organizations/${orgId}/event-mode`)
+      .then(({ data }) => {
+        if (!cancelled) setEventModeInfo(data?.eventMode || null);
+      })
+      .catch(() => {
+        if (!cancelled) setEventModeInfo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+  const eventActive = Boolean(eventModeInfo?.active);
+  const eventTheme = eventActive ? eventModeInfo.theme : null;
   const [groupInviteMap, setGroupInviteMap] = useState({});
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(true);
@@ -1596,9 +1631,50 @@ export default function PlatformClientPulse() {
     );
   }
 
+  const eventChainRows = eventActive
+    ? rankChainRowsByRisk(dashboard?.sponsorshipAnalysis?.section5?.rows || [])
+    : dashboard?.sponsorshipAnalysis?.section5?.rows || [];
+  const shownChainRows = eventActive && !eventShowAllChainTeams
+    ? eventChainRows.slice(0, EVENT_LIST_LIMIT)
+    : eventChainRows;
+  const eventGroupedRows = eventActive
+    ? limitGroupedRowsByRisk(visibleGroupedTeamRows, { showAll: eventShowAllTeams })
+    : null;
+  const shownGroupedRows = eventGroupedRows ? eventGroupedRows.rows : visibleGroupedTeamRows;
+  const headlineCopy = EVENT_QUADRANT_COPY[headlineQuadrant.name] || null;
+
   return (
-    <div className="pulse-prototype-page">
-      {showTopSummaryCard ? (
+    <div
+      className={`pulse-prototype-page${eventActive ? ' event-mode-dash' : ''}${
+        eventActive && brandUsesLightText(eventTheme) ? ' brand-light-text' : ''
+      }`}
+      style={eventActive ? brandStyleVars(eventTheme) : undefined}
+    >
+      {eventActive && showTopSummaryCard ? (
+        <section className="card event-dash-header">
+          {clientLogoUrl ? <img src={clientLogoUrl} alt="" className="event-dash-header__logo" /> : null}
+          <div className="event-dash-header__titles">
+            <h2 className="event-dash-header__title">{eventModeInfo.changeName || org?.name || pageTitle}</h2>
+            <p className="event-dash-header__meta">
+              {pageTitle} · {selectedTimepointLabel}
+              {showingSponsorshipOnly ? ' · managers only' : ''}
+            </p>
+          </div>
+          <p className="event-dash-header__responses">
+            <strong>{topCardTotalResponses}</strong> of {topCardInvitedTotal} responded ({formatPercent(topCardParticipationRate)})
+            {managerFocusedTopCard ? null : (
+              <>
+                <br />
+                Staff {topCardEmployeeResponses} · Managers {topCardManagerResponses}
+              </>
+            )}
+          </p>
+          <button type="button" className="btn btn-ghost" onClick={loadDashboard} disabled={loading}>
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </section>
+      ) : null}
+      {!eventActive && showTopSummaryCard ? (
         <section className="pulse-clean-header card">
         <div className="pulse-clean-header__top">
           <div>
@@ -1737,7 +1813,108 @@ export default function PlatformClientPulse() {
         </section>
       ) : null}
 
-      {showingFullDashboard ? (
+      {showingFullDashboard && eventActive ? (
+        <>
+          <section className="event-dash-answer">
+            <article className="card event-dash-tile">
+              <p className="event-dash-tile__label">{EVENT_HEADINGS.likelihood}</p>
+              {orgSampleSizeMet ? (
+                <>
+                  <p className="event-dash-tile__value">
+                    {headlineQuadrant.name}{' '}
+                    <small>
+                      {launchStatusLabel}
+                      {headlineQuadrant.fromOrgAverage ? ` · ${formatPercent(headlineQuadrant.percent)} of respondents` : ''}
+                    </small>
+                  </p>
+                  {headlineCopy ? <p className="event-dash-tile__text">{headlineCopy.subtitle}</p> : null}
+                  {headlineCopy ? <p className="event-dash-tile__action">{headlineCopy.action}</p> : null}
+                </>
+              ) : (
+                <p className="event-dash-tile__text">
+                  Hidden to protect confidentiality: fewer than {minSampleSize} responses.
+                </p>
+              )}
+            </article>
+            {[
+              ['Are your people ready?', 'Adoption readiness', adoptionScore],
+              ['Can your managers drive the change?', 'Sponsorship credibility', sponsorshipScore],
+            ].map(([question, measure, score]) => (
+              <article key={measure} className="card event-dash-tile">
+                <p className="event-dash-tile__label">{question}</p>
+                <p
+                  className="event-dash-tile__value"
+                  style={Number.isFinite(score) ? { color: score >= threshold ? 'var(--pulse-green)' : 'var(--pulse-red)' } : undefined}
+                >
+                  {formatScore(score)} <small>/40</small>
+                </p>
+                <p className="event-dash-tile__text">
+                  {measure}:{' '}
+                  <strong>
+                    {Number.isFinite(score)
+                      ? score >= threshold
+                        ? `above the ${threshold}-point line`
+                        : `below the ${threshold}-point line`
+                      : 'not enough responses yet'}
+                  </strong>
+                </p>
+              </article>
+            ))}
+          </section>
+
+          <section className="card pulse-org-likelihood">
+            {orgSampleSizeMet ? (
+              <div className="pulse-clean-readiness__quadrants">
+                {quadrants.map((quadrant) => (
+                  <div
+                    key={`event-${quadrant.name}`}
+                    className={`pulse-clean-readiness__quadrant pulse-clean-readiness__quadrant--${quadrantTone(quadrant.name)}`}
+                  >
+                    <p className="pulse-clean-readiness__quadrant-percent">{formatPercent(quadrant.percent)}</p>
+                    <p className="pulse-clean-readiness__quadrant-name">{quadrant.name}</p>
+                    {EVENT_QUADRANT_COPY[quadrant.name] ? (
+                      <p className="pulse-clean-readiness__quadrant-desc">{EVENT_QUADRANT_COPY[quadrant.name].subtitle}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="pulse-sa-card__explainer" role="note" style={{ margin: 0 }}>
+                Hidden to protect confidentiality: fewer than {minSampleSize} responses.
+              </p>
+            )}
+            <details className="event-survey__why" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+              <summary>What these scores measure</summary>
+              <p className="pulse-sa-card__explainer" style={{ margin: '0 0.8rem 0.6rem' }}>
+                Each score adds up eight statements rated 1 to 5, on a 40-point scale. The {threshold}-point line is an
+                average of 3.5: people leaning positive rather than sitting on the fence. Adoption readiness covers
+                capability, track record, change load and manager support. Sponsorship credibility covers how visibly
+                and honestly senior leaders back the change.
+              </p>
+            </details>
+            {micDropScenarios.length > 0 ? (
+              <details className="event-survey__why" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
+                <summary>See scenarios ({micDropScenarios.length})</summary>
+                <div className="pulse-clean-exec__scenarios" style={{ margin: '0 0.6rem 0.6rem' }}>
+                  {micDropScenarios.map((scenario) => (
+                    <article key={scenario.id} className="pulse-clean-exec__scenario">
+                      <p className="pulse-clean-exec__scenario-tag">{scenario.tag}</p>
+                      <h4 className="pulse-clean-exec__scenario-title">{scenario.title}</h4>
+                      <p className="pulse-clean-exec__scenario-text">{scenario.textA}</p>
+                      <p className="pulse-clean-exec__scenario-text">{scenario.textB}</p>
+                      <p className="pulse-clean-exec__scenario-outcome">
+                        <strong>Projected outcome:</strong> {scenario.outcome}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+          </section>
+        </>
+      ) : null}
+
+      {showingFullDashboard && !eventActive ? (
         <>
           <section className="pulse-org-overview">
             <article className="card pulse-org-overview__score-card">
@@ -1880,7 +2057,7 @@ export default function PlatformClientPulse() {
                 </>
               ) : (
                 <p className="pulse-sa-card__explainer" role="note">
-                  Insufficient data — this view has fewer than {minSampleSize} respondents, so quadrant
+                  Insufficient data: this view has fewer than {minSampleSize} respondents, so quadrant
                   and score results are hidden to keep individual responses confidential. Results will
                   appear once at least {minSampleSize} responses are completed.
                 </p>
@@ -1987,11 +2164,13 @@ export default function PlatformClientPulse() {
           ) : (
           <>
           {/* ─── SECTION 1: SUB-SCORE OVERVIEW ─── */}
-          <div className="pulse-sa-card">
+          <div className={`pulse-sa-card${eventActive ? ' event-sa-scores' : ''}`}>
             <p className="pulse-sa-card__label">
-              {dashboard?.sponsorshipAnalysis?.section1?.cardLabel || 'AVG SCORE OVERVIEW · MANAGER COHORT ONLY'}
+              {eventActive
+                ? 'Manager scores'
+                : dashboard?.sponsorshipAnalysis?.section1?.cardLabel || 'AVG SCORE OVERVIEW · MANAGER COHORT ONLY'}
             </p>
-            <p className="pulse-sa-card__explainer">
+            <p className="pulse-sa-card__explainer" hidden={eventActive}>
               {dashboard?.sponsorshipAnalysis?.section1?.explainer
                 || "The two average scores shown here reflect the manager cohort only and will differ from organisation-wide figures. Together, they show whether sponsorship is flowing properly through your management layer: not just whether managers are supported from above, but whether they're equipped to pass that support down to their own teams. Both must be HIGH for the sponsorship chain to be considered functioning."}
             </p>
@@ -2025,7 +2204,7 @@ export default function PlatformClientPulse() {
                     ? 'Above Threshold'
                     : 'Below Threshold'}
                 </span>
-                <div className="pulse-sa-subscore__what">
+                <div className="pulse-sa-subscore__what" hidden={eventActive}>
                   <p className="pulse-sa-subscore__what-label">What this measures</p>
                   <p>{dashboard?.sponsorshipAnalysis?.section1?.whatThisMeasures?.received
                     || 'Whether senior leaders are visibly modelling the change, staying present under pressure, communicating the rationale clearly, and speaking with one voice.'}</p>
@@ -2060,14 +2239,14 @@ export default function PlatformClientPulse() {
                     ? 'Above Threshold'
                     : 'Below Threshold'}
                 </span>
-                <div className="pulse-sa-subscore__what">
+                <div className="pulse-sa-subscore__what" hidden={eventActive}>
                   <p className="pulse-sa-subscore__what-label">What this measures</p>
                   <p>{dashboard?.sponsorshipAnalysis?.section1?.whatThisMeasures?.capacity
                     || 'Whether managers have the autonomy, organisational support, personal resilience, and change leadership skills to sponsor their own teams effectively.'}</p>
                 </div>
               </article>
             </div>
-            {sponsorshipSignals?.subScores?.text ? (
+            {!eventActive && sponsorshipSignals?.subScores?.text ? (
               <div className="pulse-sa-signal pulse-sa-signal--amber">
                 <span className="pulse-sa-signal__label">Insight</span>
                 {renderSignalMarkup(sponsorshipSignals.subScores.text)}
@@ -2083,12 +2262,15 @@ export default function PlatformClientPulse() {
             </div>
           </div>
 
+          <div style={{ display: 'contents' }}>
           {/* ─── SECTION 2: MANAGER LOAD ─── */}
           <div className="pulse-sa-card">
             <p className="pulse-sa-card__label">
-              {dashboard?.sponsorshipAnalysis?.section2?.cardLabel || 'Section 2 — Manager Load Report'}
+              {eventActive
+                ? 'Manager load'
+                : dashboard?.sponsorshipAnalysis?.section2?.cardLabel || 'Section 2 — Manager Load Report'}
             </p>
-            <p className="pulse-sa-card__explainer">
+            <p className="pulse-sa-card__explainer" hidden={eventActive}>
               {dashboard?.sponsorshipAnalysis?.section2?.explainer
                 || 'Measures the current capacity of each manager to absorb and lead additional change — scored from four questions about their workload, bandwidth, and self-reported saturation level.'}
             </p>
@@ -2111,11 +2293,13 @@ export default function PlatformClientPulse() {
                     {formatPercent(item.percent)}
                   </p>
                   <p className="pulse-sa-load-cell__name">{item.band}</p>
-                  <p className="pulse-sa-load-cell__desc">{loadBandDescription(item.band)}</p>
+                  <p className="pulse-sa-load-cell__desc">
+                    {eventActive ? EVENT_LOAD_COPY[item.band] : loadBandDescription(item.band)}
+                  </p>
                 </article>
               ))}
             </div>
-            {sponsorshipSignals?.load?.text ? (
+            {!eventActive && sponsorshipSignals?.load?.text ? (
               <div className="pulse-sa-signal pulse-sa-signal--red">
                 <span className="pulse-sa-signal__label">Insight</span>
                 {sponsorshipSignals.load.text}
@@ -2126,9 +2310,11 @@ export default function PlatformClientPulse() {
           {/* ─── SECTION 3: CHAIN MATRIX ─── */}
           <div className="pulse-sa-card">
             <p className="pulse-sa-card__label">
-              {dashboard?.sponsorshipAnalysis?.section3?.cardLabel || 'Section 3 — Sponsorship Chain Matrix'}
+              {eventActive
+                ? 'Support chain'
+                : dashboard?.sponsorshipAnalysis?.section3?.cardLabel || 'Section 3 — Sponsorship Chain Matrix'}
             </p>
-            <p className="pulse-sa-card__explainer">
+            <p className="pulse-sa-card__explainer" hidden={eventActive}>
               {dashboard?.sponsorshipAnalysis?.section3?.explainer
                 || 'Classifies each manager respondent into one of four sponsorship chain states by crossing whether they are receiving adequate senior sponsorship with whether they have the capacity to sponsor their own team.'}
             </p>
@@ -2144,7 +2330,9 @@ export default function PlatformClientPulse() {
                       {formatPercent(item.percent)}
                     </p>
                     <p className="pulse-sa-chain-tile__name">{quad.label}</p>
-                    <p className="pulse-sa-load-cell__desc">{quad.description}</p>
+                    <p className="pulse-sa-load-cell__desc">
+                      {eventActive ? EVENT_CHAIN_COPY[quad.backendName] : quad.description}
+                    </p>
                   </article>
                 );
               })}
@@ -2153,7 +2341,7 @@ export default function PlatformClientPulse() {
               <span>← Low received sponsorship</span>
               <span>High received sponsorship →</span>
             </div>
-            {sponsorshipSignals?.chain?.text ? (
+            {!eventActive && sponsorshipSignals?.chain?.text ? (
               <div className="pulse-sa-signal pulse-sa-signal--orange">
                 <span className="pulse-sa-signal__label">Note</span>
                 {renderSignalMarkup(sponsorshipSignals.chain.text)}
@@ -2161,14 +2349,18 @@ export default function PlatformClientPulse() {
             ) : null}
           </div>
 
+          </div>
+
           {/* ─── SECTION 4: TEAM-LEVEL SPONSORSHIP CHAIN ─── */}
           {(dashboard?.sponsorshipAnalysis?.section5?.rows?.length > 0) ? (
             <div className="pulse-sa-card">
               <p className="pulse-sa-card__label">
-                {dashboard.sponsorshipAnalysis.section5.cardLabel || 'Section 4 — Team-Level Sponsorship Chain Breakdown'}
+                {eventActive
+                  ? `Teams most at risk${eventShowAllChainTeams ? '' : ` · top ${Math.min(EVENT_LIST_LIMIT, eventChainRows.length)} of ${eventChainRows.length}`}`
+                  : dashboard.sponsorshipAnalysis.section5.cardLabel || 'Section 4 — Team-Level Sponsorship Chain Breakdown'}
               </p>
-              <p className="pulse-sa-card__explainer">
-                {dashboard.sponsorshipAnalysis.section5.explainer
+              <p className="pulse-sa-card__explainer" hidden={eventActive}>
+                {eventActive ? null : dashboard.sponsorshipAnalysis.section5.explainer
                   || 'Maps the sponsorship chain state to each team — distinguishing teams with local failure from those experiencing the broader organisational pattern, and identifying which teams require targeted pre-launch engagement.'}
               </p>
               <div className="pulse-sa-table-wrap">
@@ -2184,7 +2376,7 @@ export default function PlatformClientPulse() {
                     </tr>
                   </thead>
                   <tbody>
-                    {dashboard.sponsorshipAnalysis.section5.rows.map((row) => {
+                    {shownChainRows.map((row) => {
                       // A null chainState means this team fell below the
                       // anonymity floor (see orgRoutes.js teamRows) — name
                       // and response count still show, matching the
@@ -2201,7 +2393,7 @@ export default function PlatformClientPulse() {
                             {suppressed ? (
                               <span
                                 className="pulse-sa-chain-pill pulse-sa-chain-pill--suppressed"
-                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to keep individual responses confidential.`}
+                                title={`Insufficient data: fewer than ${minSampleSize} respondents, hidden to keep individual responses confidential.`}
                               >
                                 Protected
                               </span>
@@ -2215,7 +2407,7 @@ export default function PlatformClientPulse() {
                             {suppressed ? (
                               <span
                                 className="pulse-sa-load-text pulse-sa-load-text--suppressed"
-                                title={`Insufficient data — fewer than ${minSampleSize} respondents, hidden to keep individual responses confidential.`}
+                                title={`Insufficient data: fewer than ${minSampleSize} respondents, hidden to keep individual responses confidential.`}
                               >
                                 Protected
                               </span>
@@ -2233,12 +2425,21 @@ export default function PlatformClientPulse() {
                   </tbody>
                 </table>
               </div>
-              {dashboard.sponsorshipAnalysis.section5.totalRows > dashboard.sponsorshipAnalysis.section5.rows.length ? (
+              {eventActive && eventChainRows.length > EVENT_LIST_LIMIT ? (
+                <div className="event-dash-more">
+                  <button type="button" className="btn btn-ghost" onClick={() => setEventShowAllChainTeams((v) => !v)}>
+                    {eventShowAllChainTeams
+                      ? `Show the ${EVENT_LIST_LIMIT} most at-risk teams`
+                      : `View all ${eventChainRows.length} teams`}
+                  </button>
+                </div>
+              ) : null}
+              {!eventActive && dashboard.sponsorshipAnalysis.section5.totalRows > dashboard.sponsorshipAnalysis.section5.rows.length ? (
                 <p className="pulse-sa-card__explainer" style={{ marginTop: '0.5rem', fontStyle: 'italic' }}>
                   Showing {dashboard.sponsorshipAnalysis.section5.rows.length} of {dashboard.sponsorshipAnalysis.section5.totalRows} teams
                 </p>
               ) : null}
-              {sponsorshipSignals?.teams?.text ? (
+              {!eventActive && sponsorshipSignals?.teams?.text ? (
                 <div className="pulse-sa-signal pulse-sa-signal--red">
                   <span className="pulse-sa-signal__label">Insight</span>
                   {renderSignalMarkup(sponsorshipSignals.teams.text)}
@@ -2254,9 +2455,11 @@ export default function PlatformClientPulse() {
       {showTeamLevelSection ? (
         <section className="pulse-clean-dimensions card">
           <div className="pulse-clean-dimensions__head">
-            <p className="pulse-clean-dimensions__eyebrow">Team-Level Overview</p>
-            <h3 className="pulse-clean-dimensions__title">Employee/Manager Dimension Heatmap</h3>
-            <p className="pulse-clean-dimensions__explainer">
+            <p className="pulse-clean-dimensions__eyebrow" hidden={eventActive}>Team-Level Overview</p>
+            <h3 className="pulse-clean-dimensions__title">
+              {eventActive ? EVENT_HEADINGS.heatmap : 'Employee/Manager Dimension Heatmap'}
+            </h3>
+            <p className="pulse-clean-dimensions__explainer" hidden={eventActive}>
               The detail behind the dimension scores. Employee and manager responses sit side by side so you can see precisely what is driving a weak result and whether both groups are telling the same story.
             </p>
           </div>
@@ -2284,6 +2487,46 @@ export default function PlatformClientPulse() {
           ) : null}
           {dimensionHeatmapRows.length === 0 ? (
             <p className="muted">No dimension data available yet.</p>
+          ) : eventActive ? (
+            <div className="table-wrap">
+              <table className="event-theme-table">
+                <thead>
+                  <tr>
+                    <th>Theme</th>
+                    <th>Staff</th>
+                    <th>Managers</th>
+                    <th title="Manager score minus staff score">Gap</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dimensionHeatmapRows.map((row) => {
+                    const gap = Number.isFinite(row.employee.avg) && Number.isFinite(row.manager.avg)
+                      ? row.manager.avg - row.employee.avg
+                      : null;
+                    return (
+                      <tr key={row.id}>
+                        <td>
+                          <span className="event-theme-table__id">{row.id}</span> {row.employeeLabel}
+                          {row.managerLabel && row.managerLabel !== row.employeeLabel ? (
+                            <span className="event-theme-table__alt"> · managers: {row.managerLabel}</span>
+                          ) : null}
+                        </td>
+                        {[row.employee.avg, row.manager.avg].map((value, i) => (
+                          <td key={i}>
+                            <span className={`pulse-clean-dimensions__heat pulse-clean-dimensions__heat--${heatTone(value)}`}>
+                              {Number.isFinite(value) ? value.toFixed(1) : '--'}
+                            </span>
+                          </td>
+                        ))}
+                        <td className={row.comparable && row.perceptionGapFlagged ? 'event-theme-table__gap--flagged' : ''}>
+                          {row.comparable ? formatSignedGap(gap) : 'n/a'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="pulse-clean-dimensions__columns">
               {dimensionHeatmapColumns.map((columnRows, columnIndex) => (
@@ -2301,7 +2544,7 @@ export default function PlatformClientPulse() {
                       <tr>
                         <th>ID</th>
                         <th>Question / Construct</th>
-                        <th>Emp</th>
+                        <th>{eventActive ? 'Staff' : 'Emp'}</th>
                         <th>Mgr</th>
                         <th title="Manager score minus employee score. Positive: managers rate it higher than employees.">
                           Gap (Mgr&minus;Emp)
@@ -2339,7 +2582,7 @@ export default function PlatformClientPulse() {
       {showTeamLevelSection ? (
         <section className="pulse-clean-groups card">
         <div className="pulse-clean-groups__head">
-          <h3 style={{ margin: 0 }}>Team-Level Breakdown</h3>
+          <h3 style={{ margin: 0 }}>{eventActive ? EVENT_HEADINGS.teams : 'Team-Level Breakdown'}</h3>
           <p className="pulse-clean-groups__meta">
             {groupLevelLabels.length > 0 ? groupLevelLabels.join(' > ') : 'Group hierarchy'}
           </p>
@@ -2358,7 +2601,7 @@ export default function PlatformClientPulse() {
               </tr>
             </thead>
             <tbody>
-              {visibleGroupedTeamRows.map((row) => (
+              {shownGroupedRows.map((row) => (
                 <tr key={row.key}>
                   <td className="pulse-clean-groups__name">
                     <div className="pulse-clean-groups__name-content" style={{ paddingLeft: `${row.depth * 1.1}rem` }}>
@@ -2443,6 +2686,15 @@ export default function PlatformClientPulse() {
             </tbody>
           </table>
         </div>
+        {eventGroupedRows && eventGroupedRows.totalGroups > EVENT_LIST_LIMIT ? (
+          <div className="event-dash-more">
+            <button type="button" className="btn btn-ghost" onClick={() => setEventShowAllTeams((v) => !v)}>
+              {eventShowAllTeams
+                ? `Show the ${EVENT_LIST_LIMIT} most at-risk groups`
+                : `View all ${eventGroupedRows.totalGroups} groups`}
+            </button>
+          </div>
+        ) : null}
         {groupedTeamRows.length > 0 ? (
           <p className="muted" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
             &ldquo;--&rdquo; means withheld to keep individual responses confidential: a group&apos;s

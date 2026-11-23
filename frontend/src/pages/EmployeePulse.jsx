@@ -6,6 +6,7 @@ import Layout from '../components/shared/Layout.jsx';
 import { CLIENT_SERVICE_PULSE, getPostLoginPath, userHasService } from '../utils/postLogin.js';
 import SurveyQuestionStep from '../components/employee/SurveyQuestionStep.jsx';
 import Step5Reflection from '../components/employee/Step5Reflection.jsx';
+import { missingQuestionIds, missingAnswersMessage } from '../utils/surveyText.js';
 import { normalizePulseStage } from '../utils/pulseStage.js';
 
 function buildStepPayload(questions, answers) {
@@ -45,6 +46,7 @@ export default function EmployeePulse() {
   const [answers, setAnswers] = useState({});
   const [reflection, setReflection] = useState(null);
   const [error, setError] = useState('');
+  const [missingIds, setMissingIds] = useState([]);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -88,14 +90,24 @@ export default function EmployeePulse() {
     if (user?.role === 'employee') load();
   }, [user, load]);
 
+  function flagMissing(ids, message) {
+    setMissingIds(ids);
+    setError(message);
+    window.setTimeout(() => {
+      const el = document.getElementById(`survey-q-${ids[0]}`);
+      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+  }
+
   async function saveStep(nextStep) {
     if (!session) return;
     const stepQuestions = questions.slice((step - 1) * 4, step * 4);
-    const missing = stepQuestions.some((question) => !answers[question.id]);
-    if (missing) {
-      setError('Please answer all questions on this page before continuing.');
+    const missing = missingQuestionIds(stepQuestions, answers);
+    if (missing.length) {
+      flagMissing(missing, `${missingAnswersMessage(missing.length)} They're highlighted below.`);
       return;
     }
+    setMissingIds([]);
     setBusy(true);
     setError('');
     try {
@@ -113,11 +125,14 @@ export default function EmployeePulse() {
   }
 
   async function complete() {
-    const missing = questions.some((question) => !answers[question.id]);
-    if (missing) {
-      setError('Please answer all 16 questions before submitting.');
+    const missing = missingQuestionIds(questions, answers);
+    if (missing.length) {
+      const firstStep = Math.floor(questions.findIndex((q) => q.id === missing[0]) / 4) + 1;
+      if (firstStep >= 1 && firstStep !== step) setStep(firstStep);
+      flagMissing(missing, `${missingAnswersMessage(missing.length)} Please answer them before you submit.`);
       return;
     }
+    setMissingIds([]);
     setBusy(true);
     setError('');
     try {
@@ -177,7 +192,11 @@ export default function EmployeePulse() {
                 questions={questions.slice((step - 1) * 4, step * 4)}
                 startQuestionNumber={(step - 1) * 4 + 1}
                 answers={answers}
-                onAnswer={(id, value) => setAnswers((current) => ({ ...current, [id]: value }))}
+                missingIds={missingIds}
+                onAnswer={(id, value) => {
+                  setAnswers((current) => ({ ...current, [id]: value }));
+                  setMissingIds((current) => current.filter((qid) => qid !== id));
+                }}
               />
             )}
             {step === 5 && <Step5Reflection reflection={reflection} surveyCopy={surveyCopy} />}

@@ -1,0 +1,695 @@
+/* Event mode: admin panel, survey change-context block and compact dashboard.
+   Brand colours arrive as CSS custom properties set on a wrapper element
+   (see utils/eventModeTheme.js); status colours are never overridden. */
+
+/* ── Shared ─────────────────────────────────────────────────────────── */
+
+.brand-light-text .btn-primary::after {
+  filter: invert(1);
+}
+
+.event-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--surface2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.event-mode-badge--on {
+  background: #ecfdf3;
+  color: #166534;
+  border-color: #86efac;
+}
+
+/* ── Admin panel ────────────────────────────────────────────────────── */
+
+.event-mode-panel {
+  margin-bottom: 1.25rem;
+}
+
+.event-mode-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.event-mode-panel__head .btn {
+  margin-left: auto;
+}
+
+.event-mode-panel__intro {
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0.75rem;
+  max-width: 70ch;
+}
+
+.event-mode-panel__warn {
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #7c2d12;
+}
+
+.event-mode-panel__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .event-mode-panel__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.event-mode-panel__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.event-mode-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.event-mode-field__label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.event-mode-field__hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.event-mode-field input[type='text'],
+.event-mode-field textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 0.92rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+
+.event-mode-colours {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.event-mode-colour-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.event-mode-colour-input input[type='color'] {
+  width: 44px;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.event-mode-stage-tabs {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.event-mode-stage-tab {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.35rem 0.8rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.event-mode-stage-tab--active {
+  background: var(--text);
+  color: var(--surface);
+  border-color: var(--text);
+}
+
+.event-mode-stage-tab__missing {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.event-mode-preview {
+  position: sticky;
+  top: 1rem;
+}
+
+.event-mode-preview__caption {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 0.4rem;
+}
+
+.event-mode-preview__card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  background: var(--surface);
+  border-top: 4px solid var(--accent);
+  text-align: center;
+}
+
+.event-mode-preview__card .btn-primary {
+  min-width: 0;
+  margin-top: 0.5rem;
+}
+
+.event-mode-preview__logo {
+  max-height: 44px;
+  max-width: 160px;
+  object-fit: contain;
+  margin-bottom: 0.5rem;
+}
+
+.event-mode-preview__eyebrow {
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+  color: var(--brand-text, var(--text));
+}
+
+/* ── Change context block (survey welcome and admin preview) ─────────── */
+
+.change-context {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  text-align: left;
+  border-radius: 10px;
+  background: rgba(var(--accent-rgb), 0.1);
+  border-left: 4px solid var(--accent);
+}
+
+.change-context__row {
+  margin: 0 0 0.5rem;
+}
+
+.change-context__row:last-child {
+  margin-bottom: 0;
+}
+
+.change-context dt {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--brand-text, var(--text));
+}
+
+.change-context dd {
+  margin: 0.1rem 0 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+/* ── Event mode survey ──────────────────────────────────────────────── */
+
+.event-survey {
+  border-top: 5px solid var(--accent);
+}
+
+.event-survey__logo {
+  max-height: 56px;
+  max-width: 200px;
+  object-fit: contain;
+}
+
+.event-survey__eyebrow {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.35rem;
+  color: var(--brand-text, var(--muted));
+}
+
+.event-survey__eyebrow strong {
+  font-weight: 800;
+}
+
+.event-survey__greeting {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 0.4rem;
+}
+
+.event-survey__intro {
+  margin: 0 0 1rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.event-survey__confidential {
+  margin: 0 0 0.75rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+
+.event-survey__time {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+
+.event-survey__welcome-extra {
+  text-align: left;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  margin: 0 0 1rem;
+  color: var(--muted);
+}
+
+.event-survey__progress {
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--surface2);
+  overflow: hidden;
+  margin: 0 0 1rem;
+}
+
+.event-survey__progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+
+.event-survey__why {
+  margin: 0 0 1rem;
+  font-size: 0.88rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.event-survey__why summary {
+  cursor: pointer;
+  padding: 0.5rem 0.8rem;
+  font-weight: 600;
+  color: var(--brand-text, var(--text));
+}
+
+.event-survey__why .change-context {
+  margin: 0 0.6rem 0.6rem;
+}
+
+.event-survey__next {
+  text-align: left;
+  margin: 1rem 0 0;
+}
+
+.event-survey__powered {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0.25rem auto 1.5rem;
+}
+
+/* ── Compact dashboard (Event mode) ─────────────────────────────────── */
+
+.event-dash-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  border-top: 4px solid var(--accent);
+}
+
+.event-dash-header__logo {
+  max-height: 40px;
+  max-width: 150px;
+  object-fit: contain;
+}
+
+.event-dash-header__titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.event-dash-header__title {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+
+.event-dash-header__meta {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.event-dash-header__responses {
+  margin-left: auto;
+  font-size: 0.88rem;
+  text-align: right;
+}
+
+.event-dash-header__responses strong {
+  font-size: 1.05rem;
+}
+
+.event-dash-answer {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 860px) {
+  .event-dash-answer {
+    grid-template-columns: 1fr;
+  }
+}
+
+.event-dash-tile {
+  padding: 0.9rem 1rem;
+  margin: 0;
+}
+
+.event-dash-tile__label {
+  margin: 0 0 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.event-dash-tile__value {
+  margin: 0;
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.event-dash-tile__value small {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.event-dash-tile__text {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.event-dash-tile__action {
+  margin: 0.4rem 0 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--brand-text, var(--text));
+}
+
+.event-dash-subtitle {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.event-dash-subtitle strong {
+  color: var(--brand-text, var(--text));
+}
+
+.event-dash-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+.event-dash-more .btn {
+  min-height: 36px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+/* Two-up layout for the manager view's load bands and chain matrix. */
+.event-mode-dash .pulse-sa__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .event-mode-dash .pulse-sa__pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.event-mode-dash .card {
+  margin-bottom: 0.75rem;
+}
+
+/* Statements render in regular weight so the one bolded key phrase stands out. */
+.event-survey .theme-row .label {
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.event-survey .theme-row .label strong {
+  font-weight: 750;
+  color: var(--brand-text, var(--text));
+}
+
+.event-mode-dash .pulse-sa__pair .pulse-sa-load-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.event-mode-dash .pulse-sa-subscore {
+  min-height: 0;
+}
+
+/* Team view: one row per theme instead of every statement. */
+.event-theme-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.event-theme-table th {
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.event-theme-table td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.event-theme-table th:not(:first-child),
+.event-theme-table td:not(:first-child) {
+  text-align: center;
+  width: 7rem;
+}
+
+.event-theme-table__id {
+  font-weight: 700;
+  color: var(--muted);
+  margin-right: 0.25rem;
+}
+
+.event-theme-table__alt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.event-theme-table__gap--flagged {
+  font-weight: 800;
+  color: var(--pulse-orange);
+}
+
+/* Manager view: smaller numbers and tighter cards so it fits one screen. */
+.event-mode-dash .pulse-sa-card {
+  padding: 0.9rem 1.1rem;
+}
+
+.event-mode-dash .pulse-sa {
+  gap: 0.75rem;
+}
+
+.event-mode-dash .pulse-sa-subscores {
+  gap: 0.6rem;
+}
+
+.event-mode-dash .pulse-sa-subscore {
+  padding: 0.6rem 0.8rem;
+}
+
+.event-mode-dash .pulse-sa-subscore__score {
+  font-size: 34px;
+  margin-top: 0.1rem;
+}
+
+.event-mode-dash .pulse-sa-chain-verdict {
+  margin-top: 0.6rem;
+}
+
+.event-mode-dash .pulse-sa-load-cell {
+  padding: 0.45rem 0.5rem;
+}
+
+.event-mode-dash .pulse-sa-load-cell__pct {
+  font-size: 30px;
+}
+
+.event-mode-dash .pulse-sa-chain-tile {
+  padding: 0.5rem 0.6rem;
+}
+
+.event-mode-dash .pulse-sa-chain-tile__pct {
+  font-size: 30px;
+}
+
+.event-mode-dash .pulse-sa-matrix td,
+.event-mode-dash .pulse-sa-matrix th {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.event-mode-dash .pulse-clean-dimensions,
+.event-mode-dash .pulse-clean-groups {
+  padding: 0.9rem 1.1rem;
+}
+
+.event-mode-dash .pulse-sa-subscore p {
+  margin-bottom: 0;
+}
+
+.event-mode-dash .pulse-sa-subscore__denom {
+  margin-top: 0.2rem;
+}
+
+.event-mode-dash .pulse-sa-axis {
+  display: none;
+}
+
+.event-mode-dash .pulse-sa-chain-tile .pulse-sa-load-cell__desc,
+.event-mode-dash .pulse-sa-load-cell__desc {
+  font-size: 0.76rem;
+  line-height: 1.35;
+  margin-top: 0.15rem;
+}
+
+.event-mode-dash .pulse-sa-chain-verdict__statement {
+  margin-bottom: 0.1rem;
+}
+
+.event-mode-dash .pulse-sa-card__label {
+  margin-bottom: 0.5rem;
+}
+
+.event-mode-dash .event-dash-more {
+  margin-top: 0.35rem;
+}
+
+/* Manager view, one screen: scores beside the verdict, load and support
+   chain as single rows of four. */
+.event-mode-dash .event-sa-scores {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 0.75rem 1rem;
+  align-items: center;
+}
+
+.event-mode-dash .event-sa-scores > .pulse-sa-card__label {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.event-mode-dash .event-sa-scores .pulse-sa-chain-verdict {
+  margin-top: 0;
+}
+
+.event-mode-dash .pulse-sa-load-grid,
+.event-mode-dash .pulse-sa-chain-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 960px) {
+  .event-mode-dash .event-sa-scores {
+    grid-template-columns: 1fr;
+  }
+
+  .event-mode-dash .pulse-sa-load-grid,
+  .event-mode-dash .pulse-sa-chain-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.event-mode-dash .pulse-sa-load-bar {
+  display: none;
+}
+
+.event-mode-dash .pulse-sa-matrix td,
+.event-mode-dash .pulse-sa-matrix th {
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+
+.event-mode-dash .pulse-sa-chain-pill {
+  padding-top: 0.1rem;
+  padding-bottom: 0.1rem;
+}
+
+.event-mode-dash .pulse-sa-chain-tile__name,
+.event-mode-dash .pulse-sa-load-cell__name {
+  margin: 0.1rem 0 0;
+}
+
+.event-mode-dash .pulse-prototype-page,
+.event-mode-dash.pulse-prototype-page {
+  padding-top: 0;
+}

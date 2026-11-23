@@ -7,6 +7,7 @@ import ModalDialog from '../components/shared/ModalDialog.jsx';
 import PlatformClientHeader from './PlatformClientHeader.jsx';
 import { Building2, Sparkles, Trash2 } from 'lucide-react';
 import LicenseConfigPanel from '../components/platform/LicenseConfigPanel.jsx';
+import EventModePanel from '../components/platform/EventModePanel.jsx';
 import { isWorkspaceUser, isEnterpriseClientSelfUser } from '../hooks/usePlatformAccess.js';
 import {
   CLIENT_SERVICE_LICENSEE,
@@ -60,6 +61,11 @@ export default function PlatformClientAccount() {
   const isEnterpriseClient =
     org.kind === 'client'
     && !org.parent_organization_id
+    && normalizeServices(org.settings).includes(CLIENT_SERVICE_PULSE);
+  // Event mode is set by platform staff only, for clients running Rhythm Engine.
+  const showEventModePanel =
+    org.kind === 'client'
+    && user?.organizationKind === 'platform'
     && normalizeServices(org.settings).includes(CLIENT_SERVICE_PULSE);
   const logoInputRef = useRef(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -289,6 +295,13 @@ export default function PlatformClientAccount() {
     <>
       <PlatformClientHeader orgName={org.name} logoSrc={clientLogoUrl} />
       {error && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
+      {showEventModePanel && (
+        <EventModePanel
+          orgId={orgId}
+          clientLogoUrl={clientLogoUrl}
+          hasLogo={Boolean(org.company_logo_filename)}
+        />
+      )}
       {(isLicenseeOrg || isEnterpriseClient) && isPlatformAdmin && (
         <LicenseConfigPanel
           orgId={orgId}

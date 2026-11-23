@@ -456,9 +456,9 @@ const MANAGER_STAGE_TEXT = {
 const STAGE_COPY = {
   pre: {
     employeeIntro:
-      'Before this change starts, we want to understand how ready the organisation is. Your honest responses are anonymous and help identify where support is needed.',
+      'Before this change starts, we want to understand how ready the organisation is. Your honest responses are confidential and help identify where support is needed.',
     managerIntro:
-      'Before this change starts, we want to understand manager readiness and support conditions. Your responses are anonymous and used in aggregate only.',
+      'Before this change starts, we want to understand manager readiness and support conditions. Your responses are confidential.',
     transition:
       'You have completed the first section. The next set of questions focuses on leadership sponsorship around this change.',
     reflection:
@@ -466,7 +466,7 @@ const STAGE_COPY = {
   },
   mid: {
     employeeIntro:
-      'This change is now underway, and we want to understand how it is going for you. Your honest responses are anonymous and will help the organisation focus support where needed.',
+      'This change is now underway, and we want to understand how it is going for you. Your honest responses are confidential and will help the organisation focus support where needed.',
     managerIntro:
       'This change is now underway. We want to understand how you are experiencing it as a manager, where pressure is highest, and what support is most useful right now.',
     transition:
@@ -487,7 +487,7 @@ const STAGE_COPY = {
 };
 
 const EMPLOYEE_QUESTION_SET_TRANSITION =
-  'These set of questions will enable us to better understand how change is supported within your organisation. Please rate each statement from 1 to 5, where 1 = Strongly Disagree and 5 = Strongly Agree.';
+  'This set of questions will enable us to better understand how change is supported within your organisation. Please rate each statement from 1 to 5, where 1 = Strongly Disagree and 5 = Strongly Agree.';
 const MANAGER_QUESTION_SET_TRANSITION =
   'As a manager, your perspective is invaluable. These questions explore your experience of leading through change and the conditions that enable you to do so effectively. Please rate each statement from 1 to 5, where 1 = Strongly Disagree and 5 = Strongly Agree.';
 

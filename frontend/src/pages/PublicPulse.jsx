@@ -8,6 +8,11 @@ import Step5Reflection from '../components/employee/Step5Reflection.jsx';
 import rhythmEngineLogo from '../images/rhythm-engine-logo.png';
 import { normalizePulseStage } from '../utils/pulseStage.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import EmphasisText from '../components/employee/EmphasisText.jsx';
+import { missingQuestionIds, missingAnswersMessage } from '../utils/surveyText.js';
+import { brandStyleVars, brandUsesLightText } from '../utils/eventModeTheme.js';
+import { eventSectionHeading, eventProgressPercent, EVENT_SURVEY_MINUTES } from '../utils/eventSurvey.js';
+import '../styles/eventMode.css';
 
 const EXPIRED_OR_INVALID_LINK_RE = /invalid or expired link/i;
 
@@ -75,9 +80,25 @@ export default function PublicPulse() {
   const [introStartBusy, setIntroStartBusy] = useState(false);
   const [capReached, setCapReached] = useState(false);
   const [brand, setBrand] = useState(null);
+  const [eventMode, setEventMode] = useState(null);
+  const [missingIds, setMissingIds] = useState([]);
+  const isEvent = Boolean(eventMode?.active);
   // RED-069: the survey tab carries the Practitioner's own name where one is
   // configured, otherwise Rhythm Engine; never the platform owner's name.
-  useDocumentTitle(String(brand?.displayName || '').trim() || 'Rhythm Engine');
+  // Event mode: the change name (or the client's name) instead.
+  useDocumentTitle(
+    (isEvent && (eventMode.changeName || eventMode.clientName))
+      || String(brand?.displayName || '').trim()
+      || 'Rhythm Engine'
+  );
+  const logoSrc = isEvent && eventMode.hasLogo
+    ? `/api/rhythm-engine-link/logo?token=${encodeURIComponent(token || '')}`
+    : brand?.logoUrl || rhythmEngineLogo;
+  const logoAlt = isEvent && eventMode.hasLogo
+    ? `${eventMode.clientName || 'Client'} logo`
+    : brand?.displayName || 'Rhythm Engine';
+  const themeStyle = isEvent ? brandStyleVars(eventMode.theme) : {};
+  const shellClass = isEvent && brandUsesLightText(eventMode.theme) ? 'brand-light-text' : '';
 
   function handlePossibleCapReached(err) {
     if (err?.response?.data?.capReached) {
@@ -101,6 +122,7 @@ export default function PublicPulse() {
       setSession(sRes.data.session);
       setSurveyAudience(sRes.data.surveyAudience ?? null);
       setBrand(sRes.data.brand || null);
+      setEventMode(sRes.data.eventMode || null);
       if (!sRes.data.session) {
         setError('Could not start the questionnaire. Please try again later.');
         return;
@@ -127,14 +149,29 @@ export default function PublicPulse() {
     load();
   }, [load]);
 
+  function flagMissing(ids, message) {
+    setMissingIds(ids);
+    setError(message);
+    window.setTimeout(() => {
+      const el = document.getElementById(`survey-q-${ids[0]}`);
+      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+  }
+
+  function onAnswer(id, value) {
+    setAnswers((current) => ({ ...current, [id]: value }));
+    setMissingIds((current) => current.filter((qid) => qid !== id));
+  }
+
   async function saveStep(nextStep) {
     if (!session || !token) return;
     const stepQuestions = questions.slice((step - 1) * 4, step * 4);
-    const missing = stepQuestions.some((question) => !answers[question.id]);
-    if (missing) {
-      setError('Please answer all questions on this page before continuing.');
+    const missing = missingQuestionIds(stepQuestions, answers);
+    if (missing.length) {
+      flagMissing(missing, `${missingAnswersMessage(missing.length)} They're highlighted below.`);
       return;
     }
+    setMissingIds([]);
     setBusy(true);
     setError('');
     try {
@@ -154,11 +191,14 @@ export default function PublicPulse() {
 
   async function complete() {
     if (!token) return;
-    const missing = questions.some((question) => !answers[question.id]);
-    if (missing) {
-      setError('Please answer all 16 questions before submitting.');
+    const missing = missingQuestionIds(questions, answers);
+    if (missing.length) {
+      const firstStep = Math.floor(questions.findIndex((q) => q.id === missing[0]) / 4) + 1;
+      if (firstStep >= 1 && firstStep !== step) setStep(firstStep);
+      flagMissing(missing, `${missingAnswersMessage(missing.length)} Please answer them before you submit.`);
       return;
     }
+    setMissingIds([]);
     setBusy(true);
     setError('');
     try {
@@ -207,11 +247,11 @@ export default function PublicPulse() {
       <Layout user={null} onLogout={logout} hideHeader>
         <div className="login-hero" style={loginHeroBelowLogo}>
           <img
-            src={brand?.logoUrl || rhythmEngineLogo}
-            alt={brand?.displayName || 'Rhythm Engine'}
-            className="login-logo"
-            width={PUBLIC_PULSE_LOGO.width}
-            height={PUBLIC_PULSE_LOGO.height}
+            src={logoSrc}
+            alt={logoAlt}
+            className={isEvent ? 'login-logo event-survey__logo' : 'login-logo'}
+            width={isEvent ? undefined : PUBLIC_PULSE_LOGO.width}
+            height={isEvent ? undefined : PUBLIC_PULSE_LOGO.height}
           />
         </div>
         <div
@@ -240,11 +280,11 @@ export default function PublicPulse() {
       <Layout user={null} onLogout={logout} hideHeader>
         <div className="login-hero" style={loginHeroBelowLogo}>
           <img
-            src={brand?.logoUrl || rhythmEngineLogo}
-            alt={brand?.displayName || 'Rhythm Engine'}
-            className="login-logo"
-            width={PUBLIC_PULSE_LOGO.width}
-            height={PUBLIC_PULSE_LOGO.height}
+            src={logoSrc}
+            alt={logoAlt}
+            className={isEvent ? 'login-logo event-survey__logo' : 'login-logo'}
+            width={isEvent ? undefined : PUBLIC_PULSE_LOGO.width}
+            height={isEvent ? undefined : PUBLIC_PULSE_LOGO.height}
           />
         </div>
         <div
@@ -259,29 +299,90 @@ export default function PublicPulse() {
               color: 'var(--text-primary, #292524)',
             }}
           >
-            Sorry — this link has expired. Contact your project lead for a new link.
+            Sorry, this link has expired. Contact your project lead for a new link.
           </p>
         </div>
       </Layout>
     );
   }
 
+  const eventContextRows = isEvent
+    ? [
+        ["What's changing", eventMode.changeContext?.whatIsChanging],
+        ["Why we're asking you", eventMode.changeContext?.whyAsking],
+        ['How your feedback will be used', eventMode.changeContext?.howUsed],
+        ["When you'll hear back", eventMode.changeContext?.whenHearBack],
+      ].filter(([, value]) => value)
+    : [];
+  const changeContextBlock = eventContextRows.length ? (
+    <dl className="change-context">
+      {eventContextRows.map(([label, value]) => (
+        <div key={label} className="change-context__row">
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  ) : null;
+
   return (
     <Layout user={null} onLogout={logout} hideHeader>
+      <div className={shellClass} style={themeStyle}>
       <div className="login-hero" style={loginHeroBelowLogo}>
         <img
-          src={brand?.logoUrl || rhythmEngineLogo}
-          alt={brand?.displayName || 'Rhythm Engine'}
-          className="login-logo"
-          width={PUBLIC_PULSE_LOGO.width}
-          height={PUBLIC_PULSE_LOGO.height}
+          src={logoSrc}
+          alt={logoAlt}
+          className={isEvent ? 'login-logo event-survey__logo' : 'login-logo'}
+          width={isEvent ? undefined : PUBLIC_PULSE_LOGO.width}
+          height={isEvent ? undefined : PUBLIC_PULSE_LOGO.height}
         />
       </div>
-      <div className="card login-card" style={{ maxWidth: 640, margin: '0 auto 2rem' }}>
+      <div
+        className={`card login-card${isEvent ? ' event-survey' : ''}`}
+        style={{ maxWidth: 640, margin: '0 auto 2rem' }}
+      >
         {!session && error && <p className="error">{error}</p>}
         {!session && !error && <p className="muted">Loading questionnaire…</p>}
 
-        {session && showWelcomeIntro && (
+        {session && showWelcomeIntro && isEvent && (
+          <div style={{ textAlign: 'center' }}>
+            <p className="event-survey__eyebrow">
+              <strong>{eventMode.changeName || eventMode.clientName || 'Rhythm Engine'}</strong> · Your feedback
+            </p>
+            {surveyCopy?.respondentName ? (
+              <p className="event-survey__greeting">Welcome, {surveyCopy.respondentName}</p>
+            ) : null}
+            {surveyCopy?.intro ? <p className="event-survey__intro">{surveyCopy.intro}</p> : null}
+            {changeContextBlock}
+            {surveyCopy?.welcomeHtml ? (
+              <div
+                className="event-survey__welcome-extra"
+                dangerouslySetInnerHTML={{ __html: surveyCopy.welcomeHtml }}
+              />
+            ) : null}
+            {eventMode.confidentiality ? (
+              <p className="event-survey__confidential">
+                <EmphasisText text={eventMode.confidentiality} />
+              </p>
+            ) : null}
+            <p className="event-survey__time">
+              {questions.length || 16} statements · about {EVENT_SURVEY_MINUTES} minutes
+            </p>
+            {error ? <p className="error" style={{ marginBottom: '1rem' }}>{error}</p> : null}
+            <div className="btn-row" style={{ justifyContent: 'center', marginTop: '0.25rem' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={introStartBusy}
+                onClick={() => onWelcomeStart()}
+              >
+                {introStartBusy ? 'Starting…' : 'Start the survey'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {session && showWelcomeIntro && !isEvent && (
           <div style={{ textAlign: 'center' }}>
             <p
               className="muted"
@@ -328,7 +429,68 @@ export default function PublicPulse() {
           </div>
         )}
 
-        {session && !showWelcomeIntro && (
+        {session && !showWelcomeIntro && isEvent && (
+          <>
+            {step <= 4 ? (
+              <div
+                className="event-survey__progress"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={eventProgressPercent(step)}
+                aria-label="Survey progress"
+              >
+                <div className="event-survey__progress-bar" style={{ width: `${eventProgressPercent(step)}%` }} />
+              </div>
+            ) : null}
+            {step <= 4 && changeContextBlock ? (
+              <details className="event-survey__why">
+                <summary>Why this survey</summary>
+                {changeContextBlock}
+              </details>
+            ) : null}
+            {error && <p className="error">{error}</p>}
+            {step >= 1 && step <= 4 && (
+              <SurveyQuestionStep
+                title={<EmphasisText text={eventSectionHeading(step, questions.length || 16)} />}
+                subtitle={surveyCopy?.transition}
+                note={step === 3 ? surveyCopy?.halfwayNote : null}
+                questions={questions.slice((step - 1) * 4, step * 4)}
+                startQuestionNumber={(step - 1) * 4 + 1}
+                answers={answers}
+                missingIds={missingIds}
+                onAnswer={onAnswer}
+              />
+            )}
+            {step === 5 && (
+              <Step5Reflection reflection={reflection} surveyCopy={surveyCopy} eventMode={eventMode} />
+            )}
+            <div className="btn-row">
+              {step > 1 && step < 5 && (
+                <button type="button" className="btn btn-ghost" onClick={() => setStep(step - 1)}>
+                  Back
+                </button>
+              )}
+              {step < 4 && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={busy}
+                  onClick={() => saveStep(step + 1)}
+                >
+                  Continue
+                </button>
+              )}
+              {step === 4 && (
+                <button type="button" className="btn btn-primary" disabled={busy} onClick={complete}>
+                  {busy ? 'Submitting…' : 'Submit my answers'}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {session && !showWelcomeIntro && !isEvent && (
           <>
             <div className="step-indicator">
               {[1, 2, 3, 4, 5].map((s) => (
@@ -343,7 +505,8 @@ export default function PublicPulse() {
                 questions={questions.slice((step - 1) * 4, step * 4)}
                 startQuestionNumber={(step - 1) * 4 + 1}
                 answers={answers}
-                onAnswer={(id, value) => setAnswers((current) => ({ ...current, [id]: value }))}
+                missingIds={missingIds}
+                onAnswer={onAnswer}
               />
             )}
             {step === 5 && <Step5Reflection reflection={reflection} surveyCopy={surveyCopy} />}
@@ -398,6 +561,12 @@ export default function PublicPulse() {
           )}
         </footer>
       )}
+      {isEvent ? (
+        <p className="event-survey__powered">
+          Powered by {String(brand?.displayName || '').trim() || 'Rhythm Engine'}
+        </p>
+      ) : null}
+      </div>
     </Layout>
   );
 }
