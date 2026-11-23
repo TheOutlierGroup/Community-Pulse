@@ -76,7 +76,7 @@ export default function EventSurveyFlow({
   const changeName = eventMode.changeName || eventMode.clientName || 'Your feedback';
   const context = eventMode.changeContext || {};
   const contextRows = [
-    ["What's changing", context.whatIsChanging],
+    [eventMode.stage === 'post' ? 'What changed' : "What's changing", context.whatIsChanging],
     ["Why we're asking you", context.whyAsking],
     ['How your feedback will be used', context.howUsed],
     ["When you'll hear back", context.whenHearBack],

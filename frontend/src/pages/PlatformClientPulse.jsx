@@ -17,6 +17,7 @@ import {
   EVENT_LIST_LIMIT,
   EVENT_LOAD_COPY,
   EVENT_QUADRANT_COPY,
+  EVENT_QUADRANT_POST_ACTIONS,
   limitGroupedRowsByRisk,
   rankChainRowsByRisk,
 } from '../utils/eventModeDashboard.js';
@@ -1258,7 +1259,7 @@ export default function PlatformClientPulse() {
   const quadrantSignalText = String(
     quadrantSignal.text
     || quadrantSignal.fallback
-    || 'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this program can proceed with confidence.'
+    || 'The quadrant distribution shows what proportion of the organisation currently has the conditions in place to absorb and sustain this change. Review the Optimal percentage against the largest deficit segment to understand the scale of intervention required before this programme can proceed with confidence.'
   ).trim();
   const quadrantBannerVariant = (() => {
     const fromBackend = String(quadrantSignal.bannerVariant || '').trim().toLowerCase();
@@ -1315,12 +1316,17 @@ export default function PlatformClientPulse() {
   // insufficient_data (too few respondents in the current scope/filter to
   // return a real score — see DASHBOARD_MIN_SAMPLE_SIZE) must read as
   // distinct from a genuine "Not Cleared" verdict, not collapse into it.
+  // After the change (Post) the question is how it landed, not whether to
+  // launch, so the headline and verdict read differently there.
+  const isPostStage = pulseTimepoint === 'completed';
   const launchStatusLabel =
-    kpis.launchVerdict === 'cleared'
-      ? 'Cleared to Launch'
-      : kpis.launchVerdict === 'insufficient_data'
-        ? 'Insufficient Data'
-        : 'Not Cleared';
+    kpis.launchVerdict === 'insufficient_data'
+      ? 'Insufficient Data'
+      : isPostStage
+        ? (kpis.launchVerdict === 'cleared' ? 'Landed well' : 'Did not land well')
+        : (kpis.launchVerdict === 'cleared' ? 'Cleared to Launch' : 'Not Cleared');
+  const likelihoodHeading = isPostStage ? 'How did this change land?' : 'Likelihood of Success?';
+  const eventLikelihoodHeading = isPostStage ? 'How did this change land?' : EVENT_HEADINGS.likelihood;
   const likelihoodSignalText = String(
     likelihoodSignal.text
     || likelihoodSignal.fallback
@@ -1757,7 +1763,7 @@ export default function PlatformClientPulse() {
           ) : null}
           {showingFullDashboard ? (
             <div className="pulse-clean-header__kpi pulse-clean-header__kpi--verdict">
-              <p className="pulse-clean-header__kpi-label">Likelihood of Success</p>
+              <p className="pulse-clean-header__kpi-label">{isPostStage ? 'How it landed' : 'Likelihood of Success'}</p>
               <p
                 className={`pulse-clean-header__verdict-pill pulse-clean-header__verdict-pill--${
                   kpis.launchVerdict === 'cleared'
@@ -1816,7 +1822,7 @@ export default function PlatformClientPulse() {
         <>
           <section className="event-dash-answer">
             <article className="card event-dash-tile">
-              <p className="event-dash-tile__label">{EVENT_HEADINGS.likelihood}</p>
+              <p className="event-dash-tile__label">{eventLikelihoodHeading}</p>
               {orgSampleSizeMet ? (
                 <>
                   <p className="event-dash-tile__value">
@@ -1836,7 +1842,11 @@ export default function PlatformClientPulse() {
                     </p>
                   ) : null}
                   {headlineCopy ? <p className="event-dash-tile__text">{headlineCopy.subtitle}</p> : null}
-                  {headlineCopy ? <p className="event-dash-tile__action">{headlineCopy.action}</p> : null}
+                  {headlineCopy ? (
+                    <p className="event-dash-tile__action">
+                      {isPostStage ? EVENT_QUADRANT_POST_ACTIONS[headlineQuadrant.name] || headlineCopy.action : headlineCopy.action}
+                    </p>
+                  ) : null}
                   {!managerCohortWithheld && overloadedPercent > 10 ? (
                     <p className="event-dash-alert" role="alert">
                       <strong>Critical: {formatPercent(overloadedPercent)} of managers are overloaded.</strong> Do not
@@ -2015,7 +2025,7 @@ export default function PlatformClientPulse() {
             <div className="pulse-org-likelihood__header">
               <p className="pulse-org-likelihood__eyebrow">{org?.name || 'Client'} · {reportDateLabel}</p>
               <div className="pulse-org-likelihood__title-row">
-                <h3 className="pulse-org-likelihood__title">Likelihood of Success?</h3>
+                <h3 className="pulse-org-likelihood__title">{likelihoodHeading}</h3>
                 <span className="pulse-org-overview__corner-badge" aria-label="Card marker C">C</span>
               </div>
             </div>

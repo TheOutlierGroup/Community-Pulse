@@ -156,10 +156,19 @@ function inviteTimepointLabel(timepoint) {
   return timepoint;
 }
 
-function previousInviteTimepoint(timepoint) {
-  if (timepoint === 'mid') return 'pre';
-  if (timepoint === 'post') return 'mid';
-  return null;
+/** Stages an empty roster can be copied from: During copies Pre; Post can
+ * copy Pre always, and During only when a During checkpoint exists. */
+function copySourcesForTimepoint(timepoint, hasDuring) {
+  if (timepoint === 'mid') return ['pre'];
+  if (timepoint === 'post') return hasDuring ? ['pre', 'mid'] : ['pre'];
+  return [];
+}
+
+function copySourceLabel(timepoint) {
+  if (timepoint === 'pre') return 'Pre';
+  if (timepoint === 'mid') return 'During';
+  if (timepoint === 'post') return 'Post';
+  return timepoint;
 }
 
 export default function PlatformPulseInviteUsers() {
@@ -245,7 +254,7 @@ export default function PlatformPulseInviteUsers() {
     return params;
   }, [inviteTimepoint, pulseDuringSessionId]);
   const inviteTimepointText = useMemo(() => inviteTimepointLabel(inviteTimepoint), [inviteTimepoint]);
-  const copySourceTimepoint = useMemo(() => previousInviteTimepoint(inviteTimepoint), [inviteTimepoint]);
+  const [copyingSource, setCopyingSource] = useState(null);
   const fallbackDuringSessionId = useMemo(() => {
     const options = Array.isArray(pulseTimepointOptions) ? pulseTimepointOptions : [];
     const firstDuring = options.find((option) => option?.phase === 'during' && option?.id);
@@ -255,17 +264,9 @@ export default function PlatformPulseInviteUsers() {
     const selected = String(pulseDuringSessionId || '').trim();
     return selected || fallbackDuringSessionId;
   }, [fallbackDuringSessionId, pulseDuringSessionId]);
-  const copySourceRequestParams = useMemo(() => {
-    if (!copySourceTimepoint) return null;
-    const params = { timepoint: copySourceTimepoint };
-    if (copySourceTimepoint === 'mid' && copySourceDuringSessionId) {
-      params.duringSessionId = copySourceDuringSessionId;
-    }
-    return params;
-  }, [copySourceDuringSessionId, copySourceTimepoint]);
-  const copySourceTimepointText = useMemo(
-    () => (copySourceTimepoint ? inviteTimepointLabel(copySourceTimepoint) : ''),
-    [copySourceTimepoint]
+  const copySources = useMemo(
+    () => copySourcesForTimepoint(inviteTimepoint, Boolean(copySourceDuringSessionId)),
+    [inviteTimepoint, copySourceDuringSessionId]
   );
   const recipientsTableColumnCount = 7 + configuredGroupLabels.length;
   // Respondents are placed in teams by business level, so none can be added
@@ -442,17 +443,23 @@ export default function PlatformPulseInviteUsers() {
     window.URL.revokeObjectURL(blobUrl);
   }
 
-  async function copyRecipientsFromPre() {
+  async function copyRecipientsFromPre(copySourceTimepoint) {
     if (!copySourceTimepoint) return;
+    const copySourceTimepointText = copySourceLabel(copySourceTimepoint);
+    const copySourceRequestParams = { timepoint: copySourceTimepoint };
+    if (copySourceTimepoint === 'mid' && copySourceDuringSessionId) {
+      copySourceRequestParams.duringSessionId = copySourceDuringSessionId;
+    }
     if (businessLevelsMissing) {
       showToast(businessLevelsMissingMessage, { variant: 'error' });
       return;
     }
     if (copySourceTimepoint === 'mid' && !copySourceDuringSessionId) {
-      showToast('Select a During checkpoint before copying recipients from mid.', { variant: 'error' });
+      showToast('Select a During checkpoint before copying recipients from During.', { variant: 'error' });
       return;
     }
     setCopyingFromPre(true);
+    setCopyingSource(copySourceTimepoint);
     try {
       const { data: preData } = await api.get(`/api/platform/organizations/${orgId}/rhythm-engine-link-invites`, {
         params: copySourceRequestParams,
@@ -503,6 +510,7 @@ export default function PlatformPulseInviteUsers() {
       );
     } finally {
       setCopyingFromPre(false);
+      setCopyingSource(null);
     }
   }
 
@@ -776,6 +784,14 @@ export default function PlatformPulseInviteUsers() {
                 saveDueDate(nextValue);
               }}
             />
+            {!dueDate ? (
+              // With no date set, invite emails still need one, so they say
+              // "needed by" 3 days after each email is sent. Say so here
+              // instead of showing an empty field.
+              <span className="muted" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                Not set: emails say 3 days after sending
+              </span>
+            ) : null}
           </label>
           {user.role === 'admin' ? (
             <button
@@ -1249,20 +1265,23 @@ export default function PlatformPulseInviteUsers() {
                       ) : (
                         <div style={{ display: 'grid', gap: '0.7rem' }}>
                           <span>
-                            No respondents yet for {inviteTimepointText}. Copy from {copySourceTimepointText} or import
-                            a new CSV list.
+                            No respondents yet for {copySourceLabel(inviteTimepoint)}. Copy them from an earlier
+                            stage or import a new CSV list.
                           </span>
                           <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                            <button
-                              type="button"
-                              className="btn btn-ghost"
-                              onClick={copyRecipientsFromPre}
-                              disabled={copyingFromPre || busyImport || bulkSending || businessLevelsMissing}
-                            >
-                              {copyingFromPre
-                                ? `Copying from ${copySourceTimepointText}…`
-                                : `Copy from ${copySourceTimepointText}`}
-                            </button>
+                            {copySources.map((source) => (
+                              <button
+                                key={source}
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => copyRecipientsFromPre(source)}
+                                disabled={copyingFromPre || busyImport || bulkSending || businessLevelsMissing}
+                              >
+                                {copyingSource === source
+                                  ? `Copying from ${copySourceLabel(source)}…`
+                                  : `Copy from ${copySourceLabel(source)}`}
+                              </button>
+                            ))}
                             <button
                               type="button"
                               className="btn btn-ghost"

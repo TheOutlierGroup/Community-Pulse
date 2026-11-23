@@ -57,6 +57,8 @@ export function createPulseLinkRoutes({
   getSurveyCopyForAudienceFn = getSurveyCopyForAudience,
   env = process.env,
   ensureOrgLogoLocalFn = ensureOrgLogoLocal,
+  badLinkMaxFailures = 30,
+  badLinkWindowMs = 15 * 60 * 1000,
 } = {}) {
   const router = Router();
 
@@ -83,20 +85,38 @@ export function createPulseLinkRoutes({
     legacyHeaders: false,
     message: RATE_MESSAGE,
   });
-  // Brake on link guessing: only rejected links ("Invalid or expired link",
-  // missing token) count, so real respondents never touch this limit, while
-  // one address trying many bad links is slowed after 30 in 15 minutes.
-  const pulseLinkBadTokenLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 30,
-    standardHeaders: false,
-    legacyHeaders: false,
-    message: RATE_MESSAGE,
-    requestWasSuccessful: (_req, res) => res.statusCode !== 401,
-    skipSuccessfulRequests: true,
-  });
+  // Brake on link guessing. Only rejected links count, and only rejected
+  // links are refused once an address passes the limit: a valid link from
+  // the same address always goes through. (A plain per-address limiter
+  // refused every request from that address, so one phone retrying an old
+  // link could lock a whole venue Wi-Fi out for 15 minutes.)
+  const badLinkFailures = new Map();
+  function badLinkBrakeKey(req) {
+    return String(req.ip || req.socket?.remoteAddress || 'unknown');
+  }
+  function badLinkBrakeEngaged(req, now = Date.now()) {
+    const entry = badLinkFailures.get(badLinkBrakeKey(req));
+    if (!entry || now - entry.start > badLinkWindowMs) return false;
+    return entry.count >= badLinkMaxFailures;
+  }
+  function recordBadLink(req, now = Date.now()) {
+    const key = badLinkBrakeKey(req);
+    const entry = badLinkFailures.get(key);
+    if (!entry || now - entry.start > badLinkWindowMs) {
+      badLinkFailures.set(key, { start: now, count: 1 });
+    } else {
+      entry.count += 1;
+    }
+    if (badLinkFailures.size > 10000) {
+      for (const [k, v] of badLinkFailures) if (now - v.start > badLinkWindowMs) badLinkFailures.delete(k);
+    }
+  }
+  function rejectBadLink(req, res, body) {
+    if (badLinkBrakeEngaged(req)) return res.status(429).json(RATE_MESSAGE);
+    recordBadLink(req);
+    return res.status(401).json(body);
+  }
 
-  router.use(pulseLinkBadTokenLimiter);
   router.use(pulseLinkAddressLimiter);
   router.use(pulseLinkTokenLimiter);
 
@@ -440,12 +460,12 @@ function getLinkToken(req) {
     try {
       const raw = getLinkToken(req);
       if (!raw) {
-        return res.status(401).json({ error: 'Missing token' });
+        return rejectBadLink(req, res, { error: 'Missing token' });
       }
       const tokenHash = hashInviteToken(raw);
       const invite = await pulseLinkInviteModel.findByTokenHash(tokenHash);
       if (!invite || !invite.token_hash) {
-        return res.status(401).json({ error: 'Invalid or expired link' });
+        return rejectBadLink(req, res, { error: 'Invalid or expired link' });
       }
       const org = await organizationModel.getOrganization(invite.organization_id);
       if (!org || org.kind !== 'client') {

@@ -52,6 +52,7 @@ import {
   sendPlatformWelcomeEmail,
   sendLicenseeWelcomeEmail,
   sendPulseInviteEmail,
+  normalizeInviteSubject,
 } from '../../services/email.js';
 import { sendOrganizationInvite, orgInviteExpiryDate } from '../../services/orgInvite.js';
 import {
@@ -564,11 +565,9 @@ async function upsertPulseInviteRecipients({
  * toggle, defaults off). Best-effort — a copy failure never blocks
  * checkpoint creation.
  */
-async function autoCarryForwardRecipientsForDuringCheckpoint(org, duringSessionId) {
-  if (org?.settings?.pulseCarryForwardRecipients !== true) return;
+async function copyPulseRecipientsBetweenStages(org, sourcePhase, sourceDuringSessionId, targetPhase, targetDuringSessionId) {
   const expectedGroupLevelLabels = normalizedGroupLevelLabelsFromSettings(org.settings);
-
-  async function copyFrom(sourcePhase, sourceDuringSessionId, targetPhase, targetDuringSessionId) {
+  {
     const sourceInvites = await PulseLinkInvite.listInviteRowsForOrg(org.id, {
       timepointPhase: sourcePhase,
       duringSessionId: sourceDuringSessionId,
@@ -604,6 +603,28 @@ async function autoCarryForwardRecipientsForDuringCheckpoint(org, duringSessionI
       expectedGroupLevelLabels,
     });
   }
+}
+
+/**
+ * Opening Post is Post's own "creation" moment: with carry-forward on, an
+ * empty Post roster is seeded from Pre then, as the setting describes.
+ * Previously Post was only seeded when a During checkpoint was created, so
+ * a client going straight from Pre to Post got an empty list.
+ */
+async function autoCarryForwardRecipientsToPost(org) {
+  if (org?.settings?.pulseCarryForwardRecipients !== true) return;
+  try {
+    const postInvites = await PulseLinkInvite.listInviteRowsForOrg(org.id, { timepointPhase: 'post' });
+    if (postInvites.length === 0) await copyPulseRecipientsBetweenStages(org, 'pre', null, 'post', null);
+  } catch (error) {
+    console.error('Auto carry-forward of pulse recipients to Post failed:', error);
+  }
+}
+
+async function autoCarryForwardRecipientsForDuringCheckpoint(org, duringSessionId) {
+  if (org?.settings?.pulseCarryForwardRecipients !== true) return;
+  const copyFrom = (sourcePhase, sourceDuringSessionId, targetPhase, targetDuringSessionId) =>
+    copyPulseRecipientsBetweenStages(org, sourcePhase, sourceDuringSessionId, targetPhase, targetDuringSessionId);
 
   try {
     // Seed the new During checkpoint from Pre's current roster.
@@ -1019,10 +1040,14 @@ function escapeHtmlLiteral(text) {
 export function rebindPlatformNameToClientToken(template, platformName) {
   const name = String(platformName || '').trim();
   if (!template) return template;
+  // E5: saved templates (including the platform-wide defaults every new
+  // client inherits) were written with "questionnaire — Client". The dash
+  // separator becomes ": " wherever a template is read, so the editor shows
+  // the fixed subject and the next save stores it.
   if (!name) {
     return {
       ...template,
-      subject: normalizeLegacyTemplatePlaceholders(template.subject),
+      subject: normalizeInviteSubject(normalizeLegacyTemplatePlaceholders(template.subject)),
       bodyHtml: normalizeLegacyTemplatePlaceholders(template.bodyHtml),
     };
   }
@@ -1030,9 +1055,11 @@ export function rebindPlatformNameToClientToken(template, platformName) {
   const htmlName = escapeRegExpLiteral(escapeHtmlLiteral(name));
   return {
     ...template,
-    subject: normalizeLegacyTemplatePlaceholders(template.subject).replace(
-      new RegExp(`(\\s[—–-]\\s*)${plainName}\\s*$`),
-      '$1{{clientName}}'
+    subject: normalizeInviteSubject(
+      normalizeLegacyTemplatePlaceholders(template.subject).replace(
+        new RegExp(`(\\s[—–-]\\s*)${plainName}\\s*$`),
+        '$1{{clientName}}'
+      )
     ),
     bodyHtml: normalizeLegacyTemplatePlaceholders(template.bodyHtml).replace(
       new RegExp(`<strong>\\s*(?:${htmlName}|${plainName})\\s*</strong>`, 'g'),
@@ -3311,6 +3338,7 @@ export function registerPlatformOrgRoutes(router) {
     const triggeredAt = new Date().toISOString();
     const updated = await Organization.updateOrganizationSettings(org.id, { pulsePostTriggeredAt: triggeredAt });
     if (!updated) return res.status(500).json({ error: 'Could not open the Post assessment' });
+    await autoCarryForwardRecipientsToPost(updated);
     auditFromRequest(req)({
       action: AUDIT_ACTIONS.PULSE_POST_TIMEPOINT_TRIGGER,
       targetType: 'organization',
@@ -3336,6 +3364,9 @@ export function registerPlatformOrgRoutes(router) {
         pulseCarryForwardRecipients: enabled,
       });
       if (!updated) return res.status(500).json({ error: 'Could not update setting' });
+      // Turned on after Post was already opened with an empty list: seed it
+      // now, as the setting's description promises.
+      if (enabled && updated.settings?.pulsePostTriggeredAt) await autoCarryForwardRecipientsToPost(updated);
       res.json({ pulseCarryForwardRecipients: updated.settings?.pulseCarryForwardRecipients === true });
     }
   );
