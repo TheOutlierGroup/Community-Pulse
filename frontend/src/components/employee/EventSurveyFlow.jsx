@@ -3,8 +3,6 @@ import EmphasisText from './EmphasisText.jsx';
 import { SURVEY_SCALE, missingQuestionIds } from '../../utils/surveyText.js';
 import { EVENT_SURVEY_MINUTES } from '../../utils/eventSurvey.js';
 
-const AUTO_ADVANCE_MS = 380;
-
 function sectionLabel(index, audience) {
   if (audience === 'manager') return index < 8 ? 'Leading your team' : 'Senior leadership support';
   return index < 8 ? 'Your readiness' : 'Leadership support';
@@ -56,7 +54,6 @@ export default function EventSurveyFlow({
   const [screen, setScreen] = useState(done ? 'done' : initialScreen);
   const [savedCue, setSavedCue] = useState(false);
   const bodyRef = useRef(null);
-  const advanceTimer = useRef(null);
 
   useEffect(() => {
     if (done) setScreen('done');
@@ -68,8 +65,6 @@ export default function EventSurveyFlow({
     window.scrollTo({ top: 0 });
     setSavedCue(false);
   }, [screen]);
-
-  useEffect(() => () => window.clearTimeout(advanceTimer.current), []);
 
   const answeredCount = useMemo(() => questions.filter((q) => answers[q.id]).length, [questions, answers]);
   const progress = screen === 'done' ? 100 : Math.round((answeredCount / total) * 100);
@@ -97,12 +92,7 @@ export default function EventSurveyFlow({
     onAnswer(question.id, value);
     onSaveProgress(next, Math.floor(index / 4) + 1);
     setSavedCue(true);
-    window.clearTimeout(advanceTimer.current);
-    if (index < total - 1) {
-      advanceTimer.current = window.setTimeout(() => {
-        setScreen((current) => (current === index ? index + 1 : current));
-      }, AUTO_ADVANCE_MS);
-    }
+    // No auto-advance: respondents can reconsider, then tap Next themselves.
   }
 
   async function submit() {
@@ -157,7 +147,7 @@ export default function EventSurveyFlow({
             <b>{EVENT_SURVEY_MINUTES} min</b>to finish
           </div>
           <div>
-            <b>1 tap</b>per answer
+            <b>Saved</b>as you go
           </div>
         </div>
         {contextRows.map(([label, value], n) => (
