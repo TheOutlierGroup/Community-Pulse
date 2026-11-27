@@ -1259,3 +1259,311 @@ body.evs-page {
 .evs-prog {
   top: calc(env(safe-area-inset-top, 0px) + 59px);
 }
+
+/* ── Event mode dashboard theming ───────────────────────────────────────
+   Brand colours on chrome only: header band, accents, labels and
+   controls. Status colours (red/amber/green) are never replaced. */
+
+body.event-themed .sidebar-nav-link--active {
+  background: rgba(var(--accent-rgb), 0.14);
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--brand-text, var(--text));
+  font-weight: 600;
+}
+
+.event-mode-dash .event-dash-header {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-top: 0;
+}
+
+.event-mode-dash .event-dash-header__logo {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 4px 8px;
+  max-height: 44px;
+}
+
+.event-mode-dash .event-dash-header__title {
+  color: var(--accent-contrast);
+}
+
+.event-mode-dash .event-dash-header__meta,
+.event-mode-dash .event-dash-header__responses {
+  color: var(--accent-contrast);
+  opacity: 0.88;
+}
+
+.event-mode-dash .event-dash-header .btn-ghost {
+  background: transparent;
+  color: var(--accent-contrast);
+  border-color: currentColor;
+}
+
+.event-mode-dash .event-dash-tile {
+  border-top: 4px solid var(--brand-secondary, var(--accent));
+}
+
+.event-mode-dash .event-dash-tile__label {
+  color: var(--brand-secondary-text, var(--muted));
+}
+
+.event-mode-dash .card:not(.event-dash-header):not(.event-dash-tile) {
+  border-top: 3px solid var(--accent);
+}
+
+.event-mode-dash .pulse-sa-card__label,
+.event-mode-dash .pulse-clean-dimensions__title,
+.event-mode-dash .pulse-clean-groups__head h3,
+.event-mode-dash .team-progress__title {
+  color: var(--brand-text, var(--text));
+}
+
+.event-mode-dash .event-dash-more .btn,
+.event-mode-dash .team-progress__toggle {
+  border-color: var(--brand-outline, var(--border));
+  color: var(--brand-text, var(--text));
+}
+
+.event-mode-dash .event-dash-more .btn:hover,
+.event-mode-dash .team-progress__toggle:hover {
+  background: var(--brand-surface, var(--surface2));
+}
+
+.event-mode-dash .event-theme-table th {
+  color: var(--brand-secondary-text, var(--muted));
+}
+
+/* ── Team progress chart ────────────────────────────────────────────── */
+
+.team-progress {
+  --tp-rising: #257de0;
+  --tp-falling: #f47230;
+  --tp-flat: #8a8f8a;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.team-progress__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.team-progress__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.team-progress__sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.team-progress__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.team-progress__select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.team-progress__select select {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.team-progress__toggle {
+  min-height: 36px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.team-progress__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.team-progress__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.team-progress__swatch {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  border-top: 2px solid var(--tp-flat);
+}
+
+.team-progress__swatch--rising { border-top-color: var(--tp-rising); }
+.team-progress__swatch--falling { border-top: 2px dashed var(--tp-falling); }
+
+.team-progress__panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .team-progress__panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.team-progress__panel {
+  position: relative;
+  margin: 0;
+  min-width: 0;
+}
+
+.team-progress__panel svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.team-progress__panel-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.team-progress__grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.team-progress__tick {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-progress__threshold {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.55;
+}
+
+.team-progress__threshold-label {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.team-progress__team { transition: opacity 0.15s ease; }
+.team-progress__team.is-dim { opacity: 0.15; }
+
+.team-progress__fit {
+  stroke: var(--tp-flat);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.team-progress__dot {
+  fill: var(--tp-flat);
+  stroke: var(--surface, #ffffff);
+  stroke-width: 2;
+}
+
+.team-progress__team--rising .team-progress__fit { stroke: var(--tp-rising); }
+.team-progress__team--rising .team-progress__dot { fill: var(--tp-rising); }
+.team-progress__team--falling .team-progress__fit { stroke: var(--tp-falling); stroke-dasharray: 6 4; }
+.team-progress__team--falling .team-progress__dot { fill: var(--tp-falling); }
+
+.team-progress__team.is-active .team-progress__fit { stroke-width: 3; }
+
+.team-progress__hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 14;
+  cursor: pointer;
+}
+
+.team-progress__end-label {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.team-progress__tip {
+  position: absolute;
+  z-index: 5;
+  min-width: 190px;
+  max-width: 220px;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface, #ffffff);
+  box-shadow: var(--shadow);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+
+.team-progress__tip dl {
+  display: grid;
+  gap: 0.1rem;
+  margin: 0.3rem 0;
+}
+
+.team-progress__tip dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.team-progress__tip dt { color: var(--muted); }
+.team-progress__tip dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 600; }
+.team-progress__tip span { color: var(--muted); }
+
+.team-progress__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-progress__table th,
+.team-progress__table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.team-progress__table th:first-child,
+.team-progress__table td:first-child {
+  text-align: left;
+}
+
+.team-progress__note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}

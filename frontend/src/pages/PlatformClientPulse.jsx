@@ -5,6 +5,8 @@ import { normalizeServices } from './platformClientUtils.js';
 import { normalizePulseHash, resolvePulseFocusedSection } from './pulseNavigationRules.js';
 import ReportDownloads from '../components/platform/ReportDownloads.jsx';
 import PulseTrendAnalysisSection from '../components/platform/PulseTrendAnalysisSection.jsx';
+import TeamProgressChart from '../components/platform/TeamProgressChart.jsx';
+import { teamsFromDashboard } from '../utils/teamProgress.js';
 import {
   buildReportDownloadFilename,
   readDownloadErrorMessage,
@@ -673,6 +675,8 @@ function buildTrendStageSnapshot(stageKey, label, payload) {
     key: stageKey,
     label,
     available: Boolean(payload),
+    // Per-team scores at this checkpoint (withheld teams already removed).
+    teams: teamsFromDashboard(payload),
     adoptionScore: Number.isFinite(payload?.kpis?.adoptionScore) ? payload.kpis.adoptionScore : null,
     sponsorshipScore: Number.isFinite(payload?.kpis?.sponsorshipScore) ? payload.kpis.sponsorshipScore : null,
     quadrant: dominantQuadrant,
@@ -752,6 +756,19 @@ export default function PlatformClientPulse() {
   }, [orgId]);
   const eventActive = Boolean(eventModeInfo?.active);
   const eventTheme = eventActive ? eventModeInfo.theme : null;
+  // Event mode: the client's colours apply to the whole screen while the
+  // dashboard is open (sidebar highlight included), then are removed.
+  useEffect(() => {
+    if (!eventActive) return undefined;
+    const vars = brandStyleVars(eventTheme);
+    const root = document.documentElement;
+    Object.entries(vars).forEach(([name, value]) => root.style.setProperty(name, value));
+    document.body.classList.add('event-themed');
+    return () => {
+      Object.keys(vars).forEach((name) => root.style.removeProperty(name));
+      document.body.classList.remove('event-themed');
+    };
+  }, [eventActive, eventTheme]);
   const [groupInviteMap, setGroupInviteMap] = useState({});
   const [reports, setReports] = useState([]);
   const [reportsLoading, setReportsLoading] = useState(true);
@@ -2164,6 +2181,7 @@ export default function PlatformClientPulse() {
             divergenceEmptyState={trendDivergenceEmptyState}
             sectionSignals={trendSignals}
           />
+          <TeamProgressChart stages={orderedTrendStages} threshold={threshold} minSampleSize={minSampleSize} />
         </>
       ) : null}
 
